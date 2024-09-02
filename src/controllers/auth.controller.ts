@@ -2,16 +2,16 @@ import { JwtPayload, verify } from "jsonwebtoken";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/apiResponse";
 import { ApiError } from "../utils/apiError";
+import firebaseAdmin from "../libs/firebase";
 
 const Verify = asyncHandler(async (req, res) => {
   const authHeader = req.headers["authorization"];
   const accessToken = authHeader && authHeader.split(" ")[1];
   if (accessToken) {
     try {
-      const verification = verify(
-        accessToken,
-        process.env.SERVERTOKEN!
-      ) as JwtPayload;
+      const verification = await firebaseAdmin
+        .auth()
+        .verifyIdToken(accessToken);
       if (verification) {
         return res
           .status(200)

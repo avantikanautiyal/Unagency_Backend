@@ -8,6 +8,7 @@ import { RouteErrorHandler } from "./middlewares/routeErrorHandler.middleware";
 // routs import
 import helloWorldRouter from "./routes/hello.route";
 import authRouter from "./routes/auth.route";
+import mongoose from "mongoose";
 const app = express();
 
 //Use of CORS
@@ -32,7 +33,10 @@ app.use(ErrorHandler);
 
 (app as CustomExpress).run = async () => {
   try {
-    //  ADD you pre run code here
+    mongoose.connect(process.env.DB_URI!);
+    mongoose.connection.on("connected", () => {
+      console.log("DB_CONNECTED");
+    });
     app.listen(process.env.PORT ?? 6000, () => {
       console.log(
         "⚙️",

@@ -10,14 +10,15 @@ type ControllerFunction = (
 export const asyncHandler = (fn: ControllerFunction) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const controllerResponse = await fn(req, res, next) as ApiResponse;
+      const controllerResponse = (await fn(req, res, next)) as ApiResponse;
       if (!controllerResponse) return;
       if (controllerResponse instanceof ApiResponse) {
-        return res.status(controllerResponse.statusCode).json(controllerResponse)
+        return res
+          .status(controllerResponse.statusCode)
+          .json(controllerResponse);
       } else {
-        throw new ApiError("Controller should return a ApiResponse type")
+        throw new ApiError("Controller should return a ApiResponse type");
       }
-
     } catch (err: unknown) {
       next(
         new ApiError(

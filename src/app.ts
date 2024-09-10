@@ -8,7 +8,12 @@ import { RouteErrorHandler } from "./middlewares/routeErrorHandler.middleware";
 // routs import
 import helloWorldRouter from "./routes/hello.route";
 import authRouter from "./routes/auth.route";
+import categoryRouter from "./routes/categories.route";
+import packagesRouter from "./routes/packages.route";
+import teamRouter from "./routes/teams.route";
+import OrganizationsRouter from "./routes/organizations.route";
 import mongoose from "mongoose";
+import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 const app = express();
 
 //Use of CORS
@@ -24,6 +29,10 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
+app.use("/packages", packagesRouter);
+app.use("/categories", categoryRouter);
+app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
+app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
 
 // Invalid Path Error Handler

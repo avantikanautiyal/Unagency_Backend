@@ -2,15 +2,24 @@ import { Request, Response, NextFunction } from "express";
 import { JwtPayload, verify } from "jsonwebtoken";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
+import Users from "../models/users.model";
+import mongoose from "mongoose";
 
 interface UserType {
-  id: string;
+  userId: mongoose.Types.ObjectId;
+  firebaseId: string;
+  role: string;
+  contact: number;
   name: string;
+  state: string;
+  country: string;
+  isVerified: boolean;
   email: string;
 }
-type RequestUser = {
-  user: UserType;
-} & Request;
+
+type RequestUser = Request & {
+  user?: UserType;
+};
 
 export async function VerifyUserHandler(
   req: RequestUser,
@@ -21,9 +30,14 @@ export async function VerifyUserHandler(
   const accessToken = authHeader && authHeader.split(" ")[1];
   if (accessToken) {
     try {
-      const verification = await firebaseAdmin.auth().verifyIdToken(accessToken);
+      const verification = await firebaseAdmin
+        .auth()
+        .verifyIdToken(accessToken);
       if (verification) {
-        req.user = verification?.user;
+        const getUser = await Users.findOne({
+          firebaseId: verification?.uid,
+        });
+        req.user = { ...verification?.user, userId: getUser?._id };
         next();
       }
     } catch (err) {

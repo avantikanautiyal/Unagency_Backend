@@ -9,6 +9,7 @@ export interface IUser {
   email: string;
   state: string;
   country: string;
+  organizations: mongoose.Types.ObjectId[];
   isVerified: boolean;
 }
 
@@ -22,6 +23,9 @@ const UsersSchema = new Schema<IUser>(
     email: { type: String, required: true },
     state: { type: String, default: "" },
     country: { type: String, default: "" },
+    organizations: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Organizations" },
+    ],
     isVerified: { type: Boolean, required: true },
   },
   { collection: "users", timestamps: true }

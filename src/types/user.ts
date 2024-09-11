@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import { Request } from "express";
 
-interface UserType {
-  userId: mongoose.Types.ObjectId;
+export interface UserType {
+  userId: mongoose.Types.ObjectId | string;
   firebaseId: string;
   role: string;
   contact: number;

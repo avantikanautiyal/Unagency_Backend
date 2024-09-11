@@ -3,7 +3,8 @@ import { ApiResponse } from "../utils/apiResponse";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
-
+import { createUserUpster } from "../services/Chatstream"
+import { UserType } from "../types/user";
 const Verify = asyncHandler(async (req, res) => {
   const authHeader = req.headers["authorization"];
   const accessToken = authHeader && authHeader.split(" ")[1];
@@ -26,7 +27,9 @@ const Verify = asyncHandler(async (req, res) => {
 const Register = asyncHandler(async (req, res) => {
   const authHeader = req.headers["authorization"];
   const accessToken = authHeader && authHeader.split(" ")[1];
+
   if (accessToken) {
+
     try {
       const verification = await firebaseAdmin
         .auth()
@@ -49,6 +52,13 @@ const Register = asyncHandler(async (req, res) => {
         } else {
           const registration = await Users.create(user);
           if (registration) {
+            //  Registring a user to a getStreamId with a mongoDB Id
+            const sUser = await createUserUpster({
+              _id: registration._id,
+              name: registration?.name,
+              email: registration.email
+            } as any);
+            // console.log(sUser)
             res
               .status(200)
               .json(

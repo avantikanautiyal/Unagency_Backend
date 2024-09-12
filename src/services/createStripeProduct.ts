@@ -13,7 +13,7 @@ const createStripeProduct = async (item: IPackages) => {
   try {
     // Create a price for the product
     const amountInCents = Math.round(price * 100);
-    await stripe.prices.create({
+    const priceData = await stripe.prices.create({
       unit_amount: amountInCents,
       currency: currency,
       recurring: {
@@ -22,7 +22,7 @@ const createStripeProduct = async (item: IPackages) => {
       },
       product: product.id,
     });
-    return product.id;
+    return { productId: product.id, priceId: priceData.id };
   } catch (error) {
     if (error && (error as any).type === "StripeInvalidRequestError") {
       try {

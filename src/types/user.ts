@@ -1,16 +1,15 @@
-import mongoose from "mongoose";
 import { Request } from "express";
 
 interface UserType {
-  userId: mongoose.Types.ObjectId;
+  userId: string;
   firebaseId: string;
   role: string;
-  contact: number;
+  contact?: number;
   name: string;
-  state: string;
-  country: string;
+  state?: string;
+  country?: string;
   isVerified: boolean;
-  email: string;
+  email?: string;
 }
 
 export type RequestUser = Request & {

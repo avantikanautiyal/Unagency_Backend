@@ -3,23 +3,7 @@ import { JwtPayload, verify } from "jsonwebtoken";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
-import mongoose from "mongoose";
-
-interface UserType {
-  userId: mongoose.Types.ObjectId;
-  firebaseId: string;
-  role: string;
-  contact: number;
-  name: string;
-  state: string;
-  country: string;
-  isVerified: boolean;
-  email: string;
-}
-
-type RequestUser = Request & {
-  user?: UserType;
-};
+import { RequestUser } from "../types/user";
 
 export async function VerifyUserHandler(
   req: RequestUser,
@@ -34,10 +18,20 @@ export async function VerifyUserHandler(
         .auth()
         .verifyIdToken(accessToken);
       if (verification) {
+        const user = {
+          firebaseId: verification?.uid,
+          name: verification?.name,
+          role: "customer",
+          email: verification?.email,
+          isVerified: !!verification?.email_verified,
+        };
         const getUser = await Users.findOne({
           firebaseId: verification?.uid,
         });
-        req.user = { ...verification?.user, userId: getUser?._id };
+        if (!getUser) {
+          throw new ApiError("User not found", 401);
+        }
+        req.user = { ...user, userId: getUser?._id?.toString() };
         next();
       }
     } catch (err) {

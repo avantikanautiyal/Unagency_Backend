@@ -4,8 +4,9 @@ import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
+import { asyncHandler } from "../utils/asyncHandler";
 
-export async function VerifyUserHandler(
+export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
   req: RequestUser,
   res: Response,
   next: NextFunction
@@ -40,4 +41,4 @@ export async function VerifyUserHandler(
   } else {
     throw new ApiError("No Token Provided", 401);
   }
-}
+})

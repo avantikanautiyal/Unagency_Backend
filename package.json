@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "build": "tsc",
+    "bun:start" : "bun ./index.ts",
     "dev": "nodemon --exec ts-node ./index.ts",
     "createPackage": "echo {\"type\":\"module\"} > ./dist/package.json",
     "prod:build": "bun build  --entrypoints ./index.ts --outdir ./dist --target node --minify-whitespace --minify-identifiers --minify-syntax --sourcemap=linked && npm run createPackage"

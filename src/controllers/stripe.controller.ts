@@ -5,6 +5,7 @@ import { RequestUser } from "../types/user";
 import { ApiError } from "../utils/apiError";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
+import CheckoutSession from "../models/checkoutsession.model";
 
 const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const { priceId } = req.body;
@@ -33,7 +34,24 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
   const sig = req.headers["stripe-signature"] as string;
   let event;
-  event = stripe.webhooks.constructEvent(req.body, sig, "your_webhook_secret");
+  event = stripe.webhooks.constructEvent(
+    req.body,
+    sig,
+    process.env.stripe_webhook_endpoint_secret!
+  );
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    await CheckoutSession.create({
+      sessionId: session.id,
+      customerId: session.customer,
+      paymentStatus: session.payment_status,
+      amountTotal: session.amount_total,
+      currency: session.currency,
+    });
+
+    console.log("Payment session saved successfully");
+  }
 });
 
 export { CreateCheckOutSession, StripeWebhook };

@@ -7,6 +7,6 @@ import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
 router.post("/create-checkout-session", VerifyUserHandler, CreateCheckOutSession);
-router.post("/stripe-webhook", VerifyUserHandler, StripeWebhook);
+router.post("/webhook", VerifyUserHandler, StripeWebhook);
 
 export default router;

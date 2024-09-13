@@ -16,6 +16,7 @@ import OrganizationsRouter from "./routes/organizations.route";
 import ChatRouter from "./routes/chat.route"
 
 // middleware
+import stripeRouter from "./routes/stripe.route"
 import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 const app = express();
 
@@ -36,6 +37,7 @@ app.use("/packages", packagesRouter);
 app.use("/categories", categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
+app.use("/stripe", stripeRouter)
 app.use("/", helloWorldRouter);
 app.use("/chat", VerifyUserHandler, ChatRouter);
 

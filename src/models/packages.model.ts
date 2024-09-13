@@ -11,6 +11,7 @@ export interface IPackages {
   price: number;
   duration: number;
   stripe_product_id: string;
+  stripe_price_id: string;
   billingCycle: "day";
   features: IFeatures[];
   currency: string;
@@ -28,6 +29,7 @@ const CategorySchema = new Schema<IPackages>(
     title: { type: String, required: true },
     description: { type: String, required: true },
     stripe_product_id: { type: String, required: true },
+    stripe_price_id: { type: String, required: true },
     price: { type: Number, required: true, default: 0 },
     currency: {
       type: String,

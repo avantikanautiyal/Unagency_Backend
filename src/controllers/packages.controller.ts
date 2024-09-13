@@ -37,7 +37,8 @@ const CreatePackage = asyncHandler(async (req: Request, res: Response) => {
   const stripeProductId = await createStripeProduct({ ...req.body });
   const createPackage = await Packages.create({
     ...req.body,
-    stripe_product_id: stripeProductId,
+    stripe_product_id: stripeProductId.productId,
+    stripe_price_id: stripeProductId.priceId,
   });
   if (createPackage) {
     return new ApiResponse(200, createPackage, "Package created");

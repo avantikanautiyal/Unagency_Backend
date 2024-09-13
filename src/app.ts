@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import mongoose from "mongoose";
 
 //Global Error Handler
 import { ErrorHandler } from "./middlewares/errorHandler.middleware";
@@ -12,7 +13,9 @@ import categoryRouter from "./routes/categories.route";
 import packagesRouter from "./routes/packages.route";
 import teamRouter from "./routes/teams.route";
 import OrganizationsRouter from "./routes/organizations.route";
-import mongoose from "mongoose";
+import ChatRouter from "./routes/chat.route"
+
+// middleware
 import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 const app = express();
 
@@ -34,6 +37,7 @@ app.use("/categories", categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
+app.use("/chat", VerifyUserHandler, ChatRouter);
 
 // Invalid Path Error Handler
 app.use(RouteErrorHandler);

@@ -4,22 +4,12 @@ import { RequestUser } from "../types/user";
 import { ApiError } from "../utils/apiError";
 import { streamServerClient } from "../config/getStreamIo.config";
 
-// const createChatRoom = asyncHandler(async (req: RequestUser, res) => {
-//     if (!req.user) throw new ApiError("no user found", 404);
 
+export const getStreamChatToken = asyncHandler(async (req: RequestUser, res) => {
 
-//     streamServerClient.channel("messaging", { name: "asd" })
+    console.log(req.user)
+    const token = await streamServerClient.createToken(req.user?.userId + ""    );
 
-//     const isExits = await streamServerClient.queryUsers({ id: req?.user.userId + "" });
-//     if (isExits) {
-//         return new ApiResponse(200, isExits, "user already exits");
-//     }
-//     const user = {
-//         id: req?.user.userId + "",
-//         ...req.user,
-//         role: 'admin',
-//     }
-//     const response = await streamServerClient.upsertUser(user);
-//     return new ApiResponse(200, response, "user created");
-// });
-// export { createUseratStreamIo };
+    return new ApiResponse(200, { token: token, user: req.user }, "success")
+
+})

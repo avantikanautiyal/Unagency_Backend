@@ -1,5 +1,5 @@
 import { Router } from "express";
-import bodyParser from 'body-parser';
+import bodyParser from "body-parser";
 
 import {
   CreateCheckOutSession,
@@ -8,7 +8,11 @@ import {
 import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-router.post("/webhook", bodyParser.raw({ type: 'application/json' }), StripeWebhook);
-router.post("/create-checkout-session", VerifyUserHandler, CreateCheckOutSession);
+router.post("/webhook", StripeWebhook);
+router.post(
+  "/create-checkout-session",
+  VerifyUserHandler,
+  CreateCheckOutSession
+);
 
 export default router;

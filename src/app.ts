@@ -12,7 +12,7 @@ import categoryRouter from "./routes/categories.route";
 import packagesRouter from "./routes/packages.route";
 import teamRouter from "./routes/teams.route";
 import OrganizationsRouter from "./routes/organizations.route";
-import stripeRouter from "./routes/stripe.route"
+import stripeRouter from "./routes/stripe.route";
 import mongoose from "mongoose";
 import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 const app = express();
@@ -21,6 +21,7 @@ const app = express();
 app.use(cors());
 
 //Use of Express JSON CONFIG
+app.use(express.raw({ type: "*/*" }));
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -30,7 +31,7 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
-app.use("/stripe", stripeRouter)
+app.use("/stripe", stripeRouter);
 app.use("/packages", packagesRouter);
 app.use("/categories", categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);

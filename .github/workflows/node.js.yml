@@ -23,7 +23,7 @@ jobs:
       run: echo 'export PATH=~/.bun/bin:$PATH' >> $GITHUB_ENV
     - name: Clean npm cache
       run: npm cache clean --force
-    - run: npm ci
+    - run: npm i
     - name: Start Application with PM2
       run: pm2 start ecosystem.config.js
       env:

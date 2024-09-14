@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "build": "tsc",
-    "bun:start" : "bun ./index.ts",
+    "bun:start": "bun ./index.ts",
     "dev": "nodemon --exec ts-node ./index.ts",
     "createPackage": "echo {\"type\":\"module\"} > ./dist/package.json",
     "prod:build": "bun build  --entrypoints ./index.ts --outdir ./dist --target node --minify-whitespace --minify-identifiers --minify-syntax --sourcemap=linked && npm run createPackage"
@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.645.0",
     "@types/express": "^4.17.21",
     "aws-sdk": "^2.1689.0",
+    "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

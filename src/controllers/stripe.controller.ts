@@ -39,7 +39,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   event = await stripe.webhooks.constructEventAsync(
     payloadString,
     sig,
-    process.env.stripe_webhook_endpoint_secret!
+    "REDACTED"
   );
   // event = stripe.webhooks.constructEvent(
   //   req.body,

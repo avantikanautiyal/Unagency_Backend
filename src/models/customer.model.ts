@@ -18,7 +18,7 @@ const CustomerSchema = new Schema<IStripeCustomer>(
 );
 
 const StripeCustomers = mongoose.model<IStripeCustomer>(
-  "StripeCustomers",
+  "stripe_customers",
   CustomerSchema
 );
 

@@ -40,6 +40,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
     process.env.stripe_webhook_endpoint_secret!
   );
 
+  console.log(event.type);
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     await CheckoutSession.create({
@@ -49,7 +50,6 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       amountTotal: session.amount_total,
       currency: session.currency,
     });
-
     console.log("Payment session saved successfully");
   }
 });

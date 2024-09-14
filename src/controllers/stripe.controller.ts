@@ -34,11 +34,16 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
   const sig = req.headers["stripe-signature"] as string;
   let event;
-  event = stripe.webhooks.constructEvent(
+  event = await stripe.webhooks.constructEventAsync(
     req.body,
     sig,
     process.env.stripe_webhook_endpoint_secret!
   );
+  // event = stripe.webhooks.constructEvent(
+  //   req.body,
+  //   sig,
+  //   process.env.stripe_webhook_endpoint_secret!
+  // );
 
   console.log(event.type);
   if (event.type === "checkout.session.completed") {

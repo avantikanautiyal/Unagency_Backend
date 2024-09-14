@@ -35,6 +35,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   const payloadString = JSON.stringify(payload, null, 2);
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
   const sig = req.headers["stripe-signature"] as string;
+  console.log(sig)
   let event;
   event = await stripe.webhooks.constructEventAsync(
     payloadString,

@@ -30,11 +30,11 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
+app.use("/stripe", stripeRouter)
 app.use("/packages", packagesRouter);
 app.use("/categories", categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
-app.use("/stripe", stripeRouter)
 app.use("/", helloWorldRouter);
 
 // Invalid Path Error Handler

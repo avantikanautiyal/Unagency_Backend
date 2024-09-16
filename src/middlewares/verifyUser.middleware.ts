@@ -32,7 +32,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         if (!getUser) {
           throw new ApiError("User not found", 401);
         }
-        req.user = { ...user, userId: getUser?._id?.toString() };
+        req.user = { ...getUser.toObject(), userId: getUser?._id?.toString() };
         next();
       }
     } catch (err) {

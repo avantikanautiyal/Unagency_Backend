@@ -11,8 +11,8 @@ export interface CRoomUser {
 const ChatRoomUserSchema = new Schema<CRoomUser>(
     {
         _id: { type: Schema.Types.ObjectId, auto: true },
-        chatRoomId: { type: Schema.Types.ObjectId, required: true, unique: true },
-        userId: { type: Schema.Types.ObjectId, required: true, unique: true }
+        chatRoomId: { type: Schema.Types.ObjectId, ref: "chatrooms", required: true },
+        userId: { type: Schema.Types.ObjectId, required: true }
     },
     { collection: "chatRoomUsers", timestamps: true }
 );

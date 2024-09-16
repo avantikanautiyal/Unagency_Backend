@@ -3,7 +3,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
-import { createUserUpster } from "../services/Chatstream"
+import { assignChatRoomToResourse, createUserUpster } from "../services/Chatstream"
 import { UserType } from "../types/user";
 const Verify = asyncHandler(async (req, res) => {
   const authHeader = req.headers["authorization"];
@@ -58,6 +58,7 @@ const Register = asyncHandler(async (req, res) => {
               name: registration?.name,
               email: registration.email
             } as any);
+            await assignChatRoomToResourse({ id: registration._id + "" })
             // console.log(sUser)
             res
               .status(200)

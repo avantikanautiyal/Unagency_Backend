@@ -3,7 +3,12 @@ import { UserType } from '../types/user';
 // import { IUser } from '../models/users.model';
 
 import { streamServerClient } from "../config/getStreamIo.config";
-
+import { ApiError } from '../utils/apiError';
+import { ApiResponse } from '../utils/apiResponse';
+import Users from '../models/users.model';
+import ChatRoom from '../models/chatRoom.model';
+import ChatRoomUser from '../models/chatRoomParticipants.model';
+import mongoose from 'mongoose';
 type UserStream = {
     _id: string,
     name?: string,
@@ -31,17 +36,15 @@ export async function createChatRoom(id: string, memberIds: string[] = []) {
             created_by_id: id,
         }
     );
-
     await channel.create();
-
     return channel;
 };
 
 // Later add members after upserting them
-export const addUserToRoom = async (channelId: string, userId: string) => {
+export const addUserToRoom = async (channelId: string, userId: string[]) => {
     const channel = streamServerClient.channel('messaging', channelId);
     // Upsert user before adding to the room
-    return await channel.addMembers([userId]);
+    return await channel.addMembers([...userId]);
 };
 
 // this Id is orginizaton and user id 
@@ -58,13 +61,29 @@ export const getUserChannels = async (id: string) => {
     }
 };
 
-// async function main() {
-//     const res = await getUserChannels("66e160775a8bcb018bef3bb7");
-//     console.log(res?.length);
-//     const re = await addUserToRoom("66e160775a8bcb018bef3bb7", "66e160775a8bcb018bef3bb7");
-//     // const room = await createChatRoom("66e160775a8bcb018bef3bb7", ["66e160775a8bcb018bef3bb7"]);
-//     // console.log(re);
+export const assignChatRoomToResourse = async ({ id }: { id: string }) => {
+    if (!id) throw new ApiError("id is not provided", 401);
+    const [roomChannel] = await streamServerClient.queryChannels({ id: id });
+    if (roomChannel) return { roomId: roomChannel.id };
+    // now create a room here
+    const customerId = id;
+    if (!customerId) throw new ApiError("user not exits", 401);
+    // TODO : add a prakria Relationship manager id here
+    const members = [customerId];
+    const [relationshipManager] = await Users.aggregate(
+        [
+            { $match: { role: "servicing" } },             // Match users with role: "1"
+            { $sample: { size: 1 } }               // Randomly select 1 user
+        ]
+    );
+    if (relationshipManager) members.push(relationshipManager._id);
 
-
-// }
-// main()
+    const chatroomInstance = new ChatRoom({ chatRoomId: new mongoose.Types.ObjectId(id) });
+    const room = await createChatRoom(id, [...members]);
+    await chatroomInstance.save();
+    const chatroomParticipatance = await ChatRoomUser.insertMany(
+        members
+            .map(member => ({ userId: member, chatRoomId: id }))
+    );
+    return { roomId: room.id };
+}

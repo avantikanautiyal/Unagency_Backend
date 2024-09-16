@@ -14,11 +14,11 @@ const CustomerSchema = new Schema<IStripeCustomer>(
     name: { type: String },
     stripeCustomerId: { type: String, required: true },
   },
-  { collection: "StripeCustomers", timestamps: true }
+  { collection: "stripe_customers", timestamps: true }
 );
 
 const StripeCustomers = mongoose.model<IStripeCustomer>(
-  "stripe_customers",
+  "StripeCustomers",
   CustomerSchema
 );
 

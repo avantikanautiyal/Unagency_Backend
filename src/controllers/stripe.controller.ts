@@ -31,9 +31,7 @@ const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
 });
 
 const StripeWebhook = asyncHandler(async (req, res) => {
-  const sigHeader =
-    req.headers["Stripe-Signature"] ||
-    (req.headers["stripe-signature"] as string);
+  const sigHeader = req.headers["stripe-signature"] as string;
 
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
   let event;

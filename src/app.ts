@@ -18,6 +18,8 @@ import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
+import { ApiResponse } from "./utils/apiResponse";
+import Subscriptions from "./models/subscription.model";
 const app = express();
 
 //Use of CORS
@@ -41,16 +43,46 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       amountTotal: session.amount_total,
       currency: session.currency,
     });
-    console.log("Payment session saved successfully");
+    return new ApiResponse(200, null, "Payment Session Saved Successfully");
+  }
+  if (event.type === "customer.subscription.created") {
+    const subscription = event.data.object;
+    await Subscriptions.create({
+      subscriptionId: subscription.id,
+      customerId: subscription.customer,
+      planId: subscription.items.data[0].plan.id, // Plan ID (assuming single plan for simplicity)
+      status: subscription.status,
+      currentPeriodStart: new Date(subscription.current_period_start * 1000), // Convert to JS Date
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000), // Convert to JS Date
+    });
+    return new ApiResponse(200, null, "Subscription saved Successfully");
+  }
+  if (event.type === "customer.subscription.updated") {
+    const subscription = event.data.object;
+    await Subscriptions.findOneAndUpdate(
+      { subscriptionId: subscription.id },
+      {
+        status: subscription.status,
+        planId: subscription.items.data[0].plan.id, // Updated Plan ID
+        currentPeriodStart: new Date(subscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      },
+      { new: true }
+    );
+    return new ApiResponse(200, null, "Subscription updated Successfully");
+  }
+  if (event.type === "customer.subscription.deleted") {
+    const subscription = event.data.object;
+    await Subscriptions.findOneAndUpdate(
+      { subscriptionId: subscription.id },
+      { status: "canceled" }
+    );
+    return new ApiResponse(200, null, "Subscription canceled");
   }
 });
 
 //Use of Express JSON CONFIG
-app.use(
-  "/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  StripeWebhook
-);
+app.use("/webhook", express.raw({ type: "application/json" }), StripeWebhook);
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 

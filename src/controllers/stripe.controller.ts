@@ -30,12 +30,12 @@ const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, session, "Session Checkout");
 });
 
-const StripeWebhook = asyncHandler(async (req, res) => {
+const StripeWebhook = asyncHandler(async (req, res, buf) => {
   const sigHeader = req.headers["stripe-signature"] as string;
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
   let event;
   event = await stripe.webhooks.constructEventAsync(
-    req.body,
+    buf.toString(),
     sigHeader,
     "REDACTED"
   );

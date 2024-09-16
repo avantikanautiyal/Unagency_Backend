@@ -10,8 +10,7 @@ const router = Router();
 router.post(
   "/webhook",
   express.raw({ type: "application/json" }),
-  express().use(express.json()),
-  StripeWebhook
+  StripeWebhook,
 );
 router.post(
   "/create-checkout-session",

@@ -18,7 +18,7 @@ const SubscriptionSchema = new Schema<ISubscription>({
   status: {
     type: String,
     required: true,
-    enum: ["active", "canceled", "pending"],
+    enum: ["active", "canceled", "pending", "incomplete", "incomplete", "incomplete_expired", "trialing", "past_due", "unpaid"],
   }, // Subscription status ('active', 'canceled', etc.)
   currentPeriodStart: { type: Date, required: true }, // Subscription start
   currentPeriodEnd: { type: Date, required: true }, // Subscription renewal/cancellation date

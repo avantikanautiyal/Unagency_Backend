@@ -21,7 +21,7 @@ const app = express();
 app.use(cors());
 
 //Use of Express JSON CONFIG
-app.use(express.raw({ type: "*/*" }));
+
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 

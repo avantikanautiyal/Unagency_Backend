@@ -8,7 +8,7 @@ import {
 import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-router.post("/webhook", StripeWebhook);
+router.post("/webhook", bodyParser.raw({type: "*/*"}),  StripeWebhook);
 router.post(
   "/create-checkout-session",
   VerifyUserHandler,

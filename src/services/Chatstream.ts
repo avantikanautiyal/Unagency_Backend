@@ -27,11 +27,11 @@ export const createUserUpster = async (user: UserStream) => {
     return response;
 };
 // id can be a userid and a orginizationId 
-export async function createChatRoom(id: string, memberIds: string[] = []) {
+export async function createChatRoom(id: string, memberIds: string[] = [], roomName: string = "") {
     // const users = memberIds.map(id => ({ id })); // Map to correct format
     const channel = streamServerClient.channel("messaging", id
         , {
-            name: "Prakria Direct",
+            name: roomName ?? "Prakria Direct",
             members: memberIds,
             created_by_id: id,
         }
@@ -61,7 +61,7 @@ export const getUserChannels = async (id: string) => {
     }
 };
 
-export const assignChatRoomToResourse = async ({ id }: { id: string }) => {
+export const assignChatRoomToResourse = async ({ id, roomName }: { id: string, roomName: string }) => {
     if (!id) throw new ApiError("id is not provided", 401);
     const [roomChannel] = await streamServerClient.queryChannels({ id: id });
     if (roomChannel) return { roomId: roomChannel.id };
@@ -79,7 +79,7 @@ export const assignChatRoomToResourse = async ({ id }: { id: string }) => {
     if (relationshipManager) members.push(relationshipManager._id);
 
     const chatroomInstance = new ChatRoom({ chatRoomId: new mongoose.Types.ObjectId(id) });
-    const room = await createChatRoom(id, [...members]);
+    const room = await createChatRoom(id, [...members], roomName);
     await chatroomInstance.save();
     const chatroomParticipatance = await ChatRoomUser.insertMany(
         members

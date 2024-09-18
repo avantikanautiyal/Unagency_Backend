@@ -43,7 +43,7 @@ export const createChatRoomController = asyncHandler(async (req: RequestUser, re
     );
     if (relationshipManager) members.push(relationshipManager._id);
 
-    const room = await createChatRoom(id, [...members]);
+    const room = await createChatRoom(id, [...members], req.user?.name);
     // room.sendMessage({
     //     text : "welcome to prakria"
     // })

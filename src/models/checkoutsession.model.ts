@@ -24,7 +24,7 @@ const CheckoutSessionSchema = new Schema<ICheckoutSession>(
     couponId: { type: String }, // Stripe coupon ID (if any)
     promotionCodeId: { type: String }, // Stripe promotion code ID (if any)
   },
-  { collection: "CheckoutSessionSchema", timestamps: true }
+  { collection: "checkout_sessions", timestamps: true }
 );
 
 const CheckoutSession = mongoose.model<ICheckoutSession>(

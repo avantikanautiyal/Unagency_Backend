@@ -35,6 +35,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         req.user = { ...getUser.toObject(), userId: getUser?._id?.toString() };
         next();
       }
+      //  phle se tha or use kr rhye h userId  confuse na ho jye firebase or iss id me iss liye 
     } catch (err) {
       throw new ApiError((err as Error).message, 401);
     }

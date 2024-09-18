@@ -10,6 +10,8 @@ export interface UserType {
   country?: string;
   isVerified: boolean;
   email?: string;
+  customerId?: string;
+  subscriptionId?: string;
 }
 
 export type RequestUser = Request & {

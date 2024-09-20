@@ -7,27 +7,27 @@ import { ApiError } from "../utils/apiError";
 
 const AddMemberInOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
-    const { user, role, organization } = req.body;
-    if (!user || !role || !organization) {
+    const { userId, role, organization } = req.body;
+    if (!userId || !role || !organization) {
       return new ApiResponse(400, null, "All Fields are required");
     }
     //CHeck if User is the Owner or Admin of Organization to Add Member in an Organization;
     const checkUser = await Teams.findOne({
-      user: req.user?.userId,
+      userId: req.user?.userId,
       Organization: organization,
     });
     if (!checkUser) throw new ApiError("Unauthorised Member Found", 401);
 
     if (checkUser.role == "owner" || checkUser.role == "admin") {
       const isExist = await Teams.exists({
-        user: user,
+        userId: userId,
         Organization: organization,
       });
       if (isExist) {
         return new ApiResponse(400, null, "User is already in this team");
       }
       const addMember = await Teams.create({
-        user,
+        userId,
         role,
         Organization: checkUser?.Organization,
       });
@@ -44,8 +44,8 @@ const AddMemberInOrganization = asyncHandler(
 
 const RemoveMemberInOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
-    const { user, organization } = req.body;
-    if (!user || !organization) {
+    const { userId, organization } = req.body;
+    if (!userId || !organization) {
       return new ApiResponse(400, null, "All Fields are required");
     }
     //CHeck if User is the Owner or Admin of Organization to Add Member in an Organization;
@@ -56,7 +56,7 @@ const RemoveMemberInOrganization = asyncHandler(
     if (!checkUser) throw new ApiError("Unauthorised Member Found", 401);
     if (checkUser.role == "owner" || checkUser.role == "admin") {
       const removeMember = await Teams.deleteOne({
-        user,
+        userId,
         Organization: checkUser?.Organization,
       });
 
@@ -84,7 +84,7 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   const { organization } = req.body;
   const checkUser = await Teams.findOne({
     Organization: organization,
-    user: req?.user?.userId,
+    userId: req?.user?.userId,
   });
 
   if (!checkUser) throw new ApiError("User not found", 401);

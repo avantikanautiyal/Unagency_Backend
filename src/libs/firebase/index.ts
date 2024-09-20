@@ -1,14 +1,14 @@
 import firebaseAdmin from "firebase-admin";
+import serviceAccount from "./key.json"; // Make sure the path is correct
 
-const firebaseConfig = {
-  apiKey: process.env.apiKey,
-  authDomain: process.env.authDomain,
-  projectId: process.env.projectId,
-  storageBucket: process.env.storageBucket,
-  messagingSenderId: process.env.messagingSenderId,
-  appId: process.env.appId,
-  measurementId: process.env.measurementId,
-};
-firebaseAdmin.initializeApp(firebaseConfig);
+// Check if Firebase Admin has already been initialized
+if (!firebaseAdmin.apps.length) {
+  firebaseAdmin.initializeApp({
+    credential: firebaseAdmin.credential.cert(
+      serviceAccount as firebaseAdmin.ServiceAccount
+    ),
+    databaseURL: "https://prakria-direct-d6c71.firebaseio.com", // Optional: if you're using Firebase Realtime Database
+  });
+}
 
 export default firebaseAdmin;

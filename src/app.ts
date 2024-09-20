@@ -7,10 +7,13 @@ import { RouteErrorHandler } from "./middlewares/routeErrorHandler.middleware";
 
 // routs import
 import helloWorldRouter from "./routes/hello.route";
+import StaffRouter from "./routes/staff.route";
+import ProjectRouter from "./routes/project.route";
 import authRouter from "./routes/auth.route";
 import categoryRouter from "./routes/categories.route";
 import packagesRouter from "./routes/packages.route";
 import teamRouter from "./routes/teams.route";
+import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
 import stripeRouter from "./routes/stripe.route";
 import mongoose from "mongoose";
@@ -24,7 +27,6 @@ const app = express();
 
 //Use of CORS
 app.use(cors());
-
 const StripeWebhook = asyncHandler(async (req, res) => {
   const sigHeader = req.headers["stripe-signature"] as string;
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
@@ -92,6 +94,9 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
+app.use("/users", userRouter);
+app.use("/projects", ProjectRouter);
+app.use("/staff", StaffRouter);
 app.use("/stripe", stripeRouter);
 app.use("/packages", packagesRouter);
 app.use("/categories", categoryRouter);

@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import Organizations from "../models/organization.model";
 import Teams from "../models/team.model";
 import { RequestUser } from "../types/user";
+import { assignChatRoomToResourse, createChatRoom } from "../services/Chatstream";
 
 // interface UserType {
 //   userId: mongoose.Types.ObjectId;
@@ -65,6 +66,7 @@ const createOrganization = asyncHandler(
         role: "owner",
         user: req?.user?.userId,
       });
+      const room = await assignChatRoomToResourse({ id: organization._id + "", roomName: companyName });
       return new ApiResponse(
         200,
         organization,

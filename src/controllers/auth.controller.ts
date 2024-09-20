@@ -7,7 +7,7 @@ import { assignChatRoomToResourse, createUserUpster } from "../services/Chatstre
 import { RequestUser, UserType } from "../types/user";
 const Verify = asyncHandler(async (req: RequestUser, res) => {
 
-  console.log("verify ", req.user)
+  // console.log("verify ", req.user)
   return new ApiResponse(200, req.user);
   // const authHeader = req.headers["authorization"];
   // const accessToken = authHeader && authHeader.split(" ")[1];

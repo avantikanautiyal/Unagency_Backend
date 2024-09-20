@@ -6,6 +6,7 @@ import { streamServerClient } from "../config/getStreamIo.config";
 import { createChatRoom, addUserToRoom, } from "../services/Chatstream";
 import Users from "../models/users.model";
 import ChatRoomUser from "../models/chatRoomParticipants.model";
+import mongoose from "mongoose";
 
 
 type CreateRoomBodyType = {
@@ -17,7 +18,7 @@ type ChannelCRUD = {
 }
 export const getStreamChatToken = asyncHandler(async (req: RequestUser, res) => {
     // console.log(req.user)
-    console.log(req.user);
+    // console.log(req.user);
     const token = streamServerClient.createToken(req.user?.userId + "");
     return new ApiResponse(200, { token: token, user: req.user }, "success")
 });
@@ -67,6 +68,16 @@ export const getChatRoom = asyncHandler(async (req: RequestUser, res) => {
     const rooms = await ChatRoomUser.find({ userId: req.user?.userId }, { chatRoomId: 1 });
     return new ApiResponse(200, rooms, "rooms fetch");
 });
+
+export const getRoomUsers = asyncHandler(async (req: RequestUser, res) => {
+    const { roomId }: { roomId?: string } = req.params;
+    console.log("room ", roomId)
+    if (!roomId) throw new ApiError("roomId is not provided", 400);
+    const roomUsers = await ChatRoomUser.find({ chatRoomId: new mongoose.Types.ObjectId(roomId) }, { userId: 1 });
+    return new ApiResponse(200, roomUsers, "room participants successfully fetched");
+});
+
+
 
 
 

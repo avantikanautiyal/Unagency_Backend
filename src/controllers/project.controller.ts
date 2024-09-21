@@ -25,7 +25,7 @@ const fetchProject = asyncHandler(async (req: RequestUser, res) => {
   const projects = await Projects.find({ userId: req?.user?.userId })
     .populate({
       path: "userId",
-      select: "firebaseId role name email",
+      select: "firebaseId role name email ",
     })
     .populate({
       path: "orgId",
@@ -36,7 +36,7 @@ const fetchProject = asyncHandler(async (req: RequestUser, res) => {
 
 //For Relationship Manager to see client's Projects
 const fetchClientProject = asyncHandler(async (req: RequestUser, res) => {
-  const checkRelationShipManager = await Users.findOne({
+  const checkRelationShipManager = await Users.exists({
     userId: req.body.userId,
     relationship_manager: req?.user?.userId,
   });
@@ -56,6 +56,7 @@ const fetchClientProject = asyncHandler(async (req: RequestUser, res) => {
     return new ApiResponse(401, null, "You are not assigned for this Customer");
   }
 });
+
 
 const updateProject = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
@@ -83,14 +84,26 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
   }
 });
 
+
 const fetchClientProjectById = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
   const body: IProject = req.body;
 
-  const checkRelationShipManager = await Users.findOne({
+  const checkRelationShipManager = await Users.exists({
     userId: body.userId,
     relationship_manager: req?.user?.userId,
   });
+
+  if (checkRelationShipManager) {
+    const project = await Projects.findOne({
+      userId: body.userId,
+      _id: projectId,
+    });
+
+    return new ApiResponse(200, project, "Project fetched successfully");
+  } else {
+    return new ApiResponse(401, null, "You are not assigned for this Customer");
+  }
 });
 
 const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {

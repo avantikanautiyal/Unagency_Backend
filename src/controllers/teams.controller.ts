@@ -18,7 +18,7 @@ const AddMemberInOrganization = asyncHandler(
     });
     if (!checkUser) throw new ApiError("Unauthorised Member Found", 401);
 
-    if (checkUser.role == "owner" || checkUser.role == "admin") {
+    if (checkUser.role == "owner") {
       const isExist = await Teams.exists({
         userId: userId,
         Organization: organization,
@@ -54,7 +54,7 @@ const RemoveMemberInOrganization = asyncHandler(
       Organization: organization,
     });
     if (!checkUser) throw new ApiError("Unauthorised Member Found", 401);
-    if (checkUser.role == "owner" || checkUser.role == "admin") {
+    if (checkUser.role == "owner") {
       const removeMember = await Teams.deleteOne({
         userId,
         Organization: checkUser?.Organization,

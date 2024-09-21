@@ -7,6 +7,7 @@ export interface IProject {
   category: mongoose.Types.ObjectId;
   title: string;
   description: string;
+  clientTeam: mongoose.Types.ObjectId[];
   resource: mongoose.Types.ObjectId[];
   startDate: Date;
   deadline: Date;
@@ -29,6 +30,11 @@ const ProjectSchema = new Schema<IProject>(
     resource: {
       type: [Schema.Types.ObjectId],
       ref: "Staff",
+      default: [],
+    },
+    clientTeam: {
+      type: [Schema.Types.ObjectId],
+      ref: "Teams",
       default: [],
     },
   },

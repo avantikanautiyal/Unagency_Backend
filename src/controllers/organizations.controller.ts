@@ -4,7 +4,10 @@ import { ApiResponse } from "../utils/apiResponse";
 import Organizations from "../models/organization.model";
 import Teams from "../models/team.model";
 import { RequestUser } from "../types/user";
-import { assignChatRoomToResourse, createChatRoom } from "../services/Chatstream";
+import {
+  assignChatRoomToResourse,
+  createChatRoom,
+} from "../services/Chatstream";
 
 // interface UserType {
 //   userId: mongoose.Types.ObjectId;
@@ -42,13 +45,9 @@ const createOrganization = asyncHandler(
       return new ApiResponse(400, null, "All required fields must be provided");
     }
 
-    const isExist = await Organizations.exists({ companyName: companyName });
+    const isExist = await Organizations.exists({ owner: req.user?.userId });
     if (isExist) {
-      return new ApiResponse(
-        409,
-        null,
-        "Organization with the same name already exists"
-      );
+      return new ApiResponse(409, null, "Organization already exists");
     }
     const organization = await Organizations.create({
       owner: req?.user?.userId,
@@ -66,7 +65,10 @@ const createOrganization = asyncHandler(
         role: "owner",
         user: req?.user?.userId,
       });
-      const room = await assignChatRoomToResourse({ id: organization._id + "", roomName: companyName });
+      const room = await assignChatRoomToResourse({
+        id: organization._id + "",
+        roomName: companyName,
+      });
       return new ApiResponse(
         200,
         organization,

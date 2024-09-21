@@ -44,6 +44,8 @@ const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const subscription = await Subscriptions.findOne({ customerId: customerId });
   return new ApiResponse(200, subscription, "Subscription Status");
 });
+
+//This controller will help users to upgrade and downgrade their package.
 const UpdateCustomerSubscription = asyncHandler(
   async (req: RequestUser, res) => {
     const { planId } = req.body;
@@ -78,76 +80,6 @@ const CancelCustomerSubscription = asyncHandler(
     }
   }
 );
-// const StripeWebhook = asyncHandler(async (req, res, buf) => {
-//   const sigHeader = req.headers["stripe-signature"] as string;
-//   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
-//   let event;
-//   event = await stripe.webhooks.constructEventAsync(
-//     buf.toString(),
-//     sigHeader,
-//     "REDACTED"
-//   );
-
-//   if (event.type === "checkout.session.completed") {
-//     const session = event.data.object;
-//     const updatedSession = await CheckoutSession.findOneAndUpdate(
-//       { sessionId: session.id },
-//       {
-//         paymentStatus: session.payment_status,
-//         customerId: session.customer,
-//         amountTotal: session.amount_total,
-//         currency: session.currency,
-//       },
-//       { new: true }
-//     );
-
-//     if (!updatedSession) {
-//       await CheckoutSession.create({
-//         sessionId: session.id,
-//         customerId: session.customer,
-//         paymentStatus: session.payment_status,
-//         amountTotal: session.amount_total,
-//         currency: session.currency,
-//       });
-//       console.log("Payment session saved successfully");
-//     }
-//   }
-//   if (event.type === "customer.subscription.created") {
-//     const subscription = event.data.object;
-//     await Subscriptions.create({
-//       subscriptionId: subscription.id,
-//       customerId: subscription.customer,
-//       planId: subscription.items.data[0].plan.id, // Plan ID (assuming single plan for simplicity)
-//       status: subscription.status,
-//       currentPeriodStart: new Date(subscription.current_period_start * 1000), // Convert to JS Date
-//       currentPeriodEnd: new Date(subscription.current_period_end * 1000), // Convert to JS Date
-//     });
-//     console.log("Subscription saved successfully");
-//   }
-//   if (event.type === "customer.subscription.updated") {
-//     const subscription = event.data.object;
-//     await Subscriptions.findOneAndUpdate(
-//       { subscriptionId: subscription.id },
-//       {
-//         status: subscription.status,
-//         planId: subscription.items.data[0].plan.id, // Updated Plan ID
-//         currentPeriodStart: new Date(subscription.current_period_start * 1000),
-//         currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-//       },
-//       { new: true }
-//     );
-//     console.log("Subscription updated successfully");
-//   }
-//   if (event.type === "customer.subscription.deleted") {
-//     const subscription = event.data.object;
-//     await Subscriptions.findOneAndUpdate(
-//       { subscriptionId: subscription.id },
-//       { status: "canceled" }
-//     );
-//     console.log("Subscription canceled");
-//   }
-// });
-
 
 export {
   // StripeWebhook,

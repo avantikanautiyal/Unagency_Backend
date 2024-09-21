@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { JwtPayload, verify } from "jsonwebtoken";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";

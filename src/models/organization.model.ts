@@ -12,7 +12,6 @@ export interface IOrganization {
   website: string;
   contactPerson: string;
   contactEmail: string;
-  contactPhone: string;
   contactMobile: string;
   status: string;
 }

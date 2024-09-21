@@ -27,11 +27,19 @@ export const createUserUpster = async (user: UserStream) => {
     return response;
 };
 // id can be a userid and a orginizationId 
-export async function createChatRoom(id: string, memberIds: string[] = [], roomName: string = "") {
+export async function createChatRoom(id: string, memberIds: string[] = [], roomName: any = {}) {
     // const users = memberIds.map(id => ({ id })); // Map to correct format
+
+    // console.log("creating a user ", {
+    //     name: id ?? "Prakria Direct",
+    //     room_name: roomName,
+    //     members: memberIds,
+    //     created_by_id: id,
+    // })
     const channel = streamServerClient.channel("messaging", id
         , {
-            name: roomName ?? "Prakria Direct",
+            name: id ?? "Prakria Direct",
+            room_name: roomName,
             members: memberIds,
             created_by_id: id,
         }
@@ -61,7 +69,10 @@ export const getUserChannels = async (id: string) => {
     }
 };
 
-export const assignChatRoomToResourse = async ({ id, roomName }: { id: string, roomName: string }) => {
+type RoomType = "personal" | "group";
+export const assignChatRoomToResourse = async ({ id, clientName = "", type = "personal", roomName = "" }:
+    { id: string, roomName?: string, clientName?: string, type: RoomType }) => {
+
     if (!id) throw new ApiError("id is not provided", 401);
     const [roomChannel] = await streamServerClient.queryChannels({ id: id });
     if (roomChannel) return { roomId: roomChannel.id };
@@ -76,10 +87,15 @@ export const assignChatRoomToResourse = async ({ id, roomName }: { id: string, r
             { $sample: { size: 1 } }               // Randomly select 1 user
         ]
     );
-    if (relationshipManager) members.push(relationshipManager._id);
+    if (relationshipManager) members.push(relationshipManager._id + "");
 
     const chatroomInstance = new ChatRoom({ chatRoomId: new mongoose.Types.ObjectId(id) });
-    const room = await createChatRoom(id, [...members], roomName);
+    const chatName = type === "personal" ? {
+        [relationshipManager._id + ""]: clientName,
+        [id]: relationshipManager?.name
+
+    } : { roomName: roomName }
+    const room = await createChatRoom(id, [...members], chatName);
     await chatroomInstance.save();
     const chatroomParticipatance = await ChatRoomUser.insertMany(
         members

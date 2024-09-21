@@ -66,7 +66,7 @@ const createOrganization = asyncHandler(
         role: "owner",
         user: req?.user?.userId,
       });
-      const room = await assignChatRoomToResourse({ id: organization._id + "", roomName: companyName });
+      const room = await assignChatRoomToResourse({ id: organization._id + "", roomName: companyName, type: "group" });
       return new ApiResponse(
         200,
         organization,

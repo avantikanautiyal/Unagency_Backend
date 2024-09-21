@@ -32,7 +32,6 @@ const Register = asyncHandler(async (req, res) => {
   const accessToken = authHeader && authHeader.split(" ")[1];
 
   if (accessToken) {
-
     try {
       const verification = await firebaseAdmin
         .auth()
@@ -61,7 +60,11 @@ const Register = asyncHandler(async (req, res) => {
               name: registration?.name,
               email: registration.email
             } as any);
-            await assignChatRoomToResourse({ id: registration._id + "", roomName: registration?.name })
+            await assignChatRoomToResourse({
+              id: registration._id + "",
+              clientName: registration?.name,
+              type: "personal",
+            })
             // console.log(sUser)
             res
               .status(200)

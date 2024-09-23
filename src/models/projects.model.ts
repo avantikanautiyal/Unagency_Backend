@@ -7,8 +7,8 @@ export interface IProject {
   category: mongoose.Types.ObjectId;
   title: string;
   description: string;
-  clientTeam: mongoose.Types.ObjectId[];
-  resource: mongoose.Types.ObjectId[];
+  clientTeam: mongoose.Types.ObjectId[] | string[];
+  resource: mongoose.Types.ObjectId[] | string[];
   startDate: Date;
   deadline: Date;
 }

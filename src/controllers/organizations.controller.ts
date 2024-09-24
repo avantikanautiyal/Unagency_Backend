@@ -63,12 +63,12 @@ const createOrganization = asyncHandler(
       await Teams.create({
         Organization: organization._id,
         role: "owner",
-        user: req?.user?.userId,
+        userId: req?.user?.userId,
       });
-      const room = await assignChatRoomToResourse({
-        id: organization._id + "",
-        roomName: companyName,
-      });
+      // const room = await assignChatRoomToResourse({
+      //   id: organization._id + "",
+      //   roomName: companyName,
+      // });
       return new ApiResponse(
         200,
         organization,

@@ -90,7 +90,7 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   if (!checkUser) throw new ApiError("User not found", 401);
   const team = await Teams.find({
     Organization: checkUser?.Organization,
-  }).populate("user", "name email");
+  }).populate("userId", "name email").populate("Organization");
 
   return new ApiResponse(200, team, "Team fetched successfully");
 });

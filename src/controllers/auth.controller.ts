@@ -21,12 +21,30 @@ const Register = asyncHandler(async (req, res) => {
         .verifyIdToken(accessToken);
       if (verification) {
         // Allocate a Relationship manager to a new User
+        const isUserExists = await Users.exists({
+          firebaseId: verification?.uid,
+        });
+        if (isUserExists) return new ApiResponse(200, null, "user already registered")
         const [relationshipManager] = await Staff.aggregate(
           [
-            { $match: { role: "servicing" } },             // Match users with role: "1"
-            { $sample: { size: 1 } }               // Randomly select 1 user
+            {
+              $lookup: {
+                from: 'users', // The name of the collection you're joining
+                localField: 'userId', // The field in Staff collection
+                foreignField: '_id', // The field in the Users collection to match
+                as: 'userInfo' // The name of the output array field
+              }
+            },
+            { $unwind: '$userInfo' },
+            {
+              $match: {
+                "userInfo.role": "servicing"
+              }
+            },
+            { $sample: { size: 1 } },
           ]
         );
+        if (!relationshipManager) throw new ApiError("relationship manager not found", 404);
         const user = {
           firebaseId: verification?.uid,
           name: verification?.name,
@@ -35,52 +53,37 @@ const Register = asyncHandler(async (req, res) => {
           isVerified: verification?.email_verified,
           relationship_manager: relationshipManager._id
         };
-        const isUserExists = await Users.exists({
-          firebaseId: user?.firebaseId,
-        });
-        if (isUserExists) {
+
+        const registration = await Users.create(user);
+        if (registration) {
+          //  Registring a user to a getStreamId with a mongoDB Id
+          const sUser = await createUserUpster({
+            _id: registration._id,
+            name: registration?.name,
+            email: registration.email
+          } as any);
+
+          const roomChannel = await createChatRoom({
+            roomId: registration._id + "",
+            roomName: `${relationshipManager.name}, ${registration.name}`,
+            members: [registration._id + "", relationshipManager._id + ""],
+            createdBy: registration._id + "",
+            personalName: {
+              [registration._id + ""]: relationshipManager.name,
+              [relationshipManager._id + ""]: registration.name
+            }
+          })
           res
-            .status(400)
-            .json(new ApiResponse(400, null, "Duplicate entry occured"));
-        } else {
-          const registration = await Users.create(user);
-          if (registration) {
-            //  Registring a user to a getStreamId with a mongoDB Id
-            const sUser = await createUserUpster({
-              _id: registration._id,
-              name: registration?.name,
-              email: registration.email
-            } as any);
-
-
-
-            const roomChannel = await createChatRoom({
-              roomId: registration._id + "",
-              roomName: `${relationshipManager.name}, ${registration.name}`,
-              members: [registration._id + "", relationshipManager._id + ""],
-              createdBy: registration._id + "",
-              personalName: {
-                [registration._id + ""]: relationshipManager.name,
-                [relationshipManager._id + ""]: registration.name
-              }
-            })
-            // await assignChatRoomToResourse({
-            //   id: registration._id + "",
-            //   clientName: registration?.name,
-            //   type: "personal",
-            // })
-            // console.log(sUser)
-            res
-              .status(200)
-              .json(
-                new ApiResponse(
-                  200,
-                  registration,
-                  "User registered successfully"
-                )
-              );
-          }
+            .status(200)
+            .json(
+              new ApiResponse(
+                200,
+                registration,
+                "User registered successfully"
+              )
+            );
         }
+
       }
     } catch (err) {
       throw new ApiError((err as Error).message, 401);

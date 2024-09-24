@@ -27,17 +27,28 @@ export const createUserUpster = async (user: UserStream) => {
     return response;
 };
 // id can be a userid and a orginizationId 
-export async function createChatRoom(id: string, memberIds: string[] = [], roomName: string = "") {
-    // const users = memberIds.map(id => ({ id })); // Map to correct format
-    const channel = streamServerClient.channel("messaging", id
-        , {
-            name: roomName ?? "Prakria Direct",
-            members: memberIds,
-            created_by_id: id,
+
+type CreateRoomProps = {
+    roomName: string;
+    roomId: string;
+    members: string[];
+    personalName: any;
+    createdBy?: string;
+}
+export async function createChatRoom(data: CreateRoomProps) {
+    try {
+        const channel = streamServerClient.channel("messaging", data.roomId, {
+            name: data.roomName ?? data.roomId,
+            room_name: data.personalName,
+            members: data.members,
+            created_by_id: data?.createdBy ?? data.roomId,
         }
-    );
-    await channel.create();
-    return channel;
+        );
+        await channel.create();
+        return { roomId: channel.id };
+    } catch (error) {
+        return { error: (error as Error).name }
+    }
 };
 
 // Later add members after upserting them
@@ -61,29 +72,66 @@ export const getUserChannels = async (id: string) => {
     }
 };
 
-export const assignChatRoomToResourse = async ({ id, roomName }: { id: string, roomName: string }) => {
-    if (!id) throw new ApiError("id is not provided", 401);
-    const [roomChannel] = await streamServerClient.queryChannels({ id: id });
-    if (roomChannel) return { roomId: roomChannel.id };
-    // now create a room here
-    const customerId = id;
-    if (!customerId) throw new ApiError("user not exits", 401);
-    // TODO : add a prakria Relationship manager id here
-    const members = [customerId];
-    const [relationshipManager] = await Users.aggregate(
-        [
-            { $match: { role: "servicing" } },             // Match users with role: "1"
-            { $sample: { size: 1 } }               // Randomly select 1 user
-        ]
-    );
-    if (relationshipManager) members.push(relationshipManager._id);
+// type RoomType = "personal" | "group";
+// export const assignChatRoomToResourse = async ({ id, clientName = "", type = "personal", roomName = "" }:
+//     { id: string, roomName?: string, clientName?: string, type: RoomType }) => {
 
-    const chatroomInstance = new ChatRoom({ chatRoomId: new mongoose.Types.ObjectId(id) });
-    const room = await createChatRoom(id, [...members], roomName);
-    await chatroomInstance.save();
-    const chatroomParticipatance = await ChatRoomUser.insertMany(
-        members
-            .map(member => ({ userId: member, chatRoomId: id }))
-    );
-    return { roomId: room.id };
+//     if (!id) throw new ApiError("id is not provided", 401);
+//     const [roomChannel] = await streamServerClient.queryChannels({ id: id });
+//     if (roomChannel) return { roomId: roomChannel.id };
+//     // now create a room here
+//     const customerId = id;
+//     if (!customerId) throw new ApiError("user not exits", 401);
+//     // TODO : add a prakria Relationship manager id here
+//     const members = [customerId];
+//     const [relationshipManager] = await Users.aggregate(
+//         [
+//             { $match: { role: "servicing" } },             // Match users with role: "1"
+//             { $sample: { size: 1 } }               // Randomly select 1 user
+//         ]
+//     );
+//     if (relationshipManager) members.push(relationshipManager._id + "");
+
+//     const chatroomInstance = new ChatRoom({ chatRoomId: new mongoose.Types.ObjectId(id) });
+//     const chatName = type === "personal" ? {
+//         [relationshipManager._id + ""]: clientName,
+//         [id]: relationshipManager?.name
+
+//     } : { roomName: roomName }
+//     const room = await createChatRoom(id, [...members], chatName);
+//     await chatroomInstance.save();
+//     const chatroomParticipatance = await ChatRoomUser.insertMany(
+//         members
+//             .map(member => ({ userId: member, chatRoomId: id }))
+//     );
+//     return { roomId: room.id };
+// }
+
+
+// export const createChatRoom()
+
+type ProjectRoom = {
+    roomName: string;
+    roomId: string; // should be a Project._id to be unique
+    membersId: string[]; // userId to participate in a chat 
+    // ownerId: string; // who is creating it 
+    relationShipManagerId: string; // staff collection 
+}
+// manager can only create a room 
+export const createRoomForProject = async (data: ProjectRoom) => {
+    // TODO : flow to create a project for a ideal conditon 
+    try {
+        const channel = streamServerClient.channel("messaging", data.roomId, {
+            name: data.roomName,
+            // room_name: roomName,
+            members: data.membersId,
+            created_by_id: data.relationShipManagerId,
+        }
+        );
+        const c = await channel.create();
+        return { roomId: channel.id };
+    } catch (error) {
+
+        return { error: (error as Error).message }
+    }
 }

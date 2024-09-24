@@ -44,11 +44,11 @@ export const createChatRoomController = asyncHandler(async (req: RequestUser, re
     );
     if (relationshipManager) members.push(relationshipManager._id);
 
-    const room = await createChatRoom(id, [...members], req.user?.name);
+    // const room = await createChatRoom(id, [...members], req.user?.name);
     // room.sendMessage({
     //     text : "welcome to prakria"
     // })
-    return new ApiResponse(200, { roomId: room.id }, "chat room is created");
+    return new ApiResponse(200, { roomId: "room.id" }, "chat room is created");
 });
 
 // METHOD = POST

@@ -3,8 +3,14 @@ import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
+import Teams from "../models/team.model";
+import {
+  // assignChatRoomToResourse,
+  // createChatRoom,
+  createRoomForProject
+} from "../services/Chatstream";
 
-const createProject = asyncHandler(async (req, res) => {
+const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
   const isExist = await Projects.exists({
     userId: body.userId,
@@ -14,9 +20,20 @@ const createProject = asyncHandler(async (req, res) => {
     return new ApiResponse(409, null, "Project already exists");
   }
 
+
+  const teamMemberIds = body.clientTeam as string[]; // fetch users
+  const teams = await Teams.find({ _id: { $in: teamMemberIds } })
   const create = await Projects.create(body);
   if (create) {
-    return new ApiResponse(200, create, "Project created successfully");
+
+    const membersList: string[] = teams.map((member: any) => member.userId + "")
+    const roomInfo = await createRoomForProject({
+      roomName: create.title,
+      roomId: create._id + "",
+      membersId: membersList,
+      relationShipManagerId: req?.user?.userId!
+    })
+    return new ApiResponse(200, { chatRoom: roomInfo, project: create }, "Project created successfully");
   }
 });
 

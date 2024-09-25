@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/apiResponse";
-import Organizations from "../models/organization.model";
+import Organizations, { Organization } from "../models/organization.model";
 import Teams from "../models/team.model";
 import { RequestUser } from "../types/user";
+import mongoose from "mongoose";
 // import {
 //   assignChatRoomToResourse,
 //   createChatRoom,
@@ -32,6 +33,8 @@ const createOrganization = asyncHandler(
       contactPerson,
       contactMobile,
       contactEmail,
+
+
     } = req.body;
 
     if (
@@ -49,15 +52,11 @@ const createOrganization = asyncHandler(
     if (isExist) {
       return new ApiResponse(409, null, "Organization already exists");
     }
-    const organization = await Organizations.create({
+
+    const organization = await Organizations.create(new Organization({
+      ...req.body,
       owner: req?.user?.userId,
-      companyName,
-      companyType,
-      industry,
-      contactPerson,
-      contactMobile,
-      contactEmail,
-    });
+    }));
 
     if (organization) {
       await Teams.create({
@@ -85,16 +84,14 @@ const fetchOrganizations = asyncHandler(async (req: Request, res: Response) => {
 });
 const UserOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
-    const userOrganization = await Organizations.find({
-      owner: req?.user?.userId,
+    const userOrganization = await Organizations.findOne({
+      owner: new mongoose.Types.ObjectId(req?.user?.userId),
     });
-    if (userOrganization) {
-      return new ApiResponse(
-        200,
-        userOrganization,
-        "User Organization fetched"
-      );
-    }
+    return new ApiResponse(
+      200,
+      userOrganization,
+      "User Organization fetched"
+    );
   }
 );
 

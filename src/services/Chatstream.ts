@@ -1,14 +1,14 @@
 import { UserType } from '../types/user';
+import { streamServerClient } from "../config/getStreamIo.config";
 
 // import { IUser } from '../models/users.model';
+// import { ApiError } from '../utils/apiError';
+// import { ApiResponse } from '../utils/apiResponse';
+// import Users from '../models/users.model';
+// import ChatRoom from '../models/chatRoom.model';
+// import ChatRoomUser from '../models/chatRoomParticipants.model';
+// import mongoose from 'mongoose';
 
-import { streamServerClient } from "../config/getStreamIo.config";
-import { ApiError } from '../utils/apiError';
-import { ApiResponse } from '../utils/apiResponse';
-import Users from '../models/users.model';
-import ChatRoom from '../models/chatRoom.model';
-import ChatRoomUser from '../models/chatRoomParticipants.model';
-import mongoose from 'mongoose';
 type UserStream = {
     _id: string,
     name?: string,
@@ -37,6 +37,7 @@ type CreateRoomProps = {
 }
 export async function createChatRoom(data: CreateRoomProps) {
     try {
+        console.log("rooom creting..", data);
         const channel = streamServerClient.channel("messaging", data.roomId, {
             name: data.roomName ?? data.roomId,
             room_name: data.personalName,
@@ -45,9 +46,10 @@ export async function createChatRoom(data: CreateRoomProps) {
         }
         );
         await channel.create();
+        console.log("room created ", channel.id)
         return { roomId: channel.id };
     } catch (error) {
-        return { error: (error as Error).name }
+        return { error: (error as Error).message }
     }
 };
 
@@ -71,44 +73,6 @@ export const getUserChannels = async (id: string) => {
         console.error('Error retrieving user channels:', error);
     }
 };
-
-// type RoomType = "personal" | "group";
-// export const assignChatRoomToResourse = async ({ id, clientName = "", type = "personal", roomName = "" }:
-//     { id: string, roomName?: string, clientName?: string, type: RoomType }) => {
-
-//     if (!id) throw new ApiError("id is not provided", 401);
-//     const [roomChannel] = await streamServerClient.queryChannels({ id: id });
-//     if (roomChannel) return { roomId: roomChannel.id };
-//     // now create a room here
-//     const customerId = id;
-//     if (!customerId) throw new ApiError("user not exits", 401);
-//     // TODO : add a prakria Relationship manager id here
-//     const members = [customerId];
-//     const [relationshipManager] = await Users.aggregate(
-//         [
-//             { $match: { role: "servicing" } },             // Match users with role: "1"
-//             { $sample: { size: 1 } }               // Randomly select 1 user
-//         ]
-//     );
-//     if (relationshipManager) members.push(relationshipManager._id + "");
-
-//     const chatroomInstance = new ChatRoom({ chatRoomId: new mongoose.Types.ObjectId(id) });
-//     const chatName = type === "personal" ? {
-//         [relationshipManager._id + ""]: clientName,
-//         [id]: relationshipManager?.name
-
-//     } : { roomName: roomName }
-//     const room = await createChatRoom(id, [...members], chatName);
-//     await chatroomInstance.save();
-//     const chatroomParticipatance = await ChatRoomUser.insertMany(
-//         members
-//             .map(member => ({ userId: member, chatRoomId: id }))
-//     );
-//     return { roomId: room.id };
-// }
-
-
-// export const createChatRoom()
 
 type ProjectRoom = {
     roomName: string;

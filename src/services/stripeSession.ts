@@ -17,8 +17,8 @@ const stripeSession = async (item: IItem) => {
         quantity: 1,
       },
     ],
-    success_url: "https://prakria-direct-ui-pearl.vercel.app/",
-    cancel_url: "https://prakria-direct-ui-pearl.vercel.app/",
+    success_url: `http://localhost:5173/payments/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `http://localhost:5173/payments/failed?session_id={CHECKOUT_SESSION_ID}`,
   });
 
   return session;

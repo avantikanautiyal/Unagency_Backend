@@ -119,10 +119,10 @@ app.use(ErrorHandler);
     mongoose.connection.on("connected", () => {
       console.log("DB_CONNECTED");
     });
-    app.listen(process.env.PORT ?? 6000, () => {
+    app.listen(process.env.PORT ?? 5000, () => {
       console.log(
         "⚙️",
-        ` Server is running at port : ${process.env.PORT ?? 6000}`
+        ` Server is running at port : ${process.env.PORT ?? 5000}`
       );
     });
   } catch (err) {

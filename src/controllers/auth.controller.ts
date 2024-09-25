@@ -65,12 +65,12 @@ const Register = asyncHandler(async (req, res) => {
 
           const roomChannel = await createChatRoom({
             roomId: registration._id + "",
-            roomName: `${relationshipManager.name}, ${registration.name}`,
-            members: [registration._id + "", relationshipManager._id + ""],
+            roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
+            members: [registration._id + "", relationshipManager.userInfo._id + ""],
             createdBy: registration._id + "",
             personalName: {
               [registration._id + ""]: relationshipManager.name,
-              [relationshipManager._id + ""]: registration.name
+              [relationshipManager.userInfo._id + ""]: registration.name
             }
           })
           res

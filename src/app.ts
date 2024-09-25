@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import mongoose from "mongoose";
 
 //Global Error Handler
 import { ErrorHandler } from "./middlewares/errorHandler.middleware";
@@ -15,8 +16,10 @@ import packagesRouter from "./routes/packages.route";
 import teamRouter from "./routes/teams.route";
 import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
-import stripeRouter from "./routes/stripe.route";
-import mongoose from "mongoose";
+import ChatRouter from "./routes/chat.route"
+
+// middleware
+import stripeRouter from "./routes/stripe.route"
 import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
@@ -103,6 +106,7 @@ app.use("/categories", categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
+app.use("/chat", VerifyUserHandler, ChatRouter);
 
 // Invalid Path Error Handler
 app.use(RouteErrorHandler);

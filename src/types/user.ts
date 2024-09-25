@@ -1,6 +1,6 @@
 import { Request } from "express";
 
-interface UserType {
+export interface UserType {
   userId: string;
   firebaseId: string;
   role: string;

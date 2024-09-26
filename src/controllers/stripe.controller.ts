@@ -32,6 +32,16 @@ const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const session = await stripeSession(sessionData);
   return new ApiResponse(200, session, "Session Checkout");
 });
+const FetchCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
+  const { session_id } = req.query;
+  const stripe = new Stripe(`${process.env.stripe_secret_key}`);
+  if (!session_id) {
+    return new ApiResponse(404, null, "Session Id  is required");
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(session_id as string);
+  return new ApiResponse(200, session, "Session details fetched successfully");
+});
 const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const customerId = req.user?.customerId ?? "";
   if (customerId == "") {
@@ -83,6 +93,7 @@ const CancelCustomerSubscription = asyncHandler(
 
 export {
   // StripeWebhook,
+  FetchCheckOutSession,
   CreateCheckOutSession,
   UpdateCustomerSubscription,
   SubscriptionStatus,

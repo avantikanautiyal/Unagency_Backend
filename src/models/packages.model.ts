@@ -4,15 +4,18 @@ export interface IFeatures {
   name: String;
   included: boolean;
 }
+
+export interface IDuration {
+  duration_name: string;
+  price: number;
+  stripe_price_id: string;
+}
 export interface IPackages {
   _id: mongoose.Types.ObjectId;
   title: string;
   description: string;
-  price: number;
-  duration: number;
+  duration: IDuration[];
   stripe_product_id: string;
-  stripe_price_id: string;
-  billingCycle: "day";
   features: IFeatures[];
   currency: string;
   status: "active" | "inactive";
@@ -22,6 +25,11 @@ const FeatureSchema = new Schema<IFeatures>({
   name: { type: String, required: true },
   included: { type: Boolean, required: true },
 });
+const DurationSchema = new Schema<IDuration>({
+  duration_name: { type: String, required: true },
+  price: { type: Number, required: true },
+  stripe_price_id: { type: String, required: true },
+});
 
 const CategorySchema = new Schema<IPackages>(
   {
@@ -29,8 +37,6 @@ const CategorySchema = new Schema<IPackages>(
     title: { type: String, required: true },
     description: { type: String, required: true },
     stripe_product_id: { type: String, required: true },
-    stripe_price_id: { type: String, required: true },
-    price: { type: Number, required: true, default: 0 },
     currency: {
       type: String,
       required: true,
@@ -199,12 +205,7 @@ const CategorySchema = new Schema<IPackages>(
         "ZWL",
       ],
     },
-    duration: { type: Number, required: true },
-    billingCycle: {
-      type: String,
-      required: true,
-      enum: ["day"],
-    },
+    duration: { type: [DurationSchema], required: true },
     features: { type: [FeatureSchema], required: true }, // Array of objects
     status: {
       type: String,

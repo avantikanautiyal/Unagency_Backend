@@ -5,24 +5,8 @@ import { Request, Response } from "express";
 import createStripeProduct from "../services/createStripeProduct";
 
 const CreatePackage = asyncHandler(async (req: Request, res: Response) => {
-  const {
-    title,
-    description,
-    price,
-    duration,
-    billingCycle,
-    features,
-    currency,
-  } = req.body;
-  if (
-    !title ||
-    !description ||
-    !price ||
-    !duration ||
-    !billingCycle ||
-    !features ||
-    !currency
-  ) {
+  const { title, description, duration, features, currency } = req.body;
+  if (!title || !description || !duration || !features || !currency) {
     return new ApiResponse(400, null, "All fields are required");
   }
   const existingPackage = await Packages.exists({ title });
@@ -35,10 +19,11 @@ const CreatePackage = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const stripeProductId = await createStripeProduct({ ...req.body });
+
   const createPackage = await Packages.create({
     ...req.body,
     stripe_product_id: stripeProductId.productId,
-    stripe_price_id: stripeProductId.priceId,
+    duration: stripeProductId.modifiedDuration,
   });
   if (createPackage) {
     return new ApiResponse(200, createPackage, "Package created");
@@ -62,9 +47,7 @@ const UpdatePackage = asyncHandler(async (req: Request, res: Response) => {
   const {
     title,
     description,
-    price,
     duration,
-    billingCycle,
     features,
     status,
     currency,
@@ -78,9 +61,7 @@ const UpdatePackage = asyncHandler(async (req: Request, res: Response) => {
 
   packagebyId.title = title || packagebyId.title;
   packagebyId.description = description || packagebyId.description;
-  packagebyId.price = price || packagebyId.price;
   packagebyId.duration = duration || packagebyId.duration;
-  packagebyId.billingCycle = billingCycle || packagebyId.billingCycle;
   packagebyId.features = features || packagebyId.features;
   packagebyId.currency = currency || packagebyId.currency;
   packagebyId.status = status || packagebyId.status;

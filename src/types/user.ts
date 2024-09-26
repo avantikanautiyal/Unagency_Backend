@@ -2,6 +2,7 @@ import { Request } from "express";
 
 export interface UserType {
   userId: string;
+  organization: object | null;
   firebaseId: string;
   role: string;
   contact?: number;

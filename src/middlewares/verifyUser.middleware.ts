@@ -6,6 +6,7 @@ import { RequestUser } from "../types/user";
 import { asyncHandler } from "../utils/asyncHandler";
 import StripeCustomers from "../models/customer.model";
 import Subscriptions from "../models/subscription.model";
+import Organizations from "../models/organization.model";
 
 export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
   req: RequestUser,
@@ -22,6 +23,10 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
       if (verification) {
         const getUser = await Users.findOne({
           firebaseId: verification?.uid,
+        });
+
+        const organization = await Organizations.findOne({
+          owner: getUser?._id,
         });
 
         let customerId, subscriptionId;
@@ -48,6 +53,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
           userId: getUser?._id?.toString(),
           subscriptionId,
           customerId,
+          organization: organization,
         };
         next();
       }

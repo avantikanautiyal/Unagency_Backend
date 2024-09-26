@@ -46,13 +46,13 @@ const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const customerId = req.user?.customerId ?? "";
   if (customerId == "") {
     return new ApiResponse(
-      400,
+      200,
       null,
-      "Customer Id couldn't found. Please try again"
+      "Use is not a customer yet."
     );
   }
   const subscription = await Subscriptions.findOne({ customerId: customerId });
-  return new ApiResponse(200, subscription, "Subscription Status");
+  return new ApiResponse(200, subscription, "Subscription fetched successfully");
 });
 
 //This controller will help users to upgrade and downgrade their package.

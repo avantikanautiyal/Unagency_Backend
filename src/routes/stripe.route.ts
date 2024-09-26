@@ -21,7 +21,7 @@ router.post(
   VerifyUserHandler,
   UpdateCustomerSubscription
 );
-router.post("/subscription-status", VerifyUserHandler, SubscriptionStatus);
+router.get("/subscription-status", VerifyUserHandler, SubscriptionStatus);
 router.get("/fetch-checkout-session", VerifyUserHandler, FetchCheckOutSession);
 router.post(
   "/cancel-subscription",

@@ -19,10 +19,10 @@ export function generateEmailOption({ email, subject, html }: EmailOptions) {
 }
 export async function sentEmail(mail: Mail.Options) {
     try {
-        console.log(mail)
         return await transporter.sendMail(mail);
-    } catch (err) {
-        console.log(err)
+    } catch (error) {
+        console.log(error)
+        return { error }
     }
 }
 

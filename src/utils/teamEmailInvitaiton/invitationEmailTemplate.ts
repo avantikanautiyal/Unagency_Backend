@@ -78,7 +78,7 @@ export function invitationTemplate({ link, name, orgnizationName }: InvitationTe
         <div class="content">
             <h2>Invitation to Work Together!</h2>
             <p>
-                Dear ${name}, 
+                Dear ${name || "user"}, 
             </p>
 <p>You're invited to join <strong>${orgnizationName}</strong>. Work better together by simplifying and organizing your team projects with these collaborative features:
 </p>

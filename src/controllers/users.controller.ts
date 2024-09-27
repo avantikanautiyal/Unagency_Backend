@@ -3,6 +3,7 @@ import Users, { IUser } from "../models/users.model";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
+import Staff from "../models/staff.model";
 
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role } = req.body;
@@ -90,10 +91,47 @@ const UpdateUser = asyncHandler(async (req, res) => {
   }
   return new ApiResponse(200, updatedUser, "User Data updated");
 });
+// resource
+const FetchResource = asyncHandler(async (req, res) => {
+  // const resourceList = await Users.find({ role: "resource" });
+  // const staffList = await Staff.find({
+  //   userId: { $in: resourceList.map(u => u._id) }
+  // }).populate("userId", "name _id")
+  const staffList = await Staff.aggregate([
+    {
+      $lookup: {
+        from: "users", // The Users collection name
+        localField: "userId", // Field in Staff
+        foreignField: "_id", // Field in Users
+        as: "userInfo" // Alias for the joined data
+      }
+    },
+    {
+      $unwind: "$userInfo" // Unwind to convert the array into individual documents
+    },
+    {
+      $match: {
+        "userInfo.role": "resource" // Filter for users with role "resource"
+      }
+    },
+    {
+      $project: {
+        _id: 1,
+        designation: 1,
+        "userInfo.name": 1, // Include the "name" field from Users
+        "userInfo._id": 1, // Include the "_id" field from Users
+        // Add any other fields from Staff or Users if needed
+      }
+    }
+  ]);
+
+  return new ApiResponse(200, staffList, "resource fetched successfully");
+});
 export {
   CreateUser,
   FetchCustomers,
   FetchInternalTeam,
   FetchUserByFirebaseId,
   UpdateUser,
+  FetchResource
 };

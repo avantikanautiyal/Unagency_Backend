@@ -87,7 +87,7 @@ const RemoveMemberInOrganization = asyncHandler(
 
 const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
 
-  const { organization } = req.query;
+  const { organization, status } = req.query;
   // console.log("organization ", organization)
   if (!organization) throw new ApiError("organization not provied", 400);
   const checkUser = await Teams.findOne({
@@ -95,9 +95,15 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   });
 
   if (!checkUser) throw new ApiError("User not found", 401);
+  console.log("invitation status ", !!status ? "accpted" : { $exists: true }
+  )
   const team = await Teams.find({
     Organization: checkUser?.Organization,
+    // If `status` exists, filter by "accepted", otherwise fetch all.
+    invitationStatus: !!status ? "accpted" : { $exists: true },
     // userId: { $ne: req.user?.userId }
+    role: !!status ? "member" : { $exists: true } // If `status` exists, filter by "member", otherwise fetch all.
+
 
   }).populate("userId", "name email");
 

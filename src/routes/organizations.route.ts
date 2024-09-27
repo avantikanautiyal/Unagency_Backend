@@ -4,6 +4,7 @@ import {
   fetchOrganizations,
   UpdateUserOrganization,
   UserOrganization,
+  getOrginiztionMyUserId
 } from "../controllers/organizations.controller";
 
 const router = Router();
@@ -14,5 +15,7 @@ router.post("/update/:organizationId", UpdateUserOrganization);
 router.get("/user-organization", UserOrganization);
 router.post("/", createOrganization);
 router.get("/", fetchOrganizations);
+router.get("/:userId", getOrginiztionMyUserId);
+
 
 export default router;

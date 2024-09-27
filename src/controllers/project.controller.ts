@@ -9,13 +9,25 @@ import {
   // createChatRoom,
   createRoomForProject
 } from "../services/Chatstream";
+import Organizations, { Organization } from "../models/organization.model";
+import mongoose from "mongoose";
+import { ApiError } from "../utils/apiError";
 
 const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
+
+  // return new ApiResponse(200, body, "Project body");
+
   const isExist = await Projects.exists({
     userId: body.userId,
     title: body.title,
   });
+  if (body.orgId) {
+    const isExistOrgnization = await Organizations.exists({
+      _id: new mongoose.Types.ObjectId(body.orgId)
+    });
+    if (!isExistOrgnization) throw new ApiError("invalid Orgnization Id", 400)
+  }
   if (isExist) {
     return new ApiResponse(409, null, "Project already exists");
   }
@@ -27,10 +39,11 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   if (create) {
 
     const membersList: string[] = teams.map((member: any) => member.userId + "")
+    if (!body.orgId) return new ApiResponse(200, { project: create }, "Project created successfully");
     const roomInfo = await createRoomForProject({
       roomName: create.title,
       roomId: create._id + "",
-      membersId: membersList,
+      membersId: [...membersList, req?.user?.userId!, body.userId + ""],
       relationShipManagerId: req?.user?.userId!
     })
     return new ApiResponse(200, { chatRoom: roomInfo, project: create }, "Project created successfully");

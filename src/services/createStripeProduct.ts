@@ -3,7 +3,7 @@ import { IPackages } from "../models/packages.model";
 const stripe = new Stripe(`${process.env.stripe_secret_key}`);
 
 const createStripeProduct = async (item: IPackages) => {
-  const { title, description, price, currency, duration, billingCycle } = item;
+  const { title, description, currency, duration } = item;
   // Create a product
   const product = await stripe.products.create({
     name: title,
@@ -11,23 +11,77 @@ const createStripeProduct = async (item: IPackages) => {
   });
 
   try {
+    const getDurationDataWithStripe = async () => {
+      const durationData = [];
+      for (let i = 0; i < duration.length; i++) {
+        let stripePrice;
+        if (duration[i].duration_name === "weekly") {
+          stripePrice = { id: null };
+        } else if (duration[i].duration_name === "monthly") {
+          stripePrice = await stripe.prices.create({
+            unit_amount: Math.round(duration[i].price * 100),
+            currency: currency,
+            recurring: { interval: "month" },
+            product: product.id,
+            // tax_behavior: "exclusive",
+          });
+        } else if (duration[i].duration_name === "quarterly") {
+          stripePrice = await stripe.prices.create({
+            unit_amount: Math.round(duration[i].price) * 100,
+            currency: currency,
+            recurring: {
+              interval: "month",
+              interval_count: 3,
+            },
+            product: product.id,
+            // tax_behavior: "exclusive",
+          });
+        } else if (duration[i].duration_name === "yearly") {
+          stripePrice = await stripe.prices.create({
+            unit_amount: Math.round(duration[i].price) * 100,
+            currency: currency,
+            recurring: { interval: "year" },
+            product: product.id,
+            // tax_behavior: "exclusive",
+          });
+        } else {
+          continue;
+        }
+
+        let body = {
+          duration_name: duration[i].duration_name,
+          price: duration[i].price,
+          stripe_price_id: stripePrice.id,
+        };
+
+        durationData.push(body);
+      }
+      return durationData;
+    };
+
     // Create a price for the product
-    const amountInCents = Math.round(price * 100);
-    const priceData = await stripe.prices.create({
-      unit_amount: amountInCents,
-      currency: currency,
-      recurring: {
-        interval: billingCycle,
-        interval_count: duration,
-      },
-      product: product.id,
-    });
-    return { productId: product.id, priceId: priceData.id };
+    // const amountInCents = Math.round(price * 100);
+    // const priceData = await stripe.prices.create({
+    //   unit_amount: amountInCents,
+    //   currency: currency,
+    //   recurring: {
+    //     interval: billingCycle,
+    //     interval_count: duration,
+    //   },
+    //   product: product.id,
+    // });
+    const modifiedDuration = await getDurationDataWithStripe();
+
+    return { productId: product.id, modifiedDuration: modifiedDuration };
   } catch (error) {
     if (error && (error as any).type === "StripeInvalidRequestError") {
       try {
-        const deletedProduct = await stripe.products.del(product.id);
-        console.log("Product deleted due to error:", deletedProduct.id);
+        if (product?.id) {
+          const deletedProduct = await stripe.products.del(product.id);
+          console.log("Product deleted due to error:", deletedProduct.id);
+        } else {
+          console.log("Product was not created, no need to delete.");
+        }
       } catch (deleteError) {
         console.error("Error deleting product:", deleteError);
       }

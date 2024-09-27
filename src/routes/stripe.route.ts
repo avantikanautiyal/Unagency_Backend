@@ -3,6 +3,8 @@ import express, { Router } from "express";
 import {
   CancelCustomerSubscription,
   CreateCheckOutSession,
+  CreateUserSubscriptionController,
+  FetchCheckOutSession,
   SubscriptionStatus,
   UpdateCustomerSubscription,
   // StripeWebhook,
@@ -20,7 +22,13 @@ router.post(
   VerifyUserHandler,
   UpdateCustomerSubscription
 );
-router.post("/subscription-status", VerifyUserHandler, SubscriptionStatus);
-router.post("/cancel-subscription", VerifyUserHandler, CancelCustomerSubscription);
+router.get("/subscription-status", VerifyUserHandler, SubscriptionStatus);
+router.post("/create-user-subscription", VerifyUserHandler, CreateUserSubscriptionController);
+router.get("/fetch-checkout-session", VerifyUserHandler, FetchCheckOutSession);
+router.get(
+  "/cancel-subscription",
+  VerifyUserHandler,
+  CancelCustomerSubscription
+);
 
 export default router;

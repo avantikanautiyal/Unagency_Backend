@@ -8,6 +8,7 @@ import Users from "../models/users.model";
 import { invitationTemplate } from "../utils/teamEmailInvitaiton/invitationEmailTemplate";
 import { generateEmailOption, sentEmail } from "../utils/teamEmailInvitaiton";
 import Organizations from "../models/organization.model";
+import mongoose from "mongoose";
 
 const AddMemberInOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
@@ -85,16 +86,20 @@ const RemoveMemberInOrganization = asyncHandler(
 );
 
 const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
-  const { organization } = req.body;
+
+  const { organization } = req.query;
+  // console.log("organization ", organization)
+  if (!organization) throw new ApiError("organization not provied", 400);
   const checkUser = await Teams.findOne({
-    Organization: organization,
-    userId: req?.user?.userId,
+    Organization: new mongoose.Types.ObjectId(organization as string),
   });
 
   if (!checkUser) throw new ApiError("User not found", 401);
   const team = await Teams.find({
     Organization: checkUser?.Organization,
-  }).populate("userId", "name email").populate("Organization");
+    // userId: { $ne: req.user?.userId }
+
+  }).populate("userId", "name email");
 
   return new ApiResponse(200, team, "Team fetched successfully");
 });
@@ -139,11 +144,43 @@ export const InviteMemberInOrgnization = asyncHandler(async (req: RequestUser, r
     invitationStatus: "pending",
     Organization: organization,
   });
-  return new ApiResponse(200, {
-    email: email,
-    subject: "Team invitation",
-  }, "Member added successfully");
+  return new ApiResponse(200, addMember, "Member added successfully");
 
 });
+
+export const getMembersInvitations = asyncHandler(async (req: RequestUser, res) => {
+  const invitations = await Teams.find({
+    userId: req.user?.userId,
+    invitationStatus: { $ne: "accpted" },
+  }).populate("Organization");
+  return new ApiResponse(200, invitations, "invitation fetch successfully");
+})
+
+export const getMyInvitations = asyncHandler(async (req: RequestUser, res) => {
+
+  const invitation = await Teams.find({
+    userId: req.user?.userId,
+    invitationStatus: "pending",
+    role: { $ne: "owner" }
+  }).populate("Organization")
+  // .populate("Organization")
+
+  return new ApiResponse(200, invitation)
+
+
+});
+
+// PATCH
+export const invitationInvitation = asyncHandler(async (req: RequestUser, res) => {
+  const { teamId, status }: { teamId: string, status: "accpted" | "pending" | "rejected" } = req.body;
+  if (!teamId && !status) throw new ApiError("teamId | invitation status not provided", 400);
+
+  const updated = await Teams.updateOne({
+    _id: new mongoose.Types.ObjectId(teamId),
+  },
+    { $set: { invitationStatus: status } } // Replace newStatus with the actual status value you want to set
+  )
+  return new ApiResponse(200, updated, "invitation action perfomed successfully")
+})
 
 export { AddMemberInOrganization, RemoveMemberInOrganization, fetchUserTeam };

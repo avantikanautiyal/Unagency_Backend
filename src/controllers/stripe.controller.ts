@@ -9,6 +9,8 @@ import CheckoutSession from "../models/checkoutsession.model";
 import Subscriptions from "../models/subscription.model";
 import UpdateSubscription from "../services/updateCustomerSubscription";
 import DeleteSubscription from "../services/deleteStripeSubscription";
+import getDefaultPaymentMethod from "../services/getDefaultPaymentMethod";
+import CreateUserSubscription from "../services/createUserSubscription";
 
 const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const { priceId } = req.body;
@@ -32,23 +34,72 @@ const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const session = await stripeSession(sessionData);
   return new ApiResponse(200, session, "Session Checkout");
 });
+
+
+const CreateUserSubscriptionController = asyncHandler(async (req: RequestUser, res) => {
+  const { priceId } = req.body;
+  if (!priceId) {
+    return new ApiResponse(404, null, "Price Id  is required");
+  }
+
+  const customerId = req.user?.customerId;
+  if (!customerId) {
+    return new ApiError("Customer Id couldn't fetched", 401);
+  }
+
+  const data = {
+    priceId: priceId as string,
+    customerId: customerId,
+  };
+  const subscription = await CreateUserSubscription(data);
+  return new ApiResponse(200, subscription, "subscription initiated");
+});
+
+
+// const CreateCheckoutSessionWithExistingCard = asyncHandler(
+//   async (req: RequestUser, res) => {
+//     const { customerId, priceId } = req.body;
+//     if (!customerId) {
+//       return new ApiResponse(404, null, "customer Id  is required");
+//     }
+
+//     const defaultPaymentMethod = await getDefaultPaymentMethod(customerId);
+//     const sessionData = {
+//       priceId: priceId as string,
+//       customerId: customerId,
+//       defaultPaymentMethod: defaultPaymentMethod as Stripe.PaymentMethod | null,
+//     };
+//     const session = await stripeSession(sessionData);
+//     return new ApiResponse(200, session, "Session Checkout");
+//   }
+// );
+const FetchCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
+  const { session_id } = req.query;
+  const stripe = new Stripe(`${process.env.stripe_secret_key}`);
+  if (!session_id) {
+    return new ApiResponse(404, null, "Session Id  is required");
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(session_id as string);
+  return new ApiResponse(200, session, "Session details fetched successfully");
+});
 const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const customerId = req.user?.customerId ?? "";
   if (customerId == "") {
-    return new ApiResponse(
-      400,
-      null,
-      "Customer Id couldn't found. Please try again"
-    );
+    return new ApiResponse(200, null, "Use is not a customer yet.");
   }
   const subscription = await Subscriptions.findOne({ customerId: customerId });
-  return new ApiResponse(200, subscription, "Subscription Status");
+  return new ApiResponse(
+    200,
+    subscription,
+    "Subscription fetched successfully"
+  );
 });
 
 //This controller will help users to upgrade and downgrade their package.
 const UpdateCustomerSubscription = asyncHandler(
   async (req: RequestUser, res) => {
-    const { planId } = req.body;
+    const { priceId } = req.body;
     const subscriptionId = req.user?.subscriptionId ?? "";
     if (subscriptionId == "") {
       return new ApiResponse(
@@ -58,7 +109,7 @@ const UpdateCustomerSubscription = asyncHandler(
       );
     }
 
-    const Update = await UpdateSubscription({ planId, subscriptionId });
+    const Update = await UpdateSubscription({ priceId, subscriptionId });
     if (Update) {
       return new ApiResponse(200, Update, "Subscription update initiated");
     }
@@ -83,8 +134,10 @@ const CancelCustomerSubscription = asyncHandler(
 
 export {
   // StripeWebhook,
+  FetchCheckOutSession,
   CreateCheckOutSession,
   UpdateCustomerSubscription,
   SubscriptionStatus,
   CancelCustomerSubscription,
+  CreateUserSubscriptionController
 };

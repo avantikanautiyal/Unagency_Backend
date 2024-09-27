@@ -62,6 +62,7 @@ const createOrganization = asyncHandler(
       await Teams.create({
         Organization: organization._id,
         role: "owner",
+        invitationStatus: "accpted",
         userId: req?.user?.userId,
       });
       // const room = await assignChatRoomToResourse({

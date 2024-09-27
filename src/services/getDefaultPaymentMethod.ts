@@ -1,0 +1,22 @@
+import Stripe from "stripe";
+const stripe = new Stripe(`${process.env.stripe_secret_key}`);
+
+interface ICustomer {
+  customerId: string;
+}
+const getDefaultPaymentMethod = async (item: ICustomer) => {
+  try {
+    const customer = await stripe.customers.retrieve(item.customerId);
+
+    // Check if the customer is deleted
+    if ((customer as Stripe.DeletedCustomer).deleted) {
+      throw new Error("Customer has been deleted.");
+    }
+    const activeCustomer = customer as Stripe.Customer;
+    return activeCustomer.invoice_settings.default_payment_method;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export default getDefaultPaymentMethod;

@@ -3,6 +3,7 @@ import express, { Router } from "express";
 import {
   CancelCustomerSubscription,
   CreateCheckOutSession,
+  CreateUserSubscriptionController,
   FetchCheckOutSession,
   SubscriptionStatus,
   UpdateCustomerSubscription,
@@ -22,8 +23,9 @@ router.post(
   UpdateCustomerSubscription
 );
 router.get("/subscription-status", VerifyUserHandler, SubscriptionStatus);
+router.post("/create-user-subscription", VerifyUserHandler, CreateUserSubscriptionController);
 router.get("/fetch-checkout-session", VerifyUserHandler, FetchCheckOutSession);
-router.post(
+router.get(
   "/cancel-subscription",
   VerifyUserHandler,
   CancelCustomerSubscription

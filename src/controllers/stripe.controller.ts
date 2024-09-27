@@ -9,6 +9,8 @@ import CheckoutSession from "../models/checkoutsession.model";
 import Subscriptions from "../models/subscription.model";
 import UpdateSubscription from "../services/updateCustomerSubscription";
 import DeleteSubscription from "../services/deleteStripeSubscription";
+import getDefaultPaymentMethod from "../services/getDefaultPaymentMethod";
+import CreateUserSubscription from "../services/createUserSubscription";
 
 const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const { priceId } = req.body;
@@ -32,6 +34,45 @@ const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const session = await stripeSession(sessionData);
   return new ApiResponse(200, session, "Session Checkout");
 });
+
+
+const CreateUserSubscriptionController = asyncHandler(async (req: RequestUser, res) => {
+  const { priceId } = req.body;
+  if (!priceId) {
+    return new ApiResponse(404, null, "Price Id  is required");
+  }
+
+  const customerId = req.user?.customerId;
+  if (!customerId) {
+    return new ApiError("Customer Id couldn't fetched", 401);
+  }
+
+  const data = {
+    priceId: priceId as string,
+    customerId: customerId,
+  };
+  const subscription = await CreateUserSubscription(data);
+  return new ApiResponse(200, subscription, "subscription initiated");
+});
+
+
+// const CreateCheckoutSessionWithExistingCard = asyncHandler(
+//   async (req: RequestUser, res) => {
+//     const { customerId, priceId } = req.body;
+//     if (!customerId) {
+//       return new ApiResponse(404, null, "customer Id  is required");
+//     }
+
+//     const defaultPaymentMethod = await getDefaultPaymentMethod(customerId);
+//     const sessionData = {
+//       priceId: priceId as string,
+//       customerId: customerId,
+//       defaultPaymentMethod: defaultPaymentMethod as Stripe.PaymentMethod | null,
+//     };
+//     const session = await stripeSession(sessionData);
+//     return new ApiResponse(200, session, "Session Checkout");
+//   }
+// );
 const FetchCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   const { session_id } = req.query;
   const stripe = new Stripe(`${process.env.stripe_secret_key}`);
@@ -98,4 +139,5 @@ export {
   UpdateCustomerSubscription,
   SubscriptionStatus,
   CancelCustomerSubscription,
+  CreateUserSubscriptionController
 };

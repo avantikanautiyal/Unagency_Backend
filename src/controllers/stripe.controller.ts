@@ -45,20 +45,20 @@ const FetchCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
 const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const customerId = req.user?.customerId ?? "";
   if (customerId == "") {
-    return new ApiResponse(
-      200,
-      null,
-      "Use is not a customer yet."
-    );
+    return new ApiResponse(200, null, "Use is not a customer yet.");
   }
   const subscription = await Subscriptions.findOne({ customerId: customerId });
-  return new ApiResponse(200, subscription, "Subscription fetched successfully");
+  return new ApiResponse(
+    200,
+    subscription,
+    "Subscription fetched successfully"
+  );
 });
 
 //This controller will help users to upgrade and downgrade their package.
 const UpdateCustomerSubscription = asyncHandler(
   async (req: RequestUser, res) => {
-    const { planId } = req.body;
+    const { priceId } = req.body;
     const subscriptionId = req.user?.subscriptionId ?? "";
     if (subscriptionId == "") {
       return new ApiResponse(
@@ -68,7 +68,7 @@ const UpdateCustomerSubscription = asyncHandler(
       );
     }
 
-    const Update = await UpdateSubscription({ planId, subscriptionId });
+    const Update = await UpdateSubscription({ priceId, subscriptionId });
     if (Update) {
       return new ApiResponse(200, Update, "Subscription update initiated");
     }

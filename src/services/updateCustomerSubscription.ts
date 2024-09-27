@@ -2,14 +2,15 @@ import Stripe from "stripe";
 const stripe = new Stripe(`${process.env.stripe_secret_key}`);
 
 interface IItem {
-  planId: string;
+  priceId: string;
   subscriptionId: string;
 }
 const UpdateSubscription = async (item: IItem) => {
-  const { planId, subscriptionId } = item;
+  const { priceId, subscriptionId } = item;
   try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const update = await stripe.subscriptions.update(subscriptionId, {
-      items: [{ plan: planId }],
+      items: [{ price: priceId, id: subscription.items.data[0].id }],
     });
     return update;
   } catch (error) {

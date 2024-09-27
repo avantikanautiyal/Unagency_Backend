@@ -7,8 +7,8 @@ interface IItem {
 const DeleteSubscription = async (item: IItem) => {
   const { subscriptionId } = item;
   try {
-    const update = await stripe.subscriptions.cancel(subscriptionId);
-    return update;
+    const cancelSubscription = await stripe.subscriptions.cancel(subscriptionId);
+    return cancelSubscription;
   } catch (error) {
     throw error;
   }

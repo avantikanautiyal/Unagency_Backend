@@ -32,7 +32,9 @@ const app = express();
 app.use(cors());
 const StripeWebhook = asyncHandler(async (req, res) => {
   const sigHeader = req.headers["stripe-signature"] as string;
-  const stripe = new Stripe(`${process.env.stripe_secret_key}`);
+  const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
+    apiVersion: "2024-06-20", // Ensure you specify the latest API version
+  });
   let event;
   event = await stripe.webhooks.constructEventAsync(
     req.body,
@@ -41,27 +43,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   );
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const paymentIntentId = session.payment_intent;
-
-    if (typeof paymentIntentId === "string") {
-      // Retrieve Payment Intent to get the Payment Method ID
-      const paymentIntent = await stripe.paymentIntents.retrieve(
-        paymentIntentId,
-        {
-          expand: ["payment_method"], // Expanding to get the payment method details
-        }
-      );
-
-      const paymentMethodId = paymentIntent.payment_method as string; // Payment method ID
-      await stripe.paymentMethods.attach(paymentMethodId, {
-        customer: session.customer as string,
-      });
-      await stripe.customers.update(session.customer as string, {
-        invoice_settings: {
-          default_payment_method: paymentMethodId,
-        },
-      });
-    }
+    console.log(session.payment_intent);
     await CheckoutSession.create({
       sessionId: session.id,
       customerId: session.customer,
@@ -74,7 +56,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   }
   if (event.type === "customer.subscription.created") {
     const subscription = event.data.object;
-
+    console.log(subscription);
     await Subscriptions.create({
       subscriptionId: subscription.id,
       customerId: subscription.customer,
@@ -84,6 +66,11 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       currentPeriodEnd: new Date(subscription.current_period_end * 1000), // Convert to JS Date
     });
     return new ApiResponse(200, null, "Subscription saved Successfully");
+  }
+  if (event.type === "invoice.paid") {
+
+    console.log(event.data.object);
+    return new ApiResponse(200, null, "Invoice updated Successfully");
   }
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object;

@@ -35,26 +35,26 @@ const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, session, "Session Checkout");
 });
 
+const CreateUserSubscriptionController = asyncHandler(
+  async (req: RequestUser, res) => {
+    const { priceId } = req.body;
+    if (!priceId) {
+      return new ApiResponse(404, null, "Price Id  is required");
+    }
 
-const CreateUserSubscriptionController = asyncHandler(async (req: RequestUser, res) => {
-  const { priceId } = req.body;
-  if (!priceId) {
-    return new ApiResponse(404, null, "Price Id  is required");
+    const customerId = req.user?.customerId;
+    if (!customerId) {
+      return new ApiError("Customer Id couldn't fetched", 401);
+    }
+
+    const data = {
+      priceId: priceId as string,
+      customerId: customerId,
+    };
+    const subscription = await CreateUserSubscription(data);
+    return new ApiResponse(200, subscription, "subscription initiated");
   }
-
-  const customerId = req.user?.customerId;
-  if (!customerId) {
-    return new ApiError("Customer Id couldn't fetched", 401);
-  }
-
-  const data = {
-    priceId: priceId as string,
-    customerId: customerId,
-  };
-  const subscription = await CreateUserSubscription(data);
-  return new ApiResponse(200, subscription, "subscription initiated");
-});
-
+);
 
 // const CreateCheckoutSessionWithExistingCard = asyncHandler(
 //   async (req: RequestUser, res) => {
@@ -139,5 +139,5 @@ export {
   UpdateCustomerSubscription,
   SubscriptionStatus,
   CancelCustomerSubscription,
-  CreateUserSubscriptionController
+  CreateUserSubscriptionController,
 };

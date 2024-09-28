@@ -16,10 +16,10 @@ import packagesRouter from "./routes/packages.route";
 import teamRouter from "./routes/teams.route";
 import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
-import ChatRouter from "./routes/chat.route";
+import ChatRouter from "./routes/chat.route"
 
 // middleware
-import stripeRouter from "./routes/stripe.route";
+import stripeRouter from "./routes/stripe.route"
 import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
@@ -41,31 +41,6 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   );
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const customerId = session.customer as string;
-    if (customerId) {
-      if (session.payment_intent) {
-        const paymentIntentId = session.payment_intent as string;
-        const paymentIntent = await stripe.paymentIntents.retrieve(
-          paymentIntentId as string
-        );
-
-        // Get the payment method ID from the Payment Intent
-        const paymentMethodId = paymentIntent.payment_method;
-
-        // Attach the payment method to the customer
-        if (paymentMethodId) {
-          console.log(paymentMethodId);
-          await stripe.customers.update(customerId, {
-            invoice_settings: {
-              default_payment_method: paymentMethodId as string,
-            },
-          });
-        }
-      }
-    } else {
-      console.log("No Customer Id Found");
-    }
-
     await CheckoutSession.create({
       sessionId: session.id,
       customerId: session.customer,
@@ -77,6 +52,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   }
   if (event.type === "customer.subscription.created") {
     const subscription = event.data.object;
+    
     await Subscriptions.create({
       subscriptionId: subscription.id,
       customerId: subscription.customer,

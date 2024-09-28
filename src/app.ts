@@ -66,20 +66,26 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       currentPeriodEnd: new Date(subscription.current_period_end * 1000), // Convert to JS Date
     });
 
-    if (typeof subscription.customer === "string") {
-      const customerResponse = await stripe.customers.retrieve(
-        subscription.customer
-      );
-      if (!("deleted" in customerResponse)) {
-        const customer = customerResponse as Stripe.Customer;
+    // if (typeof subscription.customer === "string") {
+    //   const customerResponse = await stripe.customers.retrieve(
+    //     subscription.customer
+    //   );
+    //   if (!("deleted" in customerResponse)) {
+    //     const customer = customerResponse as Stripe.Customer;
 
-        const paymentMethodId =
-          customer.invoice_settings?.default_payment_method;
-        console.log(paymentMethodId, "Paymentmethod ID");
-        console.log(subscription, "Paymentmethod ID");
-      }
-    }
+    //     const paymentMethodId =
+    //       customer.invoice_settings?.default_payment_method;
+    //     console.log(paymentMethodId, "Paymentmethod ID");
+    //     console.log(subscription, "Paymentmethod ID");
+    //   }
+    // }
     return new ApiResponse(200, null, "Subscription saved Successfully");
+  }
+  if (event.type === "invoice.paid") {
+    const invoice = event.data.object;
+
+    console.log(invoice, "invoice");
+    return new ApiResponse(200, null, "Invoice paid Successfully");
   }
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object;

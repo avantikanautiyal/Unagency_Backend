@@ -17,7 +17,7 @@ const stripeSession = async (item: IItem) => {
         quantity: 1,
       },
     ],
-
+    expand: ["payment_intent"],
     success_url: `http://localhost:5173/payments/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `http://localhost:5173/payments/failed?session_id={CHECKOUT_SESSION_ID}`,
   });

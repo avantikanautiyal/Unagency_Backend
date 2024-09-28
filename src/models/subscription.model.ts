@@ -24,6 +24,7 @@ const SubscriptionSchema = new Schema<ISubscription>({
   currentPeriodEnd: { type: Date, required: true }, // Subscription renewal/cancellation date
 });
 
+
 const Subscriptions = mongoose.model<ISubscription>(
   "Subscriptions",
   SubscriptionSchema

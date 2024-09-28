@@ -13,6 +13,7 @@ export interface UserType {
   email?: string;
   customerId?: string;
   subscriptionId?: string;
+  relationship_manager?: string | object;
 }
 
 export type RequestUser = Request & {

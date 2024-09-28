@@ -1,6 +1,7 @@
 import Stripe from "stripe";
-const stripe = new Stripe(`${process.env.stripe_secret_key}`);
-
+const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
+  apiVersion: "2024-06-20", // Ensure you specify the latest API version
+});
 interface ICustomer {
   customerId: string;
 }

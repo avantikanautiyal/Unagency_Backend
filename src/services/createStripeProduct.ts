@@ -1,7 +1,8 @@
 import Stripe from "stripe";
 import { IPackages } from "../models/packages.model";
-const stripe = new Stripe(`${process.env.stripe_secret_key}`);
-
+const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
+  apiVersion: "2024-06-20", // Ensure you specify the latest API version
+});
 const createStripeProduct = async (item: IPackages) => {
   const { title, description, currency, duration } = item;
   // Create a product

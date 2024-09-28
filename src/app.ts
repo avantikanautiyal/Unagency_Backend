@@ -76,6 +76,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         const paymentMethodId =
           customer.invoice_settings?.default_payment_method;
         console.log(paymentMethodId, "Paymentmethod ID");
+        console.log(subscription, "Paymentmethod ID");
       }
     }
     return new ApiResponse(200, null, "Subscription saved Successfully");

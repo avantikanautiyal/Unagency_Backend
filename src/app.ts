@@ -43,7 +43,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   );
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    console.log(session.payment_intent)
+    console.log(session.payment_intent);
     await CheckoutSession.create({
       sessionId: session.id,
       customerId: session.customer,
@@ -56,7 +56,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   }
   if (event.type === "customer.subscription.created") {
     const subscription = event.data.object;
-
+    console.log(subscription);
     await Subscriptions.create({
       subscriptionId: subscription.id,
       customerId: subscription.customer,
@@ -66,6 +66,9 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       currentPeriodEnd: new Date(subscription.current_period_end * 1000), // Convert to JS Date
     });
     return new ApiResponse(200, null, "Subscription saved Successfully");
+  }
+  if (event.type === "invoice.paid") {
+    console.log(event.data.object);
   }
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object;

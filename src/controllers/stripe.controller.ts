@@ -88,6 +88,13 @@ const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   if (customerId == "") {
     return new ApiResponse(200, null, "Use is not a customer yet.");
   }
+  // const stripe = new Stripe(`${process.env.stripe_secret_key}`);
+
+  // const paymentMethods = await stripe.customers.listPaymentMethods(customerId, {
+  //   limit: 3,
+  // });
+
+  // console.log(paymentMethods);
   const subscription = await Subscriptions.findOne({ customerId: customerId });
   return new ApiResponse(
     200,

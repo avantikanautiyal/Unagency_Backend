@@ -16,10 +16,10 @@ import packagesRouter from "./routes/packages.route";
 import teamRouter from "./routes/teams.route";
 import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
-import ChatRouter from "./routes/chat.route"
+import ChatRouter from "./routes/chat.route";
 
 // middleware
-import stripeRouter from "./routes/stripe.route"
+import stripeRouter from "./routes/stripe.route";
 import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
@@ -41,6 +41,27 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   );
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+    const paymentIntentId = session.payment_intent;
+
+    if (typeof paymentIntentId === "string") {
+      // Retrieve Payment Intent to get the Payment Method ID
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        paymentIntentId,
+        {
+          expand: ["payment_method"], // Expanding to get the payment method details
+        }
+      );
+
+      const paymentMethodId = paymentIntent.payment_method as string; // Payment method ID
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: session.customer as string,
+      });
+      await stripe.customers.update(session.customer as string, {
+        invoice_settings: {
+          default_payment_method: paymentMethodId,
+        },
+      });
+    }
     await CheckoutSession.create({
       sessionId: session.id,
       customerId: session.customer,
@@ -48,11 +69,12 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       amountTotal: session.amount_total,
       currency: session.currency,
     });
+
     return new ApiResponse(200, null, "Payment Session Saved Successfully");
   }
   if (event.type === "customer.subscription.created") {
     const subscription = event.data.object;
-    
+
     await Subscriptions.create({
       subscriptionId: subscription.id,
       customerId: subscription.customer,

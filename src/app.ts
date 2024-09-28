@@ -68,7 +68,9 @@ const StripeWebhook = asyncHandler(async (req, res) => {
     return new ApiResponse(200, null, "Subscription saved Successfully");
   }
   if (event.type === "invoice.paid") {
+
     console.log(event.data.object);
+    return new ApiResponse(200, null, "Invoice updated Successfully");
   }
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object;

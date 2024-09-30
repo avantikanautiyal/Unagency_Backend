@@ -5,6 +5,8 @@ import Organizations, { Organization } from "../models/organization.model";
 import Teams from "../models/team.model";
 import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
+import { ApiError } from "../utils/apiError";
+import Users from "../models/users.model";
 // import {
 //   assignChatRoomToResourse,
 //   createChatRoom,
@@ -123,9 +125,22 @@ const UpdateUserOrganization = asyncHandler(
   }
 );
 
+//
+const getOrginiztionMyUserId = asyncHandler(async (req: RequestUser, res) => {
+  const { userId } = req.params;
+
+  if (!userId) throw new ApiError("userId not provided", 400);
+
+  const org = await Organizations.findOne({
+    owner: new mongoose.Types.ObjectId(userId),
+  });
+  return new ApiResponse(200, org, "");
+});
+
 export {
   createOrganization,
   fetchOrganizations,
   UserOrganization,
   UpdateUserOrganization,
+  getOrginiztionMyUserId
 };

@@ -41,6 +41,7 @@ export async function createChatRoom(data: CreateRoomProps) {
         const channel = streamServerClient.channel("messaging", data.roomId, {
             name: data.roomName ?? data.roomId,
             room_name: data.personalName,
+            room_type: "personal",
             members: data.members,
             created_by_id: data?.createdBy ?? data.roomId,
         }
@@ -88,6 +89,7 @@ export const createRoomForProject = async (data: ProjectRoom) => {
         const channel = streamServerClient.channel("messaging", data.roomId, {
             name: data.roomName,
             // room_name: roomName,
+            room_type: "project",
             members: data.membersId,
             created_by_id: data.relationShipManagerId,
         }

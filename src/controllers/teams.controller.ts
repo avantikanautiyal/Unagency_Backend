@@ -86,7 +86,6 @@ const RemoveMemberInOrganization = asyncHandler(
 );
 
 const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
-
   const { organization, status } = req.query;
   // console.log("organization ", organization)
   if (!organization) throw new ApiError("organization not provied", 400);
@@ -95,98 +94,102 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   });
 
   if (!checkUser) throw new ApiError("User not found", 401);
-  console.log("invitation status ", !!status ? "accpted" : { $exists: true }
-  )
+  console.log("invitation status ", !!status ? "accpted" : { $exists: true });
   const team = await Teams.find({
     Organization: checkUser?.Organization,
     // If `status` exists, filter by "accepted", otherwise fetch all.
     invitationStatus: !!status ? "accpted" : { $exists: true },
     // userId: { $ne: req.user?.userId }
-    role: !!status ? "member" : { $exists: true } // If `status` exists, filter by "member", otherwise fetch all.
-
-
+    role: !!status ? "member" : { $exists: true }, // If `status` exists, filter by "member", otherwise fetch all.
   }).populate("userId", "name email");
 
   return new ApiResponse(200, team, "Team fetched successfully");
 });
 
 // POST
-export const InviteMemberInOrgnization = asyncHandler(async (req: RequestUser, res) => {
+export const InviteMemberInOrgnization = asyncHandler(
+  async (req: RequestUser, res) => {
+    const { email }: { email: string } = req.body;
+    if (!email) throw new ApiError("email not provided", 401);
+    const invitedUser = await Users.findOne({
+      email: email,
+    });
+    if (!invitedUser) throw new ApiError("User not found with this email", 404);
+    const organization = await Organizations.findOne({
+      owner: req.user?.userId!,
+    });
+    if (!organization) throw new ApiError("no orgnization found", 404);
 
-  const { email }: { email: string } = req.body;
-  if (!email) throw new ApiError("email not provided", 401);
-  const invitedUser = await Users.findOne({
-    email: email,
-  });
-  if (!invitedUser) throw new ApiError("User not found with this email", 404);
-  const organization = await Organizations.findOne({
-    owner: req.user?.userId!
-  });
-  if (!organization) throw new ApiError("no orgnization found", 404);
+    const isExist = await Teams.exists({
+      userId: invitedUser._id,
+      Organization: organization._id,
+    });
+    if (isExist)
+      return new ApiResponse(400, null, "User is already in the team");
 
+    const mail = generateEmailOption({
+      email: email,
+      subject: "Team invitation",
+      html: invitationTemplate({
+        orgnizationName: organization.companyName,
+        name: invitedUser?.name,
+        link: `http://localhost:5173/invites?token=${organization._id}`,
+      }),
+    });
+    const emailSend = await sentEmail(mail);
+    const addMember = await Teams.create({
+      userId: invitedUser._id,
+      role: "member",
+      invitationStatus: "pending",
+      Organization: organization,
+    });
+    return new ApiResponse(200, addMember, "Member added successfully");
+  }
+);
 
-  const isExist = await Teams.exists({
-    userId: invitedUser._id,
-    Organization: organization._id,
-  });
-  if (isExist) return new ApiResponse(400, null, "User is already in the team");
-
-
-
-
-  const mail = generateEmailOption({
-    email: email,
-    subject: "Team invitation",
-    html: invitationTemplate({
-      orgnizationName: organization.companyName,
-      name: invitedUser?.name,
-      link: `http://localhost:5173/invites?token=${organization._id}`,
-    }),
-  })
-  const emailSend = await sentEmail(mail);
-  const addMember = await Teams.create({
-    userId: invitedUser._id,
-    role: "member",
-    invitationStatus: "pending",
-    Organization: organization,
-  });
-  return new ApiResponse(200, addMember, "Member added successfully");
-
-});
-
-export const getMembersInvitations = asyncHandler(async (req: RequestUser, res) => {
-  const invitations = await Teams.find({
-    userId: req.user?.userId,
-    invitationStatus: { $ne: "accpted" },
-  }).populate("Organization");
-  return new ApiResponse(200, invitations, "invitation fetch successfully");
-})
+export const getMembersInvitations = asyncHandler(
+  async (req: RequestUser, res) => {
+    const invitations = await Teams.find({
+      userId: req.user?.userId,
+      invitationStatus: { $ne: "accpted" },
+    }).populate("Organization");
+    return new ApiResponse(200, invitations, "invitation fetch successfully");
+  }
+);
 
 export const getMyInvitations = asyncHandler(async (req: RequestUser, res) => {
-
   const invitation = await Teams.find({
-    userId: req.user?.userId,
+    userId: new mongoose.Types.ObjectId(req.user?.userId),
     invitationStatus: "pending",
-    role: { $ne: "owner" }
-  }).populate("Organization")
-  // .populate("Organization")
+    role: { $ne: "owner" },
+  }).populate("Organization");
 
-  return new ApiResponse(200, invitation)
-
-
+  return new ApiResponse(200, invitation);
 });
 
 // PATCH
-export const invitationInvitation = asyncHandler(async (req: RequestUser, res) => {
-  const { teamId, status }: { teamId: string, status: "accpted" | "pending" | "rejected" } = req.body;
-  if (!teamId && !status) throw new ApiError("teamId | invitation status not provided", 400);
+export const invitationInvitation = asyncHandler(
+  async (req: RequestUser, res) => {
+    const {
+      teamId,
+      status,
+    }: { teamId: string; status: "accpted" | "pending" | "rejected" } =
+      req.body;
+    if (!teamId && !status)
+      throw new ApiError("teamId | invitation status not provided", 400);
 
-  const updated = await Teams.updateOne({
-    _id: new mongoose.Types.ObjectId(teamId),
-  },
-    { $set: { invitationStatus: status } } // Replace newStatus with the actual status value you want to set
-  )
-  return new ApiResponse(200, updated, "invitation action perfomed successfully")
-})
+    const updated = await Teams.updateOne(
+      {
+        _id: new mongoose.Types.ObjectId(teamId),
+      },
+      { $set: { invitationStatus: status } } // Replace newStatus with the actual status value you want to set
+    );
+    return new ApiResponse(
+      200,
+      updated,
+      "invitation action perfomed successfully"
+    );
+  }
+);
 
 export { AddMemberInOrganization, RemoveMemberInOrganization, fetchUserTeam };

@@ -141,7 +141,7 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
     // userId: req.user?.userId,
     _id: new mongoose.Types.ObjectId(projectId),
   });
-  if (!project) return new ApiResponse(404, project, "Project Fetched successfully");
+  if (!project) return new ApiResponse(200, project, "Project Fetched successfully");
   return new ApiResponse(200, project, "Project Fetched successfully");
 });
 

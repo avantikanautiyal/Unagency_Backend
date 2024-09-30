@@ -72,7 +72,7 @@ const Register = asyncHandler(async (req, res) => {
             ],
             createdBy: registration._id + "",
             personalName: {
-              [registration._id + ""]: relationshipManager.name,
+              [registration._id + ""]: relationshipManager?.userInfo?.name,
               [relationshipManager.userInfo._id + ""]: registration.name,
             },
           });

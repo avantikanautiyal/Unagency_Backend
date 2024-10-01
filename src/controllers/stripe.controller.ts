@@ -9,7 +9,6 @@ import CheckoutSession from "../models/checkoutsession.model";
 import Subscriptions from "../models/subscription.model";
 import UpdateSubscription from "../services/updateCustomerSubscription";
 import DeleteSubscription from "../services/deleteStripeSubscription";
-import getDefaultPaymentMethod from "../services/getDefaultPaymentMethod";
 import CreateUserSubscription from "../services/createUserSubscription";
 
 const CreateCheckOutSession = asyncHandler(async (req: RequestUser, res) => {

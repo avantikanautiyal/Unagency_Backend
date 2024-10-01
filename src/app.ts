@@ -9,6 +9,7 @@ import { RouteErrorHandler } from "./middlewares/routeErrorHandler.middleware";
 // routs import
 import helloWorldRouter from "./routes/hello.route";
 import StaffRouter from "./routes/staff.route";
+import SubscriptionRouter from "./routes/subscription.route";
 import ProjectRouter from "./routes/project.route";
 import authRouter from "./routes/auth.route";
 import categoryRouter from "./routes/categories.route";
@@ -26,6 +27,7 @@ import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
 import { ApiResponse } from "./utils/apiResponse";
 import Subscriptions from "./models/subscription.model";
+import Invoices from "./models/invoices.model";
 const app = express();
 
 //Use of CORS
@@ -41,74 +43,104 @@ const StripeWebhook = asyncHandler(async (req, res) => {
     sigHeader,
     "REDACTED"
   );
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    console.log(session.payment_intent);
-    await CheckoutSession.create({
-      sessionId: session.id,
-      customerId: session.customer,
-      paymentStatus: session.payment_status,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-    });
 
-    return new ApiResponse(200, null, "Payment Session Saved Successfully");
+  let invoice;
+  let existingInvoice;
+  let status;
+  switch (event.type) {
+    case "checkout.session.completed":
+      const session = event.data.object;
+      await CheckoutSession.create({
+        sessionId: session.id,
+        customerId: session.customer,
+        paymentStatus: session.payment_status,
+        amountTotal: session.amount_total,
+        currency: session.currency,
+      });
+      console.log("Checkout session completed");
+      break;
+    case "customer.subscription.created":
+      await Subscriptions.create({
+        subscriptionId: event.data.object?.id,
+        customerId: event.data.object?.customer,
+        planId: event.data.object?.items.data[0].plan.id,
+        status: event.data.object?.status,
+        currentPeriodStart: new Date(
+          event.data.object?.current_period_start * 1000
+        ),
+        currentPeriodEnd: new Date(
+          event.data.object?.current_period_end * 1000
+        ),
+      });
+      status = event.data.object.status;
+      console.log("Customer subscription initiated");
+      break;
+    case "customer.subscription.updated":
+      await Subscriptions.findOneAndUpdate(
+        { subscriptionId: event.data.object.id },
+        {
+          status: event.data.object.status,
+          planId: event.data.object.items.data[0].plan.id, // Updated Plan ID
+          currentPeriodStart: new Date(
+            event.data.object.current_period_start * 1000
+          ),
+          currentPeriodEnd: new Date(
+            event.data.object.current_period_end * 1000
+          ),
+        },
+        { new: true }
+      );
+      status = event.data.object.status;
+      console.log("Customer subscription updated");
+      break;
+    case "customer.subscription.deleted":
+      await Subscriptions.findOneAndUpdate(
+        { subscriptionId: event.data.object.id },
+        { status: "canceled" }
+      );
+      status = event.data.object.status;
+      console.log("Customer subscription canceled");
+      break;
+    case "invoice.paid":
+      invoice = event.data.object;
+      existingInvoice = await Invoices.findOne({ invoiceId: invoice.id });
+      if (existingInvoice) {
+        return new ApiResponse(400, null, "Invoice already exists");
+      }
+      await Invoices.create({
+        invoiceId: invoice.id,
+        subscriptionId: invoice.subscription,
+        customerId: invoice.customer,
+        amountDue: invoice.amount_due,
+        amountPaid: invoice.amount_paid,
+        currency: invoice.currency,
+        status: "paid",
+        paymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
+      });
+      console.log(invoice, "invoice paid");
+      break;
+    case "invoice.payment_failed":
+      invoice = event.data.object;
+      existingInvoice = await Invoices.findOne({ invoiceId: invoice.id });
+      if (existingInvoice) {
+        return new ApiResponse(400, null, "Invoice already exists");
+      }
+      await Invoices.create({
+        invoiceId: invoice.id,
+        subscriptionId: invoice.subscription,
+        customerId: invoice.customer,
+        amountDue: invoice.amount_due,
+        currency: invoice.currency,
+        status: "failed",
+        failureMessage: "Payment failed without a specific message",
+        failedPaymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
+      });
+      console.log(invoice, "invoice payment failed");
+      break;
+    default:
+      null;
   }
-  if (event.type === "customer.subscription.created") {
-    const subscription = event.data.object;
-
-    await Subscriptions.create({
-      subscriptionId: subscription.id,
-      customerId: subscription.customer,
-      planId: subscription.items.data[0].plan.id, // Plan ID (assuming single plan for simplicity)
-      status: subscription.status,
-      currentPeriodStart: new Date(subscription.current_period_start * 1000), // Convert to JS Date
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000), // Convert to JS Date
-    });
-
-    // if (typeof subscription.customer === "string") {
-    //   const customerResponse = await stripe.customers.retrieve(
-    //     subscription.customer
-    //   );
-    //   if (!("deleted" in customerResponse)) {
-    //     const customer = customerResponse as Stripe.Customer;
-
-    //     const paymentMethodId =
-    //       customer.invoice_settings?.default_payment_method;
-    //     console.log(paymentMethodId, "Paymentmethod ID");
-    //     console.log(subscription, "Paymentmethod ID");
-    //   }
-    // }
-    return new ApiResponse(200, null, "Subscription saved Successfully");
-  }
-  if (event.type === "invoice.paid") {
-    const invoice = event.data.object;
-
-    console.log(invoice, "invoice");
-    return new ApiResponse(200, null, "Invoice paid Successfully");
-  }
-  if (event.type === "customer.subscription.updated") {
-    const subscription = event.data.object;
-    await Subscriptions.findOneAndUpdate(
-      { subscriptionId: subscription.id },
-      {
-        status: subscription.status,
-        planId: subscription.items.data[0].plan.id, // Updated Plan ID
-        currentPeriodStart: new Date(subscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-      },
-      { new: true }
-    );
-    return new ApiResponse(200, null, "Subscription updated Successfully");
-  }
-  if (event.type === "customer.subscription.deleted") {
-    const subscription = event.data.object;
-    await Subscriptions.findOneAndUpdate(
-      { subscriptionId: subscription.id },
-      { status: "canceled" }
-    );
-    return new ApiResponse(200, null, "Subscription canceled");
-  }
+  res.sendStatus(200);
 });
 
 //Use of Express JSON CONFIG
@@ -125,6 +157,7 @@ app.use("/auth", authRouter);
 app.use("/users", userRouter);
 app.use("/projects", ProjectRouter);
 app.use("/staff", StaffRouter);
+app.use("/subscription", SubscriptionRouter);
 app.use("/stripe", stripeRouter);
 app.use("/packages", packagesRouter);
 app.use("/categories", categoryRouter);

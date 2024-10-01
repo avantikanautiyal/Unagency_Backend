@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import StripeCustomers from "../models/customer.model";
+import StripeCustomers from "../../models/customer.model";
 
 const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
   apiVersion: "2024-06-20", // Ensure you specify the latest API version
@@ -9,7 +9,7 @@ interface StripeCustomerParams {
   email: string;
 }
 
-const CreateStripeCustomer = async ({ name, email }: StripeCustomerParams) => {
+const CreateCustomer = async ({ name, email }: StripeCustomerParams) => {
   try {
     let customerRecord = await StripeCustomers.findOne({ email: email });
     let customerId;
@@ -30,4 +30,4 @@ const CreateStripeCustomer = async ({ name, email }: StripeCustomerParams) => {
   }
 };
 
-export default CreateStripeCustomer;
+export default CreateCustomer;

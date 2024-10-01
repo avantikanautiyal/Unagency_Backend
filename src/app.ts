@@ -103,7 +103,15 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       break;
     case "invoice.paid":
       invoice = event.data.object;
-      existingInvoice = await Invoices.findOne({ invoiceId: invoice.id });
+      const customerId = invoice.customer; // Get customer ID
+      const paymentIntentId = invoice.payment_intent; // Get payment intent ID
+      if (paymentIntentId !== null) {
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          paymentIntentId as string
+        );
+        console.log(paymentIntent, "paymentIntent");
+      }
+
       await Invoices.create({
         invoiceId: invoice.id,
         subscriptionId: invoice.subscription,
@@ -114,20 +122,22 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         status: "paid",
         paymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
       });
-      console.log(invoice, "invoice paid");
+      console.log(invoice.default_payment_method, "invoice paid");
       break;
     case "invoice.payment_failed":
       invoice = event.data.object;
-      await Invoices.create({
-        invoiceId: invoice.id,
-        subscriptionId: invoice.subscription,
-        customerId: invoice.customer,
-        amountDue: invoice.amount_due,
-        currency: invoice.currency,
-        status: "failed",
-        failureMessage: "Payment failed without a specific message",
-        failedPaymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
-      });
+      if (invoice.charge !== null) {
+        await Invoices.create({
+          invoiceId: invoice.id,
+          subscriptionId: invoice.subscription,
+          customerId: invoice.customer,
+          amountDue: invoice.amount_due,
+          currency: invoice.currency,
+          status: "failed",
+          failureMessage: "Payment failed without a specific message",
+          failedPaymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
+        });
+      }
       console.log(invoice, "invoice payment failed");
       break;
     default:

@@ -104,9 +104,6 @@ const StripeWebhook = asyncHandler(async (req, res) => {
     case "invoice.paid":
       invoice = event.data.object;
       existingInvoice = await Invoices.findOne({ invoiceId: invoice.id });
-      if (existingInvoice) {
-        return new ApiResponse(400, null, "Invoice already exists");
-      }
       await Invoices.create({
         invoiceId: invoice.id,
         subscriptionId: invoice.subscription,
@@ -121,10 +118,6 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       break;
     case "invoice.payment_failed":
       invoice = event.data.object;
-      existingInvoice = await Invoices.findOne({ invoiceId: invoice.id });
-      if (existingInvoice) {
-        return new ApiResponse(400, null, "Invoice already exists");
-      }
       await Invoices.create({
         invoiceId: invoice.id,
         subscriptionId: invoice.subscription,

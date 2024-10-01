@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
+import { createUserUpster } from "../services/Chatstream";
 
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role } = req.body;
@@ -28,6 +29,11 @@ const CreateUser = asyncHandler(async (req, res) => {
 
   try {
     const create = await Users.create(newUser);
+    const steramRegister = await createUserUpster({
+      _id: create._id + "",
+      email,
+      name,
+    })
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
     await firebaseAdmin.auth().deleteUser(firebaseUser.uid);

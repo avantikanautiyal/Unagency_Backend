@@ -11,8 +11,8 @@ import { streamServerClient } from "../config/getStreamIo.config";
 
 type UserStream = {
     _id: string,
-    name?: string,
-    email?: string,
+    name: string,
+    email: string,
 }
 export const createUserUpster = async (user: UserStream) => {
     if (!user) throw new Error("user not provided");
@@ -20,8 +20,8 @@ export const createUserUpster = async (user: UserStream) => {
     if (userExits?.users?.length > 0) return userExits.users;
     const newUserStream = {
         id: user._id + "",
-        ...user,
         role: 'user',
+        ...user,
     }
     const response = await streamServerClient.upsertUser(newUserStream);
     return response;

@@ -13,6 +13,7 @@ import Organizations, { Organization } from "../models/organization.model";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
 import Staff from "../models/staff.model";
+import ChatRoom from "../models/chatRoom.model";
 
 const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
@@ -47,6 +48,13 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       membersId: [...membersList, req?.user?.userId!, body.userId + ""],
       relationShipManagerId: req?.user?.userId!
     })
+    // ChatRoom.create({
+    //   roomName: create.title,
+    //   roomId: create._id + "",
+    //   userId: new mongoose.Types.ObjectId(body.userId + ""),
+    //   // membersId: [...membersList, req?.user?.userId!, body.userId + ""],
+    //   relationShipManagerId: req?.user?.userId!
+    // })
     return new ApiResponse(200, { chatRoom: roomInfo, project: create }, "Project created successfully");
   }
 });

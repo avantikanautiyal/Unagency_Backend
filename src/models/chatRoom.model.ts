@@ -2,7 +2,7 @@ import mongoose, { Schema } from "mongoose";
 
 export interface CRoom {
     _id: mongoose.Types.ObjectId;
-    chatRoomId: mongoose.Types.ObjectId;
+    chatRoomId: string;
     organizationId: mongoose.Types.ObjectId;
     userId: mongoose.Types.ObjectId;
     name: string;
@@ -13,7 +13,7 @@ export interface CRoom {
 const ChatRoomSchema = new Schema<CRoom>(
     {
         _id: { type: Schema.Types.ObjectId, auto: true },
-        chatRoomId: { type: Schema.Types.ObjectId, required: true },
+        chatRoomId: { type: String, required: true },
         name: { type: String, default: "" },
         isPrivate: { type: Boolean, default: true },
         // organizationId: { type: Schema.Types.ObjectId, ref: "organizations", unique: true },

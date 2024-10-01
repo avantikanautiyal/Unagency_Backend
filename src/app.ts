@@ -103,13 +103,26 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       break;
     case "invoice.paid":
       invoice = event.data.object;
-      const customerId = invoice.customer; // Get customer ID
+      const customerId = invoice.customer as string; // Get customer ID
       const paymentIntentId = invoice.payment_intent; // Get payment intent ID
       if (paymentIntentId !== null) {
         const paymentIntent = await stripe.paymentIntents.retrieve(
           paymentIntentId as string
         );
-        console.log(paymentIntent, "paymentIntent");
+        const paymentMethodId: string = paymentIntent?.payment_method as string; // Get payment method ID from payment intent
+        if (invoice?.default_payment_method == null) {
+          await stripe.paymentMethods.attach(paymentMethodId, {
+            customer: customerId,
+          });
+          await stripe.customers.update(customerId, {
+            invoice_settings: {
+              default_payment_method: paymentMethodId,
+            },
+          });
+          console.log(
+            `Payment method ${paymentMethodId} attached to customer ${customerId}.`
+          );
+        }
       }
 
       await Invoices.create({

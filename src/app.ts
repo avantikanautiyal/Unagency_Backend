@@ -112,21 +112,22 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         );
         const paymentMethodId: string = paymentIntent?.payment_method as string; // Get payment method ID from payment intent
 
+        console.log(paymentMethodId);
         if (invoice?.default_payment_method == null) {
           // If no default payment method is set, initiate a SetupIntent to save the payment method for future use
-          const setupIntent = await stripe.setupIntents.create({
-            payment_method: paymentMethodId,
-            customer: customerId,
-            usage: "off_session", // Save the card for future use
-             return_url: 'http://localhost:5173/'
-            // automatic_payment_methods: {
-            //   enabled: true,
-            //   allow_redirects: "never", // Disable redirect-based payment methods like 3D Secure
-            // },
-          });
+          // const setupIntent = await stripe.setupIntents.create({
+          //   payment_method: paymentMethodId,
+          //   customer: customerId,
+          //   usage: "off_session", // Save the card for future use
+          //   //  return_url: 'http://localhost:5173/'
+          //   automatic_payment_methods: {
+          //     enabled: true,
+          //     allow_redirects: "never", // Disable redirect-based payment methods like 3D Secure
+          //   },
+          // });
 
-          // Confirm the SetupIntent to ensure 3DS is handled
-          await stripe.setupIntents.confirm(setupIntent.id);
+          // // Confirm the SetupIntent to ensure 3DS is handled
+          // await stripe.setupIntents.confirm(setupIntent.id);
 
           // Once confirmed, attach the payment method and set it as the default
           await stripe.paymentMethods.attach(paymentMethodId, {

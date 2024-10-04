@@ -118,6 +118,10 @@ const StripeWebhook = asyncHandler(async (req, res) => {
             payment_method: paymentMethodId,
             customer: customerId,
             usage: "off_session", // Save the card for future use
+            automatic_payment_methods: {
+              enabled: true,
+              allow_redirects: "never", // Disable redirect-based payment methods like 3D Secure
+            },
           });
 
           // Confirm the SetupIntent to ensure 3DS is handled

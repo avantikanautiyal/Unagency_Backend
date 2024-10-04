@@ -13,9 +13,11 @@ const CreateSubscription = async (item: IItem) => {
       payment_behavior: "default_incomplete",
       customer: customerId,
       items: [{ price: priceId }],
+      payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
       automatic_tax: { enabled: false },
     });
+
     return stripeSubscription;
   } catch (err) {
     throw err;

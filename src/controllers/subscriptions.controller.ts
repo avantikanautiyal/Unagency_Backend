@@ -1,9 +1,12 @@
 import Subscriptions from "../models/subscription.model";
+import getDefaultPaymentMethod from "../services/getDefaultPaymentMethod";
 import CancelSubscription from "../services/subscription/cancelSubscription";
 import CreateCustomer from "../services/subscription/createCustomer";
 import createSession from "../services/subscription/createSession";
 import CreateSubscription from "../services/subscription/createSubscription";
+import getUserPaymentMethod from "../services/subscription/getUserPaymentMethod";
 import RetrieveSession from "../services/subscription/retrieveSession";
+import updateDefaultPaymentMethod from "../services/subscription/updateDefaultPaymentMethod";
 import upgradeSubscription from "../services/subscription/upgradeSubscription";
 import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
@@ -59,12 +62,36 @@ const createUserSubscription = asyncHandler(async (req: RequestUser, res) => {
   const subscription = await CreateSubscription(subscriptionData);
   return new ApiResponse(200, subscription, "subscription initiated");
 });
+// const createUserSubscription = asyncHandler(async (req: RequestUser, res) => {
+//   const { priceId } = req.body;
+//   if (!priceId) {
+//     return new ApiResponse(404, null, "Price Id  is required");
+//   }
+//   const customerId = req.user?.customerId;
+//   if (!customerId) {
+//     return new ApiResponse(401, null, "Customer Id couldn't fetched");
+//   }
+
+//   const previousPaymentMethod = await getUserPaymentMethod(customerId);
+//   const subscriptionData = {
+//     priceId: priceId as string,
+//     customerId: customerId,
+//     paymentMethodId: previousPaymentMethod?.id || null,
+//   };
+//   const subscription = await CreateSubscription(
+//     subscriptionData,
+//     previousPaymentMethod === null
+//   );
+//   return new ApiResponse(200, subscription, "subscription initiated");
+// });
 
 const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const customerId = req.user?.customerId ?? "";
   if (customerId == "") {
     return new ApiResponse(200, null, "Use is not a customer yet.");
   }
+  console.log(getDefaultPaymentMethod({ customerId }));
+
   const subscription = await Subscriptions.findOne({ customerId: customerId });
   return new ApiResponse(
     200,

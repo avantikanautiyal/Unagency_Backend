@@ -106,7 +106,7 @@ const UpdateUserOrganization = asyncHandler(
       return new ApiResponse(404, null, "Organization not found");
     }
 
-    if (req.body.companyName || req.body.owner) {
+    if (req.body.owner) {
       return new ApiResponse(
         400,
         null,

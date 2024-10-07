@@ -55,43 +55,32 @@ const FetchUserByFirebaseId = asyncHandler(async (req, res) => {
   return new ApiResponse(200, user, "User fetched successfully");
 });
 
+type UpdateUserBody = {
+  name: string;
+  contact?: number;
+  state?: string;
+  country?: string;
+}
 const UpdateUser = asyncHandler(async (req, res) => {
   const fireBaseId = req.params.firebaseId;
-  const updateData = req.body;
+  const updateData: UpdateUserBody = req.body;
 
-  if (updateData.email) {
+  if ((updateData as any).email) {
     return new ApiResponse(404, null, "Email cannot be updated");
   }
-  if (updateData.isVerified) {
+  if ((updateData as any).isVerified) {
     return new ApiResponse(404, null, "Sorry! you cannot update it manually.");
   }
+  await firebaseAdmin.auth().updateUser(fireBaseId, {
+    displayName: updateData.name,
+  });
 
-  // Prepare Firebase update promises
-  const firebaseUpdatePromises: Promise<any>[] = [];
-  const firebaseUpdateData: firebaseAdmin.auth.UpdateRequest = {};
 
-  // Update display name if provided
-  if (updateData.displayName) {
-    firebaseUpdateData.displayName = updateData.displayName;
-  }
-
-  // Update password if provided
-  if (updateData.password) {
-    firebaseUpdateData.password = updateData.password;
-  }
-  if (Object.keys(firebaseUpdateData).length > 0) {
-    firebaseUpdatePromises.push(
-      firebaseAdmin.auth().updateUser(fireBaseId, firebaseUpdateData)
-    );
-  }
-  await Promise.all(firebaseUpdatePromises);
-
-  const updatedUser = await Users.findByIdAndUpdate(
-    fireBaseId,
+  const updatedUser = await Users.findOneAndUpdate(   
+    { firebaseId: fireBaseId },
     { $set: updateData },
     { new: true, runValidators: true }
   );
-
   if (!updatedUser) {
     return new ApiResponse(404, null, "User not found");
   }

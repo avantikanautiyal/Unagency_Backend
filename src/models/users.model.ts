@@ -23,7 +23,7 @@ const UsersSchema = new Schema<IUser>(
       ref: "Staff",
     },
     role: { type: String, required: true },
-    contact: { type: Number, default: 0 },
+    contact: { type: String, default: "" },
     email: { type: String, required: true },
     state: { type: String, default: "" },
     country: { type: String, default: "" },

@@ -26,6 +26,30 @@ export const createUserUpster = async (user: UserStream) => {
     const response = await streamServerClient.upsertUser(newUserStream);
     return response;
 };
+// Update a user
+
+type UpdateUser = {
+    _id: string;
+    displayImage: string;
+}
+export const updateuserImage = async (user: UpdateUser) => {
+    if (!user) throw new Error("user not provided");
+    // const userExits = await streamServerClient.queryUsers({ id: user._id + "" as string });
+    // if (userExits?.users?.length > 0) return userExits.users;
+
+    // console.log("user=> ", userExits);
+    const updateUser = {
+        id: user._id + "",
+        set: {
+
+            displayImage: user.displayImage
+        }
+    }
+    const response = await streamServerClient.partialUpdateUser(updateUser);
+    return response;
+};
+
+
 // id can be a userid and a orginizationId 
 
 type CreateRoomProps = {

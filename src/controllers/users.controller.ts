@@ -4,7 +4,8 @@ import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
-import { createUserUpster } from "../services/Chatstream";
+import { createUserUpster, updateuserImage } from "../services/Chatstream";
+import { RequestUser } from "../types/user";
 
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role } = req.body;
@@ -60,10 +61,19 @@ type UpdateUserBody = {
   contact?: number;
   state?: string;
   country?: string;
+  image?: string;
 }
-const UpdateUser = asyncHandler(async (req, res) => {
+const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
   const fireBaseId = req.params.firebaseId;
   const updateData: UpdateUserBody = req.body;
+  if (req.file) {
+    const imageLink: string = (req.file as any).location!
+    const uploadedImages = await updateuserImage({
+      displayImage: imageLink,
+      _id: req?.user?.userId!
+    });
+    updateData.image = imageLink;
+  }
 
   if ((updateData as any).email) {
     return new ApiResponse(404, null, "Email cannot be updated");
@@ -74,9 +84,7 @@ const UpdateUser = asyncHandler(async (req, res) => {
   await firebaseAdmin.auth().updateUser(fireBaseId, {
     displayName: updateData.name,
   });
-
-
-  const updatedUser = await Users.findOneAndUpdate(   
+  const updatedUser = await Users.findOneAndUpdate(
     { firebaseId: fireBaseId },
     { $set: updateData },
     { new: true, runValidators: true }
@@ -85,13 +93,10 @@ const UpdateUser = asyncHandler(async (req, res) => {
     return new ApiResponse(404, null, "User not found");
   }
   return new ApiResponse(200, updatedUser, "User Data updated");
+
 });
 // resource
 const FetchResource = asyncHandler(async (req, res) => {
-  // const resourceList = await Users.find({ role: "resource" });
-  // const staffList = await Staff.find({
-  //   userId: { $in: resourceList.map(u => u._id) }
-  // }).populate("userId", "name _id")
   const staffList = await Staff.aggregate([
     {
       $lookup: {

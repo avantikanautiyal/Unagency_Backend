@@ -7,11 +7,16 @@ import {
   FetchUserByFirebaseId,
   UpdateUser,
 } from "../controllers/users.controller";
+import { fileUpload } from "../middlewares/multers3.middleware";
+import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
 router.get("/update/:firebaseId", FetchUserByFirebaseId);
 router.post("/create-user", CreateUser);
-router.patch("/update/:firebaseId", UpdateUser);
+router.patch("/update/:firebaseId",
+  VerifyUserHandler,
+  fileUpload.single("image"),
+  UpdateUser);
 
 router.get("/fetch-customers", FetchCustomers);
 router.get("/fetch-resource", FetchResource);

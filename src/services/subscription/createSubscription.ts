@@ -5,17 +5,10 @@ const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
 interface IItem {
   priceId: string;
   customerId: string;
-  // paymentMethodId: string | null;
 }
-const CreateSubscription = async (
-  item: IItem
-  // isFirstSubscription: boolean
-) => {
-  const {
-    priceId,
-    customerId,
-    // paymentMethodId
-  } = item;
+
+const CreateSubscription = async (item: IItem) => {
+  const { priceId, customerId } = item;
   try {
     const stripeSubscription = await stripe.subscriptions.create({
       payment_behavior: "default_incomplete",
@@ -28,64 +21,27 @@ const CreateSubscription = async (
 
     const latestInvoice = stripeSubscription.latest_invoice;
 
-    // Check if latestInvoice is an object (and not a string)
-    if (typeof latestInvoice !== "string" && latestInvoice?.payment_intent) {
+    // Check if latestInvoice is defined and is of type Invoice
+    if (latestInvoice && typeof latestInvoice !== "string") {
       const paymentIntent = latestInvoice.payment_intent;
 
-      // Check if paymentIntent is an object (not a string)
-      if (typeof paymentIntent !== "string") {
-        const clientSecret = paymentIntent.client_secret;
-        return { stripeSubscription, clientSecret };
-      } else {
-        throw new Error("Payment intent is a string, not an object.");
+      // Check if paymentIntent is defined and is of type PaymentIntent
+      if (paymentIntent && typeof paymentIntent !== "string") {
+        // Check if payment intent requires confirmation or action
+        if (
+          paymentIntent.status === "requires_action" ||
+          paymentIntent.status === "requires_confirmation"
+        ) {
+          // Handle required action (e.g., confirm payment or redirect user to Stripe for authentication)
+          return { subscription: stripeSubscription, paymentIntent };
+        }
       }
-    } else {
-      throw new Error("Unable to retrieve payment intent.");
     }
+
+    return stripeSubscription;
   } catch (err) {
     throw err;
   }
-
-  // try {
-  //   const subscriptionOptions: any = {
-  //     payment_behavior: "default_incomplete",
-  //     customer: customerId,
-  //     items: [{ price: priceId }],
-  //     expand: ["latest_invoice.payment_intent"],
-  //     automatic_tax: { enabled: false },
-  //   };
-
-  //   // If it's the user's first subscription, do not include a payment method ID
-  //   if (isFirstSubscription) {
-  //     subscriptionOptions["payment_settings"] = {
-  //       save_default_payment_method: "on_subscription",
-  //     };
-  //   } else {
-  //     // Use the previous payment method if it exists
-  //     subscriptionOptions["default_payment_method"] = paymentMethodId;
-  //   }
-
-  //   const stripeSubscription = await stripe.subscriptions.create(
-  //     subscriptionOptions
-  //   );
-
-  //   const latestInvoice = stripeSubscription.latest_invoice;
-
-  //   if (typeof latestInvoice !== "string" && latestInvoice?.payment_intent) {
-  //     const paymentIntent = latestInvoice.payment_intent;
-
-  //     if (typeof paymentIntent !== "string") {
-  //       const clientSecret = paymentIntent.client_secret;
-  //       return { stripeSubscription, clientSecret };
-  //     } else {
-  //       throw new Error("Payment intent is a string, not an object.");
-  //     }
-  //   } else {
-  //     throw new Error("Unable to retrieve payment intent.");
-  //   }
-  // } catch (err) {
-  //   throw err;
-  // }
 };
 
 export default CreateSubscription;

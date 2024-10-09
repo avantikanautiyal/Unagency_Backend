@@ -13,6 +13,11 @@ const createSession = async (item: IItem) => {
     mode: "subscription",
     payment_method_types: ["card"],
     customer: customerId,
+    billing_address_collection: "required",
+    customer_update: {
+      address: "auto",
+      name: "auto",
+    },
     line_items: [
       {
         price: priceId,

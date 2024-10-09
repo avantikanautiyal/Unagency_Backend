@@ -14,17 +14,19 @@ const getDefaultPaymentMethod = async (item: ICustomer) => {
       throw new Error("Customer has been deleted.");
     }
     const activeCustomer = customer as Stripe.Customer;
-    const defaultPaymentMethodId = activeCustomer.invoice_settings.default_payment_method;
+    const defaultPaymentMethodId =
+      activeCustomer.invoice_settings.default_payment_method;
 
     if (defaultPaymentMethodId) {
       // Retrieve the payment method details
-      const paymentMethod = await stripe.paymentMethods.retrieve(defaultPaymentMethodId as string);
+      const paymentMethod = await stripe.paymentMethods.retrieve(
+        defaultPaymentMethodId as string
+      );
       return paymentMethod;
-  } else {
-      console.log('No default payment method found for this customer.');
+    } else {
+      console.log("No default payment method found for this customer.");
       return null;
-  }
-    return activeCustomer.invoice_settings.default_payment_method;
+    }
   } catch (error) {
     throw error;
   }

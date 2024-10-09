@@ -3,10 +3,14 @@ import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 import {
   CancelCustomerSubscription,
   createCheckoutSession,
+  CreatePaymentMethod,
   createUserSubscription,
   fetchCheckoutSession,
+  MakeDefaultPaymentMethod,
+  RemovePaymentMethod,
   SubscriptionStatus,
   upgradeCustomerSubscription,
+  UserPaymentMethods,
 } from "../controllers/subscriptions.controller";
 const router = Router();
 
@@ -27,10 +31,22 @@ router.post(
   createUserSubscription
 );
 router.get("/fetch-checkout-session", VerifyUserHandler, fetchCheckoutSession);
+router.get("/payment-methods", VerifyUserHandler, UserPaymentMethods);
+router.post("/create-payment-method", VerifyUserHandler, CreatePaymentMethod);
 router.get(
   "/cancel-subscription",
   VerifyUserHandler,
   CancelCustomerSubscription
+);
+router.post(
+  "/make-default-payment-method",
+  VerifyUserHandler,
+  MakeDefaultPaymentMethod
+);
+router.post(
+  "/remove-payment-method",
+  VerifyUserHandler,
+  RemovePaymentMethod
 );
 
 export default router;

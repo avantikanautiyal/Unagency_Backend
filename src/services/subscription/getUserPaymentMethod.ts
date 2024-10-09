@@ -8,8 +8,6 @@ const getUserPaymentMethod = async (customerId: string) => {
     type: "card",
   });
 
-  console.log(paymentMethods);
-  // Return the first payment method if exists
   return paymentMethods.data.length > 0 ? paymentMethods.data[0] : null;
 };
 

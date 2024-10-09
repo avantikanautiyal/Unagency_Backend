@@ -1,12 +1,14 @@
 import Subscriptions from "../models/subscription.model";
-import getDefaultPaymentMethod from "../services/getDefaultPaymentMethod";
+import RetrievePriceAndProduct from "../services/retrievePrice";
 import CancelSubscription from "../services/subscription/cancelSubscription";
 import CreateCustomer from "../services/subscription/createCustomer";
 import createSession from "../services/subscription/createSession";
 import CreateSubscription from "../services/subscription/createSubscription";
-import getUserPaymentMethod from "../services/subscription/getUserPaymentMethod";
+import createUserPaymentMethod from "../services/subscription/createUserPaymentMethod";
+import MakeUserDefaultPaymentMethod from "../services/subscription/makeDefaultPaymentMethod";
+import PaymentMethods from "../services/subscription/paymentMethods";
+import RemoveUserPaymentMethod from "../services/subscription/removePaymentMethod";
 import RetrieveSession from "../services/subscription/retrieveSession";
-import updateDefaultPaymentMethod from "../services/subscription/updateDefaultPaymentMethod";
 import upgradeSubscription from "../services/subscription/upgradeSubscription";
 import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
@@ -41,7 +43,8 @@ const fetchCheckoutSession = asyncHandler(async (req: RequestUser, res) => {
     return new ApiResponse(404, null, "Session Id  is required");
   }
 
-  const session = RetrieveSession(session_id as string);
+  const session = await RetrieveSession(session_id as string);
+
   return new ApiResponse(200, session, "Session details fetched successfully");
 });
 
@@ -62,40 +65,27 @@ const createUserSubscription = asyncHandler(async (req: RequestUser, res) => {
   const subscription = await CreateSubscription(subscriptionData);
   return new ApiResponse(200, subscription, "subscription initiated");
 });
-// const createUserSubscription = asyncHandler(async (req: RequestUser, res) => {
-//   const { priceId } = req.body;
-//   if (!priceId) {
-//     return new ApiResponse(404, null, "Price Id  is required");
-//   }
-//   const customerId = req.user?.customerId;
-//   if (!customerId) {
-//     return new ApiResponse(401, null, "Customer Id couldn't fetched");
-//   }
-
-//   const previousPaymentMethod = await getUserPaymentMethod(customerId);
-//   const subscriptionData = {
-//     priceId: priceId as string,
-//     customerId: customerId,
-//     paymentMethodId: previousPaymentMethod?.id || null,
-//   };
-//   const subscription = await CreateSubscription(
-//     subscriptionData,
-//     previousPaymentMethod === null
-//   );
-//   return new ApiResponse(200, subscription, "subscription initiated");
-// });
 
 const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
   const customerId = req.user?.customerId ?? "";
   if (customerId == "") {
     return new ApiResponse(200, null, "Use is not a customer yet.");
   }
-  console.log(getDefaultPaymentMethod({ customerId }));
 
-  const subscription = await Subscriptions.findOne({ customerId: customerId });
+  const subscription = await Subscriptions.findOne({
+    customerId: customerId,
+    status: { $ne: "canceled" },
+  });
+  let subscribedPackage;
+  if (subscription) {
+    subscribedPackage = await RetrievePriceAndProduct({
+      priceId: subscription?.planId as string,
+    });
+  }
+
   return new ApiResponse(
     200,
-    subscription,
+    { subscription, ...subscribedPackage },
     "Subscription fetched successfully"
   );
 });
@@ -133,6 +123,71 @@ const CancelCustomerSubscription = asyncHandler(
   }
 );
 
+const UserPaymentMethods = asyncHandler(async (req: RequestUser, res) => {
+  const customerId = req.user?.customerId ?? "";
+  if (customerId == "") {
+    return new ApiResponse(200, null, "Use is not a customer yet.");
+  }
+  const paymentmethodsList = await PaymentMethods(customerId);
+  if (paymentmethodsList) {
+    return new ApiResponse(
+      200,
+      paymentmethodsList,
+      "Payment Method List fetched"
+    );
+  }
+});
+
+const CreatePaymentMethod = asyncHandler(async (req: RequestUser, res) => {
+  const customerId = req.user?.customerId ?? "";
+  const token = req.body?.token;
+  const cardHolder = req.body?.cardHolder;
+  if (customerId == "") {
+    return new ApiResponse(200, null, "Use is not a customer yet.");
+  }
+  const pamentMethod = await createUserPaymentMethod(
+    customerId,
+    token,
+    cardHolder
+  );
+  if (pamentMethod) {
+    return new ApiResponse(
+      200,
+      pamentMethod,
+      "Payment Method created successfully"
+    );
+  }
+});
+const MakeDefaultPaymentMethod = asyncHandler(async (req: RequestUser, res) => {
+  const customerId = req.user?.customerId ?? "";
+  const paymentMethodId = req.body?.payment_method_id;
+  if (customerId == "") {
+    return new ApiResponse(200, null, "Use is not a customer yet.");
+  }
+  const pamentMethod = await MakeUserDefaultPaymentMethod(
+    customerId,
+    paymentMethodId
+  );
+  if (pamentMethod) {
+    return new ApiResponse(
+      200,
+      pamentMethod,
+      "Made Default Payment Method successfully"
+    );
+  }
+});
+const RemovePaymentMethod = asyncHandler(async (req: RequestUser, res) => {
+  const customerId = req.user?.customerId ?? "";
+  const paymentMethodId = req.body?.payment_method_id;
+  if (customerId == "") {
+    return new ApiResponse(200, null, "User is not a customer yet.");
+  }
+  const Remove = await RemoveUserPaymentMethod(paymentMethodId);
+  if (Remove) {
+    return new ApiResponse(200, Remove, "Payment Method detached successfully");
+  }
+});
+
 export {
   createCheckoutSession,
   fetchCheckoutSession,
@@ -140,4 +195,8 @@ export {
   createUserSubscription,
   upgradeCustomerSubscription,
   CancelCustomerSubscription,
+  UserPaymentMethods,
+  CreatePaymentMethod,
+  MakeDefaultPaymentMethod,
+  RemovePaymentMethod,
 };

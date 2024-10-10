@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createProject,
+  fetchAllProjects,
   fetchClientProject,
   fetchClientProjectById,
   fetchProject,
@@ -10,6 +11,8 @@ import {
 import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
+
+router.get("/assigned-projects", VerifyUserHandler, fetchAllProjects);
 router.get("client/:projectId", VerifyUserHandler, fetchClientProjectById);
 router.get("/client", VerifyUserHandler, fetchClientProject);
 router.get("/:projectId", VerifyUserHandler, fetchProjectById);

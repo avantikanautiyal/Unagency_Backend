@@ -61,8 +61,6 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
 
 export const fetchAllProjects = asyncHandler(async (req: RequestUser, res) => {
   const relationshipManagerId = req.user?.userId;
-  // const relationshipManagerId = mongoose.Types.ObjectId(req.user?.userId);
-  // console.log(relationshipManagerId)
   const staff = await Staff.findOne({
     userId: new mongoose.Types.ObjectId(relationshipManagerId)
   })
@@ -79,24 +77,9 @@ export const fetchAllProjects = asyncHandler(async (req: RequestUser, res) => {
     {
       $unwind: '$user'
     },
-    // {
-    //   $project: {
-    //     projectId: '$_id',
-    //     projectTitle: '$title',
-    //     userIdInProject: '$user._id',
-    //     relationshipManager: '$user.relationship_manager',
-    //     orgId: 1,
-    //     title: 1,
-    //     category: 1,
-    //     description: 1,
-    //     startDate: 1,
-    //     deadline: 1,
-    //   }
-    // },
     {
       $match: {
         "user.relationship_manager": staff?._id,
-        // relationshipManager: new mongoose.Types.ObjectId(relationshipManagerId)
       }
     }
   ]);

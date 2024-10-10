@@ -39,6 +39,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
 
         const subscription = await Subscriptions.findOne({
           customerId: customerId,
+          status : {$ne : "canceled"}
         });
         if (subscription) {
           subscriptionId = subscription.subscriptionId;

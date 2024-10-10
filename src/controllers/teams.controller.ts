@@ -55,13 +55,13 @@ const RemoveMemberInOrganization = asyncHandler(
     }
     //CHeck if User is the Owner or Admin of Organization to Add Member in an Organization;
     const checkUser = await Teams.findOne({
-      user: req.user?.userId,
-      Organization: organization,
+      userId: new mongoose.Types.ObjectId(req.user?.userId),
+      Organization: new mongoose.Types.ObjectId(organization as string),
     });
     if (!checkUser) throw new ApiError("Unauthorised Member Found", 401);
     if (checkUser.role == "owner") {
       const removeMember = await Teams.deleteOne({
-        userId,
+        userId: new mongoose.Types.ObjectId(userId),
         Organization: checkUser?.Organization,
       });
 

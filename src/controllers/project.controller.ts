@@ -13,6 +13,7 @@ import Organizations, { Organization } from "../models/organization.model";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
 import Staff from "../models/staff.model";
+import ChatRoom from "../models/chatRoom.model";
 
 const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
@@ -47,9 +48,62 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       membersId: [...membersList, req?.user?.userId!, body.userId + ""],
       relationShipManagerId: req?.user?.userId!
     })
+    // ChatRoom.create({
+    //   roomName: create.title,
+    //   roomId: create._id + "",
+    //   userId: new mongoose.Types.ObjectId(body.userId + ""),
+    //   // membersId: [...membersList, req?.user?.userId!, body.userId + ""],
+    //   relationShipManagerId: req?.user?.userId!
+    // })
     return new ApiResponse(200, { chatRoom: roomInfo, project: create }, "Project created successfully");
   }
 });
+
+export const fetchAllProjects = asyncHandler(async (req: RequestUser, res) => {
+  const relationshipManagerId = req.user?.userId;
+  // const relationshipManagerId = mongoose.Types.ObjectId(req.user?.userId);
+  // console.log(relationshipManagerId)
+  const staff = await Staff.findOne({
+    userId: new mongoose.Types.ObjectId(relationshipManagerId)
+  })
+  if (!staff) throw new ApiError("you are not a staff", 400);
+  const projects = await Projects.aggregate([
+    {
+      $lookup: {
+        from: 'users', // Assuming the users collection is named 'users'
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'user'
+      }
+    },
+    {
+      $unwind: '$user'
+    },
+    // {
+    //   $project: {
+    //     projectId: '$_id',
+    //     projectTitle: '$title',
+    //     userIdInProject: '$user._id',
+    //     relationshipManager: '$user.relationship_manager',
+    //     orgId: 1,
+    //     title: 1,
+    //     category: 1,
+    //     description: 1,
+    //     startDate: 1,
+    //     deadline: 1,
+    //   }
+    // },
+    {
+      $match: {
+        "user.relationship_manager": staff?._id,
+        // relationshipManager: new mongoose.Types.ObjectId(relationshipManagerId)
+      }
+    }
+  ]);
+
+
+  return new ApiResponse(200, projects, "successfully fetch RM assigned projects")
+})
 
 //For Customer to see their Projects
 const fetchProject = asyncHandler(async (req: RequestUser, res) => {

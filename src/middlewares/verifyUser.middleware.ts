@@ -59,9 +59,13 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         next();
       }
     } catch (err) {
-      throw new ApiError((err as Error).message, 401);
+      next(new ApiError((err as Error).message, 401));
+      return;
+      // throw new ApiError((err as Error).message, 401);
     }
   } else {
-    throw new ApiError("No Token Provided", 401);
+    next(new ApiError("No Token Provided", 401));
+    return;
+    // throw new ApiError("No Token Provided", 401);
   }
 });

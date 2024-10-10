@@ -18,6 +18,7 @@ import teamRouter from "./routes/teams.route";
 import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
 import ChatRouter from "./routes/chat.route";
+import RequirementRouter from "./routes/requirement.route"
 
 // middleware
 import stripeRouter from "./routes/stripe.route";
@@ -175,6 +176,7 @@ app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
 app.use("/chat", VerifyUserHandler, ChatRouter);
+app.use("/requirement", RequirementRouter);
 
 // Invalid Path Error Handler
 app.use(RouteErrorHandler);

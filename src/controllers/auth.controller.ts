@@ -74,6 +74,8 @@ const Register = asyncHandler(async (req, res) => {
             personalName: {
               [registration._id + ""]: relationshipManager?.userInfo?.name,
               [relationshipManager.userInfo._id + ""]: registration.name,
+              customerName: registration.name,
+              relationshipManagerName: relationshipManager?.userInfo?.name
             },
           });
           res

@@ -4,6 +4,8 @@ import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
+import { createUserUpster, updateuserImage } from "../services/Chatstream";
+import { RequestUser } from "../types/user";
 
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role } = req.body;
@@ -28,6 +30,11 @@ const CreateUser = asyncHandler(async (req, res) => {
 
   try {
     const create = await Users.create(newUser);
+    const steramRegister = await createUserUpster({
+      _id: create._id + "",
+      email,
+      name,
+    })
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
     await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
@@ -49,54 +56,47 @@ const FetchUserByFirebaseId = asyncHandler(async (req, res) => {
   return new ApiResponse(200, user, "User fetched successfully");
 });
 
-const UpdateUser = asyncHandler(async (req, res) => {
+type UpdateUserBody = {
+  name: string;
+  contact?: number;
+  state?: string;
+  country?: string;
+  image?: string;
+}
+const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
   const fireBaseId = req.params.firebaseId;
-  const updateData = req.body;
+  const updateData: UpdateUserBody = req.body;
+  if (req.file) {
+    const imageLink: string = (req.file as any).location!
+    const uploadedImages = await updateuserImage({
+      displayImage: imageLink,
+      _id: req?.user?.userId!
+    });
+    updateData.image = imageLink;
+  }
 
-  if (updateData.email) {
+  if ((updateData as any).email) {
     return new ApiResponse(404, null, "Email cannot be updated");
   }
-  if (updateData.isVerified) {
+  if ((updateData as any).isVerified) {
     return new ApiResponse(404, null, "Sorry! you cannot update it manually.");
   }
-
-  // Prepare Firebase update promises
-  const firebaseUpdatePromises: Promise<any>[] = [];
-  const firebaseUpdateData: firebaseAdmin.auth.UpdateRequest = {};
-
-  // Update display name if provided
-  if (updateData.displayName) {
-    firebaseUpdateData.displayName = updateData.displayName;
-  }
-
-  // Update password if provided
-  if (updateData.password) {
-    firebaseUpdateData.password = updateData.password;
-  }
-  if (Object.keys(firebaseUpdateData).length > 0) {
-    firebaseUpdatePromises.push(
-      firebaseAdmin.auth().updateUser(fireBaseId, firebaseUpdateData)
-    );
-  }
-  await Promise.all(firebaseUpdatePromises);
-
-  const updatedUser = await Users.findByIdAndUpdate(
-    fireBaseId,
+  await firebaseAdmin.auth().updateUser(fireBaseId, {
+    displayName: updateData.name,
+  });
+  const updatedUser = await Users.findOneAndUpdate(
+    { firebaseId: fireBaseId },
     { $set: updateData },
     { new: true, runValidators: true }
   );
-
   if (!updatedUser) {
     return new ApiResponse(404, null, "User not found");
   }
   return new ApiResponse(200, updatedUser, "User Data updated");
+
 });
 // resource
 const FetchResource = asyncHandler(async (req, res) => {
-  // const resourceList = await Users.find({ role: "resource" });
-  // const staffList = await Staff.find({
-  //   userId: { $in: resourceList.map(u => u._id) }
-  // }).populate("userId", "name _id")
   const staffList = await Staff.aggregate([
     {
       $lookup: {

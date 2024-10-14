@@ -18,7 +18,8 @@ import teamRouter from "./routes/teams.route";
 import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
 import ChatRouter from "./routes/chat.route";
-import RequirementRouter from "./routes/requirement.route"
+import RequirementRouter from "./routes/requirement.route";
+import TaskRouter from "./routes/tasks.route";
 
 // middleware
 import stripeRouter from "./routes/stripe.route";
@@ -26,7 +27,6 @@ import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
-import { ApiResponse } from "./utils/apiResponse";
 import Subscriptions from "./models/subscription.model";
 import Invoices from "./models/invoices.model";
 const app = express();
@@ -176,6 +176,7 @@ app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
 app.use("/chat", VerifyUserHandler, ChatRouter);
+app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/requirement", RequirementRouter);
 
 // Invalid Path Error Handler

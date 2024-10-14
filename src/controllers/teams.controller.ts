@@ -87,19 +87,16 @@ const RemoveMemberInOrganization = asyncHandler(
 
 const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   const { organization, status } = req.query;
-  // console.log("organization ", organization)
   if (!organization) throw new ApiError("organization not provied", 400);
   const checkUser = await Teams.findOne({
     Organization: new mongoose.Types.ObjectId(organization as string),
   });
 
   if (!checkUser) throw new ApiError("User not found", 401);
-  console.log("invitation status ", !!status ? "accpted" : { $exists: true });
   const team = await Teams.find({
     Organization: checkUser?.Organization,
     // If `status` exists, filter by "accepted", otherwise fetch all.
-    invitationStatus: !!status ? "accpted" : { $exists: true },
-    // userId: { $ne: req.user?.userId }
+    invitationStatus: !!status ? "accepted" : { $exists: true },
     role: !!status ? "member" : { $exists: true }, // If `status` exists, filter by "member", otherwise fetch all.
   }).populate("userId", "name email");
 
@@ -118,7 +115,7 @@ export const InviteMemberInOrgnization = asyncHandler(
     const organization = await Organizations.findOne({
       owner: req.user?.userId!,
     });
-    if (!organization) throw new ApiError("no orgnization found", 404);
+    if (!organization) throw new ApiError("no organization found", 404);
 
     const isExist = await Teams.exists({
       userId: invitedUser._id,
@@ -143,53 +140,48 @@ export const InviteMemberInOrgnization = asyncHandler(
       invitationStatus: "pending",
       Organization: organization,
     });
-    return new ApiResponse(200, addMember, "Member added successfully");
+    return new ApiResponse(200, addMember, "Member invited successfully");
   }
 );
 
-export const getMembersInvitations = asyncHandler(
-  async (req: RequestUser, res) => {
-    const invitations = await Teams.find({
-      userId: req.user?.userId,
-      invitationStatus: { $ne: "accpted" },
-    }).populate("Organization");
-    return new ApiResponse(200, invitations, "invitation fetch successfully");
-  }
-);
+// export const getMembersInvitations = asyncHandler(
+//   async (req: RequestUser, res) => {
+//     const invitations = await Teams.find({
+//       userId: req.user?.userId,
+//       invitationStatus: { $ne: "accepted" },
+//     }).populate("Organization");
+//     return new ApiResponse(200, invitations, "invitation fetch successfully");
+//   }
+// );
 
 export const getMyInvitations = asyncHandler(async (req: RequestUser, res) => {
   const invitation = await Teams.find({
     userId: new mongoose.Types.ObjectId(req.user?.userId),
     invitationStatus: "pending",
-    role: { $ne: "owner" },
+    // role: { $ne: "owner" },
   }).populate("Organization");
 
   return new ApiResponse(200, invitation);
 });
 
 // PATCH
-export const invitationInvitation = asyncHandler(
-  async (req: RequestUser, res) => {
-    const {
-      teamId,
-      status,
-    }: { teamId: string; status: "accpted" | "pending" | "rejected" } =
-      req.body;
-    if (!teamId && !status)
-      throw new ApiError("teamId | invitation status not provided", 400);
+export const inviteAction = asyncHandler(async (req: RequestUser, res) => {
+  const {
+    teamId,
+    status,
+  }: { teamId: string; status: "accepted" | "pending" | "rejected" } = req.body;
+  if (!teamId && !status)
+    throw new ApiError("teamId | invitation status not provided", 400);
 
-    const updated = await Teams.updateOne(
-      {
-        _id: new mongoose.Types.ObjectId(teamId),
-      },
-      { $set: { invitationStatus: status } } // Replace newStatus with the actual status value you want to set
-    );
-    return new ApiResponse(
-      200,
-      updated,
-      "invitation action perfomed successfully"
-    );
-  }
-);
+  const updated = await Teams.findByIdAndUpdate(
+    new mongoose.Types.ObjectId(teamId),
+    { $set: { invitationStatus: status } } // Replace newStatus with the actual status value you want to set
+  );
+  return new ApiResponse(
+    200,
+    updated,
+    "invitation action perfomed successfully"
+  );
+});
 
 export { AddMemberInOrganization, RemoveMemberInOrganization, fetchUserTeam };

@@ -1,13 +1,4 @@
-import { UserType } from '../types/user';
 import { streamServerClient } from "../config/getStreamIo.config";
-
-// import { IUser } from '../models/users.model';
-// import { ApiError } from '../utils/apiError';
-// import { ApiResponse } from '../utils/apiResponse';
-// import Users from '../models/users.model';
-// import ChatRoom from '../models/chatRoom.model';
-// import ChatRoomUser from '../models/chatRoomParticipants.model';
-// import mongoose from 'mongoose';
 
 type UserStream = {
     _id: string,
@@ -34,10 +25,7 @@ type UpdateUser = {
 }
 export const updateuserImage = async (user: UpdateUser) => {
     if (!user) throw new Error("user not provided");
-    // const userExits = await streamServerClient.queryUsers({ id: user._id + "" as string });
-    // if (userExits?.users?.length > 0) return userExits.users;
 
-    // console.log("user=> ", userExits);
     const updateUser = {
         id: user._id + "",
         set: {
@@ -108,11 +96,9 @@ type ProjectRoom = {
 }
 // manager can only create a room 
 export const createRoomForProject = async (data: ProjectRoom) => {
-    // TODO : flow to create a project for a ideal conditon 
     try {
         const channel = streamServerClient.channel("messaging", data.roomId, {
             name: data.roomName,
-            // room_name: roomName,
             room_type: "project",
             members: data.membersId,
             created_by_id: data.relationShipManagerId,

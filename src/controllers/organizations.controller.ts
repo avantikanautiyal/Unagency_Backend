@@ -6,26 +6,7 @@ import Teams from "../models/team.model";
 import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
-import Users from "../models/users.model";
-// import {
-//   assignChatRoomToResourse,
-//   createChatRoom,
-// } from "../services/Chatstream";
 
-// interface UserType {
-//   userId: mongoose.Types.ObjectId;
-//   firebaseId: string;
-//   role: string;
-//   contact: number;
-//   name: string;
-//   state: string;
-//   country: string;
-//   isVerified: boolean;
-//   email: string;
-// }
-// type RequestUser = Request & {
-//   user?: UserType;
-// };
 const createOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const {
@@ -35,8 +16,6 @@ const createOrganization = asyncHandler(
       contactPerson,
       contactMobile,
       contactEmail,
-
-
     } = req.body;
 
     if (
@@ -55,22 +34,20 @@ const createOrganization = asyncHandler(
       return new ApiResponse(409, null, "Organization already exists");
     }
 
-    const organization = await Organizations.create(new Organization({
-      ...req.body,
-      owner: req?.user?.userId,
-    }));
+    const organization = await Organizations.create(
+      new Organization({
+        ...req.body,
+        owner: req?.user?.userId,
+      })
+    );
 
     if (organization) {
       await Teams.create({
         Organization: organization._id,
         role: "owner",
-        invitationStatus: "accpted",
+        invitationStatus: "accepted",
         userId: req?.user?.userId,
       });
-      // const room = await assignChatRoomToResourse({
-      //   id: organization._id + "",
-      //   roomName: companyName,
-      // });
       return new ApiResponse(
         200,
         organization,
@@ -90,11 +67,7 @@ const UserOrganization = asyncHandler(
     const userOrganization = await Organizations.findOne({
       owner: new mongoose.Types.ObjectId(req?.user?.userId),
     });
-    return new ApiResponse(
-      200,
-      userOrganization,
-      "User Organization fetched"
-    );
+    return new ApiResponse(200, userOrganization, "User Organization fetched");
   }
 );
 
@@ -107,11 +80,7 @@ const UpdateUserOrganization = asyncHandler(
     }
 
     if (req.body.owner) {
-      return new ApiResponse(
-        400,
-        null,
-        "company Name cannot be updated once created"
-      );
+      return new ApiResponse(400, null, "Something went wrong");
     }
 
     const updatedOrganization = await Organizations.findOneAndUpdate(
@@ -125,7 +94,7 @@ const UpdateUserOrganization = asyncHandler(
   }
 );
 
-//
+// TODO = change 
 const getOrginiztionMyUserId = asyncHandler(async (req: RequestUser, res) => {
   const { userId } = req.params;
 
@@ -142,5 +111,5 @@ export {
   fetchOrganizations,
   UserOrganization,
   UpdateUserOrganization,
-  getOrginiztionMyUserId
+  getOrginiztionMyUserId,
 };

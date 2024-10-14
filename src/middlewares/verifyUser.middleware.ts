@@ -7,6 +7,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import StripeCustomers from "../models/customer.model";
 import Subscriptions from "../models/subscription.model";
 import Organizations from "../models/organization.model";
+import Staff from "../models/staff.model";
 
 export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
   req: RequestUser,
@@ -25,6 +26,13 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
           firebaseId: verification?.uid,
         });
 
+        let staff;
+        if (getUser?.role == "servicing" || getUser?.role == "resource") {
+          const checkStaff = await Staff.findOne({ userId: getUser?._id });
+          if (checkStaff) {
+            staff = checkStaff;
+          }
+        }
         const organization = await Organizations.findOne({
           owner: getUser?._id,
         });
@@ -39,7 +47,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
 
         const subscription = await Subscriptions.findOne({
           customerId: customerId,
-          status : {$ne : "canceled"}
+          status: { $ne: "canceled" },
         });
         if (subscription) {
           subscriptionId = subscription.subscriptionId;
@@ -55,17 +63,43 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
           subscriptionId,
           customerId,
           organization: organization,
+          staff: staff,
         };
         next();
       }
     } catch (err) {
       next(new ApiError((err as Error).message, 401));
       return;
-      // throw new ApiError((err as Error).message, 401);
     }
   } else {
     next(new ApiError("No Token Provided", 401));
     return;
-    // throw new ApiError("No Token Provided", 401);
   }
 });
+
+export const VerifyRole = (requiredRoles: string[]) => {
+  return asyncHandler(async (req, res, next) => {
+    const authHeader = req.headers["authorization"];
+    const accessToken = authHeader && authHeader.split(" ")[1];
+    if (accessToken) {
+      try {
+        const verification = await firebaseAdmin
+          .auth()
+          .verifyIdToken(accessToken);
+        if (verification) {
+          const user = await Users.findOne({
+            firebaseId: verification?.uid,
+          });
+          if (requiredRoles.includes(user?.role as string)) {
+            next();
+          } else {
+            throw new ApiError("Unauthorized role", 403);
+          }
+        }
+      } catch (err) {
+        next(new ApiError((err as Error).message, 401));
+        return;
+      }
+    }
+  });
+};

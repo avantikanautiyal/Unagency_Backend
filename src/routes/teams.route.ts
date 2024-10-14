@@ -4,17 +4,17 @@ import {
   fetchUserTeam,
   RemoveMemberInOrganization,
   InviteMemberInOrgnization,
-  getMembersInvitations,
+  // getMembersInvitations,
   getMyInvitations,
-  invitationInvitation
+  inviteAction,
 } from "../controllers/teams.controller";
 
 const router = Router();
 // Invitation flow
 router.post("/invite-member", InviteMemberInOrgnization);
-router.patch("/invite-action", invitationInvitation);
+router.patch("/invite-action", inviteAction);
 
-router.get("/invitation", getMembersInvitations);
+// router.get("/invitation", getMembersInvitations);
 router.get("/my-invitation", getMyInvitations);
 
 router.post("/add-member", AddMemberInOrganization);

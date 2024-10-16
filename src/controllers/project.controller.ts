@@ -55,37 +55,39 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
 });
 
 //for PM
-export const fetchMyAllCustomerProjectList = asyncHandler(async (req: RequestUser, res) => {
-  const relationshipManagerId = req.user?.userId;
-  const staff = await Staff.findOne({
-    userId: new mongoose.Types.ObjectId(relationshipManagerId),
-  });
-  if (!staff) throw new ApiError("You are not a staff", 400);
-  const projects = await Projects.aggregate([
-    {
-      $lookup: {
-        from: "users", // Assuming the users collection is named 'users'
-        localField: "userId",
-        foreignField: "_id",
-        as: "user",
+export const fetchMyAllCustomerProjectList = asyncHandler(
+  async (req: RequestUser, res) => {
+    const relationshipManagerId = req.user?.userId;
+    const staff = await Staff.findOne({
+      userId: new mongoose.Types.ObjectId(relationshipManagerId),
+    });
+    if (!staff) throw new ApiError("You are not a staff", 400);
+    const projects = await Projects.aggregate([
+      {
+        $lookup: {
+          from: "users", // Assuming the users collection is named 'users'
+          localField: "userId",
+          foreignField: "_id",
+          as: "user",
+        },
       },
-    },
-    {
-      $unwind: "$user",
-    },
-    {
-      $match: {
-        "user.relationship_manager": staff?._id,
+      {
+        $unwind: "$user",
       },
-    },
-  ]);
+      {
+        $match: {
+          "user.relationship_manager": staff?._id,
+        },
+      },
+    ]);
 
-  return new ApiResponse(
-    200,
-    projects,
-    "successfully fetch RM assigned projects"
-  );
-});
+    return new ApiResponse(
+      200,
+      projects,
+      "successfully fetch RM assigned projects"
+    );
+  }
+);
 
 //For Customer to see their Projects
 const fetchProjectList = asyncHandler(async (req: RequestUser, res) => {
@@ -103,23 +105,25 @@ const fetchProjectList = asyncHandler(async (req: RequestUser, res) => {
 
 // it's for both Relationship manager and normal client to fetch
 //For Relationship Manager to see client's Projects
-const fetchProjectListByClientId = asyncHandler(async (req: RequestUser, res) => {
-  const { userId } = req.query;
-  if (!userId) throw new ApiError("userId not provided", 400);
+const fetchProjectListByClientId = asyncHandler(
+  async (req: RequestUser, res) => {
+    const { userId } = req.query;
+    if (!userId) throw new ApiError("userId not provided", 400);
 
-  const isManger = await isServecingManager(
-    req.user?.userId!,
-    userId as string
-  );
-  if (!isManger.value) return new ApiResponse(200, null, isManger.message);
-  const projects = await Projects.find({
-    userId: new mongoose.Types.ObjectId(userId as string),
-  }).populate({
-    path: "userId",
-    select: "firebaseId role name email",
-  });
-  return new ApiResponse(200, projects, "Projects fetched successfully");
-});
+    const isManger = await isServecingManager(
+      req.user?.userId!,
+      userId as string
+    );
+    if (!isManger.value) return new ApiResponse(200, null, isManger.message);
+    const projects = await Projects.find({
+      userId: new mongoose.Types.ObjectId(userId as string),
+    }).populate({
+      path: "userId",
+      select: "firebaseId role name email",
+    });
+    return new ApiResponse(200, projects, "Projects fetched successfully");
+  }
+);
 
 const updateProject = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
@@ -160,7 +164,9 @@ const fetchClientProjectById = asyncHandler(async (req: RequestUser, res) => {
     const project = await Projects.findOne({
       userId: body.userId,
       _id: projectId,
-    });
+    })
+      .populate("category", "title")
+      .populate("clientTeam");
 
     return new ApiResponse(200, project, "Project fetched successfully");
   } else {
@@ -172,7 +178,9 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
   const project = await Projects.findOne({
     _id: new mongoose.Types.ObjectId(projectId),
-  });
+  })
+    .populate("category", "title")
+    .populate("clientTeam");
   if (!project)
     return new ApiResponse(200, project, "Project Fetched successfully");
   return new ApiResponse(200, project, "Project Fetched successfully");

@@ -165,8 +165,13 @@ const fetchClientProjectById = asyncHandler(async (req: RequestUser, res) => {
       userId: body.userId,
       _id: projectId,
     })
-      .populate("category", "title")
-      .populate("clientTeam");
+      .populate({
+        path: "category", // Populate the author of the post
+      })
+      .populate({
+        path: "clientTeam", // Populate the comments
+        populate: { path: "userId" }, // Nested populate to get the author of each comment
+      });
 
     return new ApiResponse(200, project, "Project fetched successfully");
   } else {
@@ -180,7 +185,10 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
     _id: new mongoose.Types.ObjectId(projectId),
   })
     .populate("category", "title")
-    .populate("clientTeam");
+    .populate({
+      path: "clientTeam", // Populate the comments
+      populate: { path: "userId" }, // Nested populate to get the author of each comment
+    });
   if (!project)
     return new ApiResponse(200, project, "Project Fetched successfully");
   return new ApiResponse(200, project, "Project Fetched successfully");

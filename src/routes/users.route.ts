@@ -8,20 +8,37 @@ import {
   UpdateUser,
 } from "../controllers/users.controller";
 import { fileUpload } from "../middlewares/multers3.middleware";
-import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
+import {
+  VerifyRole,
+  VerifyUserHandler,
+} from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-router.get("/update/:firebaseId", FetchUserByFirebaseId);
-router.post("/create-user", CreateUser);
-router.patch("/update/:firebaseId",
+router.get(
+  "/update/:firebaseId",
+  VerifyRole(["admin", "superadmin"]),
+  FetchUserByFirebaseId
+);
+router.post("/create-user", VerifyRole(["admin", "superadmin"]), CreateUser);
+router.patch(
+  "/update/:firebaseId",
   VerifyUserHandler,
   fileUpload.single("image"),
-  UpdateUser);
+  UpdateUser
+);
 
-router.get("/fetch-customers", FetchCustomers);
-router.get("/fetch-resource", FetchResource);
+router.get(
+  "/fetch-customers",
+  VerifyRole(["admin", "superadmin", "servicing"]),
+  FetchCustomers
+);
+router.get(
+  "/fetch-resource",
+  VerifyRole(["admin", "superadmin", "servicing"]),
+  FetchResource
+);
 
-router.get("/fetch-internal-team", FetchInternalTeam);
+router.get("/fetch-internal-team",VerifyRole(["admin", "superadmin"]), FetchInternalTeam);
 router.get(":firebaseId", FetchUserByFirebaseId);
 
 export default router;

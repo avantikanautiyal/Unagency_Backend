@@ -168,6 +168,7 @@ const fetchClientProjectById = asyncHandler(async (req: RequestUser, res) => {
       .populate("category", "title")
       .populate({
         path: "clientTeam", // Populate the comments
+        select: "userId",
         populate: { path: "userId", select: ["name", "email"] }, // Nested populate to get the author of each comment
       });
 
@@ -184,7 +185,8 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
   })
     .populate("category", "title")
     .populate({
-      path: "clientTeam", // Populate the comments
+      path: "clientTeam", // Populate the comments,
+      select: "userId",
       populate: { path: "userId", select: ["name", "email"] }, // Nested populate to get the author of each comment
     });
   if (!project)

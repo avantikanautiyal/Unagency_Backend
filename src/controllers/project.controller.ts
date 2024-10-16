@@ -165,12 +165,10 @@ const fetchClientProjectById = asyncHandler(async (req: RequestUser, res) => {
       userId: body.userId,
       _id: projectId,
     })
-      .populate({
-        path: "category", // Populate the author of the post
-      })
+      .populate("category", "title")
       .populate({
         path: "clientTeam", // Populate the comments
-        populate: { path: "userId" }, // Nested populate to get the author of each comment
+        populate: { path: "userId", select: ["name", "email"] }, // Nested populate to get the author of each comment
       });
 
     return new ApiResponse(200, project, "Project fetched successfully");
@@ -187,7 +185,7 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
     .populate("category", "title")
     .populate({
       path: "clientTeam", // Populate the comments
-      populate: { path: "userId" }, // Nested populate to get the author of each comment
+      populate: { path: "userId", select: ["name", "email"] }, // Nested populate to get the author of each comment
     });
   if (!project)
     return new ApiResponse(200, project, "Project Fetched successfully");

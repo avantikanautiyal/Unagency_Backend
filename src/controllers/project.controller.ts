@@ -9,7 +9,11 @@ import Organizations, { Organization } from "../models/organization.model";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
 import Staff from "../models/staff.model";
+import { v6 as uuid6 } from "uuid";
+import ChatRoom from "../models/chatRoom.model";
 
+
+/*----------------------------------{  for Servecing  }-----------------------------------------*/
 // for PM
 const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
@@ -42,10 +46,19 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       );
     const roomInfo = await createRoomForProject({
       roomName: create.title,
-      roomId: create._id + "",
+      roomId: uuid6(),
+      project_id: create._id + "",
       membersId: [...membersList, req?.user?.userId!, body.userId + ""],
       relationShipManagerId: req?.user?.userId!,
     });
+    ChatRoom.create({
+      cid: roomInfo?.cid,
+      project_id: create._id + "",
+      room_type: "group",
+      roomId: roomInfo?.roomId,
+      members: [...membersList, req?.user?.userId!, body.userId + ""],
+
+    })
     return new ApiResponse(
       200,
       { chatRoom: roomInfo, project: create },
@@ -87,21 +100,7 @@ export const fetchMyAllCustomerProjectList = asyncHandler(async (req: RequestUse
   );
 });
 
-//For Customer to see their Projects
-const fetchProjectList = asyncHandler(async (req: RequestUser, res) => {
-  const projects = await Projects.find({ userId: req?.user?.userId })
-    .populate({
-      path: "userId",
-      select: "firebaseId role name email ",
-    })
-    .populate({
-      path: "orgId",
-      select: "companyName contactPerson contactEmail contactMobile industry",
-    });
-  return new ApiResponse(200, projects, "Projects fetched successfully");
-});
-
-// it's for both Relationship manager and normal client to fetch
+// TODO- fix make it only for servicing
 //For Relationship Manager to see client's Projects
 const fetchProjectListByClientId = asyncHandler(async (req: RequestUser, res) => {
   const { userId } = req.query;
@@ -194,6 +193,21 @@ const isServecingManager = async (RMID: string, customerId: string) => {
 
   return { value: true };
 };
+
+/**------------------------------{ for Customer  }------------------------------------- */
+
+//For Customer to see their Projects
+const fetchProjectList = asyncHandler(async (req: RequestUser, res) => {
+  const userId: string = req?.user?.userId!;
+  const projects = await Projects.find({
+    userId: new mongoose.Types.ObjectId(userId as string),
+  }).populate({
+    path: "userId",
+    select: "firebaseId role name email",
+  });
+  return new ApiResponse(200, projects, "Projects fetched successfully");
+});
+
 export {
   createProject,
   fetchProjectListByClientId,

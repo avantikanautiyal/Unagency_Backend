@@ -3,13 +3,18 @@ import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 import { fileUpload } from "../middlewares/multers3.middleware";
 import {
     createRequirement,
-    getCustomerRequirement
+    getCustomerRequirement,
+    getRequirement
 
 } from "../controllers/requirement.controller";
 
 const router = Router();
-router.post("/create", VerifyUserHandler, fileUpload.array("attach"),
-    createRequirement);
+/* -------------------{ custoemr }-----------------------*/
+
+router.post("/create", VerifyUserHandler, fileUpload.array("attach"), createRequirement);
+router.get("/", VerifyUserHandler, getRequirement);
+
+/* -------------------{ servicing }-----------------------*/
 router.get("/:userId", VerifyUserHandler, getCustomerRequirement);
 
 

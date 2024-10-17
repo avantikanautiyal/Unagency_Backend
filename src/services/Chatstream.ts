@@ -41,13 +41,32 @@ export const updateuserImage = async (user: UpdateUser) => {
 // id can be a userid and a orginizationId 
 
 type CreateRoomProps = {
-    roomName: string;
+    roomName?: string;
     roomId: string;
     members: string[];
-    personalName: any;
+    personalName?: any;
     createdBy?: string;
+    room_type: "personal" | "resource";
 }
 export async function createChatRoom(data: CreateRoomProps) {
+    try {
+        console.log("rooom creting..", data);
+        const channel = streamServerClient.channel("messaging", data.roomId, {
+            name: data.roomName ?? data.roomId,
+            room_type: data.room_type ?? "personal",
+            members: data.members,
+            created_by_id: data?.createdBy ?? data.roomId,
+        }
+        );
+        await channel.create();
+        console.log("room created ", channel.id)
+
+        return { roomId: channel.id, cid: channel.cid };
+    } catch (error) {
+        return { error: (error as Error).message }
+    }
+};
+export async function createChatRoomForResourse(data: CreateRoomProps) {
     try {
         console.log("rooom creting..", data);
         const channel = streamServerClient.channel("messaging", data.roomId, {
@@ -65,6 +84,7 @@ export async function createChatRoom(data: CreateRoomProps) {
         return { error: (error as Error).message }
     }
 };
+
 
 // Later add members after upserting them
 export const addUserToRoom = async (channelId: string, userId: string[]) => {
@@ -90,7 +110,8 @@ export const getUserChannels = async (id: string) => {
 type ProjectRoom = {
     roomName: string;
     roomId: string; // should be a Project._id to be unique
-    membersId: string[]; // userId to participate in a chat 
+    membersId: string[]; // userId to participate in a chat
+    project_id: string;
     // ownerId: string; // who is creating it 
     relationShipManagerId: string; // staff collection 
 }
@@ -99,13 +120,14 @@ export const createRoomForProject = async (data: ProjectRoom) => {
     try {
         const channel = streamServerClient.channel("messaging", data.roomId, {
             name: data.roomName,
-            room_type: "project",
+            room_type: "group",
             members: data.membersId,
+            project_id: data.project_id,
             created_by_id: data.relationShipManagerId,
         }
         );
         const c = await channel.create();
-        return { roomId: channel.id };
+        return { roomId: channel.id, cid: channel.cid };
     } catch (error) {
 
         return { error: (error as Error).message }

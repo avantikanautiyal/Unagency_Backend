@@ -6,6 +6,7 @@ import Users from "../models/users.model";
 import { createUserUpster, createChatRoom } from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
+import { v6 as uuid6 } from "uuid"
 const Verify = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, req.user);
 });
@@ -56,7 +57,6 @@ const Register = asyncHandler(async (req, res) => {
 
         const registration = await Users.create(user);
         if (registration) {
-          //  Registring a user to a getStreamId with a mongoDB Id
           const sUser = await createUserUpster({
             _id: registration._id,
             name: registration?.name,
@@ -64,19 +64,14 @@ const Register = asyncHandler(async (req, res) => {
           } as any);
 
           const roomChannel = await createChatRoom({
-            roomId: registration._id + "",
+            roomId: uuid6(),
             roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
             members: [
               registration._id + "",
               relationshipManager.userInfo._id + "",
             ],
             createdBy: registration._id + "",
-            personalName: {
-              [registration._id + ""]: relationshipManager?.userInfo?.name,
-              [relationshipManager.userInfo._id + ""]: registration.name,
-              customerName: registration.name,
-              relationshipManagerName: relationshipManager?.userInfo?.name
-            },
+            room_type: "personal",
           });
           res
             .status(200)

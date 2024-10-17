@@ -7,6 +7,8 @@ import { ApiError } from "../utils/apiError";
 import Requirement, { IRequirement } from "../models/requestProject.model";
 import mongoose from "mongoose";
 
+
+/*------------------------------{ custoemr }---------------------------------*/
 // only a customer can create a requirement
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     const body: IRequirement = req.body;
@@ -26,6 +28,15 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     return new ApiResponse(200, newRequirement, "success");
 });
 
+export const getRequirement = asyncHandler(async (req: RequestUser, res) => {
+    const userId: string = req.user?.userId!;
+    const requirement = await Requirement.find({
+        userId: new mongoose.Types.ObjectId(userId)
+    });
+    return new ApiResponse(200, requirement, "requirement fetched successfully");
+});
+
+/*------------------------------{ servicing }---------------------------------*/
 export const getCustomerRequirement = asyncHandler(async (req: RequestUser, res) => {
     const userId: string = req.params.userId;
     const requirement = await Requirement.find({

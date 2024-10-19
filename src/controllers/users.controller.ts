@@ -34,7 +34,7 @@ const CreateUser = asyncHandler(async (req, res) => {
       _id: create._id + "",
       email,
       name,
-    })
+    });
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
     await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
@@ -44,11 +44,19 @@ const CreateUser = asyncHandler(async (req, res) => {
 });
 
 const FetchCustomers = asyncHandler(async (req, res) => {
-  const usersList = await Users.find({ role: "customer" });
+  const usersList = await Users.find({ role: "customer" }).populate({
+    path: "relationship_manager",
+    select: "userId",
+    populate: { path: "userId", select: ["name", "email"] },
+  });
   return new ApiResponse(200, usersList, "Customer fetched successfully");
 });
 const FetchInternalTeam = asyncHandler(async (req, res) => {
-  const usersList = await Users.find({ role: { $ne: "customer" } });
+  const usersList = await Users.find({
+    role: { $nin: ["customer", "superadmin"] },
+  }).sort({
+    createdAt: -1,
+  });
   return new ApiResponse(200, usersList, "Internal Team fetched successfully");
 });
 const FetchUserByFirebaseId = asyncHandler(async (req, res) => {
@@ -56,34 +64,30 @@ const FetchUserByFirebaseId = asyncHandler(async (req, res) => {
   return new ApiResponse(200, user, "User fetched successfully");
 });
 
-type UpdateUserBody = {
-  name: string;
-  contact?: number;
-  state?: string;
-  country?: string;
-  image?: string;
-}
 const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
-  const fireBaseId = req.params.firebaseId;
-  const updateData: UpdateUserBody = req.body;
+  const fireBaseId = req.user?.firebaseId as string;
+  const updateData: Partial<IUser> = req.body;
   if (req.file) {
-    const imageLink: string = (req.file as any).location!
-    const uploadedImages = await updateuserImage({
+    const imageLink: string = (req.file as any).location!;
+    await updateuserImage({
       displayImage: imageLink,
-      _id: req?.user?.userId!
+      _id: req?.user?.userId!,
     });
     updateData.image = imageLink;
   }
-
   if ((updateData as any).email) {
-    return new ApiResponse(404, null, "Email cannot be updated");
+    return new ApiResponse(400, null, "Email cannot be updated");
   }
+
   if ((updateData as any).isVerified) {
-    return new ApiResponse(404, null, "Sorry! you cannot update it manually.");
+    return new ApiResponse(400, null, "Sorry! you cannot update it manually.");
   }
-  await firebaseAdmin.auth().updateUser(fireBaseId, {
-    displayName: updateData.name,
-  });
+
+  if (updateData?.name)
+    await firebaseAdmin.auth().updateUser(fireBaseId, {
+      displayName: updateData.name,
+    });
+
   const updatedUser = await Users.findOneAndUpdate(
     { firebaseId: fireBaseId },
     { $set: updateData },
@@ -93,7 +97,19 @@ const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
     return new ApiResponse(404, null, "User not found");
   }
   return new ApiResponse(200, updatedUser, "User Data updated");
+});
 
+const UpdateInternalUser = asyncHandler(async (req: RequestUser, res) => {
+  const body: Partial<IUser> = req.body;
+  const update = await Users.findByIdAndUpdate(
+    body?._id,
+    { $set: body },
+    { new: true, runValidators: true }
+  );
+  if (!update) {
+    return new ApiResponse(404, null, "User not found");
+  }
+  return new ApiResponse(200, update, "User Data updated");
 });
 // resource
 const FetchResource = asyncHandler(async (req, res) => {
@@ -103,16 +119,16 @@ const FetchResource = asyncHandler(async (req, res) => {
         from: "users", // The Users collection name
         localField: "userId", // Field in Staff
         foreignField: "_id", // Field in Users
-        as: "userInfo" // Alias for the joined data
-      }
+        as: "userInfo", // Alias for the joined data
+      },
     },
     {
-      $unwind: "$userInfo" // Unwind to convert the array into individual documents
+      $unwind: "$userInfo", // Unwind to convert the array into individual documents
     },
     {
       $match: {
-        "userInfo.role": "resource" // Filter for users with role "resource"
-      }
+        "userInfo.role": "resource", // Filter for users with role "resource"
+      },
     },
     {
       $project: {
@@ -121,8 +137,8 @@ const FetchResource = asyncHandler(async (req, res) => {
         "userInfo.name": 1, // Include the "name" field from Users
         "userInfo._id": 1, // Include the "_id" field from Users
         // Add any other fields from Staff or Users if needed
-      }
-    }
+      },
+    },
   ]);
 
   return new ApiResponse(200, staffList, "resource fetched successfully");
@@ -133,5 +149,6 @@ export {
   FetchInternalTeam,
   FetchUserByFirebaseId,
   UpdateUser,
-  FetchResource
+  FetchResource,
+  UpdateInternalUser,
 };

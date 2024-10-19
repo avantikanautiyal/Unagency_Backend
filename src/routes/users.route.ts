@@ -5,23 +5,45 @@ import {
   FetchInternalTeam,
   FetchResource,
   FetchUserByFirebaseId,
+  UpdateInternalUser,
   UpdateUser,
 } from "../controllers/users.controller";
 import { fileUpload } from "../middlewares/multers3.middleware";
-import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
+import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-router.get("/update/:firebaseId", FetchUserByFirebaseId);
-router.post("/create-user", CreateUser);
-router.patch("/update/:firebaseId",
-  VerifyUserHandler,
+router.post("/create-user", VerifyRole(["admin", "superadmin"]), CreateUser);
+
+router.post(
+  "/update-user",
+  VerifyRole(["admin", "superadmin", "customer", "resource"]),
   fileUpload.single("image"),
-  UpdateUser);
+  UpdateUser
+);
 
-router.get("/fetch-customers", FetchCustomers);
-router.get("/fetch-resource", FetchResource);
+router.post(
+  "/update-internal-user",
+  VerifyRole(["admin", "superadmin"]),
+  UpdateInternalUser
+); //Used by Rahul Arya
 
-router.get("/fetch-internal-team", FetchInternalTeam);
+router.get(
+  "/fetch-customers",
+  VerifyRole(["admin", "superadmin", "servicing"]),
+  FetchCustomers
+);
+
+router.get(
+  "/fetch-resource",
+  VerifyRole(["admin", "superadmin", "servicing"]),
+  FetchResource
+);
+
+router.get(
+  "/fetch-internal-team",
+  VerifyRole(["admin", "superadmin"]),
+  FetchInternalTeam
+);
 router.get(":firebaseId", FetchUserByFirebaseId);
 
 export default router;

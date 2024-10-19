@@ -166,20 +166,20 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
-app.use("/users", userRouter);
-app.use("/projects", ProjectRouter);
-app.use("/staff", StaffRouter);
-app.use("/subscription", SubscriptionRouter);
-app.use("/stripe", stripeRouter);
-app.use("/packages", packagesRouter);
-app.use("/categories", categoryRouter);
+app.use("/users", VerifyUserHandler, userRouter);
+app.use("/projects", VerifyUserHandler, ProjectRouter);
+app.use("/staff", VerifyUserHandler, StaffRouter);
+app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
+app.use("/stripe", VerifyUserHandler, stripeRouter);
+app.use("/packages", VerifyUserHandler, packagesRouter);
+app.use("/categories", VerifyUserHandler, categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
 app.use("/chat", ChatRouter);
 app.use("/tasks", VerifyUserHandler, TaskRouter);
-app.use("/requirement", RequirementRouter);
 app.use("/resourse", VerifyUserHandler, ResourseRouter);
+app.use("/requirement", VerifyUserHandler, RequirementRouter);
 
 // Invalid Path Error Handler
 app.use(RouteErrorHandler);

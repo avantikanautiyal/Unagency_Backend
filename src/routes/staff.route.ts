@@ -6,12 +6,13 @@ import {
   fetchStaffById,
   updateStaff,
 } from "../controllers/staff.controller";
+import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
 router.post("/delete/:id", deleteStaff);
-router.get("/update/:id", updateStaff);
+router.post("/update/:id", updateStaff);
 router.get("/:id", fetchStaffById);
 router.post("/", createStaff);
-router.get("/", fetchStaff);
+router.get("/", VerifyRole(["admin", "superadmin"]), fetchStaff);
 
 export default router;

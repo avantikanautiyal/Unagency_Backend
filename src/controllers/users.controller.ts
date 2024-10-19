@@ -143,6 +143,19 @@ const FetchResource = asyncHandler(async (req, res) => {
 
   return new ApiResponse(200, staffList, "resource fetched successfully");
 });
+
+const SearchUsersInChat = asyncHandler(async (req: RequestUser) => {
+  const userId: string = req.user?.userId!;
+  const { query } = req.body;
+  if (!query) return new ApiResponse(200, [], "search results");
+
+  const users = await Users.find({
+    _id: { $ne: new mongoose.Types.ObjectId(userId) },
+    name: new RegExp(query, 'i'),
+    role: { $in: ["resource", "servicing"] }
+  });
+  return new ApiResponse(200, users, "search result");
+});
 export {
   CreateUser,
   FetchCustomers,
@@ -151,4 +164,5 @@ export {
   UpdateUser,
   FetchResource,
   UpdateInternalUser,
+  SearchUsersInChat
 };

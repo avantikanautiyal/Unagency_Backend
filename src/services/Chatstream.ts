@@ -48,6 +48,7 @@ type CreateRoomProps = {
   createdBy?: string;
   room_type: "personal" | "resource";
 }
+
 export async function createChatRoom(data: CreateRoomProps) {
   try {
     console.log("rooom creting..", data);
@@ -55,6 +56,7 @@ export async function createChatRoom(data: CreateRoomProps) {
       name: data.roomName ?? data.roomId,
       room_type: data.room_type ?? "personal",
       members: data.members,
+      isCustomer: true,
       created_by_id: data?.createdBy ?? data.roomId,
     }
     );
@@ -63,6 +65,25 @@ export async function createChatRoom(data: CreateRoomProps) {
 
     return { roomId: channel.id, cid: channel.cid };
   } catch (error) {
+    return { error: (error as Error).message }
+  }
+};
+export async function createDistincChatRoom(data: Partial<CreateRoomProps>) {
+  try {
+    console.log("rooom distinc creting..", data);
+    const channel = streamServerClient.channel("messaging", {
+      name: data.roomName ?? data.roomId,
+      room_type: data.room_type ?? "personal",
+      isCustomer: false,
+      members: data.members,
+      created_by_id: data?.createdBy ?? data.roomId,
+    }
+    );
+    await channel.create();
+
+    return { roomId: channel.id, cid: channel.cid };
+  } catch (error) {
+    console.log("error=> ", (error as Error).message)
     return { error: (error as Error).message }
   }
 };

@@ -8,7 +8,7 @@ import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
 router.get("/token", VerifyUserHandler, getStreamChatToken);
-router.post("/create-channel", createChannel)
+router.post("/create-channel", VerifyUserHandler, createChannel)
 router.get("/deleteAllChannels", deleteAllChannels);
 // router.get("/rooms", getChatRoom);
 // router.get("/room/:roomId", getRoomUsers);

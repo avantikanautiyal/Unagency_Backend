@@ -5,6 +5,7 @@ import {
   FetchInternalTeam,
   FetchResource,
   FetchUserByFirebaseId,
+  SearchUsersInChat,
   UpdateInternalUser,
   UpdateUser,
 } from "../controllers/users.controller";
@@ -44,6 +45,7 @@ router.get(
   VerifyRole(["admin", "superadmin"]),
   FetchInternalTeam
 );
-router.get(":firebaseId", FetchUserByFirebaseId);
+router.post("/search", SearchUsersInChat);
 
+router.get(":firebaseId", FetchUserByFirebaseId);
 export default router;

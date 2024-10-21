@@ -5,7 +5,7 @@ export interface ITeam {
   Organization: mongoose.Types.ObjectId; // Reference to Organizations
   userId: mongoose.Types.ObjectId; // Reference to User
   role: "owner" | "member"; // e.g., Admin, Manager, Staff, etc.
-  invitationStatus: "accpted" | "pending" | "rejected",
+  invitationStatus: "accepted" | "pending" | "rejected";
 }
 
 const TeamSchema = new Schema<ITeam>(

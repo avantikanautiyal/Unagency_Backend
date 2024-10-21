@@ -26,6 +26,7 @@ const CreateUser = asyncHandler(async (req, res) => {
     email,
     role,
     isVerified: firebaseUser?.emailVerified,
+    isActive: true,
   };
 
   try {
@@ -42,9 +43,19 @@ const CreateUser = asyncHandler(async (req, res) => {
     return new ApiResponse(200, err, "Something went wrong");
   }
 });
-
 const FetchCustomers = asyncHandler(async (req, res) => {
   const usersList = await Users.find({ role: "customer" }).populate({
+    path: "relationship_manager",
+    select: "userId",
+    populate: { path: "userId", select: ["name", "email"] },
+  });
+  return new ApiResponse(200, usersList, "Customer fetched successfully");
+});
+const FetchCustomerById = asyncHandler(async (req, res) => {
+  const usersList = await Users.find({
+    role: "customer",
+    _id: req.params.customer,
+  }).populate({
     path: "relationship_manager",
     select: "userId",
     populate: { path: "userId", select: ["name", "email"] },
@@ -59,11 +70,13 @@ const FetchInternalTeam = asyncHandler(async (req, res) => {
   });
   return new ApiResponse(200, usersList, "Internal Team fetched successfully");
 });
-const FetchUserByFirebaseId = asyncHandler(async (req, res) => {
-  const user = await Users.find({ firebaseId: req.body.firebaseId });
+const FetchUserById = asyncHandler(async (req, res) => {
+  const user = await Users.find(
+    { firebaseId: req.params.id },
+    { email: 1, name: 1, role: 1 }
+  );
   return new ApiResponse(200, user, "User fetched successfully");
 });
-
 const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
   const fireBaseId = req.user?.firebaseId as string;
   const updateData: Partial<IUser> = req.body;
@@ -98,7 +111,6 @@ const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
   }
   return new ApiResponse(200, updatedUser, "User Data updated");
 });
-
 const UpdateInternalUser = asyncHandler(async (req: RequestUser, res) => {
   const body: Partial<IUser> = req.body;
   const update = await Users.findByIdAndUpdate(
@@ -111,7 +123,6 @@ const UpdateInternalUser = asyncHandler(async (req: RequestUser, res) => {
   }
   return new ApiResponse(200, update, "User Data updated");
 });
-// resource
 const FetchResource = asyncHandler(async (req, res) => {
   const staffList = await Staff.aggregate([
     {
@@ -156,13 +167,69 @@ const SearchUsersInChat = asyncHandler(async (req: RequestUser) => {
   });
   return new ApiResponse(200, users, "search result");
 });
+const DisableUser = asyncHandler(async (req, res) => {
+  const firebaseId = req.params.firebaseID;
+  const disable = await firebaseAdmin.auth().updateUser(firebaseId, {
+    disabled: true,
+  });
+  if (!disable) {
+    return new ApiResponse(
+      200,
+      null,
+      "There was an issue while disabling user account"
+    );
+  }
+  const update = await Users.findOneAndUpdate(
+    { firebaseId: firebaseId },
+    { $set: { isActive: false } },
+    { new: true, runValidators: true }
+  );
+  if (!update) {
+    return new ApiResponse(
+      200,
+      null,
+      "There was an issue while disabling user account"
+    );
+  }
+  return new ApiResponse(200, null, "User disabled");
+});
+const EnableUser = asyncHandler(async (req, res) => {
+  const firebaseId = req.params.firebaseID;
+  const enable = await firebaseAdmin.auth().updateUser(firebaseId, {
+    disabled: false,
+  });
+  if (!enable) {
+    return new ApiResponse(
+      200,
+      null,
+      "There was an issue while enabling user account"
+    );
+  }
+  const update = await Users.findOneAndUpdate(
+    { firebaseId: firebaseId },
+    { $set: { isActive: true } },
+    { new: true, runValidators: true }
+  );
+  if (!update) {
+    return new ApiResponse(
+      200,
+      null,
+      "There was an issue while enabling user account"
+    );
+  }
+  return new ApiResponse(200, null, "User Enabled");
+});
+
 export {
   CreateUser,
   FetchCustomers,
   FetchInternalTeam,
-  FetchUserByFirebaseId,
+  FetchUserById,
   UpdateUser,
   FetchResource,
+  DisableUser,
+  EnableUser,
   UpdateInternalUser,
-  SearchUsersInChat
+  SearchUsersInChat,
+  FetchCustomerById,
 };

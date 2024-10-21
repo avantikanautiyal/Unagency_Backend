@@ -13,6 +13,7 @@ export interface IUser {
   isVerified: boolean;
   image?: string;
   bio?: string;
+  isActive: boolean;
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -32,6 +33,7 @@ const UsersSchema = new Schema<IUser>(
     state: { type: String, default: "" },
     country: { type: String, default: "" },
     isVerified: { type: Boolean, required: true },
+    isActive: { type: Boolean, default: true },
   },
   { collection: "users", timestamps: true }
 );

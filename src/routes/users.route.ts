@@ -1,10 +1,13 @@
 import { Router } from "express";
 import {
   CreateUser,
+  DisableUser,
+  EnableUser,
+  FetchCustomerById,
   FetchCustomers,
   FetchInternalTeam,
   FetchResource,
-  FetchUserByFirebaseId,
+  FetchUserById,
   UpdateInternalUser,
   UpdateUser,
 } from "../controllers/users.controller";
@@ -32,6 +35,11 @@ router.get(
   VerifyRole(["admin", "superadmin", "servicing"]),
   FetchCustomers
 );
+router.get(
+  "/fetch-customer/:customer",
+  VerifyRole(["admin", "superadmin", "servicing"]),
+  FetchCustomerById
+);
 
 router.get(
   "/fetch-resource",
@@ -44,6 +52,16 @@ router.get(
   VerifyRole(["admin", "superadmin"]),
   FetchInternalTeam
 );
-router.get(":firebaseId", FetchUserByFirebaseId);
+router.get(
+  "/disable-user/:firebaseID",
+  VerifyRole(["admin", "superadmin"]),
+  DisableUser
+);
+router.get(
+  "/enable-user/:firebaseID",
+  VerifyRole(["admin", "superadmin"]),
+  EnableUser
+);
+router.get(":id", FetchUserById);
 
 export default router;

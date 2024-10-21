@@ -24,8 +24,8 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
       if (verification) {
         const getUser = await Users.findOne({
           firebaseId: verification?.uid,
+          // isActive: true,
         });
-
         let staff;
         if (getUser?.role == "servicing" || getUser?.role == "resource") {
           const checkStaff = await Staff.findOne({ userId: getUser?._id });
@@ -89,6 +89,7 @@ export const VerifyRole = (requiredRoles: string[]) => {
         if (verification) {
           const user = await Users.findOne({
             firebaseId: verification?.uid,
+            // isActive: true,
           });
           if (requiredRoles.includes(user?.role as string)) {
             next();

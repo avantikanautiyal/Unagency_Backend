@@ -8,6 +8,7 @@ import {
   FetchCustomers,
   FetchInternalTeam,
   FetchResource,
+  SearchUsersInChat,
   FetchUserById,
   UpdateInternalUser,
   UpdateUser,
@@ -58,6 +59,7 @@ router.get(
   VerifyRole(["admin", "superadmin"]),
   FetchInternalTeam
 );
+router.post("/search", SearchUsersInChat);
 router.get(
   "/disable-user/:firebaseID",
   VerifyRole(["admin", "superadmin"]),
@@ -68,6 +70,6 @@ router.get(
   VerifyRole(["admin", "superadmin"]),
   EnableUser
 );
-router.get(":id", FetchUserById);
+router.get("/:id", FetchUserById);
 
 export default router;

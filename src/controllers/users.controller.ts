@@ -39,6 +39,7 @@ const CreateUser = asyncHandler(async (req, res) => {
       _id: create._id + "",
       email,
       name,
+      userRole: create.role,
     });
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
@@ -133,8 +134,8 @@ const FetchInternalTeam = asyncHandler(async (req, res) => {
   return new ApiResponse(200, usersList, "Internal Team fetched successfully");
 });
 const FetchUserById = asyncHandler(async (req, res) => {
-  const user = await Users.find(
-    { firebaseId: req.params.id },
+  const user = await Users.findOne(
+    { _id: req.params.id },
     { email: 1, name: 1, role: 1 }
   );
   return new ApiResponse(200, user, "User fetched successfully");
@@ -216,6 +217,19 @@ const FetchResource = asyncHandler(async (req, res) => {
 
   return new ApiResponse(200, staffList, "resource fetched successfully");
 });
+
+const SearchUsersInChat = asyncHandler(async (req: RequestUser) => {
+  const userId: string = req.user?.userId!;
+  const { query } = req.body;
+  if (!query) return new ApiResponse(200, [], "search results");
+
+  const users = await Users.find({
+    _id: { $ne: new mongoose.Types.ObjectId(userId) },
+    name: new RegExp(query, 'i'),
+    role: { $in: ["resource", "servicing"] }
+  });
+  return new ApiResponse(200, users, "search result");
+});
 const DisableUser = asyncHandler(async (req, res) => {
   const firebaseId = req.params.firebaseID;
   const disable = await firebaseAdmin.auth().updateUser(firebaseId, {
@@ -279,6 +293,7 @@ export {
   DisableUser,
   EnableUser,
   UpdateInternalUser,
+  SearchUsersInChat,
   FetchCustomerById,
   FetchCustomerPlan,
 };

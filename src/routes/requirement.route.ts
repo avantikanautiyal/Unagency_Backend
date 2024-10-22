@@ -7,13 +7,24 @@ import { fileUpload } from "../middlewares/multers3.middleware";
 import {
   createRequirement,
   getCustomerRequirement,
+  getRequirement,
 } from "../controllers/requirement.controller";
 
 const router = Router();
-router.post("/create", fileUpload.array("attach"), createRequirement);
+/* -------------------{ custoemr }-----------------------*/
+
+router.post(
+  "/create",
+  VerifyRole(["customer"]),
+  fileUpload.array("attach"),
+  createRequirement
+);
+router.get("/", VerifyRole(["customer"]), getRequirement);
+
+/* -------------------{ servicing }-----------------------*/
 router.get(
   "/:userId",
-  VerifyRole(["superadmin", "admin", "servicing"]),
+  VerifyRole(["admin", "super-admin", "servicing"]),
   getCustomerRequirement
 );
 

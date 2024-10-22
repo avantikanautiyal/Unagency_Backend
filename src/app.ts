@@ -29,6 +29,7 @@ import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
 import Subscriptions from "./models/subscription.model";
 import Invoices from "./models/invoices.model";
+import ResourseRouter from "./routes/resourse.route";
 const app = express();
 
 //Use of CORS
@@ -175,8 +176,9 @@ app.use("/categories", VerifyUserHandler, categoryRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
 app.use("/", helloWorldRouter);
-app.use("/chat", VerifyUserHandler, ChatRouter);
+app.use("/chat", ChatRouter);
 app.use("/tasks", VerifyUserHandler, TaskRouter);
+app.use("/resourse", VerifyUserHandler, ResourseRouter);
 app.use("/requirement", VerifyUserHandler, RequirementRouter);
 
 // Invalid Path Error Handler

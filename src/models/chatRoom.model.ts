@@ -2,20 +2,22 @@ import mongoose, { Schema } from "mongoose";
 
 export interface CRoom {
     _id: mongoose.Types.ObjectId;
-    chatRoomId: string;
-    organizationId: mongoose.Types.ObjectId;
-    userId: mongoose.Types.ObjectId;
-    name: string;
-    isPrivate: boolean;
-    description: string;
+    cid: string;
+    roomId: string;
+    members: mongoose.Types.ObjectId[];
+    project_id: mongoose.Types.ObjectId;
+    room_type: string;
 }
 
 const ChatRoomSchema = new Schema<CRoom>(
     {
         _id: { type: Schema.Types.ObjectId, auto: true },
-        chatRoomId: { type: String, required: true },
-        name: { type: String, default: "" },
-        isPrivate: { type: Boolean, default: true },
+        cid: { type: String },
+        roomId: { type: String },
+        members: { type: [Schema.Types.ObjectId], ref: "users" },
+        project_id: { type: Schema.Types.ObjectId, ref: "Projects" },
+        room_type: { Type: String },
+        // members: { type: [], ref: "users" }
         // organizationId: { type: Schema.Types.ObjectId, ref: "organizations", unique: true },
         // userId: { type: Schema.Types.ObjectId, ref: "users", unique: true },
         // description: { type: String, default: "" }

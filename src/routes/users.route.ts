@@ -4,6 +4,7 @@ import {
   DisableUser,
   EnableUser,
   FetchCustomerById,
+  FetchCustomerPlan,
   FetchCustomers,
   FetchInternalTeam,
   FetchResource,
@@ -39,6 +40,11 @@ router.get(
   "/fetch-customer/:customer",
   VerifyRole(["admin", "superadmin", "servicing"]),
   FetchCustomerById
+);
+router.get(
+  "/fetch-customer-plan/:customer",
+  VerifyRole(["admin", "superadmin", "servicing"]),
+  FetchCustomerPlan
 );
 
 router.get(

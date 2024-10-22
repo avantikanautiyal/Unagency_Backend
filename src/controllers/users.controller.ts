@@ -6,6 +6,10 @@ import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
 import { createUserUpster, updateuserImage } from "../services/Chatstream";
 import { RequestUser } from "../types/user";
+import StripeCustomers from "../models/customer.model";
+import Subscriptions from "../models/subscription.model";
+import Invoices from "../models/invoices.model";
+import Packages from "../models/packages.model";
 
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role } = req.body;
@@ -52,7 +56,7 @@ const FetchCustomers = asyncHandler(async (req, res) => {
   return new ApiResponse(200, usersList, "Customer fetched successfully");
 });
 const FetchCustomerById = asyncHandler(async (req, res) => {
-  const usersList = await Users.find({
+  const customer = await Users.findOne({
     role: "customer",
     _id: req.params.customer,
   }).populate({
@@ -60,8 +64,66 @@ const FetchCustomerById = asyncHandler(async (req, res) => {
     select: "userId",
     populate: { path: "userId", select: ["name", "email"] },
   });
-  return new ApiResponse(200, usersList, "Customer fetched successfully");
+  return new ApiResponse(200, customer, "Customer fetched successfully");
 });
+const FetchCustomerPlan = asyncHandler(async (req, res) => {
+  const customer = await Users.findOne({
+    role: "customer",
+    _id: req.params.customer,
+  });
+
+  if (!customer) return new ApiResponse(200, null, "Customer not found");
+
+  const stripe_customer = await StripeCustomers.findOne({
+    email: customer?.email,
+  });
+
+  if (!stripe_customer)
+    return new ApiResponse(200, null, "Stripe Customer not found");
+
+  const subscription = await Subscriptions.find({
+    customerId: stripe_customer?.stripeCustomerId,
+  }).sort({ createdAt: -1 });
+
+  if (!subscription)
+    return new ApiResponse(200, null, "Stripe Subscription not found");
+
+  const currentSubscription = await Subscriptions.findOne({
+    customerId: stripe_customer?.stripeCustomerId,
+    status: "active",
+  });
+
+  if (!currentSubscription)
+    return new ApiResponse(200, null, "Current Subscription not found");
+
+  const invoice = await Invoices.find({
+    customerId: stripe_customer?.stripeCustomerId,
+  }).sort({ createdAt: -1 });
+
+  if (!invoice) return new ApiResponse(200, null, "invoice not found");
+
+  const plan = await Packages.findOne({
+    duration: {
+      $elemMatch: {
+        stripe_price_id: currentSubscription?.planId,
+      },
+    },
+  });
+
+  if (!plan) return new ApiResponse(200, null, "plan not found");
+
+  return new ApiResponse(
+    200,
+    {
+      subscription: subscription,
+      currentSubscription: currentSubscription,
+      currentPlan: plan,
+      invoice: invoice,
+    },
+    "Customer fetched successfully"
+  );
+});
+
 const FetchInternalTeam = asyncHandler(async (req, res) => {
   const usersList = await Users.find({
     role: { $nin: ["customer", "superadmin"] },
@@ -218,4 +280,5 @@ export {
   EnableUser,
   UpdateInternalUser,
   FetchCustomerById,
+  FetchCustomerPlan,
 };

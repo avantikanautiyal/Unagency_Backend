@@ -3,7 +3,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
-import { createUserUpster, createChatRoom } from "../services/Chatstream";
+import { createUserUpster, createChatRoom, createDistincChatRoom } from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
 import { v6 as uuid6 } from "uuid"
@@ -61,10 +61,11 @@ const Register = asyncHandler(async (req, res) => {
             _id: registration._id,
             name: registration?.name,
             email: registration.email,
+            userRole: registration.role,
           } as any);
 
-          const roomChannel = await createChatRoom({
-            roomId: uuid6(),
+          const roomChannel = await createDistincChatRoom({
+            // roomId: uuid6(),
             roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
             members: [
               registration._id + "",
@@ -72,6 +73,7 @@ const Register = asyncHandler(async (req, res) => {
             ],
             createdBy: registration._id + "",
             room_type: "personal",
+            isCustomer: true,
           });
           res
             .status(200)

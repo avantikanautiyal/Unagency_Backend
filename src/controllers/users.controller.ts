@@ -35,6 +35,7 @@ const CreateUser = asyncHandler(async (req, res) => {
       _id: create._id + "",
       email,
       name,
+      userRole: create.role,
     });
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
@@ -71,8 +72,8 @@ const FetchInternalTeam = asyncHandler(async (req, res) => {
   return new ApiResponse(200, usersList, "Internal Team fetched successfully");
 });
 const FetchUserById = asyncHandler(async (req, res) => {
-  const user = await Users.find(
-    { firebaseId: req.params.id },
+  const user = await Users.findOne(
+    { _id: req.params.id },
     { email: 1, name: 1, role: 1 }
   );
   return new ApiResponse(200, user, "User fetched successfully");

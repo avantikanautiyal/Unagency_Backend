@@ -64,6 +64,6 @@ router.get(
   VerifyRole(["admin", "superadmin"]),
   EnableUser
 );
-router.get(":id", FetchUserById);
+router.get("/:id", FetchUserById);
 
 export default router;

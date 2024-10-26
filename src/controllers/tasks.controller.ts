@@ -131,6 +131,112 @@ const TaskListByUserId = asyncHandler(async (req: RequestUser) => {
 });
 
 
-const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => { });
+const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
+  const { taskId } = req.params; // Task ID from the URL parameters
+  const updates: Partial<ITasks> = req.body;      // Fields to be updated
 
-export { CreateTask, TaskList, UpdateTask, TaskListByUserId };
+  // Ensure taskId is provided
+  if (!taskId) {
+    return new ApiResponse(400, null, "Task ID is required");
+  }
+
+  // Check if there are any updates in the request body
+  if (!updates || Object.keys(updates).length === 0) {
+    return new ApiResponse(400, null, "No updates provided");
+  }
+
+  try {
+    delete updates._id;
+    delete updates.assignedTo;
+    delete updates.assignedBy;
+    delete updates.deadline;
+    // Find the task by ID and update it with the new fields
+    const updatedTask = await Tasks.findByIdAndUpdate(taskId, updates, {
+      new: true, // Return the updated document
+      runValidators: true, // Ensure the update complies with schema validation
+    }).populate({
+      path: 'assignedTo',
+      populate: {
+        path: 'userId',
+        model: 'Users',
+      },
+    }).populate({
+      path: 'assignedBy',
+      populate: {
+        path: 'userId',
+        model: 'Users',
+      },
+    });
+
+    // Check if the task exists
+    if (!updatedTask) {
+      return new ApiResponse(404, null, "Task not found");
+    }
+
+    return new ApiResponse(200, updatedTask, "Task updated successfully");
+  } catch (error) {
+    return new ApiResponse(500, null, `Error updating task: ${(error as Error).message}`);
+  }
+});
+
+/*------- { api for resoruce kanbanboard } ---------*/
+const TaskListForResource = asyncHandler(async (req: RequestUser) => {
+  let staffId;
+  if (
+    req.user?.staff &&
+    typeof req.user.staff === "object" &&
+    "_id" in req.user.staff
+  ) {
+    staffId = req.user.staff._id;
+  } else {
+    return new ApiResponse(400, null, "Invalid Staff ID");
+  }
+
+  const role = req.user?.role;
+  if (role !== "resource") {
+    return new ApiResponse(403, null, "Unauthorized access");
+  }
+
+  // Get the current date and calculate the start (Monday) and end (Sunday) of the week
+  const currentDate = new Date();
+  const currentDay = currentDate.getDay(); // 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+
+  // Calculate the date of the last Monday and next Sunday
+  const monday = new Date(currentDate);
+  monday.setDate(currentDate.getDate() - (currentDay === 0 ? 6 : currentDay - 1)); // If Sunday, subtract 6, else subtract (currentDay - 1)
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6); // Sunday is 6 days after Monday
+
+  // Set the time to the start of the Monday and the end of the Sunday
+  monday.setHours(0, 0, 0, 0);
+  sunday.setHours(23, 59, 59, 999);
+
+  // Fetch tasks assigned to the staff within the week range
+  const query = await Tasks.find({
+    assignedTo: staffId,
+    createdAt: {
+      $gte: monday,
+      $lte: sunday,
+    },
+  })
+    .populate({
+      path: 'assignedTo',
+      populate: {
+        path: 'userId',
+        model: 'Users',
+      },
+    })
+    .populate({
+      path: 'assignedBy',
+      populate: {
+        path: 'userId',
+        model: 'Users',
+      },
+    });
+
+  return new ApiResponse(200, query, "Weekly Task List found");
+});
+
+
+export { CreateTask, TaskList, UpdateTask, TaskListByUserId, TaskListForResource };

@@ -9,13 +9,14 @@ export interface ITasks {
   assignedTo: mongoose.Types.ObjectId;
   assignedBy: mongoose.Types.ObjectId | string;
   deadline: Date;
+  completionDate: Date;
   status:
-    | "todo"
-    | "progress"
-    | "submitted"
-    | "feedback"
-    | "revision"
-    | "approved";
+  | "todo"
+  | "progress"
+  | "submitted"
+  | "feedback"
+  | "revision"
+  | "approved";
 }
 
 const TaskSchema = new Schema<ITasks>(
@@ -28,6 +29,7 @@ const TaskSchema = new Schema<ITasks>(
     assignedBy: { type: Schema.Types.ObjectId, ref: "Staff", required: true },
     priority: { type: String, default: "low", enum: ["low", "medium", "high"] },
     deadline: { type: Date, required: true },
+    completionDate: { type: Date },
     status: {
       type: String,
       default: "todo",

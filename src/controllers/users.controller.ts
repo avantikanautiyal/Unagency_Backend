@@ -48,12 +48,28 @@ const CreateUser = asyncHandler(async (req, res) => {
     return new ApiResponse(200, err, "Something went wrong");
   }
 });
-const FetchCustomers = asyncHandler(async (req, res) => {
-  const usersList = await Users.find({ role: "customer" }).populate({
-    path: "relationship_manager",
-    select: "userId",
-    populate: { path: "userId", select: ["name", "email"] },
-  });
+const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
+  let usersList;
+  if (req.user?.role == "superadmin" || req.user?.role == "admin") {
+    usersList = await Users.find({
+      role: "customer",
+    })
+    .populate({
+      path: "relationship_manager",
+      select: "userId",
+      populate: { path: "userId", select: ["name", "email"] },
+    });
+  } else {
+    usersList = await Users.find({
+      role: "customer",
+      relationship_manager: req.user?.staff,
+    })
+    .populate({
+      path: "relationship_manager",
+      select: "userId",
+      populate: { path: "userId", select: ["name", "email"] },
+    });
+  }
   return new ApiResponse(200, usersList, "Customer fetched successfully");
 });
 const FetchCustomerById = asyncHandler(async (req, res) => {
@@ -225,8 +241,8 @@ const SearchUsersInChat = asyncHandler(async (req: RequestUser) => {
 
   const users = await Users.find({
     _id: { $ne: new mongoose.Types.ObjectId(userId) },
-    name: new RegExp(query, 'i'),
-    role: { $in: ["resource", "servicing"] }
+    name: new RegExp(query, "i"),
+    role: { $in: ["resource", "servicing"] },
   });
   return new ApiResponse(200, users, "search result");
 });

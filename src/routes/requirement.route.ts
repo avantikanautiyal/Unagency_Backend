@@ -8,6 +8,7 @@ import {
   createRequirement,
   getCustomerRequirement,
   getRequirement,
+  updateCustomerRequirement,
 } from "../controllers/requirement.controller";
 
 const router = Router();
@@ -24,8 +25,13 @@ router.get("/", VerifyRole(["customer"]), getRequirement);
 /* -------------------{ servicing }-----------------------*/
 router.get(
   "/:userId",
-  VerifyRole(["admin", "super-admin", "servicing"]),
+  VerifyRole(["admin", "superadmin", "servicing"]),
   getCustomerRequirement
+);
+router.get(
+  "/:reqId/:userId/:status",
+  VerifyRole(["servicing"]),
+  updateCustomerRequirement
 );
 
 export default router;

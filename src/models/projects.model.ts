@@ -11,6 +11,7 @@ export interface IProject {
   resource: mongoose.Types.ObjectId[] | string[];
   startDate: Date;
   deadline: Date;
+  status: string;
 }
 
 const ProjectSchema = new Schema<IProject>(
@@ -36,6 +37,19 @@ const ProjectSchema = new Schema<IProject>(
       type: [Schema.Types.ObjectId],
       ref: "Teams",
       default: [],
+    },
+    status: {
+      type: String,
+      default: "planning",
+      enum: [
+        "planning",
+        "initiated",
+        "on-hold",
+        "revision",
+        "delivered",
+        "approved",
+        "closed",
+      ],
     },
   },
   { collection: "projects", timestamps: true }

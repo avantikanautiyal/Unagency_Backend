@@ -24,7 +24,6 @@ type ProjectRoom = {
   roomId: string; // should be a Project._id to be unique
   membersId: string[]; // userId to participate in a chat
   project_id: string;
-  // ownerId: string; // who is creating it 
   relationShipManagerId: string; // staff collection 
 }
 type RoomGroupProps = {

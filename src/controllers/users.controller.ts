@@ -12,12 +12,11 @@ import Invoices from "../models/invoices.model";
 import Packages from "../models/packages.model";
 
 const CreateUser = asyncHandler(async (req, res) => {
-  const { email, password, name, role } = req.body;
+  const { email, password, name, role }: IUser = req.body;
   const isExist = await Users.exists({ email: email });
   if (isExist) {
     return new ApiResponse(409, null, "User already exists");
   }
-
   const firebaseUser = await firebaseAdmin.auth().createUser({
     email,
     password,
@@ -32,10 +31,10 @@ const CreateUser = asyncHandler(async (req, res) => {
     isVerified: firebaseUser?.emailVerified,
     isActive: true,
   };
-
+  //User create in Database
   try {
     const create = await Users.create(newUser);
-    const steramRegister = await createUserUpster({
+    await createUserUpster({
       _id: create._id + "",
       email,
       name,
@@ -44,17 +43,17 @@ const CreateUser = asyncHandler(async (req, res) => {
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
     await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
-    console.log("firebase user removed");
-    return new ApiResponse(200, err, "Something went wrong");
+    return new ApiResponse(400, err, "Something went wrong");
   }
 });
+
+
 const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
   let usersList;
   if (req.user?.role == "superadmin" || req.user?.role == "admin") {
     usersList = await Users.find({
       role: "customer",
-    })
-    .populate({
+    }).populate({
       path: "relationship_manager",
       select: "userId",
       populate: { path: "userId", select: ["name", "email"] },
@@ -63,8 +62,7 @@ const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
     usersList = await Users.find({
       role: "customer",
       relationship_manager: req.user?.staff,
-    })
-    .populate({
+    }).populate({
       path: "relationship_manager",
       select: "userId",
       populate: { path: "userId", select: ["name", "email"] },

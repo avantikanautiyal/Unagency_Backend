@@ -4,6 +4,7 @@ export interface IUser {
   _id: mongoose.Types.ObjectId;
   firebaseId: string;
   name: string;
+  password? : string;
   relationship_manager?: mongoose.Types.ObjectId;
   role: "admin" | "customer" | "superadmin" | "resource" | "servicing";
   contact?: number;

@@ -3,10 +3,12 @@ import { ApiResponse } from "../utils/apiResponse";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
-import { createUserUpster, createChatRoom, createDistincChatRoom } from "../services/Chatstream";
+import {
+  createUserUpster,
+  createDistincChatRoom,
+} from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
-import { v6 as uuid6 } from "uuid"
 const Verify = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, req.user);
 });
@@ -14,19 +16,17 @@ const Verify = asyncHandler(async (req: RequestUser, res) => {
 const Register = asyncHandler(async (req, res) => {
   const authHeader = req.headers["authorization"];
   const accessToken = authHeader && authHeader.split(" ")[1];
-
   if (accessToken) {
     try {
       const verification = await firebaseAdmin
         .auth()
         .verifyIdToken(accessToken);
       if (verification) {
-        // Allocate a Relationship manager to a new User
         const isUserExists = await Users.exists({
           firebaseId: verification?.uid,
         });
         if (isUserExists)
-          return new ApiResponse(200, null, "user already registered");
+          return new ApiResponse(200, null, "User already registered");
         const [relationshipManager] = await Staff.aggregate([
           {
             $lookup: {
@@ -43,29 +43,35 @@ const Register = asyncHandler(async (req, res) => {
             },
           },
           { $sample: { size: 1 } },
-        ]);
-        if (!relationshipManager)
-          throw new ApiError("relationship manager not found", 404);
+        ]); // Allocate a Relationship manager to a new User
         const user = {
           firebaseId: verification?.uid,
           name: verification?.name,
           role: "customer",
           email: verification?.email,
           isVerified: verification?.email_verified,
-          relationship_manager: relationshipManager._id,
+          relationship_manager: relationshipManager
+            ? relationshipManager._id
+            : null,
         };
 
-        const registration = await Users.create(user);
+        const registration = await Users.create(user); // Creating user in database
         if (registration) {
-          const sUser = await createUserUpster({
+          await createUserUpster({
             _id: registration._id,
             name: registration?.name,
             email: registration.email,
             userRole: registration.role,
-          } as any);
+          } as any); // Registring Get Stream IO User
 
-          const roomChannel = await createDistincChatRoom({
-            // roomId: uuid6(),
+          if (!relationshipManager)
+            return new ApiResponse(
+              200,
+              registration,
+              "User registered successfully"
+            );
+
+          await createDistincChatRoom({
             roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
             members: [
               registration._id + "",
@@ -74,12 +80,13 @@ const Register = asyncHandler(async (req, res) => {
             createdBy: registration._id + "",
             room_type: "personal",
             isCustomer: true,
-          });
-          res
-            .status(200)
-            .json(
-              new ApiResponse(200, registration, "User registered successfully")
-            );
+          }); //CReating a Channel between Customer and Relationship Manager
+
+          return new ApiResponse(
+            200,
+            registration,
+            "User registered successfully"
+          );
         }
       }
     } catch (err) {

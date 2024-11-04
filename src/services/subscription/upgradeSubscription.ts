@@ -16,7 +16,6 @@ const upgradeSubscription = async (item: IItem) => {
       payment_behavior: "default_incomplete",
       items: [{ price: priceId, id: subscription.items.data[0].id }],
     });
-
     if (update.status !== "active") {
       const latestInvoice = update.latest_invoice as string;
       await stripe.invoices.pay(latestInvoice);

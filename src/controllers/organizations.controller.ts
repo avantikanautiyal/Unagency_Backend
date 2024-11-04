@@ -7,6 +7,7 @@ import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
 
+//TESTED OK
 const createOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const {
@@ -56,12 +57,7 @@ const createOrganization = asyncHandler(
     }
   }
 );
-const fetchOrganizations = asyncHandler(async (req: Request, res: Response) => {
-  const organizations = await Organizations.find({});
-  if (organizations) {
-    return new ApiResponse(200, organizations, "Organizations fetched");
-  }
-});
+//TESTED OK
 const UserOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const userOrganization = await Organizations.findOne({
@@ -70,7 +66,19 @@ const UserOrganization = asyncHandler(
     return new ApiResponse(200, userOrganization, "User Organization fetched");
   }
 );
+//TESTED OK
+const OrganizationByUserId = asyncHandler(async (req: RequestUser, res) => {
+  const { userId } = req.params;
 
+  if (!userId) throw new ApiError("userId not provided", 400);
+
+  const org = await Organizations.findOne({
+    owner: new mongoose.Types.ObjectId(userId),
+  });
+  return new ApiResponse(200, org, "");
+});
+
+//TESTED OK = TODO - Remove params
 const UpdateUserOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const organizationId = req.params.organizationId;
@@ -94,22 +102,9 @@ const UpdateUserOrganization = asyncHandler(
   }
 );
 
-// TODO = change 
-const getOrginiztionMyUserId = asyncHandler(async (req: RequestUser, res) => {
-  const { userId } = req.params;
-
-  if (!userId) throw new ApiError("userId not provided", 400);
-
-  const org = await Organizations.findOne({
-    owner: new mongoose.Types.ObjectId(userId),
-  });
-  return new ApiResponse(200, org, "");
-});
-
 export {
   createOrganization,
-  fetchOrganizations,
   UserOrganization,
   UpdateUserOrganization,
-  getOrginiztionMyUserId,
+  OrganizationByUserId,
 };

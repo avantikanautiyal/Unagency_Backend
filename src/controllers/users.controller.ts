@@ -4,13 +4,17 @@ import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
-import { createUserUpster, updateuserImage } from "../services/Chatstream";
+import {
+  createUserUpster,
+  updateuserImage,
+  updateuserName,
+} from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import StripeCustomers from "../models/customer.model";
 import Subscriptions from "../models/subscription.model";
 import Invoices from "../models/invoices.model";
 import Packages from "../models/packages.model";
-
+//TESTED OK = RAHUL
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role }: IUser = req.body;
   const isExist = await Users.exists({ email: email });
@@ -43,11 +47,67 @@ const CreateUser = asyncHandler(async (req, res) => {
     return new ApiResponse(200, create, "User created successfully");
   } catch (err) {
     await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
-    return new ApiResponse(400, err, "Something went wrong");
+    return new ApiResponse(500, err, "Something went wrong");
   }
 });
 
+// TESTED OK , TODO : user profile bug
+const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
+  const fireBaseId = req.user?.firebaseId as string;
+  const updateData: Partial<IUser> = req.body;
+  if (req.file) {
+    const imageLink: string = (req.file as any).location!;
+    // update image at chat server
+    if (imageLink) {
+      await updateuserImage({
+        displayImage: imageLink,
+        _id: req?.user?.userId!,
+      });
+      updateData.image = imageLink;
+    } else {
+      delete updateData.image;
+    }
+  }
+  if ((updateData as any).email) {
+    return new ApiResponse(400, null, "Email cannot be updated");
+  }
 
+  if ((updateData as any).isVerified) {
+    return new ApiResponse(400, null, "Sorry! you cannot update it manually.");
+  }
+
+  if (updateData?.name) {
+    await firebaseAdmin.auth().updateUser(fireBaseId, {
+      displayName: updateData.name,
+    });
+    await updateuserName({ name: updateData.name, id: req?.user?.userId! });
+  }
+  const updatedUser = await Users.findOneAndUpdate(
+    { firebaseId: fireBaseId },
+    { $set: updateData },
+    { new: true, runValidators: true }
+  );
+  if (!updatedUser) {
+    return new ApiResponse(404, null, "User not found");
+  }
+  return new ApiResponse(200, updatedUser, "User Data updated");
+});
+
+//TESTED OK = RAHUL
+const UpdateInternalUser = asyncHandler(async (req: RequestUser, res) => {
+  const body: Partial<IUser> = req.body;
+  const update = await Users.findByIdAndUpdate(
+    body?._id,
+    { $set: body },
+    { new: true, runValidators: true }
+  );
+  if (!update) {
+    return new ApiResponse(404, null, "User not found");
+  }
+  return new ApiResponse(200, update, "User Data updated");
+});
+
+//TESTED OK = RAHUL
 const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
   let usersList;
   if (req.user?.role == "superadmin" || req.user?.role == "admin") {
@@ -70,6 +130,8 @@ const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
   }
   return new ApiResponse(200, usersList, "Customer fetched successfully");
 });
+
+//TESTED OK = RAHUL
 const FetchCustomerById = asyncHandler(async (req, res) => {
   const customer = await Users.findOne({
     role: "customer",
@@ -81,6 +143,8 @@ const FetchCustomerById = asyncHandler(async (req, res) => {
   });
   return new ApiResponse(200, customer, "Customer fetched successfully");
 });
+
+//TESTED OK = RAHUL
 const FetchCustomerPlan = asyncHandler(async (req, res) => {
   const customer = await Users.findOne({
     role: "customer",
@@ -100,22 +164,14 @@ const FetchCustomerPlan = asyncHandler(async (req, res) => {
     customerId: stripe_customer?.stripeCustomerId,
   }).sort({ createdAt: -1 });
 
-  if (!subscription)
-    return new ApiResponse(200, null, "Stripe Subscription not found");
-
   const currentSubscription = await Subscriptions.findOne({
     customerId: stripe_customer?.stripeCustomerId,
     status: "active",
   });
 
-  if (!currentSubscription)
-    return new ApiResponse(200, null, "Current Subscription not found");
-
   const invoice = await Invoices.find({
     customerId: stripe_customer?.stripeCustomerId,
   }).sort({ createdAt: -1 });
-
-  if (!invoice) return new ApiResponse(200, null, "invoice not found");
 
   const plan = await Packages.findOne({
     duration: {
@@ -125,8 +181,6 @@ const FetchCustomerPlan = asyncHandler(async (req, res) => {
     },
   });
 
-  if (!plan) return new ApiResponse(200, null, "plan not found");
-
   return new ApiResponse(
     200,
     {
@@ -135,71 +189,10 @@ const FetchCustomerPlan = asyncHandler(async (req, res) => {
       currentPlan: plan,
       invoice: invoice,
     },
-    "Customer fetched successfully"
+    "Customer Plan fetched successfully"
   );
 });
-
-const FetchInternalTeam = asyncHandler(async (req, res) => {
-  const usersList = await Users.find({
-    role: { $nin: ["customer", "superadmin"] },
-  }).sort({
-    createdAt: -1,
-  });
-  return new ApiResponse(200, usersList, "Internal Team fetched successfully");
-});
-const FetchUserById = asyncHandler(async (req, res) => {
-  const user = await Users.findOne(
-    { _id: req.params.id },
-    { email: 1, name: 1, role: 1 }
-  );
-  return new ApiResponse(200, user, "User fetched successfully");
-});
-const UpdateUser = asyncHandler(async (req: RequestUser, res) => {
-  const fireBaseId = req.user?.firebaseId as string;
-  const updateData: Partial<IUser> = req.body;
-  if (req.file) {
-    const imageLink: string = (req.file as any).location!;
-    await updateuserImage({
-      displayImage: imageLink,
-      _id: req?.user?.userId!,
-    });
-    updateData.image = imageLink;
-  }
-  if ((updateData as any).email) {
-    return new ApiResponse(400, null, "Email cannot be updated");
-  }
-
-  if ((updateData as any).isVerified) {
-    return new ApiResponse(400, null, "Sorry! you cannot update it manually.");
-  }
-
-  if (updateData?.name)
-    await firebaseAdmin.auth().updateUser(fireBaseId, {
-      displayName: updateData.name,
-    });
-
-  const updatedUser = await Users.findOneAndUpdate(
-    { firebaseId: fireBaseId },
-    { $set: updateData },
-    { new: true, runValidators: true }
-  );
-  if (!updatedUser) {
-    return new ApiResponse(404, null, "User not found");
-  }
-  return new ApiResponse(200, updatedUser, "User Data updated");
-});
-const UpdateInternalUser = asyncHandler(async (req: RequestUser, res) => {
-  const body: Partial<IUser> = req.body;
-  const update = await Users.findByIdAndUpdate(
-    body?._id,
-    { $set: body },
-    { new: true, runValidators: true }
-  );
-  if (!update) {
-    return new ApiResponse(404, null, "User not found");
-  }
-  return new ApiResponse(200, update, "User Data updated");
-});
+//TESTED OK = RAHUL
 const FetchResource = asyncHandler(async (req, res) => {
   const staffList = await Staff.aggregate([
     {
@@ -211,27 +204,34 @@ const FetchResource = asyncHandler(async (req, res) => {
       },
     },
     {
-      $unwind: "$userInfo", // Unwind to convert the array into individual documents
+      $unwind: "$userInfo",
     },
     {
       $match: {
-        "userInfo.role": "resource", // Filter for users with role "resource"
+        "userInfo.role": "resource",
       },
     },
     {
       $project: {
         _id: 1,
         designation: 1,
-        "userInfo.name": 1, // Include the "name" field from Users
-        "userInfo._id": 1, // Include the "_id" field from Users
-        // Add any other fields from Staff or Users if needed
+        "userInfo.name": 1,
+        "userInfo._id": 1,
       },
     },
   ]);
-
-  return new ApiResponse(200, staffList, "resource fetched successfully");
+  return new ApiResponse(200, staffList, "Resource fetched successfully");
 });
-
+//TESTED OK = RAHUL
+const FetchInternalTeam = asyncHandler(async (req, res) => {
+  const usersList = await Users.find({
+    role: { $nin: ["customer", "superadmin"] },
+  }).sort({
+    createdAt: -1,
+  });
+  return new ApiResponse(200, usersList, "Internal Team fetched successfully");
+});
+//TESTED OK = RAHUL
 const SearchUsersInChat = asyncHandler(async (req: RequestUser) => {
   const userId: string = req.user?.userId!;
   const { query } = req.body;
@@ -242,8 +242,9 @@ const SearchUsersInChat = asyncHandler(async (req: RequestUser) => {
     name: new RegExp(query, "i"),
     role: { $in: ["resource", "servicing"] },
   });
-  return new ApiResponse(200, users, "search result");
+  return new ApiResponse(200, users, "search result found");
 });
+//TESTED OK = SOURABH
 const DisableUser = asyncHandler(async (req, res) => {
   const firebaseId = req.params.firebaseID;
   const disable = await firebaseAdmin.auth().updateUser(firebaseId, {
@@ -263,13 +264,14 @@ const DisableUser = asyncHandler(async (req, res) => {
   );
   if (!update) {
     return new ApiResponse(
-      200,
+      400,
       null,
       "There was an issue while disabling user account"
     );
   }
   return new ApiResponse(200, null, "User disabled");
 });
+//TESTED OK = SOURABH
 const EnableUser = asyncHandler(async (req, res) => {
   const firebaseId = req.params.firebaseID;
   const enable = await firebaseAdmin.auth().updateUser(firebaseId, {
@@ -295,6 +297,13 @@ const EnableUser = asyncHandler(async (req, res) => {
     );
   }
   return new ApiResponse(200, null, "User Enabled");
+});
+const FetchUserById = asyncHandler(async (req, res) => {
+  const user = await Users.findOne(
+    { _id: req.params.id },
+    { email: 1, name: 1, role: 1 }
+  );
+  return new ApiResponse(200, user, "User fetched successfully");
 });
 
 export {

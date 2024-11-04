@@ -6,16 +6,12 @@ import { ApiError } from "../utils/apiError";
 import Requirement, { IRequirement } from "../models/requestProject.model";
 import mongoose from "mongoose";
 
-/*------------------------------{ custoemr }---------------------------------*/
-// only a customer can create a requirement
+// TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   const body: IRequirement = req.body;
-  if (!(req.user?.role === "customer"))
-    throw new ApiError("Not Authorized", 401);
   if (!body.title && !body.description)
-    throw new ApiError("field is missing", 400);
+    throw new ApiError("All fields are required", 400);
   const files = (req.files as any)?.map((file: any) => file.location);
-
   const requirementBody = {
     title: body.title,
     description: body.description,
@@ -28,15 +24,17 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, newRequirement, "success");
 });
 
+// TESTED OK
 export const getRequirement = asyncHandler(async (req: RequestUser, res) => {
   const userId: string = req.user?.userId!;
   const requirement = await Requirement.find({
     userId: new mongoose.Types.ObjectId(userId),
   });
-  return new ApiResponse(200, requirement, "requirement fetched successfully");
+  return new ApiResponse(200, requirement, "Requirement fetched successfully");
 });
 
 /*------------------------------{ servicing }---------------------------------*/
+//TESTED OK
 export const getCustomerRequirement = asyncHandler(
   async (req: RequestUser, res) => {
     const userId: string = req.params.userId;
@@ -62,10 +60,12 @@ export const getCustomerRequirement = asyncHandler(
     return new ApiResponse(
       200,
       requirement,
-      "requirement fetched successfully"
+      "Requirement fetched successfully"
     );
   }
 );
+
+//TESTED OK
 export const updateCustomerRequirement = asyncHandler(
   async (req: RequestUser, res) => {
     const userId: string = req.params.userId;
@@ -88,6 +88,6 @@ export const updateCustomerRequirement = asyncHandler(
       { $set: { status: status } },
       { new: true, runValidators: true }
     );
-    return new ApiResponse(200, update, "requirement updated successfully");
+    return new ApiResponse(200, update, "Requirement updated successfully");
   }
 );

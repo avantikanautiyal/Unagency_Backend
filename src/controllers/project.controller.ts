@@ -5,30 +5,25 @@ import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import Teams from "../models/team.model";
 import { createRoomForProject } from "../services/Chatstream";
-import Organizations, { Organization } from "../models/organization.model";
+import Organizations from "../models/organization.model";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
-import Staff from "../models/staff.model";
+import { IStaff } from "../models/staff.model";
 import { v6 as uuid6 } from "uuid";
 import ChatRoom from "../models/chatRoom.model";
 import ProjectLogs from "../models/projectlogs.model";
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
-// for PM
+//TESTED OK
 const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
-  const isExist = await Projects.exists({
-    userId: body.userId,
-    title: body.title,
-  });
+
   if (body.orgId) {
     const isExistOrgnization = await Organizations.exists({
       _id: new mongoose.Types.ObjectId(body.orgId),
+      owner: body?.userId,
     });
     if (!isExistOrgnization) throw new ApiError("Invalid Organization Id", 404);
-  }
-  if (isExist) {
-    return new ApiResponse(409, null, "Project already exists");
   }
 
   const teamMemberIds = body.clientTeam as string[]; // fetch users
@@ -71,18 +66,15 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   }
 });
 
-//for PM
-export const fetchMyAllCustomerProjectList = asyncHandler(
+//TESTED OK
+export const FetchAssignedProjects = asyncHandler(
   async (req: RequestUser, res) => {
-    const userId = req.user?.userId;
-    const staff = await Staff.findOne({
-      userId: new mongoose.Types.ObjectId(userId),
-    });
+    const staff: IStaff = req.user?.staff as IStaff;
     if (!staff) throw new ApiError("You are not a staff", 400);
     const projects = await Projects.aggregate([
       {
         $lookup: {
-          from: "users", // Assuming the users collection is named 'users'
+          from: "users",
           localField: "userId",
           foreignField: "_id",
           as: "user",
@@ -98,7 +90,7 @@ export const fetchMyAllCustomerProjectList = asyncHandler(
       },
       {
         $lookup: {
-          from: "categories", // Assuming the users collection is named 'users'
+          from: "categories",
           localField: "category",
           foreignField: "_id",
           as: "category",
@@ -107,43 +99,56 @@ export const fetchMyAllCustomerProjectList = asyncHandler(
       {
         $unwind: "$category",
       },
+      {
+        $project: {
+          category: 1,
+          title: 1,
+          description: 1,
+          startDate: 1,
+          deadline: 1,
+          status: 1,
+          "user.name": 1,
+          "user._id": 1,
+          "user.email": 1,
+        },
+      },
     ]);
 
-    return new ApiResponse(
-      200,
-      projects,
-      "successfully fetch RM assigned projects"
-    );
+    return new ApiResponse(200, projects, "Project Fetched");
   }
 );
-
-// TODO- fix make it only for servicing
-//For Relationship Manager to see client's Projects
+// TESTED OK
 const fetchProjectListByClientId = asyncHandler(
   async (req: RequestUser, res) => {
-    const { userId } = req.query;
-    if (!userId) throw new ApiError("userId not provided", 400);
+    const role = req.user?.role;
+    if (role === "customer") {
+      const projects = await Projects.find({ userId: req.user?.userId })
+        .populate({
+          path: "userId",
+          select: "firebaseId role name email",
+        })
+        .populate({
+          path: "category",
+          select: "title",
+        });
+      return new ApiResponse(200, projects, "Projects fetched successfully");
+    }
 
-    const isManger = await isServecingManager(
-      req.user?.userId!,
-      userId as string
-    );
-    if (!isManger.value) return new ApiResponse(200, null, isManger.message);
-    const projects = await Projects.find({
-      userId: new mongoose.Types.ObjectId(userId as string),
-    })
-      .populate({
-        path: "userId",
-        select: "firebaseId role name email",
-      })
-      .populate({
-        path: "category",
-        select: "title",
+    if (role === "servicing") {
+      const isMyCustomer = await Users.exists({
+        _id: req?.params?.userId,
+        relationship_manager: req.user?.staff,
       });
+      if (!isMyCustomer) throw new ApiError("You are not a staff", 400);
+    }
+    const projects = await Projects.find({
+      userId: req.params?.userId,
+    });
     return new ApiResponse(200, projects, "Projects fetched successfully");
   }
 );
 
+//TESTED OK
 const updateProject = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
   const body: IProject = req.body;
@@ -160,7 +165,13 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
         _id: projectId,
       },
       {
-        $set: body,
+        $set: {
+          title: body.title,
+          category: body.category,
+          description: body?.description,
+          startDate: body?.startDate,
+          deadline: body?.deadline,
+        },
       }
     );
 
@@ -170,70 +181,91 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
   }
 });
 
-const fetchClientProjectById = asyncHandler(async (req: RequestUser, res) => {
-  const projectId = req.params.projectId;
-  const body: IProject = req.body;
-
-  const checkRelationShipManager = await Users.exists({
-    _id: body.userId,
-    relationship_manager: req?.user?.staff,
-  });
-
-  if (checkRelationShipManager) {
-    const project = await Projects.findOne({
-      userId: body.userId,
-      _id: projectId,
-    })
-      .populate("category", "title")
-      .populate({
-        path: "clientTeam", // Populate the comments
-        select: "userId",
-        populate: { path: "userId", select: ["name", "email"] }, // Nested populate to get the author of each comment
-      });
-
-    return new ApiResponse(200, project, "Project fetched successfully");
-  } else {
-    return new ApiResponse(401, null, "You are not assigned for this Customer");
-  }
-});
-
+//TESTED OK
 const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
-  const project = await Projects.findOne({
-    _id: new mongoose.Types.ObjectId(projectId),
-  })
-    .populate("category", "title")
-    .populate({
-      path: "clientTeam", // Populate the comments,
-      select: "userId",
-      populate: { path: "userId", select: ["name", "email"] }, // Nested populate to get the author of each comment
-    });
-  if (!project)
-    return new ApiResponse(200, project, "Project Fetched successfully");
-  return new ApiResponse(200, project, "Project Fetched successfully");
+  const role = req.user?.role;
+  if (role === "customer") {
+    const project = await Projects.findOne({
+      userId: req.user?.userId,
+      _id: projectId,
+    })
+      .populate({
+        path: "userId",
+        select: "firebaseId role name email",
+      })
+      .populate({
+        path: "clientTeam",
+        select: "userId",
+        populate: { path: "userId", select: ["name", "email"] },
+      })
+      .populate({
+        path: "category",
+        select: "title",
+      });
+    return new ApiResponse(200, project, "Project fetched successfully");
+  }
+
+  const project = await Projects.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(projectId), // Filter for the specific project ID
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+    {
+      $match: {
+        "user.relationship_manager": new mongoose.Types.ObjectId(
+          (req?.user?.staff as IStaff)?._id
+        ),
+      },
+    },
+    { $limit: 1 },
+    {
+      $project: {
+        _id: 1, // Include the project ID
+        title: 1,
+        category: 1,
+        description: 1,
+        startDate: 1,
+        deadline: 1,
+        clientTeam: 1,
+        status: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        user: {
+          name: "$user.name",
+          email: "$user.email",
+          image: "$user.image",
+        },
+        resource: 1, // Retain the resource field for lookup
+      },
+    },
+    // {
+    //   $lookup: {
+    //     from: "staff", // Adjust this to the actual collection name for resources
+    //     localField: "resource", // This is the field in the project that contains resource IDs
+    //     foreignField: "_id",
+    //     as: "resourceDetails",
+    //   },
+    // },
+  ]);
+
+  const singleProject = project?.length > 0 ? project[0] : null;
+  return new ApiResponse(200, singleProject, "My Project fetched successfully");
 });
 
-const isServecingManager = async (RMID: string, customerId: string) => {
-  const Rmanager = await Staff.findOne({
-    userId: new mongoose.Types.ObjectId(RMID),
-  });
-  if (!Rmanager) return { value: true, message: "not a staff" };
-
-  const checkRelationShipManager = await Users.exists({
-    _id: new mongoose.Types.ObjectId(customerId),
-    relationship_manager: Rmanager._id,
-  });
-
-  if (!checkRelationShipManager)
-    return { value: false, message: "You are not assigned for this Customer" };
-
-  return { value: true };
-};
-
+//TESTED OK
 /**------------------------------{ for Customer  }------------------------------------- */
-
-//For Customer to see their Projects
-const fetchProjectList = asyncHandler(async (req: RequestUser, res) => {
+const FetchMyProjects = asyncHandler(async (req: RequestUser, res) => {
   const userId: string = req?.user?.userId!;
   const projects = await Projects.find({
     userId: new mongoose.Types.ObjectId(userId as string),
@@ -249,18 +281,16 @@ const fetchProjectList = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, projects, "Projects fetched successfully");
 });
 
-// -------------------------Project Logs----------------------
+//TESTED OK
 const getProjectLogs = asyncHandler(async (req, res) => {
   const projectId = req.params.projectId;
   const logs = await ProjectLogs.find({
     projectId: projectId,
   });
-  if (!logs) {
-    return new ApiResponse(400, null, "Logs couldn't fetched");
-  }
   return new ApiResponse(200, logs, "Project Logs fetched successfully");
 });
 
+//TESTED OK
 const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
   const customerId = req.params.customerId;
@@ -295,10 +325,9 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
 export {
   createProject,
   fetchProjectListByClientId,
-  fetchProjectList,
+  FetchMyProjects,
   updateProject,
   fetchProjectById,
-  fetchClientProjectById,
   getProjectLogs,
   createProjectLogs,
 };

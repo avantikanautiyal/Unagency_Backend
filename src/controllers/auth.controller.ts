@@ -9,6 +9,8 @@ import {
 } from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
+
+//TESTED OK = RAHUL
 const Verify = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, req.user);
 });

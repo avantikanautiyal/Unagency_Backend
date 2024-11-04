@@ -47,14 +47,10 @@ const createCategory = asyncHandler(async (req: Request, res: Response) => {
     );
   }
   const category = await Categories.create({ title, featuredImage, tags });
-  if (category) {
-    return new ApiResponse(200, category, "Category created");
-  }
+  return new ApiResponse(200, category, "Category created");
 });
 const fetchCategories = asyncHandler(async (req: Request, res: Response) => {
   const categories = await Categories.find({});
-  if (categories) {
-    return new ApiResponse(200, categories, "Categories Fetched");
-  }
+  return new ApiResponse(200, categories, "Categories Fetched");
 });
 export { createCategory, fetchCategories };

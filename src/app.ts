@@ -22,18 +22,20 @@ import RequirementRouter from "./routes/requirement.route";
 import TaskRouter from "./routes/tasks.route";
 
 // middleware
-import stripeRouter from "./routes/stripe.route";
-import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
+import {
+  IsVerifiedUser,
+  VerifyUserHandler,
+} from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
 import Subscriptions from "./models/subscription.model";
 import Invoices from "./models/invoices.model";
-import ResourseRouter from "./routes/resourse.route";
 const app = express();
 
 //Use of CORS
 app.use(cors());
+
 const StripeWebhook = asyncHandler(async (req, res) => {
   const sigHeader = req.headers["stripe-signature"] as string;
   const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
@@ -47,7 +49,6 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   );
 
   let invoice;
-  let existingInvoice;
   let status;
   switch (event.type) {
     case "checkout.session.completed":
@@ -166,20 +167,19 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
-app.use("/users", VerifyUserHandler, userRouter);
-app.use("/projects", VerifyUserHandler, ProjectRouter);
-app.use("/staff", VerifyUserHandler, StaffRouter);
-app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
-app.use("/stripe", VerifyUserHandler, stripeRouter);
-app.use("/packages", VerifyUserHandler, packagesRouter);
 app.use("/categories", VerifyUserHandler, categoryRouter);
+app.use("/users", VerifyUserHandler, userRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
-app.use("/", helloWorldRouter);
-app.use("/chat", ChatRouter);
-app.use("/tasks", VerifyUserHandler, TaskRouter);
-app.use("/resourse", VerifyUserHandler, ResourseRouter);
 app.use("/requirement", VerifyUserHandler, RequirementRouter);
+app.use("/staff", VerifyUserHandler, StaffRouter);
+app.use("/chat", VerifyUserHandler, ChatRouter);
+app.use("/projects", VerifyUserHandler, ProjectRouter);
+app.use("/packages", VerifyUserHandler, packagesRouter);
+app.use("/tasks", VerifyUserHandler, TaskRouter);
+app.use("/subscription", VerifyUserHandler, IsVerifiedUser, SubscriptionRouter);
+
+app.use("/", helloWorldRouter);
 
 // Invalid Path Error Handler
 app.use(RouteErrorHandler);

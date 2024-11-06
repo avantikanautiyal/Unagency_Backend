@@ -8,6 +8,7 @@ import { createChatRoom, createDistincChatRoom } from "../services/Chatstream";
 import ChatRoom from "../models/chatRoom.model";
 import Users from "../models/users.model";
 import mongoose from "mongoose";
+import Staff from "../models/staff.model";
 //  TESTED OK
 export const getStreamChatToken = asyncHandler(
   async (req: RequestUser, res) => {
@@ -72,6 +73,24 @@ export const deleteAllChannels = asyncHandler(async (req: RequestUser) => {
   await streamServerClient.deleteChannels(channelIds, { hard_delete: true });
   return new ApiResponse(200, null, "all channels deleted");
 });
+
+
+// it will give me a chatroomId of my personal assigned manager
+export const getMyRelationShipManagerChat = asyncHandler(async (req: RequestUser) => {
+  const userId = req.user?.userId!
+  const staffId = req.user?.relationship_manager;
+  const myRelationShipManger = await Staff.findById(staffId);
+
+  if (!myRelationShipManger) return new ApiResponse(200, null, "we will shortly assign you a our service manager");
+  const channels = await streamServerClient.queryChannels({
+    type: 'messaging',
+    members: [userId?.toString(), myRelationShipManger?.userId?.toString()]
+  })
+  return new ApiResponse(200, { channelId: channels[0]?.id }, "manager chat fetch successfully");
+
+});
+
+
 
 //-----------------------{testing room create api}--------------------
 // remove in production

@@ -136,7 +136,7 @@ const TaskListByUserId = asyncHandler(async (req: RequestUser) => {
     return new ApiResponse(403, null, "Access denied for this role");
   }
   // Return the results
-  return new ApiResponse(200, null, "Task List found");
+  return new ApiResponse(200, query, "Task List found");
 });
 // TESTED OK
 const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {

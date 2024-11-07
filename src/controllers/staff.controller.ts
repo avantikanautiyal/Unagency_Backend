@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Staff, { IStaff } from "../models/staff.model";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
+import Users from "../models/users.model";
 
 // TESTED OK
 const createStaff = asyncHandler(async (req, res) => {
@@ -68,4 +69,32 @@ const fetchStaffById = asyncHandler(async (req, res) => {
   return new ApiResponse(200, staff, "Staff fetched successfully");
 });
 
-export { createStaff, fetchStaffById, fetchStaff, updateStaff, deleteStaff };
+const AssignManagerToCustomer = asyncHandler(async (req, res) => {
+  const { customerId, staffId } = req.body;
+  if (!customerId || !staffId) {
+    return new ApiResponse(400, null, "All fields are required");
+  }
+  const checkCustomer = await Users.findOne({ _id: customerId });
+  if (!checkCustomer) {
+    return new ApiResponse(400, null, "Customer is invalid");
+  }
+
+  const checkStaff = await Staff.findOne({ _id: staffId });
+  if (!checkStaff) {
+    return new ApiResponse(400, null, "Staff ID is invalid");
+  }
+
+  checkCustomer.relationship_manager = staffId;
+  await checkCustomer.save();
+
+  return new ApiResponse(200, null, "Manager is assigned successfully");
+});
+
+export {
+  createStaff,
+  fetchStaffById,
+  fetchStaff,
+  updateStaff,
+  deleteStaff,
+  AssignManagerToCustomer,
+};

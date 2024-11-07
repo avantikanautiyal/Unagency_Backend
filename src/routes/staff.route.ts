@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  AssignManagerToCustomer,
   createStaff,
   deleteStaff,
   fetchStaff,
@@ -9,6 +10,11 @@ import {
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
+router.post(
+  "/assign-manager",
+  VerifyRole(["admin", "superadmin"]),
+  AssignManagerToCustomer
+);
 router.post("/delete/:id", VerifyRole(["admin", "superadmin"]), deleteStaff);
 router.post("/update/:id", VerifyRole(["admin", "superadmin"]), updateStaff);
 router.get("/:id", VerifyRole(["admin", "superadmin"]), fetchStaffById);

@@ -5,6 +5,9 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/apiError";
 import Requirement, { IRequirement } from "../models/requestProject.model";
 import mongoose from "mongoose";
+import { projectNotification } from "../background/queue/projectNotification.queue";
+import { Notification } from "../background/utils/notification";
+import Staff from "../models/staff.model";
 
 // TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
@@ -21,6 +24,19 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     files: files ?? [],
   };
   const newRequirement = await Requirement.create(requirementBody);
+  const rm = await Staff.findOne({
+    _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + "")
+  }
+  ).populate("userId");
+  projectNotification.add(newRequirement._id.toString(), {
+    action: "CREATE",
+    data: {
+      customer: req.user,
+      manager: rm,
+      requirment: newRequirement,
+    },
+    notification: new Notification(newRequirement.title, newRequirement.description, "REQUIRMENT")
+  })
   return new ApiResponse(200, newRequirement, "success");
 });
 

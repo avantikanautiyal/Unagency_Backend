@@ -3,7 +3,7 @@ import { transporter } from "../../services/email/nodemailer"
 const myEmail = process.env.email;
 
 type EmailOptions = {
-    email: string;
+    email: string | string[];
     subject: string;
     // text?: string;
     html: string;
@@ -17,9 +17,11 @@ export function generateEmailOption({ email, subject, html }: EmailOptions) {
         html: html
     }
 }
-export async function sentEmail(mail: Mail.Options) {
+export async function sendEmail(mail: Mail.Options) {
     try {
+
         return await transporter.sendMail(mail);
+
     } catch (error) {
         console.log(error)
         return { error }

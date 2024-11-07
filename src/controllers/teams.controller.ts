@@ -5,8 +5,8 @@ import { ApiResponse } from "../utils/apiResponse";
 import Teams from "../models/team.model";
 import { ApiError } from "../utils/apiError";
 import Users from "../models/users.model";
-import { invitationTemplate } from "../utils/teamEmailInvitaiton/invitationEmailTemplate";
-import { generateEmailOption, sentEmail } from "../utils/teamEmailInvitaiton";
+import { invitationTemplate } from "../emailTemplates/invitationEmailTemplate";
+import { generateEmailOption, sendEmail } from "../utils/emailsender";
 import Organizations from "../models/organization.model";
 import mongoose from "mongoose";
 
@@ -94,7 +94,7 @@ const InviteMemberInOrganization = asyncHandler(
         link: `http://localhost:5173/invitation`,
       }),
     });
-    await sentEmail(mail);
+    await sendEmail(mail);
     const addMember = await Teams.create({
       userId: invitedUser?._id,
       role: "member",

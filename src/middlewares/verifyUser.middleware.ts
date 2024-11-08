@@ -99,3 +99,19 @@ export const IsVerifiedUser = asyncHandler(async function IsVerifiedUser(
   next(new ApiError((err as Error).message, 401));
   return;
 });
+export const IsMembershipUser = asyncHandler(async function IsMembershipUser(
+  req: RequestUser,
+  res: Response,
+  next: NextFunction
+) {
+  const subscription = await Subscriptions.findOne({
+    _id: req.user?.subscriptionId,
+  });
+  if (subscription?.status == "active") {
+    next();
+    return;
+  }
+  const err = new Error("Please activate your membership");
+  next(new ApiError((err as Error).message, 400));
+  return;
+});

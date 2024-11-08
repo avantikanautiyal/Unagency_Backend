@@ -12,6 +12,8 @@ import { IStaff } from "../models/staff.model";
 import { v6 as uuid6 } from "uuid";
 import ChatRoom from "../models/chatRoom.model";
 import ProjectLogs from "../models/projectlogs.model";
+import { projectNotification } from "../background/queue/projectNotification.queue";
+import { Notification } from "../background/utils/notification";
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
@@ -27,8 +29,14 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   }
 
   const teamMemberIds = body.clientTeam as string[]; // fetch users
-  const teams = await Teams.find({ _id: { $in: teamMemberIds } });
+  const teams = await Teams.find({ _id: { $in: teamMemberIds } }).populate("userId");
+  const teamsEmail = teams.map((t: any) => t?.userId?.email)
   const create = await Projects.create(body);
+  projectNotification.add(create?._id?.toString(), {
+    action: "CREATE",
+    data: { userId: body.userId, teamsEmail: teamsEmail },
+    notification: new Notification(create.title, create.description, "PROJECT")
+  });
   await ProjectLogs.create({
     projectId: create?._id,
     ActionType: "planning",

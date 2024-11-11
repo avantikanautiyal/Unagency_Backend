@@ -4,6 +4,7 @@ import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
+import { createUserUpster } from "../services/Chatstream";
 export async function RegisterIfNot(
   req: RequestUser,
   response: Response,
@@ -20,7 +21,6 @@ export async function RegisterIfNot(
       const isUserExists = await Users.exists({
         firebaseId: verification?.uid,
       });
-      console.log(isUserExists, verification.uid)
       if (!isUserExists) {
 
         const [relationshipManager] = await Staff.aggregate([
@@ -51,6 +51,13 @@ export async function RegisterIfNot(
             : null,
         };
         const registration = await Users.create(user); // Creating user in database
+
+        const r = await createUserUpster({
+          _id: registration._id + "",
+          email: registration.email,
+          name: registration.name,
+          userRole: registration.role,
+        });
       }
     }
 

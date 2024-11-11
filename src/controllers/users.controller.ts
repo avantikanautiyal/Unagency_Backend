@@ -5,6 +5,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
 import {
+  createDistincChatRoom,
   createUserUpster,
   updateuserImage,
   updateuserName,
@@ -25,6 +26,7 @@ const CreateUser = asyncHandler(async (req, res) => {
     email,
     password,
     displayName: name,
+    emailVerified: true,  // Mark the user as verified at creation
   });
   const newUser: IUser = {
     _id: new mongoose.Types.ObjectId(),

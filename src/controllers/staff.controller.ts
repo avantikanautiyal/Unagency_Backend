@@ -3,6 +3,7 @@ import Staff, { IStaff } from "../models/staff.model";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import Users from "../models/users.model";
+import { createDistincChatRoom } from "../services/Chatstream";
 
 // TESTED OK
 const createStaff = asyncHandler(async (req, res) => {
@@ -79,12 +80,23 @@ const AssignManagerToCustomer = asyncHandler(async (req, res) => {
     return new ApiResponse(400, null, "Customer is invalid");
   }
 
-  const checkStaff = await Staff.findOne({ _id: staffId });
+  const checkStaff = await Staff.findOne({ _id: staffId }).populate("userId");
   if (!checkStaff) {
     return new ApiResponse(400, null, "Staff ID is invalid");
   }
 
   checkCustomer.relationship_manager = staffId;
+  await createDistincChatRoom({
+    roomName: `${(checkStaff?.userId as any)?.name}, ${checkCustomer.name}`,
+    members: [
+      checkStaff.userId._id + "",
+      checkCustomer._id + "",
+    ],
+    createdBy: checkCustomer._id + "",
+    room_type: "personal",
+    isCustomer: true,
+  }); //CReating a Channel between Customer and Relationship Manager
+
   await checkCustomer.save();
 
   return new ApiResponse(200, null, "Manager is assigned successfully");

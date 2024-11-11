@@ -4,6 +4,7 @@ import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
+import { createDistincChatRoom, createUserUpster } from "../services/Chatstream";
 export async function RegisterIfNot(
   req: RequestUser,
   response: Response,
@@ -15,9 +16,19 @@ export async function RegisterIfNot(
     const verification = await firebaseAdmin.auth().verifyIdToken(accessToken!);
 
     if (verification) {
-      const isUserExists = await Users.exists({
-        firebaseId: verification?.uid,
+      const isUserExists = await Users.findOne({
+        // firebaseId: verification?.uid,
+        email: verification.email
       });
+
+      if (!!isUserExists && isUserExists?.firebaseId !== verification.uid) {
+        await Users.updateOne({
+          email: verification.email
+        },
+          { $set: { firebaseId: verification.uid } })
+
+      }
+
       if (!isUserExists) {
         const [relationshipManager] = await Staff.aggregate([
           {
@@ -46,7 +57,23 @@ export async function RegisterIfNot(
             ? relationshipManager._id
             : null,
         };
-        await Users.create(user); // Creating user in database
+        const registration = await Users.create(user); // Creating user in database
+
+        const r = await createUserUpster({
+          _id: registration._id + "",
+          email: registration.email,
+          name: registration.name,
+          userRole: registration.role,
+        });
+        if (relationshipManager) {
+          await createDistincChatRoom({
+            roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
+            members: [registration._id + "", relationshipManager.userInfo._id + ""],
+            createdBy: registration._id + "",
+            room_type: "personal",
+            isCustomer: true,
+          }); //CReating a Channel between Customer and Relationship Manager
+        }
       }
     }
   } catch (err) {

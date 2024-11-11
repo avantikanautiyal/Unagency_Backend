@@ -177,7 +177,7 @@ app.use("/chat", VerifyUserHandler, ChatRouter);
 app.use("/projects", VerifyUserHandler, ProjectRouter);
 app.use("/packages", VerifyUserHandler, packagesRouter);
 app.use("/tasks", VerifyUserHandler, TaskRouter);
-app.use("/subscription", VerifyUserHandler, IsVerifiedUser, SubscriptionRouter);
+app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
 
 app.use("/", helloWorldRouter);
 
@@ -192,10 +192,10 @@ app.use(ErrorHandler);
     mongoose.connection.on("connected", () => {
       console.log("DB_CONNECTED");
     });
-    app.listen(process.env.PORT ?? 5000, () => {
+    app.listen(process.env.PORT ?? 4000, () => {
       console.log(
         "⚙️",
-        ` Server is running at port : ${process.env.PORT ?? 5000}`
+        ` Server is running at port : ${process.env.PORT ?? 4000}`
       );
     });
   } catch (err) {

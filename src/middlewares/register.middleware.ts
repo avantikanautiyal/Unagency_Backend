@@ -12,17 +12,13 @@ export async function RegisterIfNot(
   try {
     const authHeader = req.headers["authorization"];
     const accessToken = authHeader && authHeader.split(" ")[1];
-    const verification = await firebaseAdmin
-      .auth()
-      .verifyIdToken(accessToken!);
+    const verification = await firebaseAdmin.auth().verifyIdToken(accessToken!);
 
     if (verification) {
       const isUserExists = await Users.exists({
         firebaseId: verification?.uid,
       });
-      console.log(isUserExists, verification.uid)
       if (!isUserExists) {
-
         const [relationshipManager] = await Staff.aggregate([
           {
             $lookup: {
@@ -50,10 +46,9 @@ export async function RegisterIfNot(
             ? relationshipManager._id
             : null,
         };
-        const registration = await Users.create(user); // Creating user in database
+        await Users.create(user); // Creating user in database
       }
     }
-
   } catch (err) {
   } finally {
     next();

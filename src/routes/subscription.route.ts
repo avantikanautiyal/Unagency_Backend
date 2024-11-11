@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  IsVerifiedUser,
   VerifyRole,
   VerifyUserHandler,
 } from "../middlewares/verifyUser.middleware";
@@ -20,6 +21,7 @@ const router = Router();
 router.post(
   "/create-checkout-session",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   createCheckoutSession
 );
 //IT allow customer to check subscription Status
@@ -33,6 +35,7 @@ router.get(
 router.post(
   "/update-subscription",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   upgradeCustomerSubscription
 );
 
@@ -40,6 +43,7 @@ router.post(
 router.get(
   "/fetch-checkout-session",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   fetchCheckoutSession
 );
 
@@ -47,6 +51,7 @@ router.get(
 router.post(
   "/create-user-subscription",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   createUserSubscription
 );
 
@@ -54,11 +59,17 @@ router.post(
 router.get(
   "/cancel-subscription",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   CancelCustomerSubscription
 );
 
 //It is used to check customer payment methods and default payment method
-router.get("/payment-methods", VerifyRole(["customer"]), UserPaymentMethods);
+router.get(
+  "/payment-methods",
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
+  UserPaymentMethods
+);
 
 //It is used to create a payment method
 router.post(
@@ -71,6 +82,7 @@ router.post(
 router.post(
   "/make-default-payment-method",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   MakeDefaultPaymentMethod
 );
 
@@ -78,6 +90,7 @@ router.post(
 router.post(
   "/remove-payment-method",
   VerifyRole(["customer"]),
+  IsVerifiedUser,
   RemovePaymentMethod
 );
 

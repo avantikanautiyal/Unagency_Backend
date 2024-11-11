@@ -18,9 +18,19 @@ export async function RegisterIfNot(
       .verifyIdToken(accessToken!);
 
     if (verification) {
-      const isUserExists = await Users.exists({
-        firebaseId: verification?.uid,
+      const isUserExists = await Users.findOne({
+        // firebaseId: verification?.uid,
+        email: verification.email
       });
+
+      if (!!isUserExists && isUserExists?.firebaseId !== verification.uid) {
+        await Users.updateOne({
+          email: verification.email
+        },
+          { $set: { firebaseId: verification.uid } })
+
+      }
+
       if (!isUserExists) {
 
         const [relationshipManager] = await Staff.aggregate([

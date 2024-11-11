@@ -62,6 +62,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
 
       req.user = {
         ...getUser.toObject(),
+        isVerified: verification?.email_verified!,
         userId: getUser?._id?.toString(),
         subscriptionId,
         customerId,
@@ -91,6 +92,7 @@ export const IsVerifiedUser = asyncHandler(async function IsVerifiedUser(
   res: Response,
   next: NextFunction
 ) {
+  console.log("verify middle ware called", req.user)
   if (req.user?.isVerified) {
     next();
     return;

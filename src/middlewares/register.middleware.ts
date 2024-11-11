@@ -4,7 +4,7 @@ import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
-import { createUserUpster } from "../services/Chatstream";
+import { createDistincChatRoom, createUserUpster } from "../services/Chatstream";
 export async function RegisterIfNot(
   req: RequestUser,
   response: Response,
@@ -58,6 +58,15 @@ export async function RegisterIfNot(
           name: registration.name,
           userRole: registration.role,
         });
+        if (relationshipManager) {
+          await createDistincChatRoom({
+            roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
+            members: [registration._id + "", relationshipManager.userInfo._id + ""],
+            createdBy: registration._id + "",
+            room_type: "personal",
+            isCustomer: true,
+          }); //CReating a Channel between Customer and Relationship Manager
+        }
       }
     }
 

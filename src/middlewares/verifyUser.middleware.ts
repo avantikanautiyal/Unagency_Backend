@@ -92,7 +92,7 @@ export const IsVerifiedUser = asyncHandler(async function IsVerifiedUser(
   res: Response,
   next: NextFunction
 ) {
-  console.log("verify middle ware called", req.user)
+  // console.log("verify middle ware called", req.user)
   if (req.user?.isVerified) {
     next();
     return;

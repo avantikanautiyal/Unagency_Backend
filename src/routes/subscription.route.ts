@@ -10,6 +10,7 @@ import {
   CreatePaymentMethod,
   createUserSubscription,
   fetchCheckoutSession,
+  invoiceHistory,
   MakeDefaultPaymentMethod,
   RemovePaymentMethod,
   SubscriptionStatus,
@@ -92,6 +93,12 @@ router.post(
   VerifyRole(["customer"]),
   IsVerifiedUser,
   RemovePaymentMethod
+);
+router.get(
+  "/invoice-history",
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
+  invoiceHistory
 );
 
 export default router;

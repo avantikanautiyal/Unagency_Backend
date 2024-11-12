@@ -5,6 +5,7 @@ import CreateCustomer from "../services/subscription/createCustomer";
 import createSession from "../services/subscription/createSession";
 import CreateSubscription from "../services/subscription/createSubscription";
 import createUserPaymentMethod from "../services/subscription/createUserPaymentMethod";
+import InvoiceHistory from "../services/subscription/invoiceHistory";
 import MakeUserDefaultPaymentMethod from "../services/subscription/makeDefaultPaymentMethod";
 import PaymentMethods from "../services/subscription/paymentMethods";
 import RemoveUserPaymentMethod from "../services/subscription/removePaymentMethod";
@@ -198,6 +199,18 @@ const RemovePaymentMethod = asyncHandler(async (req: RequestUser, res) => {
   }
 });
 
+const invoiceHistory = asyncHandler(async (req: RequestUser, res) => {
+  const customerId = req.user?.customerId ?? "";
+  if (!customerId) {
+    return new ApiResponse(200, null, "User is not a customer yet");
+  }
+  const invoices = await InvoiceHistory(customerId);
+  if (!invoices) {
+    return new ApiResponse(400, null, "Couldn't fetch invoice history");
+  }
+  return new ApiResponse(200, invoices, "Invoice history fetched successfully");
+});
+
 export {
   createCheckoutSession,
   fetchCheckoutSession,
@@ -209,4 +222,5 @@ export {
   CreatePaymentMethod,
   MakeDefaultPaymentMethod,
   RemovePaymentMethod,
+  invoiceHistory,
 };

@@ -4,7 +4,10 @@ import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
-import { createDistincChatRoom, createUserUpster } from "../services/Chatstream";
+import {
+  createDistincChatRoom,
+  createUserUpster,
+} from "../services/Chatstream";
 export async function RegisterIfNot(
   req: RequestUser,
   response: Response,
@@ -13,26 +16,24 @@ export async function RegisterIfNot(
   try {
     const authHeader = req.headers["authorization"];
     const accessToken = authHeader && authHeader.split(" ")[1];
-    const verification = await firebaseAdmin
-      .auth()
-      .verifyIdToken(accessToken!);
+    const verification = await firebaseAdmin.auth().verifyIdToken(accessToken!);
 
     if (verification) {
       const isUserExists = await Users.findOne({
         // firebaseId: verification?.uid,
-        email: verification.email
+        email: verification.email,
       });
 
       if (!!isUserExists && isUserExists?.firebaseId !== verification.uid) {
-        await Users.updateOne({
-          email: verification.email
-        },
-          { $set: { firebaseId: verification.uid } })
-
+        await Users.updateOne(
+          {
+            email: verification.email,
+          },
+          { $set: { firebaseId: verification.uid } }
+        );
       }
 
       if (!isUserExists) {
-
         const [relationshipManager] = await Staff.aggregate([
           {
             $lookup: {
@@ -71,7 +72,10 @@ export async function RegisterIfNot(
         if (relationshipManager) {
           await createDistincChatRoom({
             roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
-            members: [registration._id + "", relationshipManager.userInfo._id + ""],
+            members: [
+              registration._id + "",
+              relationshipManager.userInfo._id + "",
+            ],
             createdBy: registration._id + "",
             room_type: "personal",
             isCustomer: true,
@@ -79,7 +83,6 @@ export async function RegisterIfNot(
         }
       }
     }
-
   } catch (err) {
   } finally {
     next();

@@ -161,13 +161,68 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     return new ApiResponse(400, null, "Task ID is required");
   }
 
+
   delete updates._id;
   delete updates.assignedBy;
   // Find the task by ID and update it with the new fields
   const updatedTask = await Tasks.findByIdAndUpdate(taskId, updates, {
     new: true,
     runValidators: true,
-  });
+  }).populate({
+    path: "assignedTo",
+    select: "userId",
+    populate: {
+      path: "userId",
+      select: "name email",
+      model: "Users",
+    },
+  })
+    .populate({
+      path: "assignedBy",
+      select: "userId",
+      populate: {
+        path: "userId",
+        select: "name email",
+        model: "Users",
+      },
+    });
+  switch (updates.status) {
+
+    case "submitted":
+      // here inform a task servicing manager 
+      await projectNotification.add("task update", {
+        action: "ASSIGN",
+        data: {
+          status: updatedTask?.status,
+          // userId: staff?.userId?._id,
+          emails: [(updatedTask?.assignedBy as any)?.userId?.email],
+          // name: (staff.userId as any).name,
+          deadline: updatedTask?.deadline,
+          assignedBy: req?.user?.name
+        },
+        notification: new Notification(updatedTask?.title!, updatedTask?.description!, "TASK")
+      });
+
+      break;
+    case "feedback":
+      await projectNotification.add("task update", {
+        action: "ASSIGN",
+        data: {
+          status: updatedTask?.status,
+          // userId: staff?.userId?._id,
+          emails: [(updatedTask?.assignedTo as any)?.userId?.email],
+          // name: (staff.userId as any).name,
+          deadline: updatedTask?.deadline,
+          assignedBy: req?.user?.name
+        },
+        notification: new Notification(updatedTask?.title!, updatedTask?.description!, "TASK")
+      });
+      // here inform a task updation to a task assigne (resource)
+
+      break;
+    default:
+  }
+
 
   if (!updatedTask) {
     return new ApiResponse(404, null, "Task not found");

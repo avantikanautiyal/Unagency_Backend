@@ -20,6 +20,7 @@ import OrganizationsRouter from "./routes/organizations.route";
 import ChatRouter from "./routes/chat.route";
 import RequirementRouter from "./routes/requirement.route";
 import TaskRouter from "./routes/tasks.route";
+import NotificationRouter from "./routes/notification.route"
 
 // middleware
 import {
@@ -178,6 +179,8 @@ app.use("/projects", VerifyUserHandler, ProjectRouter);
 app.use("/packages", VerifyUserHandler, packagesRouter);
 app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/subscription", VerifyUserHandler, IsVerifiedUser, SubscriptionRouter);
+
+app.use("/notification", VerifyUserHandler, NotificationRouter);
 
 app.use("/", helloWorldRouter);
 

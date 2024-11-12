@@ -5,6 +5,8 @@ import { ApiResponse } from "../utils/apiResponse";
 import Tasks, { ITasks } from "../models/tasks.model";
 import Staff from "../models/staff.model";
 import mongoose from "mongoose";
+import { projectNotification } from "../background/queue/projectNotification.queue";
+import { Notification } from "../background/utils/notification";
 
 // TESTED OK
 const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
@@ -39,13 +41,25 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   const assignUserId: string = req.body?.assignedTo as string;
   const staff = await Staff.findOne({
     userId: new mongoose.Types.ObjectId(assignUserId),
-  });
+  }).populate("userId");
   if (!staff) return new ApiResponse(400, null, "Invalid resource Staff ID");
 
   const create = await Tasks.create({
     ...req.body,
     assignedTo: staff._id,
     assignedBy: req.user?.staff?._id,
+  });
+
+  await projectNotification.add(create?._id?.toString(), {
+    action: "ASSIGN",
+    data: {
+      status: create?.status,
+      userId: staff?.userId?._id,
+      emails: [(staff?.userId as any)?.email],
+      name: (staff.userId as any).name,
+      deadline: create.deadline, assignedBy: req?.user?.name
+    },
+    notification: new Notification(create.title, create.description, "TASK")
   });
 
   return new ApiResponse(200, create, "Task assigned successfully");

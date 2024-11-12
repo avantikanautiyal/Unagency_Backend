@@ -7,12 +7,14 @@ export interface INotification {
     title: string;
     description: string;
     type: NotificationType;
+    isRead: boolean;
 }
 
 const NotificationSchema = new Schema<INotification>(
     {
         _id: { type: Schema.Types.ObjectId, auto: true },
         userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
+        isRead: { type: Boolean, default: false },
         title: { type: String, required: true },
         description: { type: String, required: true },
         type: { type: String, required: true },

@@ -4,6 +4,7 @@ import Users from "../../models/users.model";
 import Notifications from "../../models/notification.model";
 import { projectCreationTemplate } from "../../emailTemplates/projectCreation";
 import { requirmentCreationTemplate } from "../../emailTemplates/requirmentCreation";
+import { taskAssignTemplate } from "../../emailTemplates/taskAssignmentTemplate";
 /**
  * 1)send email for project send 
  * 2) project updates email notificaion send 
@@ -23,6 +24,9 @@ export default async function projectNotificationService(job: any) {
                 break;
             case "REQUIRMENT":
                 if (action === "CREATE") await onRequirmentCreate(job?.data?.data ?? {}, notificaionData);
+                break;
+            case "TASK":
+                if (action === "ASSIGN") await onTaskAssign(job?.data?.data ?? {}, notificaionData);
                 break;
             case "COMMON":
                 break;
@@ -63,6 +67,25 @@ async function onRequirmentCreate({ customer, requirment, manager }: any, notifi
             })
         }));
 
+    } catch (err) {
+
+    }
+}
+async function onTaskAssign(data: any, notification: Notification) {
+    try {
+        await Notifications.create({ ...notification, userId: data?.userId });
+        await sendEmail(generateEmailOption({
+            email: data.emails,
+            subject: "Task is assigned",
+            html: taskAssignTemplate({
+                assignedBy: data?.assignedBy,
+                deadline: data?.deadline,
+                name: data?.name,
+                description: notification?.description,
+                title: notification?.title,
+                priority: data?.status,
+            })
+        }));
     } catch (err) {
 
     }

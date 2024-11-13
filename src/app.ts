@@ -32,6 +32,9 @@ import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
 import Subscriptions from "./models/subscription.model";
 import Invoices from "./models/invoices.model";
+import StripeCustomers from "./models/customer.model";
+import { EmailQueue } from "./background/queue/Email.queue";
+import { Notification } from "./background/utils/notification";
 const app = express();
 
 //Use of CORS
@@ -77,6 +80,31 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         ),
       });
       status = event.data.object.status;
+      const customer = await StripeCustomers.findOne({
+        stripeCustomerId: event.data.object?.customer,
+      });
+      const email = customer?.email;
+      const name = customer?.name;
+      const planName = event.data.object?.items?.data[0]?.plan?.nickname;
+      const amount = event.data.object?.items?.data[0]?.plan?.amount;
+      const currency = event.data.object?.items?.data[0]?.plan?.currency;
+      const interval = event.data.object?.items?.data[0]?.plan?.interval;
+      const current_period_start = event.data.object?.current_period_start;
+      const current_period_end = event.data.object?.current_period_end;
+
+      await EmailQueue.add("asdasd", {
+        action: "SUBSCRIPTION",
+        data: {
+          email: email,
+          customerName: name,
+          planName: planName,
+          startDate: current_period_start,
+          nextRenualDate: current_period_end,
+          BillingCycle: interval,
+          price: `${currency} ${amount}`
+        },
+        notification: new Notification(planName as string, "", "COMMON") as any,
+      })
       console.log("Customer subscription initiated");
       break;
     case "customer.subscription.updated":
@@ -95,6 +123,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         { new: true }
       );
       status = event.data.object.status;
+
       console.log("Customer subscription updated");
       break;
     case "customer.subscription.deleted":

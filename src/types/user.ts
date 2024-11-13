@@ -14,6 +14,7 @@ export interface UserType {
   customerId?: string;
   subscriptionId?: string;
   relationship_manager?: string | object;
+  staff?: string | object;
 }
 
 export type RequestUser = Request & {

@@ -9,7 +9,7 @@ export async function ErrorHandler(
 ) {
   error instanceof ApiError
     ? response
-        .status(error.statusCode)
-        .json(new ApiResponse(error.statusCode, error.error, error.message))
+      .status(error.statusCode)
+      .json(new ApiResponse(error.statusCode, null, error.message))
     : response.status(500).json(new ApiResponse(500, null, error.message));
 }

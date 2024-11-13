@@ -9,6 +9,7 @@ export interface IStaff {
   maxTaskCapacity: number;
   availability: boolean;
   designation: string;
+  status: boolean;
 }
 
 const StaffSchema = new Schema<IStaff>(
@@ -23,6 +24,7 @@ const StaffSchema = new Schema<IStaff>(
     designation: {
       type: String,
     },
+    status: { type: Boolean, default: true },
   },
   { collection: "staff", timestamps: true }
 );

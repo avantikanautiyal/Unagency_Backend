@@ -1,21 +1,27 @@
 import { Router } from "express";
 import {
   createOrganization,
-  fetchOrganizations,
   UpdateUserOrganization,
   UserOrganization,
-  getOrginiztionMyUserId
+  OrganizationByUserId,
 } from "../controllers/organizations.controller";
+import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-// router.post("/update/:id", UpdatePackage);
-// router.post("/delete/:id", DeletePackage);
-// router.get("/:id", fetchPackageById);
-router.post("/update/:organizationId", UpdateUserOrganization);
-router.get("/user-organization", UserOrganization);
-router.post("/", createOrganization);
-router.get("/", fetchOrganizations);
-router.get("/:userId", getOrginiztionMyUserId);
-
+router.post(
+  "/update/:organizationId",
+  VerifyRole(["customer"]),
+  UpdateUserOrganization
+);
+//Desc: It allows user to find their organization information;
+router.get("/user-organization", VerifyRole(["customer"]), UserOrganization);
+//Desc: It allows system to find user's organization information;
+router.get(
+  "/:userId",
+  VerifyRole(["servicing", "admin", "superadmin"]),
+  OrganizationByUserId
+);
+//Desc: It allows customer to create their organization
+router.post("/", VerifyRole(["customer"]), createOrganization);
 
 export default router;

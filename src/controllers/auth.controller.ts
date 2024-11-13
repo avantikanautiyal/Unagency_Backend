@@ -3,29 +3,69 @@ import { ApiResponse } from "../utils/apiResponse";
 import { ApiError } from "../utils/apiError";
 import firebaseAdmin from "../libs/firebase";
 import Users from "../models/users.model";
-import { createUserUpster, createChatRoom } from "../services/Chatstream";
+import {
+  createUserUpster,
+  createDistincChatRoom,
+} from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
+
+//TESTED OK = RAHUL
 const Verify = asyncHandler(async (req: RequestUser, res) => {
+  // const isUserExists = await Users.exists({
+  //   firebaseId: req.user?.firebaseId,
+  // });
+  // if (!isUserExists) {
+  //   const authHeader = req.headers["authorization"];
+  //   const accessToken = authHeader && authHeader.split(" ")[1];
+  //   const verification = await firebaseAdmin.auth().verifyIdToken(accessToken!);
+  //   const [relationshipManager] = await Staff.aggregate([
+  //     {
+  //       $lookup: {
+  //         from: "users", // The name of the collection you're joining
+  //         localField: "userId", // The field in Staff collection
+  //         foreignField: "_id", // The field in the Users collection to match
+  //         as: "userInfo", // The name of the output array field
+  //       },
+  //     },
+  //     { $unwind: "$userInfo" },
+  //     {
+  //       $match: {
+  //         "userInfo.role": "servicing",
+  //       },
+  //     },
+  //     { $sample: { size: 1 } },
+  //   ]); // Allocate a Relationship manager to a new User
+  //   const user = {
+  //     firebaseId: verification?.uid,
+  //     name: verification?.name,
+  //     role: "customer",
+  //     email: verification?.email,
+  //     isVerified: verification?.email_verified,
+  //     relationship_manager: relationshipManager
+  //       ? relationshipManager._id
+  //       : null,
+  //   };
+  //   const registration = await Users.create(user); // Creating user in database
+  // }
+
   return new ApiResponse(200, req.user);
 });
 
 const Register = asyncHandler(async (req, res) => {
   const authHeader = req.headers["authorization"];
   const accessToken = authHeader && authHeader.split(" ")[1];
-
   if (accessToken) {
     try {
       const verification = await firebaseAdmin
         .auth()
         .verifyIdToken(accessToken);
       if (verification) {
-        // Allocate a Relationship manager to a new User
         const isUserExists = await Users.exists({
           firebaseId: verification?.uid,
         });
         if (isUserExists)
-          return new ApiResponse(200, null, "user already registered");
+          return new ApiResponse(200, null, "User already registered");
         const [relationshipManager] = await Staff.aggregate([
           {
             $lookup: {
@@ -42,45 +82,50 @@ const Register = asyncHandler(async (req, res) => {
             },
           },
           { $sample: { size: 1 } },
-        ]);
-        if (!relationshipManager)
-          throw new ApiError("relationship manager not found", 404);
+        ]); // Allocate a Relationship manager to a new User
         const user = {
           firebaseId: verification?.uid,
           name: verification?.name,
           role: "customer",
           email: verification?.email,
           isVerified: verification?.email_verified,
-          relationship_manager: relationshipManager._id,
+          relationship_manager: relationshipManager
+            ? relationshipManager._id
+            : null,
         };
 
-        const registration = await Users.create(user);
+        const registration = await Users.create(user); // Creating user in database
         if (registration) {
-          //  Registring a user to a getStreamId with a mongoDB Id
-          const sUser = await createUserUpster({
+          await createUserUpster({
             _id: registration._id,
             name: registration?.name,
             email: registration.email,
-          } as any);
+            userRole: registration.role,
+          } as any); // Registring Get Stream IO User
 
-          const roomChannel = await createChatRoom({
-            roomId: registration._id + "",
+          if (!relationshipManager)
+            return new ApiResponse(
+              200,
+              registration,
+              "User registered successfully"
+            );
+
+          await createDistincChatRoom({
             roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
             members: [
               registration._id + "",
               relationshipManager.userInfo._id + "",
             ],
             createdBy: registration._id + "",
-            personalName: {
-              [registration._id + ""]: relationshipManager?.userInfo?.name,
-              [relationshipManager.userInfo._id + ""]: registration.name,
-            },
-          });
-          res
-            .status(200)
-            .json(
-              new ApiResponse(200, registration, "User registered successfully")
-            );
+            room_type: "personal",
+            isCustomer: true,
+          }); //CReating a Channel between Customer and Relationship Manager
+
+          return new ApiResponse(
+            200,
+            registration,
+            "User registered successfully"
+          );
         }
       }
     } catch (err) {
@@ -91,4 +136,74 @@ const Register = asyncHandler(async (req, res) => {
   }
 });
 
-export { Verify, Register };
+type RegisterBody = {
+  name: string;
+  email: string;
+  password: string;
+};
+const NewRegister = asyncHandler(async (req) => {
+  const body: RegisterBody = req.body;
+  if (!(body.email && body.name && body.password))
+    throw new ApiError("all fields are required", 400);
+  const isUserExists = await Users.exists({ email: body.email });
+  if (isUserExists)
+    return new ApiResponse(200, null, "User already registered");
+
+  const firebaseUser = await firebaseAdmin.auth().createUser({
+    email: body.email,
+    password: body.password,
+    displayName: body.name,
+  });
+  const [relationshipManager] = await Staff.aggregate([
+    {
+      $lookup: {
+        from: "users", // The name of the collection you're joining
+        localField: "userId", // The field in Staff collection
+        foreignField: "_id", // The field in the Users collection to match
+        as: "userInfo", // The name of the output array field
+      },
+    },
+    { $unwind: "$userInfo" },
+    {
+      $match: {
+        "userInfo.role": "servicing",
+      },
+    },
+    { $sample: { size: 1 } },
+  ]); // Allocate a Relationship manager to a new User
+  const user = {
+    firebaseId: firebaseUser?.uid,
+    name: body.name,
+    role: "customer",
+    email: firebaseUser?.email,
+    isVerified: firebaseUser?.emailVerified,
+    relationship_manager: relationshipManager ? relationshipManager._id : null,
+  };
+  try {
+    // saving user in mongo db and a chatstream io server
+    const create = await Users.create(user);
+    await createUserUpster({
+      _id: create._id + "",
+      email: body.email,
+      name: body.name,
+      userRole: create.role,
+    });
+
+    if (!relationshipManager)
+      return new ApiResponse(200, create, "User registered successfully");
+
+    await createDistincChatRoom({
+      roomName: `${relationshipManager?.userInfo?.name}, ${create.name}`,
+      members: [create._id + "", relationshipManager.userInfo._id + ""],
+      createdBy: create._id + "",
+      room_type: "personal",
+      isCustomer: true,
+    }); //CReating a Channel between Customer and Relationship Manager
+
+    return new ApiResponse(200, create, "User created successfully");
+  } catch (err) {}
+
+  return new ApiResponse(200, null, "you are successfully registered");
+});
+
+export { Verify, Register, NewRegister };

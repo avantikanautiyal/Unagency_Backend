@@ -1,11 +1,16 @@
 import { Router } from "express";
-import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
+import {
+  IsVerifiedUser,
+  VerifyRole,
+  VerifyUserHandler,
+} from "../middlewares/verifyUser.middleware";
 import {
   CancelCustomerSubscription,
   createCheckoutSession,
   CreatePaymentMethod,
   createUserSubscription,
   fetchCheckoutSession,
+  invoiceHistory,
   MakeDefaultPaymentMethod,
   RemovePaymentMethod,
   SubscriptionStatus,
@@ -13,40 +18,87 @@ import {
   UserPaymentMethods,
 } from "../controllers/subscriptions.controller";
 const router = Router();
-
+// Desc : its creates a customer checkout session
 router.post(
   "/create-checkout-session",
-  VerifyUserHandler,
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
   createCheckoutSession
 );
+//IT allow customer to check subscription Status
+router.get(
+  "/subscription-status",
+  VerifyRole(["customer"]),
+  SubscriptionStatus
+);
+
+//Desc: It allow customer to upgrade and downgrade their current subscription
 router.post(
   "/update-subscription",
-  VerifyUserHandler,
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
   upgradeCustomerSubscription
 );
-router.get("/subscription-status", VerifyUserHandler, SubscriptionStatus);
+
+//Desc: It allow customer to fetch session Details
+router.get(
+  "/fetch-checkout-session",
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
+  fetchCheckoutSession
+);
+
+//It is used to create customer Subscription
 router.post(
   "/create-user-subscription",
-  VerifyUserHandler,
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
   createUserSubscription
 );
-router.get("/fetch-checkout-session", VerifyUserHandler, fetchCheckoutSession);
-router.get("/payment-methods", VerifyUserHandler, UserPaymentMethods);
-router.post("/create-payment-method", VerifyUserHandler, CreatePaymentMethod);
+
+//It is used to cancel current subscription
 router.get(
   "/cancel-subscription",
-  VerifyUserHandler,
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
   CancelCustomerSubscription
 );
+
+//It is used to check customer payment methods and default payment method
+router.get(
+  "/payment-methods",
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
+  UserPaymentMethods
+);
+
+//It is used to create a payment method
+router.post(
+  "/create-payment-method",
+  VerifyRole(["customer"]),
+  CreatePaymentMethod
+);
+
+//It is used to create a payment method to defaul by customer
 router.post(
   "/make-default-payment-method",
-  VerifyUserHandler,
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
   MakeDefaultPaymentMethod
 );
+
+//It is used to detach payment method
 router.post(
   "/remove-payment-method",
-  VerifyUserHandler,
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
   RemovePaymentMethod
+);
+router.get(
+  "/invoice-history",
+  VerifyRole(["customer"]),
+  IsVerifiedUser,
+  invoiceHistory
 );
 
 export default router;

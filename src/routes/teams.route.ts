@@ -1,24 +1,31 @@
 import { Router } from "express";
 import {
-  AddMemberInOrganization,
   fetchUserTeam,
   RemoveMemberInOrganization,
-  InviteMemberInOrgnization,
-  getMembersInvitations,
   getMyInvitations,
-  invitationInvitation
+  inviteAction,
+  InviteMemberInOrganization,
 } from "../controllers/teams.controller";
+import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-// Invitation flow
-router.post("/invite-member", InviteMemberInOrgnization);
-router.patch("/invite-action", invitationInvitation);
-
-router.get("/invitation", getMembersInvitations);
-router.get("/my-invitation", getMyInvitations);
-
-router.post("/add-member", AddMemberInOrganization);
-router.post("/remove-member", RemoveMemberInOrganization);
-router.get("/fetch-team", fetchUserTeam);
+//Desc: It allows customer to send invitation to join organization
+router.post(
+  "/invite-member",
+  VerifyRole(["customer"]),
+  InviteMemberInOrganization
+);
+//Desc:  It allows to update the status of Invitation in the team
+router.patch("/invite-action", VerifyRole(["customer"]), inviteAction);
+//Desc: It allow customer to fetch their invitations to join organization.
+router.get("/my-invitation", VerifyRole(["customer"]), getMyInvitations);
+//Desc: It allow customer to remove member from the organization.
+router.post(
+  "/remove-member",
+  VerifyRole(["customer"]),
+  RemoveMemberInOrganization
+);
+//Desc: It allow customer to fetch all members in the organization.
+router.get("/fetch-team", VerifyRole(["customer"]), fetchUserTeam);
 
 export default router;

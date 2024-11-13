@@ -1,20 +1,40 @@
 import { Router } from "express";
 import {
-    getStreamChatToken,
-    createChatRoomController,
-    addMemberToRoom,
-    removeMemberFromRoom,
-    getChatRoom,
-    getRoomUsers
+  getStreamChatToken,
+  deleteAllChannels,
+  createChannel,
+  createChannelTest,
+  getMyRelationShipManagerChat,
 } from "../controllers/chat.controller";
+import {
+  VerifyRole,
+  VerifyUserHandler,
+} from "../middlewares/verifyUser.middleware";
 
 const router = Router();
-router.get("/token", getStreamChatToken);
-router.get("/rooms", getChatRoom);
-router.get("/room/:roomId", getRoomUsers);
-router.post("/create", createChatRoomController);
-router.post("/add", addMemberToRoom);
-router.delete("/remove", removeMemberFromRoom);
+// Desc : generating a chat jwt token to use a chat
+router.get(
+  "/token",
+  VerifyRole(["customer", "admin", "servicing", "resource", "superadmin"]),
+  getStreamChatToken
+);
+// Desc : its create a personal chat between two user
+router.post(
+  "/create-channel",
+  VerifyRole(["customer", "admin", "servicing", "resource", "superadmin"]),
+  createChannel
+);
+router.get("/myRMChat", VerifyRole(["customer"])
+  , getMyRelationShipManagerChat)
 
+// testing route--------------
+// router.get("/deleteAllChannels", deleteAllChannels);
+// router.post("/create-channel-test", createChannelTest);
+
+// router.get("/rooms", getChatRoom);
+// router.get("/room/:roomId", getRoomUsers);
+// router.post("/create", createChatRoomController);
+// router.post("/add", addMemberToRoom);
+// router.delete("/remove", removeMemberFromRoom);
 
 export default router;

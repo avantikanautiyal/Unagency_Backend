@@ -5,7 +5,6 @@ const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
 });
 const createStripeProduct = async (item: IPackages) => {
   const { title, description, currency, duration } = item;
-  // Create a product
   const product = await stripe.products.create({
     name: title,
     description: description,
@@ -60,17 +59,6 @@ const createStripeProduct = async (item: IPackages) => {
       return durationData;
     };
 
-    // Create a price for the product
-    // const amountInCents = Math.round(price * 100);
-    // const priceData = await stripe.prices.create({
-    //   unit_amount: amountInCents,
-    //   currency: currency,
-    //   recurring: {
-    //     interval: billingCycle,
-    //     interval_count: duration,
-    //   },
-    //   product: product.id,
-    // });
     const modifiedDuration = await getDurationDataWithStripe();
 
     return { productId: product.id, modifiedDuration: modifiedDuration };

@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import { Request, Response } from "express";
 import createStripeProduct from "../services/createStripeProduct";
 
+//TESTED OK
 const CreatePackage = asyncHandler(async (req: Request, res: Response) => {
   const { title, description, duration, features, currency } = req.body;
   if (!title || !description || !duration || !features || !currency) {
@@ -17,9 +18,7 @@ const CreatePackage = asyncHandler(async (req: Request, res: Response) => {
       "Package with the same title already exists"
     );
   }
-
   const stripeProductId = await createStripeProduct({ ...req.body });
-
   const createPackage = await Packages.create({
     ...req.body,
     stripe_product_id: stripeProductId.productId,
@@ -29,12 +28,16 @@ const CreatePackage = asyncHandler(async (req: Request, res: Response) => {
     return new ApiResponse(200, createPackage, "Package created");
   }
 });
+
+//TESTE OK
 const fetchPackage = asyncHandler(async (req: Request, res: Response) => {
   const packages = await Packages.find({});
   if (packages) {
     return new ApiResponse(200, packages, "Packages are Fecthed");
   }
 });
+
+//TESTED OK
 const fetchPackageById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const packageById = await Packages.findById(id);
@@ -42,21 +45,16 @@ const fetchPackageById = asyncHandler(async (req: Request, res: Response) => {
     return new ApiResponse(200, packageById, "Package is Fetched");
   }
 });
+
+//TESTED OK
 const UpdatePackage = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const {
-    title,
-    description,
-    duration,
-    features,
-    status,
-    currency,
-  } = req.body;
+  const { title, description, duration, features, status, currency } = req.body;
 
   const packagebyId = await Packages.findById(id);
 
   if (!packagebyId) {
-    return new ApiResponse(404, null, "Package not fund");
+    return new ApiResponse(404, null, "Package not found");
   }
 
   packagebyId.title = title || packagebyId.title;
@@ -67,20 +65,18 @@ const UpdatePackage = asyncHandler(async (req: Request, res: Response) => {
   packagebyId.status = status || packagebyId.status;
 
   const updatedPackage = await packagebyId.save();
-  if (updatedPackage) {
-    return new ApiResponse(200, updatedPackage, "Package updated successfully");
-  }
+  return new ApiResponse(200, updatedPackage, "Package updated successfully");
 });
+
+//TESTED OK
 const DeletePackage = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const PackageById = await Packages.findById(id);
   if (!PackageById) {
     return res.status(404).json({ message: "Package not found" });
   }
-  const deletePackage = await PackageById.deleteOne();
-  if (deletePackage) {
-    return new ApiResponse(200, null, "Package deleted successfully");
-  }
+  await PackageById.deleteOne();
+  return new ApiResponse(200, null, "Package deleted successfully");
 });
 export {
   CreatePackage,

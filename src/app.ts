@@ -18,20 +18,28 @@ import teamRouter from "./routes/teams.route";
 import userRouter from "./routes/users.route";
 import OrganizationsRouter from "./routes/organizations.route";
 import ChatRouter from "./routes/chat.route";
+import RequirementRouter from "./routes/requirement.route";
+import TaskRouter from "./routes/tasks.route";
+import NotificationRouter from "./routes/notification.route"
 
 // middleware
-import stripeRouter from "./routes/stripe.route";
-import { VerifyUserHandler } from "./middlewares/verifyUser.middleware";
+import {
+  IsVerifiedUser,
+  VerifyUserHandler,
+} from "./middlewares/verifyUser.middleware";
 import { asyncHandler } from "./utils/asyncHandler";
 import Stripe from "stripe";
 import CheckoutSession from "./models/checkoutsession.model";
-import { ApiResponse } from "./utils/apiResponse";
 import Subscriptions from "./models/subscription.model";
 import Invoices from "./models/invoices.model";
+import StripeCustomers from "./models/customer.model";
+import { EmailQueue } from "./background/queue/Email.queue";
+import { Notification } from "./background/utils/notification";
 const app = express();
 
 //Use of CORS
 app.use(cors());
+
 const StripeWebhook = asyncHandler(async (req, res) => {
   const sigHeader = req.headers["stripe-signature"] as string;
   const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
@@ -45,7 +53,6 @@ const StripeWebhook = asyncHandler(async (req, res) => {
   );
 
   let invoice;
-  let existingInvoice;
   let status;
   switch (event.type) {
     case "checkout.session.completed":
@@ -73,6 +80,31 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         ),
       });
       status = event.data.object.status;
+      const customer = await StripeCustomers.findOne({
+        stripeCustomerId: event.data.object?.customer,
+      });
+      const email = customer?.email;
+      const name = customer?.name;
+      const planName = event.data.object?.items?.data[0]?.plan?.nickname;
+      const amount = event.data.object?.items?.data[0]?.plan?.amount;
+      const currency = event.data.object?.items?.data[0]?.plan?.currency;
+      const interval = event.data.object?.items?.data[0]?.plan?.interval;
+      const current_period_start = event.data.object?.current_period_start;
+      const current_period_end = event.data.object?.current_period_end;
+
+      await EmailQueue.add("asdasd", {
+        action: "SUBSCRIPTION",
+        data: {
+          email: email,
+          customerName: name,
+          planName: planName,
+          startDate: current_period_start,
+          nextRenualDate: current_period_end,
+          BillingCycle: interval,
+          price: `${currency} ${amount}`
+        },
+        notification: new Notification(planName as string, "", "COMMON") as any,
+      })
       console.log("Customer subscription initiated");
       break;
     case "customer.subscription.updated":
@@ -91,6 +123,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
         { new: true }
       );
       status = event.data.object.status;
+
       console.log("Customer subscription updated");
       break;
     case "customer.subscription.deleted":
@@ -164,17 +197,21 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
-app.use("/users", userRouter);
-app.use("/projects", ProjectRouter);
-app.use("/staff", StaffRouter);
-app.use("/subscription", SubscriptionRouter);
-app.use("/stripe", stripeRouter);
-app.use("/packages", packagesRouter);
-app.use("/categories", categoryRouter);
+app.use("/categories", VerifyUserHandler, categoryRouter);
+app.use("/users", VerifyUserHandler, userRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
 app.use("/teams", VerifyUserHandler, teamRouter);
-app.use("/", helloWorldRouter);
+app.use("/requirement", VerifyUserHandler, RequirementRouter);
+app.use("/staff", VerifyUserHandler, StaffRouter);
 app.use("/chat", VerifyUserHandler, ChatRouter);
+app.use("/projects", VerifyUserHandler, ProjectRouter);
+app.use("/packages", VerifyUserHandler, packagesRouter);
+app.use("/tasks", VerifyUserHandler, TaskRouter);
+app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
+
+app.use("/notification", VerifyUserHandler, NotificationRouter);
+
+app.use("/", helloWorldRouter);
 
 // Invalid Path Error Handler
 app.use(RouteErrorHandler);
@@ -187,10 +224,10 @@ app.use(ErrorHandler);
     mongoose.connection.on("connected", () => {
       console.log("DB_CONNECTED");
     });
-    app.listen(process.env.PORT ?? 5000, () => {
+    app.listen(process.env.PORT ?? 4000, () => {
       console.log(
         "⚙️",
-        ` Server is running at port : ${process.env.PORT ?? 5000}`
+        ` Server is running at port : ${process.env.PORT ?? 4000}`
       );
     });
   } catch (err) {

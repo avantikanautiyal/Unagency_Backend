@@ -1,6 +1,5 @@
-
 export const connection = {
-    host: process.env.REDIES_HOST! as string,
-    port: parseInt(process.env.REDIES_PORT!),
-    password: process.env.REDIES_PASSWORD! as string,
-}
+  host: "redis-18932.c212.ap-south-1-1.ec2.redns.redis-cloud.com",
+  port: 18932,
+  password: "REDACTED",
+};

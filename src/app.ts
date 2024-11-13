@@ -33,8 +33,9 @@ import CheckoutSession from "./models/checkoutsession.model";
 import Subscriptions from "./models/subscription.model";
 import Invoices from "./models/invoices.model";
 import StripeCustomers from "./models/customer.model";
-import { EmailQueue } from "./background/queue/Email.queue";
+// import { EmailQueue } from "./background/queue/Email.queue";
 import { Notification } from "./background/utils/notification";
+import { EmailQueue } from "./background/queue/email.queue";
 const app = express();
 
 //Use of CORS

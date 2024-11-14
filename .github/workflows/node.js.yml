@@ -43,14 +43,14 @@ jobs:
         stripe_access_key: ${{ secrets.stripe_access_key }}
         stripe_secret_key: ${{ secrets.stripe_secret_key }}
         stripe_webhook_endpoint_secret: ${{ secrets.stripe_webhook_endpoint_secret }}
-        getstream_io_key : ${{secrets.getstream_io_key}
-        getstream_io_secret : ${{secrets.getstream_io_secret}
-        email : ${{secrets.email}
-        password : ${{secrets.password}
-        FRONTEND_URL : ${{secrets.FRONTEND_URL}
-        REDIES_HOST : ${{secrets.REDIES_HOST}
-        REDIES_PORT : ${{secrets.REDIES_PORT}
-        REDIES_PASSWORD : ${{secrets.REDIES_PASSWORD}
+        getstream_io_key : ${{secrets.getstream_io_key}}
+        getstream_io_secret : ${{secrets.getstream_io_secret}}
+        email : ${{secrets.email}}
+        password : ${{secrets.password}}
+        FRONTEND_URL : ${{secrets.FRONTEND_URL}}
+        REDIES_HOST : ${{secrets.REDIES_HOST}}
+        REDIES_PORT : ${{secrets.REDIES_PORT}}
+        REDIES_PASSWORD : ${{secrets.REDIES_PASSWORD}}
     - name: Wait for Application to Start
       run: sleep 10
     - name: Check if Application is Running

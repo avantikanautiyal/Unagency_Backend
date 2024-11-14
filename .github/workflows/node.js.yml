@@ -2,7 +2,8 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - "main"
 
 jobs:
   build:
@@ -13,37 +14,60 @@ jobs:
         node-version: [20.x]
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - name: Add Bun to PATH
-      run: echo 'export PATH=~/.bun/bin:$PATH' >> $GITHUB_ENV
-    - name: Clean npm cache
-      run: npm cache clean --force
-    - run: npm i
-    - name: Start Application with PM2
-      run: pm2 start ecosystem.config.js
-      env:
-        DB_URI: ${{ secrets.DB_URI }}
-        PORT: ${{ secrets.PORT }}
-        TOKEN: ${{ secrets.TOKEN }}
-        apiKey: ${{ secrets.apiKey }}
-        authDomain: ${{ secrets.authDomain }}
-        projectId: ${{ secrets.projectId }}
-        storageBucket: ${{ secrets.storageBucket }}
-        messagingSenderId: ${{ secrets.messagingSenderId }}
-        appId: ${{ secrets.appId }}
-        measurementId: ${{ secrets.measurementId }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
-        stripe_access_key: ${{ secrets.stripe_access_key }}
-        stripe_secret_key: ${{ secrets.stripe_secret_key }}
-        stripe_webhook_endpoint_secret: ${{ secrets.stripe_webhook_endpoint_secret }}
-    - name: Wait for Application to Start
-      run: sleep 10
-    - name: Check if Application is Running
-      run: curl -I http://localhost:${{ secrets.PORT }}
+      # Step 1: Checkout the code
+      - uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js with specified version
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      # Step 3: Install Bun and add it to PATH
+      - name: Add Bun to PATH
+        run: echo 'export PATH=~/.bun/bin:$PATH' >> $GITHUB_ENV
+
+      # Step 4: Clean npm cache (optional but helpful for avoiding issues)
+      - name: Clean npm cache
+        run: npm cache clean --force
+
+      # Step 5: Install dependencies
+      - run: npm install
+
+      # Step 6: Start application with PM2, using secrets for environment variables
+      - name: Start Application with PM2
+        run: pm2 start ecosystem.config.js
+        env:
+          DB_URI: ${{ secrets.DB_URI }}
+          PORT: ${{ secrets.PORT }}
+          TOKEN: ${{ secrets.TOKEN }}
+          apiKey: ${{ secrets.apiKey }}
+          authDomain: ${{ secrets.authDomain }}
+          projectId: ${{ secrets.projectId }}
+          storageBucket: ${{ secrets.storageBucket }}
+          messagingSenderId: ${{ secrets.messagingSenderId }}
+          appId: ${{ secrets.appId }}
+          measurementId: ${{ secrets.measurementId }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          stripe_access_key: ${{ secrets.stripe_access_key }}
+          stripe_secret_key: ${{ secrets.stripe_secret_key }}
+          stripe_webhook_endpoint_secret: ${{ secrets.stripe_webhook_endpoint_secret }}
+          getstream_io_key: ${{ secrets.getstream_io_key }}
+          getstream_io_secret: ${{ secrets.getstream_io_secret }}
+          email: ${{ secrets.email }}
+          password: ${{ secrets.password }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          REDIES_HOST: ${{ secrets.REDIES_HOST }}
+          REDIES_PORT: ${{ secrets.REDIES_PORT }}
+          REDIES_PASSWORD: ${{ secrets.REDIES_PASSWORD }}
+
+      # Step 7: Wait for the application to fully start
+      - name: Wait for Application to Start
+        run: sleep 10
+
+      # Step 8: Check if the application is running
+      - name: Verify Application is Running
+        run: curl -I http://localhost:${{ secrets.PORT }}

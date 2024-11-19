@@ -250,6 +250,7 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
         createdAt: 1,
         updatedAt: 1,
         user: {
+          _id : "$user._id",
           name: "$user.name",
           email: "$user.email",
           image: "$user.image",

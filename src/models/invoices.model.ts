@@ -13,7 +13,6 @@ export interface IInvoice {
   paymentDate?: Date;
   failedPaymentDate?: Date;
 }
-
 const InvoiceSchema = new Schema<IInvoice>(
   {
     _id: { type: Schema.Types.ObjectId, auto: true },

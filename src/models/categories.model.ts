@@ -5,6 +5,7 @@ export interface ICategories {
   title: string;
   featuredImage: string;
   tags: object;
+  tagline: string;
 }
 
 const CategorySchema = new Schema<ICategories>(
@@ -13,6 +14,7 @@ const CategorySchema = new Schema<ICategories>(
     title: { type: String, required: true },
     featuredImage: { type: String, required: true },
     tags: { type: Array, required: true },
+    tagline: { type: String, default: "" },
   },
   { collection: "categories", timestamps: true }
 );

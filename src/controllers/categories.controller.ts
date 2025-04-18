@@ -50,7 +50,14 @@ const createCategory = asyncHandler(async (req: Request, res: Response) => {
   return new ApiResponse(200, category, "Category created");
 });
 const fetchCategories = asyncHandler(async (req: Request, res: Response) => {
-  const categories = await Categories.find({});
+  const { tagline } = req.query;
+
+  let filter: any = {};
+  if (tagline && tagline !== "") {
+    filter.tagline = tagline;
+  }
+
+  const categories = await Categories.find(filter);
   return new ApiResponse(200, categories, "Categories Fetched");
 });
 export { createCategory, fetchCategories };

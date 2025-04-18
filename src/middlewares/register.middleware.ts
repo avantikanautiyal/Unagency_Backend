@@ -84,6 +84,7 @@ export async function RegisterIfNot(
       }
     }
   } catch (err) {
+    console.log("error while regestring ", err);
   } finally {
     next();
   }

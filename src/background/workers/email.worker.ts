@@ -20,6 +20,8 @@ export default async function emailBackgroundService(job: any) {
             }
         } catch (err) {
 
+            console.log("error on sending ", err)
+
         }
 
     } else {

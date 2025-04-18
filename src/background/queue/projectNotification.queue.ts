@@ -7,7 +7,7 @@ type ProjectQueType = {
     data: unknown,
     notification: Notification
 }
-export const PROJECT_NOTIFICATION_QUEUE_KEY = "requirment"
+export const PROJECT_NOTIFICATION_QUEUE_KEY = "requirment";
 
 export const projectNotification = new Queue<ProjectQueType, any, string>(PROJECT_NOTIFICATION_QUEUE_KEY, { connection: connection });
 

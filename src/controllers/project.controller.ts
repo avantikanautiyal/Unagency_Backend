@@ -317,14 +317,26 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
     if (exists) {
       return new ApiResponse(409, null, "Already in records");
     }
-    await Projects.findByIdAndUpdate(projectId, {
+    const project = await Projects.findByIdAndUpdate(projectId, {
       $set: { status: stage },
-    });
+    })
     const create = await ProjectLogs.create({
       projectId: projectId,
       ActionDate: new Date(),
       ActionType: stage,
     });
+
+    await projectNotification.add("project update", {
+      action: "UPDATE",
+      data: {
+        status: stage,
+        // userId: staff?.userId?._id,
+        userId : project?.userId 
+      },
+      notification: new Notification(project?.title!, project?.description!, "PROJECT")
+    });
+
+
     return new ApiResponse(200, create, "Project log created successfully");
   } else {
     return new ApiResponse(401, null, "You are not assigned for this Customer");

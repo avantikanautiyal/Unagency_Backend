@@ -93,7 +93,7 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       const current_period_start = event.data.object?.current_period_start;
       const current_period_end = event.data.object?.current_period_end;
 
-      await EmailQueue.add("asdasd", {
+      await EmailQueue.add("membership taken", {
         action: "SUBSCRIPTION",
         data: {
           email: email,

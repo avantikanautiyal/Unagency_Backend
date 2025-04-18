@@ -30,9 +30,9 @@ const createCategory = asyncHandler(async (req: Request, res: Response) => {
   ) {
     return new ApiResponse(400, null, "Invalid Featured Image");
   }
-  if (!validateTags(tags)) {
-    return new ApiResponse(400, null, "Invalid Tags");
-  }
+  // if (!validateTags(tags)) {
+  //   return new ApiResponse(400, null, "Invalid Tags");
+  // }
   const isExist = await Categories.exists({ title: req.body.title });
   if (isExist) {
     const deleteParam = {
@@ -60,4 +60,30 @@ const fetchCategories = asyncHandler(async (req: Request, res: Response) => {
   const categories = await Categories.find(filter);
   return new ApiResponse(200, categories, "Categories Fetched");
 });
-export { createCategory, fetchCategories };
+
+const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
+  const { categoryId } = req.params;
+
+  const category = await Categories.findById(categoryId);
+  
+  if (!category) {
+    return new ApiResponse(404, null, "Category not found");
+  }
+
+  // Extract the key from the featuredImage URL
+  const key = category.featuredImage.split('/').pop();
+  
+  // Delete the image from S3
+  const deleteParam = {
+    Bucket: "prakriadirect",
+    Key: key,
+  };
+  await deleteS3File(deleteParam);
+
+  // Delete the category from database
+  await Categories.findByIdAndDelete(categoryId);
+
+  return new ApiResponse(200, null, "Category deleted successfully");
+});
+
+export { createCategory, fetchCategories, deleteCategory };

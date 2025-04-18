@@ -3,7 +3,7 @@ import projectNotificationService from '../workers/projectNotification.worker';
 import { connection } from '../connection';
 import { Notification } from '../utils/notification';
 type ProjectQueType = {
-    action: "CREATE" | "PROCESS" | "ASSIGN",
+    action: "CREATE" | "PROCESS" | "ASSIGN" | "UPDATE",
     data: unknown,
     notification: Notification
 }

@@ -35,7 +35,7 @@ export function welcomeSubscriptionTemplate(props: WelcomeTemplateProps) {
         }
         .header {
             text-align: center;
-            background-color: #e2343b;
+            background-color: #000;
             color: #ffffff;
             padding: 15px 0;
             border-radius: 8px 8px 0 0;
@@ -49,7 +49,7 @@ export function welcomeSubscriptionTemplate(props: WelcomeTemplateProps) {
         }
         .content h2 {
             font-size: 22px;
-            color: #e2343b;
+            color: #000;
             margin-top: 0;
         }
         .content p {
@@ -68,7 +68,7 @@ export function welcomeSubscriptionTemplate(props: WelcomeTemplateProps) {
         }
         .plan-info .label {
             font-weight: bold;
-            color: #e2343b;
+            color: #000;
         }
         .footer {
             text-align: center;
@@ -79,7 +79,7 @@ export function welcomeSubscriptionTemplate(props: WelcomeTemplateProps) {
         }
         .btn {
             display: inline-block;
-            background-color: #e2343b;
+            background-color: #000;
             color: #ffffff;
             text-decoration: none;
             padding: 10px 20px;

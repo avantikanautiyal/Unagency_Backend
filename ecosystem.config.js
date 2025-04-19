@@ -30,6 +30,8 @@ module.exports = {
         REDIES_HOST: process.env.REDIES_HOST,
         REDIES_PORT: process.env.REDIES_PORT,
         REDIES_PASSWORD: process.env.REDIES_PASSWORD,
+        EMAIL: process.env.EMAIL,
+        EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
       },
     },
   ],

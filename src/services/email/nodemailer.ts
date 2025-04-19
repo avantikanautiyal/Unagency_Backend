@@ -7,8 +7,10 @@ import nodemailer from "nodemailer";
 const email = "figma.dev2024@gmail.com";
 const password = "REDACTED";
 
-const email_s = process.env.EMAIL;
-const pass = process.env.EMAIL_PASSWORD;
+const EMAIL="souravsh1234567@gmail.com"
+const EMAIL_PASSWORD="ienl wmcc vara xxbk"
+const email_s = process.env.EMAIL ?? EMAIL;
+const pass = process.env.EMAIL_PASSWORD ?? EMAIL_PASSWORD;
 export const transporter = nodemailer.createTransport({
   service: "Gmail",
   //   host: "smtp.gmail.com",

@@ -1,5 +1,5 @@
 
-export type NotificationType = "COMMON" | "PROJECT" | "REQUIRMENT" | "TASK"
+export type NotificationType = "COMMON" | "PROJECT" | "REQUIRMENT" | "TASK" | "SUBSCRIPTION" 
 
 // interface Notofication {
 //     type: NotificationType;

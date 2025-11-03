@@ -93,19 +93,19 @@ const StripeWebhook = asyncHandler(async (req, res) => {
       const current_period_start = event.data.object?.current_period_start;
       const current_period_end = event.data.object?.current_period_end;
 
-      await EmailQueue.add("membership taken", {
-        action: "SUBSCRIPTION",
-        data: {
-          email: email,
-          customerName: name,
-          planName: planName,
-          startDate: current_period_start,
-          nextRenualDate: current_period_end,
-          BillingCycle: interval,
-          price: `${currency} ${amount}`
-        },
-        notification: new Notification(planName as string, "", "COMMON") as any,
-      })
+      // await EmailQueue.add("membership taken", {
+      //   action: "SUBSCRIPTION",
+      //   data: {
+      //     email: email,
+      //     customerName: name,
+      //     planName: planName,
+      //     startDate: current_period_start,
+      //     nextRenualDate: current_period_end,
+      //     BillingCycle: interval,
+      //     price: `${currency} ${amount}`
+      //   },
+      //   notification: new Notification(planName as string, "", "COMMON") as any,
+      // })
       console.log("Customer subscription initiated");
       break;
     case "customer.subscription.updated":

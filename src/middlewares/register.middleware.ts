@@ -8,6 +8,8 @@ import {
   createDistincChatRoom,
   createUserUpster,
 } from "../services/Chatstream";
+import { EmailQueue } from "../background/queue/email.queue";
+import { Notification } from "../background/utils/notification";
 export async function RegisterIfNot(
   req: RequestUser,
   response: Response,
@@ -23,6 +25,8 @@ export async function RegisterIfNot(
         // firebaseId: verification?.uid,
         email: verification.email,
       });
+
+     
 
       if (!!isUserExists && isUserExists?.firebaseId !== verification.uid) {
         await Users.updateOne(
@@ -62,7 +66,17 @@ export async function RegisterIfNot(
             : null,
         };
         const registration = await Users.create(user); // Creating user in database
-
+        EmailQueue.add("user register", {
+          action: "COMMON",
+          data: "Welcome to UNAGENCY " + verification.email,
+          email: verification.email!,
+          notification: new Notification(
+            "Welcome to UNAGENCY",
+            "Welcome to UNAGENCY",
+            "COMMON"
+          ) as any,
+          subject: "Welcome to UNAGENCY",
+        });
         const r = await createUserUpster({
           _id: registration._id + "",
           email: registration.email,

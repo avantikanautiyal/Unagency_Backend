@@ -1,6 +1,6 @@
 import Mail from "nodemailer/lib/mailer";
 import { transporter } from "../../services/email/nodemailer"
-const myEmail = process.env.email;
+const myEmail = process.env.TECH_SUPPORT_EMAIL;
 
 type EmailOptions = {
     email: string | string[];

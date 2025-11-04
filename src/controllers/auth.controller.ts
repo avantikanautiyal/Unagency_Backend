@@ -9,7 +9,9 @@ import {
 } from "../services/Chatstream";
 import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
-
+import { EmailQueue } from "../background/queue/email.queue";
+import { Notification } from "../background/utils/notification";
+const TECH_SUPPORT_EMAIL = process.env.TECH_SUPPORT_EMAIL;
 //TESTED OK = RAHUL
 const Verify = asyncHandler(async (req: RequestUser, res) => {
   // const isUserExists = await Users.exists({
@@ -103,12 +105,38 @@ const Register = asyncHandler(async (req, res) => {
             userRole: registration.role,
           } as any); // Registring Get Stream IO User
 
-          if (!relationshipManager)
+          if (!relationshipManager) {
+            EmailQueue.add("user register", {
+              action: "REQUIRMENT",
+              data: "NEW Rquirement form  ",
+              email: verification?.email!,
+              notification: new Notification(
+                "NEW Rquirement form ",
+                "requirement notification text here",
+                "REQUIRMENT"
+              ) as any,
+              subject: "Hi we will be assigning you a manger soon",
+            });
+            EmailQueue.add("user not assigned", {
+              action: "COMMON",
+              data:
+                "currently this customer is not assigned to any manager " +
+                verification?.email,
+              email: TECH_SUPPORT_EMAIL!,
+              notification: new Notification(
+                "Not assigned to any manager",
+                "not assignet to any tech supprot",
+                "COMMON"
+              ) as any,
+              subject:
+                "CUSTOMER NOT ASSIGNED TO ANY MANAGER " + verification.email,
+            });
             return new ApiResponse(
               200,
               registration,
               "User registered successfully"
             );
+          }
 
           await createDistincChatRoom({
             roomName: `${relationshipManager?.userInfo?.name}, ${registration.name}`,
@@ -189,8 +217,34 @@ const NewRegister = asyncHandler(async (req) => {
       userRole: create.role,
     });
 
-    if (!relationshipManager)
+    if (!relationshipManager) {
+      EmailQueue.add("we will assign", {
+        action: "REQUIRMENT",
+        data: "NEW Rquirement form  ",
+        email: create?.email!,
+        notification: new Notification(
+          "NEW Rquirement form ",
+          "requirement notification text here",
+          "REQUIRMENT"
+        ) as any,
+        subject: "Hi we will be assigning you a manger soon",
+      });
+      EmailQueue.add("user not assigned", {
+        action: "COMMON",
+        data:
+          "currently this customer is not assigned to any manager " +
+          create?.email,
+        email: TECH_SUPPORT_EMAIL!,
+        notification: new Notification(
+          "Not assigned to any manager",
+          "not assignet to any tech supprot",
+          "COMMON"
+        ) as any,
+        subject: "CUSTOMER NOT ASSIGNED TO ANY MANAGER " + create.email,
+      });
+
       return new ApiResponse(200, create, "User registered successfully");
+    }
 
     await createDistincChatRoom({
       roomName: `${relationshipManager?.userInfo?.name}, ${create.name}`,

@@ -2,12 +2,13 @@
 // import Notifications from "../../models/notification.model";
 // import { welcomeSubscriptionTemplate } from "../../emailTemplates/subscription/welcomeMemberSHipEmailTemplate";
 
+import Notifications from "../../models/notification.model";
 import { generateEmailOption, sendEmail } from "../../utils/emailsender";
 
 export default async function emailBackgroundService(job: any) {
   // console.log("email service ", job);
 
-  const { data, notification, email, subject } = job.data;
+  const { data, notification, email, subject , userId } = job.data;
 
 
 
@@ -20,6 +21,9 @@ export default async function emailBackgroundService(job: any) {
           html: data,
         })
       );
+  }
+  if(userId) {
+   await Notifications.create({...notification, userId: userId});
   }
   // const { notification: notificaionData }: {
   //     notification: Notification ,

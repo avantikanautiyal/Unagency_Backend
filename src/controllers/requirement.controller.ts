@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
 import Staff from "../models/staff.model";
+import { EmailQueue } from "../background/queue/email.queue";
 
 // TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
@@ -37,6 +38,20 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     },
     notification: new Notification(newRequirement.title, newRequirement.description, "REQUIRMENT")
   })
+  const rmUser = await Users.findOne({
+    _id: new mongoose.Types.ObjectId(rm?.userId + "")
+  });
+  EmailQueue.add("user register", {
+    action: "REQUIRMENT",
+    data: "NEW Rquirement form  " + req.user?.name,
+    email: rmUser?.email!,
+    notification: new Notification(
+      "NEW Rquirement form " + req.user?.name,
+      "requirement notification text ehre",
+      "REQUIRMENT"
+    ) as any,
+    subject: "NEW Rquirement",
+  });
   return new ApiResponse(200, newRequirement, "success");
 });
 

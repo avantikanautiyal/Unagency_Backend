@@ -76,6 +76,7 @@ export async function RegisterIfNot(
             "COMMON"
           ) as any,
           subject: "Welcome to UNAGENCY",
+          userId : registration._id.toString(),
         });
         const r = await createUserUpster({
           _id: registration._id + "",

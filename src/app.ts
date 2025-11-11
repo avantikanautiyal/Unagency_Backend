@@ -36,6 +36,7 @@ import StripeCustomers from "./models/customer.model";
 // import { EmailQueue } from "./background/queue/Email.queue";
 import { Notification } from "./background/utils/notification";
 import { EmailQueue } from "./background/queue/email.queue";
+import razorpayRouter from "./routes/razorpay.route";
 const app = express();
 
 //Use of CORS
@@ -211,6 +212,8 @@ app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
 
 app.use("/notification", VerifyUserHandler, NotificationRouter);
+
+app.use("/razorpay",razorpayRouter );
 
 app.use("/", helloWorldRouter);
 

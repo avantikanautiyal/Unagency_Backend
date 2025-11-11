@@ -5,9 +5,10 @@ export interface ISubscription {
   customerId: string; // Stripe customer ID
   subscriptionId: string; // Stripe subscription ID
   planId: string; // Plan associated with the subscription
+
   status: string; // Subscription status ('active', 'canceled', etc.)
-  currentPeriodStart: Date; // Subscription start
-  currentPeriodEnd: Date; // Subscription renewal/cancellation date
+  // currentPeriodStart: Date; // Subscription start
+  // currentPeriodEnd: Date; // Subscription renewal/cancellation date
 }
 
 const SubscriptionSchema = new Schema<ISubscription>({
@@ -18,10 +19,10 @@ const SubscriptionSchema = new Schema<ISubscription>({
   status: {
     type: String,
     required: true,
-    enum: ["active", "canceled", "pending", "incomplete", "incomplete_expired", "trialing", "past_due", "unpaid"],
+    // enum: ["active", "canceled", "pending", "incomplete", "incomplete_expired", "trialing", "past_due", "unpaid"],
   }, // Subscription status ('active', 'canceled', etc.)
-  currentPeriodStart: { type: Date, required: true }, // Subscription start
-  currentPeriodEnd: { type: Date, required: true }, // Subscription renewal/cancellation date
+  // currentPeriodStart: { type: Date, required: true }, // Subscription start
+  // currentPeriodEnd: { type: Date, required: true }, // Subscription renewal/cancellation date
 });
 
 

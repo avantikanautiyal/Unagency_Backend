@@ -5,7 +5,7 @@ export interface ISubscription {
   customerId: string; // Stripe customer ID
   subscriptionId: string; // Stripe subscription ID
   planId: string; // Plan associated with the subscription
-
+  userId : string;
   status: string; // Subscription status ('active', 'canceled', etc.)
   // currentPeriodStart: Date; // Subscription start
   // currentPeriodEnd: Date; // Subscription renewal/cancellation date
@@ -13,8 +13,9 @@ export interface ISubscription {
 
 const SubscriptionSchema = new Schema<ISubscription>({
   _id: { type: Schema.Types.ObjectId, auto: true },
-  customerId: { type: String, required: true }, // Stripe customer ID
-  subscriptionId: { type: String, required: true }, // Stripe subscription ID
+  customerId: { type: String }, // Razorpay customer ID
+  userId : { type: String, required: true },
+  subscriptionId: { type: String, required: true }, // Razorpay subscription ID
   planId: { type: String, required: true }, // Plan associated with the subscription
   status: {
     type: String,

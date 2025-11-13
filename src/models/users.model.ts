@@ -15,6 +15,10 @@ export interface IUser {
   image?: string;
   bio?: string;
   isActive: boolean;
+  subscription? : {
+    id : string ;
+    status : string ;
+  }
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -35,6 +39,7 @@ const UsersSchema = new Schema<IUser>(
     country: { type: String, default: "" },
     isVerified: { type: Boolean, required: true },
     isActive: { type: Boolean, default: true },
+    subscription : {type : Object, default: {}}
   },
   { collection: "users", timestamps: true }
 );

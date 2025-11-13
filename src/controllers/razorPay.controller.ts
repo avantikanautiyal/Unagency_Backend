@@ -5,52 +5,121 @@ import { ApiError } from "../utils/apiError";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import razorpayInstance from "../utils/razorpayInstance";
+import Users from "../models/users.model";
+import crypto from "crypto";
+import Payments from "../models/payment.model";
 
-// creating a razor-pay subscription 
-export const buySubscription = asyncHandler(async (req : RequestUser)=>{
+// creating a razor-pay subscription
+export const buySubscription = asyncHandler(async (req: RequestUser) => {
+  //   const userId = req.user?.userId;
+  //   console.log(req.body);
+  if (!req?.body?.plan_id) throw new ApiError("plan_id required ", 400);
 
+  const subscription = await razorpayInstance.subscriptions.create({
+    plan_id: req.body.plan_id,
+    customer_notify: 1,
+    quantity: 1,
+    total_count: 1,
+    // customer_id : userId
 
-    const subscription = await razorpayInstance.subscriptions.create({
-        plan_id : req.body.plan_id,
-        customer_notify : 1 ,
-        quantity : 1 ,
-        total_count : 1 // is for 1 means montly  , 12 means yearly 6 means 6 month 
-        // customer_id : req.body.customer_id,
-        // quantity : req.body.quantity,
-        // currency : req.body.currency,
-        // description : req.body.description,
-        // notes : req.body.notes,
+    // req.body.customer_id,
+    // quantity : req.body.quantity,
+    // currency : req.body.currency,
+    // description : req.body.description,
+    // notes : req.body.notes,
+  });
+
+  //   console.log("subscription ", subscription);
+  const createUserSubscription = await Subscriptions.create({
+    subscriptionId: subscription.id,
+    userId: req.user?.userId,
+    planId: subscription.plan_id,
+    status: subscription.status,
+  });
+
+  await Users.updateOne(
+    { _id: req.user?.userId },
+    {
+      $set: {
+        subscription: { id: subscription.id, status: subscription.status },
+      },
+    }
+  );
+  return new ApiResponse(
+    200,
+    createUserSubscription,
+    "RazorPay Subscription created successfully"
+  );
+});
+export const paymentVerification = asyncHandler(
+  async (req: RequestUser, res) => {
+    //   const userId = req.user?.userId;
+    //   console.log(req.body);
+    const {
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+      ...rest
+    } = req.body;
+    console.log(
+      "razopay verification props ",
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+      rest
+    );
+    // const user = await Users.findById(req.user?.userId);
+    // const subscriptionId = user?.subscription?.id;
+    const generated_signature = crypto
+      .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
+      .update(razorpay_payment_id + "|" + razorpay_subscription_id, "utf-8")
+      .digest("hex");
+
+    const isValidSignature = generated_signature == razorpay_signature;
+    if (!isValidSignature)
+      res.redirect(process.env.FRONTEND_URL + "/paymentfail");
+
+    await Payments.create({
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
     });
-    const createUserSubscription = await Subscriptions.create({
-        subscriptionId: subscription.id,
-        customerId: subscription.customer_id,
-        planId: subscription.plan_id,
-        status: subscription.status,
-    });
 
+    res.redirect(
+      process.env.FRONTEND_URL +
+        "/paymentsuccess?payment_id=" +
+        razorpay_payment_id
+    );
+    // data base comes here
+    // await
+  }
+);
+
+// for Plans
+export const getRazorPayPlans = asyncHandler(async (req: RequestUser) => {
+  // const palns = await razorpayInstance.plans.all();
+  const plans = await PlansModel.find({});
+  return new ApiResponse(200, plans, "RazorPay Plans fetched successfully");
 });
+export const createRazorPayPlan = asyncHandler(async (req: RequestUser) => {
+  const { plan_id, ...rest } = req.body;
 
+  if (!plan_id) throw new ApiError("Plan ID is required", 400);
 
-// for Plans 
-export const getRazorPayPlans  = asyncHandler(async (req : RequestUser)=>{
-    // const palns = await razorpayInstance.plans.all();
-    const plans = await PlansModel.find({});
-    return new ApiResponse(200,plans , "RazorPay Plans fetched successfully")
+  const plan = await razorpayInstance.plans.fetch(plan_id);
+
+  const newPlan = await PlansModel.create({
+    plan_id: plan_id,
+    razorpayPlanItem: plan,
+    ...rest,
+  });
+  return new ApiResponse(200, newPlan, "RazorPay Plan created successfully");
 });
-export const createRazorPayPlan = asyncHandler(async (req : RequestUser)=>{
-    const { plan_id } = req.body;
+export const deleteRazorPayPlan = asyncHandler(async (req: RequestUser) => {
+  const { plan_id } = req.params;
 
-    if(!plan_id) throw new ApiError("Plan ID is required", 400);
+  if (!plan_id) throw new ApiError("Plan ID is required", 400);
 
-    const plan = await razorpayInstance.plans.fetch(plan_id) ;
-    const newPlan = await PlansModel.create({ plan_id : plan_id ,razorpayPlanItem: plan}) ;
-    return new ApiResponse(200,newPlan , "RazorPay Plan created successfully");
-});
-export const deleteRazorPayPlan = asyncHandler(async (req : RequestUser)=>{
-    const { plan_id } = req.params;
-
-    if(!plan_id) throw new ApiError("Plan ID is required", 400);
-
-    await PlansModel.findByIdAndDelete(plan_id);
-    return new ApiResponse(200,null , "RazorPay Plan deleted successfully");
+  await PlansModel.findByIdAndDelete(plan_id);
+  return new ApiResponse(200, null, "RazorPay Plan deleted successfully");
 });

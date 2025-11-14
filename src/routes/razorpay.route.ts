@@ -9,6 +9,7 @@ import {
   deleteRazorPayPlan,
   getRazorPayPlans,
   paymentVerification,
+  paymentVerificationApp,
 } from "../controllers/razorPay.controller";
 
 const razorpayRouter = Router();
@@ -17,6 +18,7 @@ const razorpayRouter = Router();
 
 razorpayRouter.post("/subscriptions/create", VerifyUserHandler, buySubscription);
 razorpayRouter.post("/paymentVerification" , paymentVerification)
+razorpayRouter.post("/paymentVerificationapp" , paymentVerificationApp)
 
 // ###################### PLANS #########################
 

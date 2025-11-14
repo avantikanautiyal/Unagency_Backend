@@ -95,6 +95,50 @@ export const paymentVerification = asyncHandler(
     // await
   }
 );
+export const paymentVerificationApp = asyncHandler(
+  async (req: RequestUser, res) => {
+    const {
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+      ...rest
+    } = req.body;
+    console.log(
+      "razopay verification props ",
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+    );
+    // const user = await Users.findById(req.user?.userId);
+    // const subscriptionId = user?.subscription?.id;
+    const user :  any = await Users.find({"subscription.id" : razorpay_subscription_id });
+
+    const generated_signature = crypto
+      .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
+      .update(razorpay_payment_id + "|" + razorpay_subscription_id, "utf-8")
+      .digest("hex");
+
+    const isValidSignature = generated_signature == razorpay_signature;
+    if (!isValidSignature)
+      res.redirect(process.env.FRONTEND_URL + "/payment-fail");
+
+  
+    await Payments.create({
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+      userId : user?._id!
+    });
+
+    res.redirect(
+      process.env.FRONTEND_URL +
+        "/payment-success?payment_id=" +
+        razorpay_payment_id
+    );
+    // data base comes here
+    // await
+  }
+);
 
 // for Plans
 export const getRazorPayPlans = asyncHandler(async (req: RequestUser) => {

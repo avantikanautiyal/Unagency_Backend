@@ -53,8 +53,6 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
 });
 export const paymentVerification = asyncHandler(
   async (req: RequestUser, res) => {
-    //   const userId = req.user?.userId;
-    //   console.log(req.body);
     const {
       razorpay_payment_id,
       razorpay_subscription_id,
@@ -66,10 +64,11 @@ export const paymentVerification = asyncHandler(
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      rest
     );
     // const user = await Users.findById(req.user?.userId);
     // const subscriptionId = user?.subscription?.id;
+    const user :  any = await Users.find({"subscription.id" : razorpay_subscription_id });
+
     const generated_signature = crypto
       .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
       .update(razorpay_payment_id + "|" + razorpay_subscription_id, "utf-8")
@@ -79,10 +78,12 @@ export const paymentVerification = asyncHandler(
     if (!isValidSignature)
       res.redirect(process.env.FRONTEND_URL + "/paymentfail");
 
+  
     await Payments.create({
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
+      userId : user?._id!
     });
 
     res.redirect(

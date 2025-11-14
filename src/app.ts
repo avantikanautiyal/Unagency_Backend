@@ -37,159 +37,161 @@ import StripeCustomers from "./models/customer.model";
 import { Notification } from "./background/utils/notification";
 import { EmailQueue } from "./background/queue/email.queue";
 import razorpayRouter from "./routes/razorpay.route";
+import { razorpayWebhook } from "./webhook/razorpaywebhook";
 const app = express();
 
 //Use of CORS
 app.use(cors());
 
-const StripeWebhook = asyncHandler(async (req, res) => {
-  const sigHeader = req.headers["stripe-signature"] as string;
-  const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
-    apiVersion: "2024-06-20", // Ensure you specify the latest API version
-  });
-  let event;
-  event = await stripe.webhooks.constructEventAsync(
-    req.body,
-    sigHeader,
-    "REDACTED"
-  );
+// const StripeWebhook = asyncHandler(async (req, res) => {
+//   const sigHeader = req.headers["stripe-signature"] as string;
+//   const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
+//     apiVersion: "2024-06-20", // Ensure you specify the latest API version
+//   });
+//   let event;
+//   event = await stripe.webhooks.constructEventAsync(
+//     req.body,
+//     sigHeader,
+//     "REDACTED"
+//   );
 
-  let invoice;
-  let status;
-  switch (event.type) {
-    case "checkout.session.completed":
-      const session = event.data.object;
-      await CheckoutSession.create({
-        sessionId: session.id,
-        customerId: session.customer,
-        paymentStatus: session.payment_status,
-        amountTotal: session.amount_total,
-        currency: session.currency,
-      });
-      console.log("Checkout session completed");
-      break;
-    case "customer.subscription.created":
-      await Subscriptions.create({
-        subscriptionId: event.data.object?.id,
-        customerId: event.data.object?.customer,
-        planId: event.data.object?.items.data[0].plan.id,
-        status: event.data.object?.status,
-        currentPeriodStart: new Date(
-          event.data.object?.current_period_start * 1000
-        ),
-        currentPeriodEnd: new Date(
-          event.data.object?.current_period_end * 1000
-        ),
-      });
-      status = event.data.object.status;
-      const customer = await StripeCustomers.findOne({
-        stripeCustomerId: event.data.object?.customer,
-      });
-      const email = customer?.email;
-      const name = customer?.name;
-      const planName = event.data.object?.items?.data[0]?.plan?.nickname;
-      const amount = event.data.object?.items?.data[0]?.plan?.amount;
-      const currency = event.data.object?.items?.data[0]?.plan?.currency;
-      const interval = event.data.object?.items?.data[0]?.plan?.interval;
-      const current_period_start = event.data.object?.current_period_start;
-      const current_period_end = event.data.object?.current_period_end;
+//   let invoice;
+//   let status;
+//   switch (event.type) {
+//     case "checkout.session.completed":
+//       const session = event.data.object;
+//       await CheckoutSession.create({
+//         sessionId: session.id,
+//         customerId: session.customer,
+//         paymentStatus: session.payment_status,
+//         amountTotal: session.amount_total,
+//         currency: session.currency,
+//       });
+//       console.log("Checkout session completed");
+//       break;
+//     case "customer.subscription.created":
+//       await Subscriptions.create({
+//         subscriptionId: event.data.object?.id,
+//         customerId: event.data.object?.customer,
+//         planId: event.data.object?.items.data[0].plan.id,
+//         status: event.data.object?.status,
+//         currentPeriodStart: new Date(
+//           event.data.object?.current_period_start * 1000
+//         ),
+//         currentPeriodEnd: new Date(
+//           event.data.object?.current_period_end * 1000
+//         ),
+//       });
+//       status = event.data.object.status;
+//       const customer = await StripeCustomers.findOne({
+//         stripeCustomerId: event.data.object?.customer,
+//       });
+//       const email = customer?.email;
+//       const name = customer?.name;
+//       const planName = event.data.object?.items?.data[0]?.plan?.nickname;
+//       const amount = event.data.object?.items?.data[0]?.plan?.amount;
+//       const currency = event.data.object?.items?.data[0]?.plan?.currency;
+//       const interval = event.data.object?.items?.data[0]?.plan?.interval;
+//       const current_period_start = event.data.object?.current_period_start;
+//       const current_period_end = event.data.object?.current_period_end;
 
-      // await EmailQueue.add("membership taken", {
-      //   action: "SUBSCRIPTION",
-      //   data: {
-      //     email: email,
-      //     customerName: name,
-      //     planName: planName,
-      //     startDate: current_period_start,
-      //     nextRenualDate: current_period_end,
-      //     BillingCycle: interval,
-      //     price: `${currency} ${amount}`
-      //   },
-      //   notification: new Notification(planName as string, "", "COMMON") as any,
-      // })
-      console.log("Customer subscription initiated");
-      break;
-    case "customer.subscription.updated":
-      await Subscriptions.findOneAndUpdate(
-        { subscriptionId: event.data.object.id },
-        {
-          status: event.data.object.status,
-          planId: event.data.object.items.data[0].plan.id, // Updated Plan ID
-          currentPeriodStart: new Date(
-            event.data.object.current_period_start * 1000
-          ),
-          currentPeriodEnd: new Date(
-            event.data.object.current_period_end * 1000
-          ),
-        },
-        { new: true }
-      );
-      status = event.data.object.status;
+//       // await EmailQueue.add("membership taken", {
+//       //   action: "SUBSCRIPTION",
+//       //   data: {
+//       //     email: email,
+//       //     customerName: name,
+//       //     planName: planName,
+//       //     startDate: current_period_start,
+//       //     nextRenualDate: current_period_end,
+//       //     BillingCycle: interval,
+//       //     price: `${currency} ${amount}`
+//       //   },
+//       //   notification: new Notification(planName as string, "", "COMMON") as any,
+//       // })
+//       console.log("Customer subscription initiated");
+//       break;
+//     case "customer.subscription.updated":
+//       await Subscriptions.findOneAndUpdate(
+//         { subscriptionId: event.data.object.id },
+//         {
+//           status: event.data.object.status,
+//           planId: event.data.object.items.data[0].plan.id, // Updated Plan ID
+//           currentPeriodStart: new Date(
+//             event.data.object.current_period_start * 1000
+//           ),
+//           currentPeriodEnd: new Date(
+//             event.data.object.current_period_end * 1000
+//           ),
+//         },
+//         { new: true }
+//       );
+//       status = event.data.object.status;
 
-      console.log("Customer subscription updated");
-      break;
-    case "customer.subscription.deleted":
-      await Subscriptions.findOneAndUpdate(
-        { subscriptionId: event.data.object.id },
-        { status: "canceled" }
-      );
-      status = event.data.object.status;
-      console.log("Customer subscription canceled");
-      break;
-    case "invoice.paid":
-      invoice = event.data.object;
-      const customerId = invoice.customer || null; // Get the customer ID
-      const paymentIntentId = invoice.payment_intent; // Get the payment method used
+//       console.log("Customer subscription updated");
+//       break;
+//     case "customer.subscription.deleted":
+//       await Subscriptions.findOneAndUpdate(
+//         { subscriptionId: event.data.object.id },
+//         { status: "canceled" }
+//       );
+//       status = event.data.object.status;
+//       console.log("Customer subscription canceled");
+//       break;
+//     case "invoice.paid":
+//       invoice = event.data.object;
+//       const customerId = invoice.customer || null; // Get the customer ID
+//       const paymentIntentId = invoice.payment_intent; // Get the payment method used
 
-      //Making Payment Default Method by Payment Intent Id
-      if (paymentIntentId !== null) {
-        const paymentIntent = await stripe.paymentIntents.retrieve(
-          paymentIntentId as string
-        );
-        const paymentMethodId: string = paymentIntent?.payment_method as string; // Get payment method ID from payment intent
-        await stripe.customers.update(customerId as string, {
-          invoice_settings: {
-            default_payment_method: paymentMethodId,
-          },
-        });
-      }
+//       //Making Payment Default Method by Payment Intent Id
+//       if (paymentIntentId !== null) {
+//         const paymentIntent = await stripe.paymentIntents.retrieve(
+//           paymentIntentId as string
+//         );
+//         const paymentMethodId: string = paymentIntent?.payment_method as string; // Get payment method ID from payment intent
+//         await stripe.customers.update(customerId as string, {
+//           invoice_settings: {
+//             default_payment_method: paymentMethodId,
+//           },
+//         });
+//       }
 
-      await Invoices.create({
-        invoiceId: invoice.id,
-        subscriptionId: invoice.subscription,
-        customerId: invoice.customer,
-        amountDue: invoice.amount_due,
-        amountPaid: invoice.amount_paid,
-        currency: invoice.currency,
-        status: "paid",
-        paymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
-      });
-      console.log(invoice.default_payment_method, "invoice paid");
-      break;
-    case "invoice.payment_failed":
-      invoice = event.data.object;
-      if (invoice.charge !== null) {
-        await Invoices.create({
-          invoiceId: invoice.id,
-          subscriptionId: invoice.subscription,
-          customerId: invoice.customer,
-          amountDue: invoice.amount_due,
-          currency: invoice.currency,
-          status: "failed",
-          failureMessage: "Payment failed without a specific message",
-          failedPaymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
-        });
-      }
-      console.log(invoice, "invoice payment failed");
-      break;
-    default:
-      null;
-  }
-  res.sendStatus(200);
-});
+//       await Invoices.create({
+//         invoiceId: invoice.id,
+//         subscriptionId: invoice.subscription,
+//         customerId: invoice.customer,
+//         amountDue: invoice.amount_due,
+//         amountPaid: invoice.amount_paid,
+//         currency: invoice.currency,
+//         status: "paid",
+//         paymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
+//       });
+//       console.log(invoice.default_payment_method, "invoice paid");
+//       break;
+//     case "invoice.payment_failed":
+//       invoice = event.data.object;
+//       if (invoice.charge !== null) {
+//         await Invoices.create({
+//           invoiceId: invoice.id,
+//           subscriptionId: invoice.subscription,
+//           customerId: invoice.customer,
+//           amountDue: invoice.amount_due,
+//           currency: invoice.currency,
+//           status: "failed",
+//           failureMessage: "Payment failed without a specific message",
+//           failedPaymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
+//         });
+//       }
+//       console.log(invoice, "invoice payment failed");
+//       break;
+//     default:
+//       null;
+//   }
+//   res.sendStatus(200);
+// });
 
 //Use of Express JSON CONFIG
-app.use("/webhook", express.raw({ type: "application/json" }), StripeWebhook);
+// app.use("/webhook", express.raw({ type: "application/json" }), StripeWebhook);
+app.use("/razorpay/webhook" ,express.raw({ type: "application/json" }) ,razorpayWebhook )
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 

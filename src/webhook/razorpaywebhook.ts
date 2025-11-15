@@ -17,12 +17,14 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
     }
 
     console.log("✅ Webhook verified");
-    const event = req.body;
+    console.log("============= event body console START============");
+    console.log(req.body);
+    const rawBody = (req.body as Buffer).toString("utf8"); // or just req.body.toString()
+    const event = JSON.parse(rawBody);
 
-    console.log("============= event body console START============")
-    console.log(event);
-    console.log("============= event body console END============")
-
+    console.log("event ", event);
+    console.log("============= event body console END============");
+    // const event = req.body;
 
     // ===========================
     // 🎯 Subscription Webhook Logic
@@ -90,8 +92,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
       default:
         console.log("🔔 Unhandled event:", event.event);
-        console.log("🔔 Unhandled event object :", JSON.stringify( event));
-
+        console.log("🔔 Unhandled event object :", JSON.stringify(event));
     }
 
     res.status(200).json({ status: "ok" });

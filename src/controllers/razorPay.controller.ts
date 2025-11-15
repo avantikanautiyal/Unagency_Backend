@@ -35,22 +35,36 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     userId: req.user?.userId,
     planId: subscription.plan_id,
     status: subscription.status,
+    start_at: subscription.current_start,
+    expire_by: subscription.current_start,
   });
 
-  await Users.updateOne(
-    { _id: req.user?.userId },
-    {
-      $set: {
-        subscription: { id: subscription.id, status: subscription.status },
-      },
-    }
-  );
+  // await Users.updateOne(
+  //   { _id: req.user?.userId },
+  //   {
+  //     $set: {
+  //       subscription: { id: subscription.id, status: subscription.status },
+  //     },
+  //   }
+  // );
   return new ApiResponse(
     200,
     createUserSubscription,
     "RazorPay Subscription created successfully"
   );
 });
+
+export const getUSerSubscriptions = asyncHandler(async (req: RequestUser) => {
+  const userId = req.user?.userId;
+  if (!userId) throw new ApiError("UserId not present", 400);
+
+  const subscription = await Subscriptions.find({
+    userId,
+  });
+
+  return new ApiResponse(200, subscription, "All subscriptions");
+});
+
 export const paymentVerification = asyncHandler(
   async (req: RequestUser, res) => {
     const {
@@ -63,11 +77,13 @@ export const paymentVerification = asyncHandler(
       "razopay verification props ",
       razorpay_payment_id,
       razorpay_subscription_id,
-      razorpay_signature,
+      razorpay_signature
     );
     // const user = await Users.findById(req.user?.userId);
     // const subscriptionId = user?.subscription?.id;
-    const user :  any = await Users.find({"subscription.id" : razorpay_subscription_id });
+    const user: any = await Users.find({
+      "subscription.id": razorpay_subscription_id,
+    });
 
     const generated_signature = crypto
       .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
@@ -78,12 +94,11 @@ export const paymentVerification = asyncHandler(
     if (!isValidSignature)
       res.redirect(process.env.FRONTEND_URL + "/paymentfail");
 
-  
     await Payments.create({
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      userId : user?._id!
+      userId: user?._id!,
     });
 
     res.redirect(
@@ -107,11 +122,13 @@ export const paymentVerificationApp = asyncHandler(
       "razopay verification props ",
       razorpay_payment_id,
       razorpay_subscription_id,
-      razorpay_signature,
+      razorpay_signature
     );
     // const user = await Users.findById(req.user?.userId);
     // const subscriptionId = user?.subscription?.id;
-    const user :  any = await Users.find({"subscription.id" : razorpay_subscription_id });
+    const user: any = await Users.find({
+      "subscription.id": razorpay_subscription_id,
+    });
 
     const generated_signature = crypto
       .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
@@ -122,12 +139,11 @@ export const paymentVerificationApp = asyncHandler(
     if (!isValidSignature)
       res.redirect(process.env.FRONTEND_URL + "/payment-fail");
 
-  
     await Payments.create({
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      userId : user?._id!
+      userId: user?._id!,
     });
 
     res.redirect(

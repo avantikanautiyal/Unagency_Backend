@@ -4,6 +4,7 @@ import crypto from "crypto";
 const webhookSecret = "123456654321";
 export const razorpayWebhook = async (req: Request, res: Response) => {
   try {
+    console.log("webhook called....");
     const signature = req.headers["x-razorpay-signature"];
     const expectedSignature = crypto
       .createHmac("sha256", webhookSecret)
@@ -17,6 +18,11 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
     console.log("✅ Webhook verified");
     const event = req.body;
+
+    console.log("============= event body console START============")
+    console.log(event);
+    console.log("============= event body console END============")
+
 
     // ===========================
     // 🎯 Subscription Webhook Logic
@@ -84,6 +90,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
       default:
         console.log("🔔 Unhandled event:", event.event);
+        console.log("🔔 Unhandled event object :", JSON.stringify( event));
+
     }
 
     res.status(200).json({ status: "ok" });

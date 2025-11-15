@@ -41,19 +41,22 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
           owner: getUser?._id,
         });
 
-        const customer = await StripeCustomers.findOne({
-          email: verification.email,
-        });
-        if (customer) {
-          customerId = customer.stripeCustomerId;
-        }
-        const subscription = await Subscriptions.findOne({
-          customerId: customerId,
-          status: { $ne: "canceled" },
-        });
-        if (subscription) {
-          subscriptionId = subscription.subscriptionId;
-        }
+
+        // inject a user current subscription from here
+
+        // const customer = await StripeCustomers.findOne({
+        //   email: verification.email,
+        // });
+        // if (customer) {
+        //   customerId = customer.stripeCustomerId;
+        // }
+        // const subscription = await Subscriptions.findOne({
+        //   customerId: customerId,
+        //   status: { $ne: "canceled" },
+        // });
+        // if (subscription) {
+        //   subscriptionId = subscription.subscriptionId;
+        // }
       }
 
       if (!getUser) {

@@ -8,6 +8,7 @@ import {
   createRazorPayPlan,
   deleteRazorPayPlan,
   getRazorPayPlans,
+  getUSerSubscriptions,
   paymentVerification,
   paymentVerificationApp,
 } from "../controllers/razorPay.controller";
@@ -17,6 +18,7 @@ const razorpayRouter = Router();
 // ###################### SUBSCRIPTIONS #########################
 
 razorpayRouter.post("/subscriptions/create", VerifyUserHandler, buySubscription);
+razorpayRouter.get("/subscriptions" ,VerifyUserHandler ,getUSerSubscriptions);
 razorpayRouter.post("/paymentVerification" , paymentVerification)
 razorpayRouter.post("/paymentVerificationapp" , paymentVerificationApp)
 

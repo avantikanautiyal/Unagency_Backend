@@ -129,7 +129,7 @@ export const paymentVerification = asyncHandler(
     res.redirect(
       process.env.FRONTEND_URL +
         "/payment-success?payment_id=" +
-        razorpay_payment_id
+        razorpay_payment_id + "&subscription_id="+razorpay_subscription_id
     );
     // data base comes here
     // await
@@ -174,7 +174,7 @@ export const paymentVerificationApp = asyncHandler(
     res.redirect(
       process.env.FRONTEND_URL +
         "/payment-success?payment_id=" +
-        razorpay_payment_id
+        razorpay_payment_id + + "&subscription_id="+razorpay_subscription_id
     );
     // data base comes here
     // await

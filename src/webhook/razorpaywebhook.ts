@@ -9,9 +9,14 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
   try {
     console.log("webhook called....");
     const signature = req.headers["x-razorpay-signature"];
+    
+    // req.body is a Buffer when using express.raw()
+    const rawBody = req.body as Buffer;
+    const bodyString = rawBody.toString("utf8");
+    
     const expectedSignature = crypto
       .createHmac("sha256", webhookSecret)
-      .update(req.body)
+      .update(bodyString)
       .digest("hex");
 
     if (signature !== expectedSignature) {
@@ -21,9 +26,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
     console.log("✅ Webhook verified");
     console.log("============= event body console START============");
-    console.log(req.body);
-    const rawBody = (req.body as Buffer).toString("utf8"); // or just req.body.toString()
-    const event = JSON.parse(rawBody);
+    console.log(bodyString);
+    const event = JSON.parse(bodyString);
 
     console.log("event ", event);
     console.log("============= event body console END============");
@@ -86,9 +90,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: {
-              subscriptionId: event.payload?.subscription?.entity?.id,
-            },
+            subscriptionId: event.payload?.subscription?.entity?.id,
           });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
@@ -117,9 +119,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: {
-              subscriptionId: event.payload?.subscription?.entity?.id,
-            },
+            subscriptionId: event.payload?.subscription?.entity?.id,
           });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
@@ -147,9 +147,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: {
-              subscriptionId: event.payload?.subscription?.entity?.id,
-            },
+            subscriptionId: event.payload?.subscription?.entity?.id,
           });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
@@ -193,9 +191,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: {
-              subscriptionId: event.payload?.subscription?.entity?.id,
-            },
+            subscriptionId: event.payload?.subscription?.entity?.id,
           });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
@@ -224,9 +220,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: {
-              subscriptionId: event.payload?.subscription?.entity?.id,
-            },
+            subscriptionId: event.payload?.subscription?.entity?.id,
           });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(

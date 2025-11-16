@@ -7,8 +7,8 @@ export interface ISubscription {
   planId: string; // Plan associated with the subscription
   userId : string;
   status: string; // Subscription status ('active', 'canceled', etc.)
-  start_at? : string | null ;
-  expire_by? : string | null ;
+  current_start? : string | null ;
+  current_end? : string | null ;
   // currentPeriodStart: Date; // Subscription start
   // currentPeriodEnd: Date; // Subscription renewal/cancellation date
 }
@@ -24,8 +24,8 @@ const SubscriptionSchema = new Schema<ISubscription>({
     required: true,
     // enum: ["active", "canceled", "pending", "incomplete", "incomplete_expired", "trialing", "past_due", "unpaid"],
   }, 
-  start_at : {type : Object  },
-  expire_by : {type : Object },
+  current_start : {type : Object  },
+  current_end : {type : Object },
 
   
   // Subscription status ('active', 'canceled', etc.)

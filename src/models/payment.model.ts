@@ -5,7 +5,8 @@ export interface IPayment {
       razorpay_payment_id : string;
       razorpay_subscription_id : string;
       razorpay_signature : string;
-      userId : mongoose.Types.ObjectId
+      userId : mongoose.Types.ObjectId,
+      status : string;
 }
 
 const PaymentSchema = new Schema<IPayment>(
@@ -14,7 +15,8 @@ const PaymentSchema = new Schema<IPayment>(
     razorpay_payment_id: { type: String, required: true },
     razorpay_subscription_id: { type: String, required: true },
     razorpay_signature: { type: String, required: true },
-    userId: { type: Schema.Types.ObjectId, ref: "users" }
+    userId: { type: Schema.Types.ObjectId, ref: "users" },
+    status : {type : String}
   },
   { collection: "payments", timestamps: true }
 );

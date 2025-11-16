@@ -1,5 +1,8 @@
 import { Request, Response } from "express";
+import Subscriptions from "../models/subscription.model";
+import PaymentModel from "../models/payment.model";
 import crypto from "crypto";
+import Users from "../models/users.model";
 
 const webhookSecret = "123456654321";
 export const razorpayWebhook = async (req: Request, res: Response) => {
@@ -29,12 +32,19 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
     // ===========================
     // 🎯 Subscription Webhook Logic
     // ===========================
+
     switch (event.event) {
       case "payment.authorized":
         console.log(
           "Payment Authorized for subscription:",
-          event.payload?.payment?.entity?.subscription_id
+          event.payload?.payment?.entity?.id
         );
+
+        await PaymentModel.findOneAndUpdate(
+          { razorpay_payment_id: event.payload?.payment?.entity?.id },
+          { status: event.payload?.payment?.entity?.status }
+        );
+
         // Capture the payment if manual capture
         break;
 
@@ -43,12 +53,52 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription Payment Captured:",
           event.payload?.payment?.entity?.id
         );
+
+        await PaymentModel.findOneAndUpdate(
+          { razorpay_payment_id: event.payload?.payment?.entity?.id },
+          { status: event.payload?.payment?.entity?.status }
+        );
+        break;
+      case "payment.failed":
+        console.log(
+          "Subscription Payment Captured:",
+          event.payload?.payment?.entity?.id
+        );
+        await PaymentModel.findOneAndUpdate(
+          { razorpay_payment_id: event.payload?.payment?.entity?.id },
+          { status: event.payload?.payment?.entity?.status }
+        );
         break;
 
       case "subscription.activated":
         console.log(
           "Subscription Activated:",
           event.payload?.subscription?.entity?.id
+        );
+        
+     
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+            subscriptionId: {
+              subscriptionId: event.payload?.subscription?.entity?.id,
+            },
+          });
+        // Update the user's subscription id and status
+        await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
         );
         // Mark user subscription active in DB
         break;
@@ -58,6 +108,29 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription Recurring Charge Done:",
           event.payload?.subscription?.entity?.id
         );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+            subscriptionId: {
+              subscriptionId: event.payload?.subscription?.entity?.id,
+            },
+          });
+        // Update the user's subscription id and status
+        await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
         break;
 
       case "subscription.pending":
@@ -65,12 +138,43 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription pending (next payment due):",
           event.payload?.subscription?.entity?.id
         );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+            subscriptionId: {
+              subscriptionId: event.payload?.subscription?.entity?.id,
+            },
+          });
+        // Update the user's subscription id and status
+        await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
         break;
 
       case "subscription.halted":
         console.log(
           "Subscription halted due to failed payment:",
           event.payload?.subscription?.entity?.id
+        );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
         );
         // Warn user to update payment method
         break;
@@ -80,6 +184,29 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription Cancelled:",
           event.payload?.subscription?.entity?.id
         );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+            subscriptionId: {
+              subscriptionId: event.payload?.subscription?.entity?.id,
+            },
+          });
+        // Update the user's subscription id and status
+        await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
         // Mark as cancelled in DB
         break;
 
@@ -87,6 +214,29 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         console.log(
           "Subscription Completed:",
           event.payload?.subscription?.entity?.id
+        );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+            subscriptionId: {
+              subscriptionId: event.payload?.subscription?.entity?.id,
+            },
+          });
+        // Update the user's subscription id and status
+        await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
         );
         break;
 

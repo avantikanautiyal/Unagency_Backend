@@ -15,6 +15,18 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
   //   console.log(req.body);
   if (!req?.body?.plan_id) throw new ApiError("plan_id required ", 400);
 
+  const user = await Users.findById(req.user?.userId);
+
+  if (
+    user?.subscription?.id &&
+    ["pending", "active"].includes(user?.subscription?.status)
+  ) {
+    throw new ApiError(
+      "Please cancel a current subscription before taking a new subscription",
+      400
+    );
+  }
+
   const subscription = await razorpayInstance.subscriptions.create({
     plan_id: req.body.plan_id,
     customer_notify: 1,
@@ -64,6 +76,19 @@ export const getUSerSubscriptions = asyncHandler(async (req: RequestUser) => {
 
   return new ApiResponse(200, subscription, "All subscriptions");
 });
+export const getUserCurrentSubscription = asyncHandler(
+  async (req: RequestUser) => {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError("UserId not present", 400);
+
+    const subscription = await Subscriptions.findOne({
+      userId,
+      status: { $in: ["active", "pending"] },
+    });
+
+    return new ApiResponse(200, subscription, "All subscriptions");
+  }
+);
 
 export const paymentVerification = asyncHandler(
   async (req: RequestUser, res) => {
@@ -103,7 +128,7 @@ export const paymentVerification = asyncHandler(
 
     res.redirect(
       process.env.FRONTEND_URL +
-        "/paymentsuccess?payment_id=" +
+        "/payment-success?payment_id=" +
         razorpay_payment_id
     );
     // data base comes here

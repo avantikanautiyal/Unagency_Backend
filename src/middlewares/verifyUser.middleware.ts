@@ -35,7 +35,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         }
       }
       let organization: IOrganization | null | undefined;
-      let customerId, subscriptionId;
+      let customerId;
       if (getUser?.role == "customer") {
         organization = await Organizations.findOne({
           owner: getUser?._id,
@@ -67,7 +67,6 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         ...getUser.toObject(),
         isVerified: verification?.email_verified!,
         userId: getUser?._id?.toString(),
-        subscriptionId,
         customerId,
         organization: organization as IOrganization,
         staff: staff,
@@ -108,8 +107,11 @@ export const IsMembershipUser = asyncHandler(async function IsMembershipUser(
   res: Response,
   next: NextFunction
 ) {
+
+  next(new ApiError("bnd kr diya hai ye change kr ", 400));
+  return;
   const subscription = await Subscriptions.findOne({
-    _id: req.user?.subscriptionId,
+    _id: (req.user as any)?.subscriptionId,
   });
   if (subscription?.status == "active") {
     next();

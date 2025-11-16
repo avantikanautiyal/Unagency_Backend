@@ -8,13 +8,13 @@ const  {
   REDIRECT_URL,
   TECH_SUPPORT_EMAIL
 } = process.env;
-console.log({
-  CLIENT_ID,
-  CLINET_SECRET,
-  REFRESH_TOKEN,
-  REDIRECT_URL,
-  TECH_SUPPORT_EMAIL
-});
+// console.log({
+//   CLIENT_ID,
+//   CLINET_SECRET,
+//   REFRESH_TOKEN,
+//   REDIRECT_URL,
+//   TECH_SUPPORT_EMAIL
+// });
 export const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {

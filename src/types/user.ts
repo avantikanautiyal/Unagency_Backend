@@ -12,7 +12,10 @@ export interface UserType {
   isVerified: boolean;
   email?: string;
   customerId?: string;
-  subscriptionId?: string;
+  subscription?: {
+    id : string ;
+    status : string
+  };
   relationship_manager?: string | object;
   staff?: string | object;
 }

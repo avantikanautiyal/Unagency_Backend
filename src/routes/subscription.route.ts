@@ -5,7 +5,7 @@ import {
   VerifyUserHandler,
 } from "../middlewares/verifyUser.middleware";
 import {
-  CancelCustomerSubscription,
+  // CancelCustomerSubscription,
   createCheckoutSession,
   CreatePaymentMethod,
   createUserSubscription,
@@ -14,7 +14,7 @@ import {
   MakeDefaultPaymentMethod,
   RemovePaymentMethod,
   SubscriptionStatus,
-  upgradeCustomerSubscription,
+  // upgradeCustomerSubscription,
   UserPaymentMethods,
 } from "../controllers/subscriptions.controller";
 const router = Router();
@@ -33,12 +33,12 @@ router.get(
 );
 
 //Desc: It allow customer to upgrade and downgrade their current subscription
-router.post(
-  "/update-subscription",
-  VerifyRole(["customer"]),
-  IsVerifiedUser,
-  upgradeCustomerSubscription
-);
+// router.post(
+//   "/update-subscription",
+//   VerifyRole(["customer"]),
+//   IsVerifiedUser,
+//   upgradeCustomerSubscription
+// );
 
 //Desc: It allow customer to fetch session Details
 router.get(
@@ -57,12 +57,12 @@ router.post(
 );
 
 //It is used to cancel current subscription
-router.get(
-  "/cancel-subscription",
-  VerifyRole(["customer"]),
-  IsVerifiedUser,
-  CancelCustomerSubscription
-);
+// router.get(
+//   "/cancel-subscription",
+//   VerifyRole(["customer"]),
+//   IsVerifiedUser,
+//   CancelCustomerSubscription
+// );
 
 //It is used to check customer payment methods and default payment method
 router.get(

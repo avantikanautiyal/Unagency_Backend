@@ -64,21 +64,21 @@ const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
 });
 
 //TESTED OK
-const upgradeCustomerSubscription = asyncHandler(
-  async (req: RequestUser, res) => {
-    const { priceId } = req.body;
-    const subscriptionId = req.user?.subscriptionId ?? "";
-    if (subscriptionId == "") {
-      return new ApiResponse(
-        400,
-        null,
-        "Subscription Id couldn't found. Please try again"
-      );
-    }
-    const upgrade = await upgradeSubscription({ priceId, subscriptionId });
-    return new ApiResponse(200, upgrade, "subscription upgraded");
-  }
-);
+// const upgradeCustomerSubscription = asyncHandler(
+//   async (req: RequestUser, res) => {
+//     const { priceId } = req.body;
+//     const subscriptionId = req.user?.subscriptionId ?? "";
+//     if (subscriptionId == "") {
+//       return new ApiResponse(
+//         400,
+//         null,
+//         "Subscription Id couldn't found. Please try again"
+//       );
+//     }
+//     const upgrade = await upgradeSubscription({ priceId, subscriptionId });
+//     return new ApiResponse(200, upgrade, "subscription upgraded");
+//   }
+// );
 
 //TESTED OK
 const fetchCheckoutSession = asyncHandler(async (req: RequestUser, res) => {
@@ -111,22 +111,22 @@ const createUserSubscription = asyncHandler(async (req: RequestUser, res) => {
 });
 
 //TESTED OK
-const CancelCustomerSubscription = asyncHandler(
-  async (req: RequestUser, res) => {
-    const subscriptionId = req.user?.subscriptionId ?? "";
-    if (subscriptionId == "") {
-      return new ApiResponse(
-        400,
-        null,
-        "Subscription Id couldn't found. Please try again"
-      );
-    }
-    const Cancel = await CancelSubscription({ subscriptionId });
-    if (Cancel) {
-      return new ApiResponse(200, Cancel, "Subscription cancel initiated");
-    }
-  }
-);
+// const CancelCustomerSubscription = asyncHandler(
+//   async (req: RequestUser, res) => {
+//     const subscriptionId = req.user?.subscriptionId ?? "";
+//     if (subscriptionId == "") {
+//       return new ApiResponse(
+//         400,
+//         null,
+//         "Subscription Id couldn't found. Please try again"
+//       );
+//     }
+//     const Cancel = await CancelSubscription({ subscriptionId });
+//     if (Cancel) {
+//       return new ApiResponse(200, Cancel, "Subscription cancel initiated");
+//     }
+//   }
+// );
 
 //TESTED OK
 const UserPaymentMethods = asyncHandler(async (req: RequestUser, res) => {
@@ -216,8 +216,8 @@ export {
   fetchCheckoutSession,
   SubscriptionStatus,
   createUserSubscription,
-  upgradeCustomerSubscription,
-  CancelCustomerSubscription,
+  // upgradeCustomerSubscription,
+  // CancelCustomerSubscription,
   UserPaymentMethods,
   CreatePaymentMethod,
   MakeDefaultPaymentMethod,

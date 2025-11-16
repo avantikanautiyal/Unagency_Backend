@@ -18,7 +18,7 @@ const SubscriptionSchema = new Schema<ISubscription>({
   customerId: { type: String }, // Razorpay customer ID
   userId : { type: String, required: true },
   subscriptionId: { type: String, required: true }, // Razorpay subscription ID
-  planId: { type: String, required: true }, // Plan associated with the subscription
+  planId: { type: String, required: true , ref : "Plans" }, // Plan associated with the subscription
   status: {
     type: String,
     required: true,

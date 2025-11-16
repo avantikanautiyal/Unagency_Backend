@@ -14,43 +14,6 @@ import { Notification } from "../background/utils/notification";
 const TECH_SUPPORT_EMAIL = process.env.TECH_SUPPORT_EMAIL;
 //TESTED OK = RAHUL
 const Verify = asyncHandler(async (req: RequestUser, res) => {
-  // const isUserExists = await Users.exists({
-  //   firebaseId: req.user?.firebaseId,
-  // });
-  // if (!isUserExists) {
-  //   const authHeader = req.headers["authorization"];
-  //   const accessToken = authHeader && authHeader.split(" ")[1];
-  //   const verification = await firebaseAdmin.auth().verifyIdToken(accessToken!);
-  //   const [relationshipManager] = await Staff.aggregate([
-  //     {
-  //       $lookup: {
-  //         from: "users", // The name of the collection you're joining
-  //         localField: "userId", // The field in Staff collection
-  //         foreignField: "_id", // The field in the Users collection to match
-  //         as: "userInfo", // The name of the output array field
-  //       },
-  //     },
-  //     { $unwind: "$userInfo" },
-  //     {
-  //       $match: {
-  //         "userInfo.role": "servicing",
-  //       },
-  //     },
-  //     { $sample: { size: 1 } },
-  //   ]); // Allocate a Relationship manager to a new User
-  //   const user = {
-  //     firebaseId: verification?.uid,
-  //     name: verification?.name,
-  //     role: "customer",
-  //     email: verification?.email,
-  //     isVerified: verification?.email_verified,
-  //     relationship_manager: relationshipManager
-  //       ? relationshipManager._id
-  //       : null,
-  //   };
-  //   const registration = await Users.create(user); // Creating user in database
-  // }
-
   return new ApiResponse(200, req.user);
 });
 

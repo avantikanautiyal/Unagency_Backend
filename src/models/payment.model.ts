@@ -13,7 +13,7 @@ const PaymentSchema = new Schema<IPayment>(
   {
     _id: { type: Schema.Types.ObjectId, auto: true },
     razorpay_payment_id: { type: String, required: true },
-    razorpay_subscription_id: { type: String, required: true },
+    razorpay_subscription_id: { type: String, required: true , ref : "Subscriptions" },
     razorpay_signature: { type: String, required: true },
     userId: { type: Schema.Types.ObjectId, ref: "users" },
     status : {type : String}

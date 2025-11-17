@@ -100,7 +100,6 @@ export const paymentVerification = asyncHandler(
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      ...rest
     } = req.body;
     console.log(
       "razopay verification props ",
@@ -108,11 +107,6 @@ export const paymentVerification = asyncHandler(
       razorpay_subscription_id,
       razorpay_signature
     );
-    // const user = await Users.findById(req.user?.userId);
-    // const subscriptionId = user?.subscription?.id;
-    const user: any = await Users.find({
-      "subscription.id": razorpay_subscription_id,
-    });
 
     const generated_signature = crypto
       .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
@@ -123,11 +117,15 @@ export const paymentVerification = asyncHandler(
     if (!isValidSignature)
       res.redirect(process.env.FRONTEND_URL + "/paymentfail");
 
+    const subs = await Subscriptions.findOne({
+      subscriptionId: razorpay_subscription_id,
+    });
+
     await Payments.create({
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      userId: user?._id!,
+      userId: subs?.userId,
     });
 
     res.redirect(
@@ -188,6 +186,25 @@ export const paymentVerificationApp = asyncHandler(
     // await
   }
 );
+
+export const getPaymentHistory = asyncHandler(async (req: RequestUser, res) => {
+  const userPaymentHistory = await Payments.find({
+    userId: req.user?.userId,
+  }).populate({
+    path: "razorpay_subscription_id",
+    foreignField: "subscriptionId",
+    populate: {
+      path: "planId", // field inside subscription,
+      foreignField: "plan_id",
+    },
+  });
+
+  return new ApiResponse(
+    200,
+    userPaymentHistory,
+    "payment histroy fetched successfully "
+  );
+});
 
 // for Plans
 export const getRazorPayPlans = asyncHandler(async (req: RequestUser) => {

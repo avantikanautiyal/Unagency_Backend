@@ -7,6 +7,7 @@ import {
   buySubscription,
   createRazorPayPlan,
   deleteRazorPayPlan,
+  getPaymentHistory,
   getRazorPayPlans,
   getUserCurrentSubscription,
   getUSerSubscriptions,
@@ -22,9 +23,9 @@ razorpayRouter.post("/subscriptions/create", VerifyUserHandler, buySubscription)
 razorpayRouter.get("/subscriptions" ,VerifyUserHandler ,getUSerSubscriptions);
 razorpayRouter.get("/subscriptions/current" ,VerifyUserHandler ,getUserCurrentSubscription);
 
-razorpayRouter.post("/paymentVerification" , paymentVerification)
-razorpayRouter.post("/paymentVerificationapp" , paymentVerificationApp)
-
+razorpayRouter.post("/paymentVerification" , paymentVerification);
+razorpayRouter.post("/paymentVerificationapp" , paymentVerificationApp);
+razorpayRouter.get("/payment/history" ,VerifyUserHandler ,getPaymentHistory)
 // ###################### PLANS #########################
 
 //Desc: It allows servicing team to fetch their customer's project list

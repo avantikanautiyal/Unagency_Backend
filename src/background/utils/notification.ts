@@ -6,7 +6,34 @@ export type NotificationType = "COMMON" | "PROJECT" | "REQUIRMENT" | "TASK" | "S
 //     title: string;
 //     description: string;
 // }
-export class Notification {
-    constructor(public title: string, public description: string, public type: NotificationType) { }
+export interface NotificationProps  {
+    symbol : string;
+    title:string;
+    description: string;
+    type: string ;
+    action: string;
+    actionText :string;
+
 }
+export class Notification {
+    symbol: string;
+    title: string;
+    description: string;
+    type: string;
+    action: string;
+    actionText: string;
+
+    constructor(props: NotificationProps) {
+        this.symbol = props.symbol;
+        this.title = props.title;
+        this.description = props.description;
+        this.type = props.type;
+        this.action = props.action;
+        this.actionText = props.actionText;
+    }
+}
+
+// export class Notification {
+//     constructor(public title: string, public description: string, public type: NotificationType) { }
+// }
 

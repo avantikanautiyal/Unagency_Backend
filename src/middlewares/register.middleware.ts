@@ -26,8 +26,6 @@ export async function RegisterIfNot(
         email: verification.email,
       });
 
-     
-
       if (!!isUserExists && isUserExists?.firebaseId !== verification.uid) {
         await Users.updateOne(
           {
@@ -70,13 +68,16 @@ export async function RegisterIfNot(
           action: "COMMON",
           data: "Welcome to UNAGENCY " + verification.email,
           email: verification.email!,
-          notification: new Notification(
-            "Welcome to UNAGENCY",
-            "Welcome to UNAGENCY",
-            "COMMON"
-          ) as any,
+          notification: new Notification({
+            title: "Welcome to UNAGENCY",
+            description: "Welcome to UNAGENCY",
+            type: "COMMON",
+            symbol: "🍻",
+            action: "message.open",
+            actionText: "chat now",
+          }),
           subject: "Welcome to UNAGENCY",
-          userId : registration._id.toString(),
+          userId: registration._id.toString(),
         });
         const r = await createUserUpster({
           _id: registration._id + "",

@@ -29,13 +29,22 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   }
 
   const teamMemberIds = body.clientTeam as string[]; // fetch users
-  const teams = await Teams.find({ _id: { $in: teamMemberIds } }).populate("userId");
-  const teamsEmail = teams.map((t: any) => t?.userId?.email)
+  const teams = await Teams.find({ _id: { $in: teamMemberIds } }).populate(
+    "userId"
+  );
+  const teamsEmail = teams.map((t: any) => t?.userId?.email);
   const create = await Projects.create(body);
   projectNotification.add(create?._id?.toString(), {
     action: "CREATE",
     data: { userId: body.userId, teamsEmail: teamsEmail },
-    notification: new Notification(create.title, create.description, "PROJECT")
+    notification: new Notification({
+      title: create.title,
+      description: create.description,
+      type: "PROJECT",
+      action: "project.open",
+      actionText: "view projects",
+      symbol: "🍾",
+    }),
   });
   await ProjectLogs.create({
     projectId: create?._id,
@@ -250,7 +259,7 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
         createdAt: 1,
         updatedAt: 1,
         user: {
-          _id : "$user._id",
+          _id: "$user._id",
           name: "$user.name",
           email: "$user.email",
           image: "$user.image",
@@ -319,7 +328,7 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
     }
     const project = await Projects.findByIdAndUpdate(projectId, {
       $set: { status: stage },
-    })
+    });
     const create = await ProjectLogs.create({
       projectId: projectId,
       ActionDate: new Date(),
@@ -331,11 +340,17 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
       data: {
         status: stage,
         // userId: staff?.userId?._id,
-        userId : project?.userId 
+        userId: project?.userId,
       },
-      notification: new Notification(project?.title!, project?.description!, "PROJECT")
+      notification: new Notification({
+        title: project?.title!,
+        description: project?.description!,
+        type: "PROJECT",
+        symbol: "🧙🏻‍♂️",
+        action: "project.open",
+        actionText: "view projects",
+      }),
     });
-
 
     return new ApiResponse(200, create, "Project log created successfully");
   } else {

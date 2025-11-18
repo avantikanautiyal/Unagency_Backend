@@ -73,11 +73,14 @@ const Register = asyncHandler(async (req, res) => {
               action: "REQUIRMENT",
               data: "NEW Rquirement form  ",
               email: verification?.email!,
-              notification: new Notification(
-                "NEW Rquirement form ",
-                "requirement notification text here",
-                "REQUIRMENT"
-              ) as any,
+              notification: new Notification({
+                title: "NEW Rquirement form ",
+                description: "requirement notification text here",
+                type: "REQUIRMENT",
+                actionText: "view requirment",
+                action: "requirment.view",
+                symbol: "✨",
+              }),
               subject: "Hi we will be assigning you a manger soon",
             });
             EmailQueue.add("user not assigned", {
@@ -86,11 +89,14 @@ const Register = asyncHandler(async (req, res) => {
                 "currently this customer is not assigned to any manager " +
                 verification?.email,
               email: TECH_SUPPORT_EMAIL!,
-              notification: new Notification(
-                "Not assigned to any manager",
-                "not assignet to any tech supprot",
-                "COMMON"
-              ) as any,
+              notification: new Notification({
+                title: "Not assigned to any manager",
+                description: "not assignet to any tech supprot",
+                type: "COMMON",
+                symbol: "📣",
+                action: "message.start",
+                actionText: "contact us",
+              }) as any,
               subject:
                 "CUSTOMER NOT ASSIGNED TO ANY MANAGER " + verification.email,
             });
@@ -185,11 +191,14 @@ const NewRegister = asyncHandler(async (req) => {
         action: "REQUIRMENT",
         data: "NEW Rquirement form  ",
         email: create?.email!,
-        notification: new Notification(
-          "NEW Rquirement form ",
-          "requirement notification text here",
-          "REQUIRMENT"
-        ) as any,
+        notification: new Notification({
+          title: "NEW Rquirement form ",
+          description: "requirement notification text here",
+          type: "REQUIRMENT",
+          symbol: "🎁",
+          action: "requirment.open",
+          actionText: "view requirment",
+        }) as any,
         subject: "Hi we will be assigning you a manger soon",
       });
       EmailQueue.add("user not assigned", {
@@ -199,10 +208,15 @@ const NewRegister = asyncHandler(async (req) => {
           create?.email,
         email: TECH_SUPPORT_EMAIL!,
         notification: new Notification(
-          "Not assigned to any manager",
-          "not assignet to any tech supprot",
-          "COMMON"
-        ) as any,
+          {
+            title: "Not assigned to any manager",
+            description: "not assigned to any tech support",
+            type: "COMMON",
+            action: "message.open",
+            actionText: "contact us",
+            symbol: "🔔" // generated symbol for notification
+          }
+        ),
         subject: "CUSTOMER NOT ASSIGNED TO ANY MANAGER " + create.email,
       });
 

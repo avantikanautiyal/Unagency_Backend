@@ -1,13 +1,13 @@
 import { Queue, Worker } from 'bullmq';
 import { connection } from '../connection';
 import emailBackgroundService from '../workers/email.worker';
-import { NotificationType } from '../utils/notification';
+import { NotificationProps, NotificationType } from '../utils/notification';
 type EmailQueType = {
     action: NotificationType,
     data: unknown,
     email : string ;
     subject : string ;
-    notification: Notification;
+    notification: NotificationProps;
     userId? : string ;
 }
 export const EMAIL_QUEUE_KEY = "email"

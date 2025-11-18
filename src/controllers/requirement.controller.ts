@@ -26,9 +26,8 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   };
   const newRequirement = await Requirement.create(requirementBody);
   const rm = await Staff.findOne({
-    _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + "")
-  }
-  ).populate("userId");
+    _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + ""),
+  }).populate("userId");
   projectNotification.add(newRequirement._id.toString(), {
     action: "CREATE",
     data: {
@@ -36,21 +35,31 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
       manager: rm,
       requirment: newRequirement,
     },
-    notification: new Notification(newRequirement.title, newRequirement.description, "REQUIRMENT")
-  })
+    notification: new Notification({
+      title: newRequirement.title,
+      description: newRequirement.description,
+      type: "REQUIRMENT",
+      symbol: "🔔",
+      action: "requirment.open",
+      actionText: "view requirment",
+    }),
+  });
   const rmUser = await Users.findOne({
-    _id: new mongoose.Types.ObjectId(rm?.userId + "")
+    _id: new mongoose.Types.ObjectId(rm?.userId + ""),
   });
   EmailQueue.add("user register", {
     action: "REQUIRMENT",
     data: "NEW Rquirement form  " + req.user?.name,
     email: rmUser?.email!,
-    notification: new Notification(
-      "NEW Rquirement form " + req.user?.name,
-      "requirement notification text ehre",
-      "REQUIRMENT"
-    ) as any,
-    subject: "NEW Rquirement",
+    notification: new Notification({
+      title: "NEW Rquirement form " + req.user?.name,
+      description: "requirement notification text ehre",
+      type: "REQUIRMENT",
+      symbol: "🫡",
+      action: "🔔",
+      actionText: "view requirment",
+    }),
+    subject: "NEW Rquirement "+req.user?.name,
   });
   return new ApiResponse(200, newRequirement, "success");
 });

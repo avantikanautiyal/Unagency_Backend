@@ -57,9 +57,17 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       userId: staff?.userId?._id,
       emails: [(staff?.userId as any)?.email],
       name: (staff.userId as any).name,
-      deadline: create.deadline, assignedBy: req?.user?.name
+      deadline: create.deadline,
+      assignedBy: req?.user?.name,
     },
-    notification: new Notification(create.title, create.description, "TASK")
+    notification: new Notification({
+      title: create.title,
+      description: create.description,
+      type: "TASK",
+      action: "task.open",
+      actionText: "view task",
+      symbol: "👨🏽‍💻",
+    }),
   });
 
   return new ApiResponse(200, create, "Task assigned successfully");
@@ -161,22 +169,22 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     return new ApiResponse(400, null, "Task ID is required");
   }
 
-
   delete updates._id;
   delete updates.assignedBy;
   // Find the task by ID and update it with the new fields
   const updatedTask = await Tasks.findByIdAndUpdate(taskId, updates, {
     new: true,
     runValidators: true,
-  }).populate({
-    path: "assignedTo",
-    select: "userId",
-    populate: {
-      path: "userId",
-      select: "name email",
-      model: "Users",
-    },
   })
+    .populate({
+      path: "assignedTo",
+      select: "userId",
+      populate: {
+        path: "userId",
+        select: "name email",
+        model: "Users",
+      },
+    })
     .populate({
       path: "assignedBy",
       select: "userId",
@@ -187,9 +195,8 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       },
     });
   switch (updates.status) {
-
     case "submitted":
-      // here inform a task servicing manager 
+      // here inform a task servicing manager
       await projectNotification.add("task update", {
         action: "ASSIGN",
         data: {
@@ -198,9 +205,16 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           emails: [(updatedTask?.assignedBy as any)?.userId?.email],
           // name: (staff.userId as any).name,
           deadline: updatedTask?.deadline,
-          assignedBy: req?.user?.name
+          assignedBy: req?.user?.name,
         },
-        notification: new Notification(updatedTask?.title!, updatedTask?.description!, "TASK")
+        notification: new Notification({
+          title: updatedTask?.title!,
+          description: updatedTask?.description!,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "👷🏻",
+        }),
       });
 
       break;
@@ -213,16 +227,22 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           emails: [(updatedTask?.assignedTo as any)?.userId?.email],
           // name: (staff.userId as any).name,
           deadline: updatedTask?.deadline,
-          assignedBy: req?.user?.name
+          assignedBy: req?.user?.name,
         },
-        notification: new Notification(updatedTask?.title!, updatedTask?.description!, "TASK")
+        notification: new Notification({
+          title: updatedTask?.title!,
+          description: updatedTask?.description!,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "👷🏻",
+        }),
       });
       // here inform a task updation to a task assigne (resource)
 
       break;
     default:
   }
-
 
   if (!updatedTask) {
     return new ApiResponse(404, null, "Task not found");

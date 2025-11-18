@@ -236,5 +236,35 @@ const NewRegister = asyncHandler(async (req) => {
 
   return new ApiResponse(200, null, "you are successfully registered");
 });
+const logout = asyncHandler(async (req : RequestUser) => {
+  const user = req.user;
+  const body: { fcmToken: string } = req.body;
 
-export { Verify, Register, NewRegister };
+  if (!user || !body.fcmToken) {
+    throw new ApiError("User or fcmToken not provided", 400);
+  }
+
+ const res = await Users.updateOne(
+    { _id: user.userId },
+    { $pull: { fcmTokens: body.fcmToken } }
+  );
+
+  return new ApiResponse(200, res, "Successfully logged out and fcmToken removed.");
+});
+const registerFcmToken = asyncHandler(async (req: RequestUser) => {
+  const user = req.user;
+  const body: { fcmToken: string } = req.body;
+
+  if (!user || !body.fcmToken) {
+    throw new ApiError("User or fcmToken not provided", 400);
+  }
+
+  const updated = await Users.updateOne(
+    { _id: user.userId },
+    { $addToSet: { fcmTokens: body.fcmToken } }
+  );
+
+  return new ApiResponse(200, updated, "FCM token registered successfully.");
+});
+
+export { Verify, Register, NewRegister , logout ,registerFcmToken  };

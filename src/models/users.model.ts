@@ -18,7 +18,8 @@ export interface IUser {
   subscription? : {
     id : string ;
     status : string ;
-  }
+  },
+  fcmTokens?: [string];
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -39,7 +40,12 @@ const UsersSchema = new Schema<IUser>(
     country: { type: String, default: "" },
     isVerified: { type: Boolean, required: true },
     isActive: { type: Boolean, default: true },
-    subscription : {type : Object, default: {}}
+    subscription : {type : Object, default: {}},
+    fcmTokens: {
+      type: [String],
+      default: []
+    },
+
   },
   { collection: "users", timestamps: true }
 );

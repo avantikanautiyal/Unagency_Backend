@@ -5,6 +5,7 @@ import {
   createRequirement,
   getCustomerRequirement,
   getRequirement,
+  getRequirmentById,
   updateCustomerRequirement,
 } from "../controllers/requirement.controller";
 
@@ -19,12 +20,13 @@ router.post(
 );
 //Desc: It allows customer to get their requirement list
 router.get("/", VerifyRole(["customer"]), getRequirement);
+router.get("/get/:id" , getRequirmentById);
 
 /* -------------------{ servicing }-----------------------*/
 //Desc: It allows servicing to fetch their customer's requirements list
 router.get(
   "/:userId",
-  VerifyRole(["admin", "superadmin", "servicing"]),
+  VerifyRole(["admin", "superadmin", "servicing","customer"]),
   getCustomerRequirement
 );
 
@@ -34,5 +36,6 @@ router.get(
   VerifyRole(["servicing"]),
   updateCustomerRequirement
 );
+
 
 export default router;

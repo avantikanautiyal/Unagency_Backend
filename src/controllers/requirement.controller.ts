@@ -25,28 +25,34 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     deadline: body.deadline,
     files: files ?? [],
   };
+
+  // console.log(requirementBody) ;
+  // return new ApiResponse(200,null,"");
   const newRequirement = await Requirement.create(requirementBody);
   const rm = await Staff.findOne({
     _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + ""),
   }).populate("userId");
-  projectNotification.add(newRequirement._id.toString(), {
-    action: "CREATE",
-    data: {
-      customer: req.user,
-      manager: rm,
-      requirment: newRequirement,
-    },
-    notification: new Notification({
-      title: newRequirement.title,
-      description: newRequirement.description,
-      type: "REQUIRMENT",
-      symbol: "🔔",
-      action: "requirment.open",
-      actionText: "view requirment",
-    }),
-  });
+
+
+  // return new ApiResponse(200,{rm},"ok")
+  // projectNotification.add(newRequirement._id.toString(), {
+  //   action: "CREATE",
+  //   data: {
+  //     customer: req.user,
+  //     manager: rm,
+  //     requirment: newRequirement,
+  //   },
+  //   notification: new Notification({
+  //     title: newRequirement.title,
+  //     description: newRequirement.description,
+  //     type: "REQUIRMENT",
+  //     symbol: "🔔",
+  //     action: "requirment.open",
+  //     actionText: "view requirment",
+  //   }),
+  // });
   const rmUser = await Users.findOne({
-    _id: new mongoose.Types.ObjectId(rm?.userId + ""),
+    _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
   });
   EmailQueue.add("user register", {
     action: "REQUIRMENT",
@@ -62,17 +68,17 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     }),
     subject: "NEW Rquirement " + req.user?.name,
   });
-  await sendNotificationFCM({
-    notification: new Notification({
-      title: "NEW Rquirement form " + req.user?.name,
-      description: "requirement notification text ehre",
-      type: "REQUIRMENT",
-      symbol: "🫡",
-      action: "🔔",
-      actionText: "view requirment",
-    }),
-    user: req.user!,
-  });
+  // await sendNotificationFCM({
+  //   notification: new Notification({
+  //     title: "NEW Rquirement form " + req.user?.name,
+  //     description: "requirement notification text ehre",
+  //     type: "REQUIRMENT",
+  //     symbol: "🫡",
+  //     action: "🔔",
+  //     actionText: "view requirment",
+  //   }),
+  //   user: req.user!,
+  // });
   return new ApiResponse(200, newRequirement, "success");
 });
 
@@ -171,3 +177,9 @@ export const updateCustomerRequirement = asyncHandler(
     return new ApiResponse(200, update, "Requirement updated successfully");
   }
 );
+
+export const getRequirmentById = asyncHandler(async (req : RequestUser)=> {
+  const id: string = req.params.id;
+ const requirment =  await Requirement.findById(id);
+ return new ApiResponse(200 , requirment ,"Requirment fetch sucessfully");
+})

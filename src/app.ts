@@ -27,17 +27,9 @@ import {
   IsVerifiedUser,
   VerifyUserHandler,
 } from "./middlewares/verifyUser.middleware";
-import { asyncHandler } from "./utils/asyncHandler";
-import Stripe from "stripe";
-import CheckoutSession from "./models/checkoutsession.model";
-import Subscriptions from "./models/subscription.model";
-import Invoices from "./models/invoices.model";
-import StripeCustomers from "./models/customer.model";
-// import { EmailQueue } from "./background/queue/Email.queue";
-import { Notification } from "./background/utils/notification";
-import { EmailQueue } from "./background/queue/email.queue";
 import razorpayRouter from "./routes/razorpay.route";
 import { razorpayWebhook } from "./webhook/razorpaywebhook";
+import dashboardRoute from "./routes/dashboard.route";
 const app = express();
 
 //Use of CORS
@@ -201,6 +193,7 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
+app.use("/dashboard" , VerifyUserHandler ,dashboardRoute)
 app.use("/categories", VerifyUserHandler, categoryRouter);
 app.use("/users", VerifyUserHandler, userRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);

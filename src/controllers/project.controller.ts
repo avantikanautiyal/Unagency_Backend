@@ -14,6 +14,8 @@ import ChatRoom from "../models/chatRoom.model";
 import ProjectLogs from "../models/projectlogs.model";
 import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
+import { EmailQueue } from "../background/queue/email.queue";
+import { sendNotificationFCM } from "../utils/FCM";
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
@@ -27,16 +29,21 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
     });
     if (!isExistOrgnization) throw new ApiError("Invalid Organization Id", 404);
   }
+  const customer = await Users.findById(body.userId);
 
   const teamMemberIds = body.clientTeam as string[]; // fetch users
   const teams = await Teams.find({ _id: { $in: teamMemberIds } }).populate(
     "userId"
   );
   const teamsEmail = teams.map((t: any) => t?.userId?.email);
+  teamsEmail.push(customer?.email);
   const create = await Projects.create(body);
-  projectNotification.add(create?._id?.toString(), {
-    action: "CREATE",
-    data: { userId: body.userId, teamsEmail: teamsEmail },
+
+  EmailQueue.add("project creation", {
+    action: "PROJECT",
+    data: "NEW Project creation here",
+    email: teamsEmail.join(","),
+    userId: customer?._id.toString(),
     notification: new Notification({
       title: create.title,
       description: create.description,
@@ -45,6 +52,19 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       actionText: "view projects",
       symbol: "🍾",
     }),
+    subject: "New Project " + create.title,
+  });
+  // currently sending a notificaiton to only a owner
+  await sendNotificationFCM({
+    notification: new Notification({
+      title: create.title,
+      description: create.description,
+      type: "PROJECT",
+      action: "project.open",
+      actionText: "view projects",
+      symbol: "🍾",
+    }),
+    user: customer as any,
   });
   await ProjectLogs.create({
     projectId: create?._id,
@@ -192,6 +212,42 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
       }
     );
 
+    const teamMemberIds = update?.clientTeam as string[]; // fetch users
+    const teams = await Teams.find({ _id: { $in: teamMemberIds } }).populate(
+      "userId"
+    );
+    const teamsEmail = teams.map((t: any) => t?.userId?.email);
+    const customer = await Users.findById(update?.userId);
+    teamsEmail.push(customer?.email);
+
+    EmailQueue.add("project update", {
+      action: "PROJECT",
+      data: "NEW Project Update here ",
+      userId: customer?._id.toString(),
+      email: teamsEmail.join(","),
+      notification: new Notification({
+        title: update?.title!,
+        description: update?.description!,
+        type: "PROJECT",
+        action: "project.open",
+        actionText: "view projects",
+        symbol: "🍾",
+      }),
+      subject: `Project update (${update?.status}) ` + update?.title!,
+    });
+    // currently sending a notificaiton to only a owner
+    await sendNotificationFCM({
+      notification: new Notification({
+        title: update?.title! + " (" + update?.status + ")",
+        description: update?.description!,
+        type: "PROJECT",
+        action: "project.open",
+        actionText: "view projects",
+        symbol: "🍾",
+      }),
+      user: customer as any,
+    });
+
     return new ApiResponse(200, update, "Project updated successfully");
   } else {
     return new ApiResponse(401, null, "You are not assigned for this Customer");
@@ -326,7 +382,7 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
     if (exists) {
       return new ApiResponse(409, null, "Already in records");
     }
-    const project = await Projects.findByIdAndUpdate(projectId, {
+    const update = await Projects.findByIdAndUpdate(projectId, {
       $set: { status: stage },
     });
     const create = await ProjectLogs.create({
@@ -335,22 +391,58 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
       ActionType: stage,
     });
 
-    await projectNotification.add("project update", {
-      action: "UPDATE",
-      data: {
-        status: stage,
-        // userId: staff?.userId?._id,
-        userId: project?.userId,
-      },
+    const teamMemberIds = update?.clientTeam as string[]; // fetch users
+    const teams = await Teams.find({ _id: { $in: teamMemberIds } }).populate(
+      "userId"
+    );
+    const teamsEmail = teams.map((t: any) => t?.userId?.email);
+    const customer = await Users.findById(update?.userId);
+    teamsEmail.push(customer?.email);
+
+    EmailQueue.add("project update", {
+      action: "PROJECT",
+      data: "NEW Project Update here ",
+      userId: customer?._id.toString(),
+      email: teamsEmail.join(","),
       notification: new Notification({
-        title: project?.title!,
-        description: project?.description!,
+        title: update?.title!,
+        description: update?.description!,
         type: "PROJECT",
-        symbol: "🧙🏻‍♂️",
         action: "project.open",
         actionText: "view projects",
+        symbol: "🍾",
       }),
+      subject: `Project update (${update?.status}) ` + update?.title!,
     });
+    // currently sending a notificaiton to only a owner
+    await sendNotificationFCM({
+      notification: new Notification({
+        title: update?.title! + " (" + update?.status + ")",
+        description: update?.description!,
+        type: "PROJECT",
+        action: "project.open",
+        actionText: "view projects",
+        symbol: "🍾",
+      }),
+      user: customer as any,
+    });
+
+    // await projectNotification.add("project update", {
+    //   action: "UPDATE",
+    //   data: {
+    //     status: stage,
+    //     // userId: staff?.userId?._id,
+    //     userId: project?.userId,
+    //   },
+    //   notification: new Notification({
+    //     title: project?.title!,
+    //     description: project?.description!,
+    //     type: "PROJECT",
+    //     symbol: "🧙🏻‍♂️",
+    //     action: "project.open",
+    //     actionText: "view projects",
+    //   }),
+    // });
 
     return new ApiResponse(200, create, "Project log created successfully");
   } else {

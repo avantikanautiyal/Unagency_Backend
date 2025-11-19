@@ -9,6 +9,7 @@ import { projectNotification } from "../background/queue/projectNotification.que
 import { Notification } from "../background/utils/notification";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
+import { sendNotificationFCM } from "../utils/FCM";
 
 // TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
@@ -59,7 +60,18 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
       action: "🔔",
       actionText: "view requirment",
     }),
-    subject: "NEW Rquirement "+req.user?.name,
+    subject: "NEW Rquirement " + req.user?.name,
+  });
+  await sendNotificationFCM({
+    notification: new Notification({
+      title: "NEW Rquirement form " + req.user?.name,
+      description: "requirement notification text ehre",
+      type: "REQUIRMENT",
+      symbol: "🫡",
+      action: "🔔",
+      actionText: "view requirment",
+    }),
+    user: req.user!,
   });
   return new ApiResponse(200, newRequirement, "success");
 });
@@ -128,6 +140,34 @@ export const updateCustomerRequirement = asyncHandler(
       { $set: { status: status } },
       { new: true, runValidators: true }
     );
+    const customer = await Users.findOne({_id : userId});
+
+    EmailQueue.add("requirment update", {
+      action: "REQUIRMENT",
+      data: "Rquirement update  " +update?.title,
+      email: customer?.email!,
+      notification: new Notification({
+        title: "NEW Rquirement form " + req.user?.name,
+        description: "requirement notification text ehre",
+        type: "REQUIRMENT",
+        symbol: "🫡",
+        action: "🔔",
+        actionText: "view requirment",
+      }),
+      subject: "NEW Rquirement " + update?.title,
+    });
+
+    await sendNotificationFCM({
+      notification: new Notification({
+        title: "Rquirement Update " + update?.title,
+        description: "requirement notification text ehre",
+        type: "REQUIRMENT",
+        symbol: "🫡",
+        action: "🔔",
+        actionText: "view requirment",
+      }),
+      user: {userId : customer?._id! ,...customer} as any,
+    });
     return new ApiResponse(200, update, "Requirement updated successfully");
   }
 );

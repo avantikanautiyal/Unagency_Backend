@@ -18,6 +18,7 @@ export interface UserType {
   };
   relationship_manager?: string | object;
   staff?: string | object;
+  fcmTokens? : string[];
 }
 
 export type RequestUser = Request & {

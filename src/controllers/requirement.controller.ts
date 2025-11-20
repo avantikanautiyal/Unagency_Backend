@@ -54,10 +54,11 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   const rmUser = await Users.findOne({
     _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
   });
-  EmailQueue.add("user register", {
+  EmailQueue.add("new requirment", {
     action: "REQUIRMENT",
     data: "NEW Rquirement form  " + req.user?.name,
     email: rmUser?.email!,
+    userId: rm?.userId?._id.toString()!,
     notification: new Notification({
       title: "NEW Rquirement form " + req.user?.name,
       description: "requirement notification text ehre",
@@ -146,12 +147,13 @@ export const updateCustomerRequirement = asyncHandler(
       { $set: { status: status } },
       { new: true, runValidators: true }
     );
-    const customer = await Users.findOne({_id : userId});
+    const customer = await Users.findOne({ _id: userId });
 
     EmailQueue.add("requirment update", {
       action: "REQUIRMENT",
-      data: "Rquirement update  " +update?.title,
+      data: "Rquirement update  " + update?.title,
       email: customer?.email!,
+      userId: customer?._id.toString()!,
       notification: new Notification({
         title: "NEW Rquirement form " + req.user?.name,
         description: "requirement notification text ehre",
@@ -172,14 +174,14 @@ export const updateCustomerRequirement = asyncHandler(
         action: "🔔",
         actionText: "view requirment",
       }),
-      user: {userId : customer?._id! ,...customer} as any,
+      user: { userId: customer?._id!, ...customer } as any,
     });
     return new ApiResponse(200, update, "Requirement updated successfully");
   }
 );
 
-export const getRequirmentById = asyncHandler(async (req : RequestUser)=> {
+export const getRequirmentById = asyncHandler(async (req: RequestUser) => {
   const id: string = req.params.id;
- const requirment =  await Requirement.findById(id);
- return new ApiResponse(200 , requirment ,"Requirment fetch sucessfully");
+  const requirment = await Requirement.findById(id);
+  return new ApiResponse(200, requirment, "Requirment fetch sucessfully");
 })

@@ -278,16 +278,23 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
 
       break;
     case "feedback":
-      await projectNotification.add("task update", {
-        action: "ASSIGN",
-        data: {
-          status: updatedTask?.status,
-          // userId: staff?.userId?._id,
-          emails: [(updatedTask?.assignedTo as any)?.userId?.email],
-          // name: (staff.userId as any).name,
-          deadline: updatedTask?.deadline,
-          assignedBy: req?.user?.name,
-        },
+      EmailQueue.add("task updation", {
+        action: "TASK",
+        data: "Task feedback here " + updatedTask?.title + " " + updatedTask?.description,
+        email: (updatedTask?.assignedTo as any)?.userId?.email!,
+        userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
+        notification: new Notification({
+          title: updatedTask?.title!,
+          description: updatedTask?.description!,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "👨🏽‍💻",
+        }),
+        subject: "Task Feedback",
+      });
+
+      await sendNotificationFCM({
         notification: new Notification({
           title: updatedTask?.title!,
           description: updatedTask?.description!,
@@ -296,9 +303,8 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           actionText: "view task",
           symbol: "👷🏻",
         }),
+        user: (updatedTask?.assignedTo as any)?.userId as any,
       });
-      // here inform a task updation to a task assigne (resource)
-
       break;
     default:
   }

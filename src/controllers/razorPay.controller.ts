@@ -66,6 +66,35 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
   );
 });
 
+export const cancelSubscription = asyncHandler(async (req : RequestUser)=> {
+
+  const subscription_id = req.user?.subscription?.id ;
+  if(!subscription_id) throw new ApiError("subscription id is missing" , 400);
+  const razrerSubscription =  await razorpayInstance.subscriptions.cancel(subscription_id , true);
+
+  await Users.findOneAndUpdate(
+    { _id: req.user?.userId },
+    {
+      $set: {
+        "subscription.id": subscription_id,
+        "subscription.status": razrerSubscription.status,
+      },
+    },
+    { new: true }
+  );
+
+  const subs = await Subscriptions.findOneAndUpdate(
+    { subscriptionId: subscription_id },
+    {
+      status: razrerSubscription.status
+    },
+    { new: true }
+  );
+
+  return new ApiResponse(200 , subs ,"subscription Canceled");
+
+});
+
 export const getUSerSubscriptions = asyncHandler(async (req: RequestUser) => {
   const userId = req.user?.userId;
   if (!userId) throw new ApiError("UserId not present", 400);

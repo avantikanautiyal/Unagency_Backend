@@ -3,17 +3,21 @@ import Subscriptions from "../models/subscription.model";
 import PaymentModel from "../models/payment.model";
 import crypto from "crypto";
 import Users from "../models/users.model";
+import { EmailQueue } from "../background/queue/email.queue";
+import { sendNotificationFCM } from "../utils/FCM";
+import { create } from "domain";
+import { Notification } from "../background/utils/notification";
 
 const webhookSecret = "123456654321";
 export const razorpayWebhook = async (req: Request, res: Response) => {
   try {
     console.log("webhook called....");
     const signature = req.headers["x-razorpay-signature"];
-    
+
     // req.body is a Buffer when using express.raw()
     const rawBody = req.body as Buffer;
     const bodyString = rawBody.toString("utf8");
-    
+
     const expectedSignature = crypto
       .createHmac("sha256", webhookSecret)
       .update(bodyString)
@@ -79,8 +83,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription Activated:",
           event.payload?.subscription?.entity?.id
         );
-        
-     
+
+
         await Subscriptions.findOneAndUpdate(
           { subscriptionId: event.payload?.subscription?.entity?.id },
           {
@@ -90,10 +94,10 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: event.payload?.subscription?.entity?.id,
-          });
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        }).populate({ path: "planId", foreignField: "plan_id" });
         // Update the user's subscription id and status
-        await Users.findOneAndUpdate(
+        var customer = await Users.findOneAndUpdate(
           { _id: subs?.userId },
           {
             $set: {
@@ -102,6 +106,34 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         );
+
+        EmailQueue.add("project creation", {
+          action: "PROJECT",
+          data: "NEW Project creation here",
+          email: customer?.email!,
+          userId: customer?._id.toString(),
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been activated",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "🍾",
+          }),
+          subject: "Your subscription has been activated",
+        });
+        // currently sending a notificaiton to only a owner
+        await sendNotificationFCM({
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been activated",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "🍾",
+          }),
+          user: customer as any,
+        });
         // Mark user subscription active in DB
         break;
 
@@ -119,8 +151,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: event.payload?.subscription?.entity?.id,
-          });
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
           { _id: subs?.userId },
@@ -147,8 +179,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: event.payload?.subscription?.entity?.id,
-          });
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
           { _id: subs?.userId },
@@ -191,10 +223,11 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: event.payload?.subscription?.entity?.id,
-          });
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        }).populate({ path: "planId", foreignField: "plan_id" });
         // Update the user's subscription id and status
-        await Users.findOneAndUpdate(
+
+        var customer = await Users.findOneAndUpdate(
           { _id: subs?.userId },
           {
             $set: {
@@ -203,6 +236,34 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         );
+
+        EmailQueue.add("project creation", {
+          action: "PROJECT",
+          data: "NEW Project creation here",
+          email: customer?.email!,
+          userId: customer?._id.toString(),
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been activated",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "🍾",
+          }),
+          subject: "Your subscription has been activated",
+        });
+        // currently sending a notificaiton to only a owner
+        await sendNotificationFCM({
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been Cancelled",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscriptions",
+            symbol: "🍾",
+          }),
+          user: customer as any,
+        });
         // Mark as cancelled in DB
         break;
 
@@ -220,8 +281,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         var subs = await Subscriptions.findOne({
-            subscriptionId: event.payload?.subscription?.entity?.id,
-          });
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
           { _id: subs?.userId },

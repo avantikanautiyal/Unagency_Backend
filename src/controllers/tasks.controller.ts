@@ -7,6 +7,8 @@ import Staff from "../models/staff.model";
 import mongoose from "mongoose";
 import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
+import { EmailQueue } from "../background/queue/email.queue";
+import { sendNotificationFCM } from "../utils/FCM";
 
 // TESTED OK
 const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
@@ -50,16 +52,31 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     assignedBy: req.user?.staff?._id,
   });
 
-  await projectNotification.add(create?._id?.toString(), {
-    action: "ASSIGN",
-    data: {
-      status: create?.status,
-      userId: staff?.userId?._id,
-      emails: [(staff?.userId as any)?.email],
-      name: (staff.userId as any).name,
-      deadline: create.deadline,
-      assignedBy: req?.user?.name,
-    },
+  // await projectNotification.add(create?._id?.toString(), {
+  //   action: "ASSIGN",
+  //   data: {
+  //     status: create?.status,
+  //     userId: staff?.userId?._id,
+  //     emails: [(staff?.userId as any)?.email],
+  //     name: (staff.userId as any).name,
+  //     deadline: create.deadline,
+  //     assignedBy: req?.user?.name,
+  //   },
+  //   notification: new Notification({
+  //     title: create.title,
+  //     description: create.description,
+  //     type: "TASK",
+  //     action: "task.open",
+  //     actionText: "view task",
+  //     symbol: "👨🏽‍💻",
+  //   }),
+  // });
+
+  EmailQueue.add("task creation", {
+    action: "TASK",
+    data: "NEW Task creation here " + create.title + " " + create.description,
+    email: (staff?.userId as any)?.email!,
+    userId: staff?.userId?._id.toString(),
     notification: new Notification({
       title: create.title,
       description: create.description,
@@ -68,6 +85,19 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       actionText: "view task",
       symbol: "👨🏽‍💻",
     }),
+    subject: "New Task has been created",
+  });
+  // currently sending a notificaiton to only a owner
+  await sendNotificationFCM({
+    notification: new Notification({
+      title: create.title,
+      description: create.description,
+      type: "TASK",
+      action: "task.open",
+      actionText: "view task",
+      symbol: "🍾",
+    }),
+    user: staff?.userId as any,
   });
 
   return new ApiResponse(200, create, "Task assigned successfully");
@@ -190,32 +220,61 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       select: "userId",
       populate: {
         path: "userId",
-        select: "name email",
+        select: "name email _id fcmTokens",
         model: "Users",
       },
     });
   switch (updates.status) {
     case "submitted":
       // here inform a task servicing manager
-      await projectNotification.add("task update", {
-        action: "ASSIGN",
-        data: {
-          status: updatedTask?.status,
-          // userId: staff?.userId?._id,
-          emails: [(updatedTask?.assignedBy as any)?.userId?.email],
-          // name: (staff.userId as any).name,
-          deadline: updatedTask?.deadline,
-          assignedBy: req?.user?.name,
-        },
+      // await projectNotification.add("task update", {
+      //   action: "ASSIGN",
+      //   data: {
+      //     status: updatedTask?.status,
+      //     // userId: staff?.userId?._id,
+      //     emails: [(updatedTask?.assignedBy as any)?.userId?.email],
+      //     // name: (staff.userId as any).name,
+      //     deadline: updatedTask?.deadline,
+      //     assignedBy: req?.user?.name,
+      //   },
+      //   notification: new Notification({
+      //     title: updatedTask?.title!,
+      //     description: updatedTask?.description!,
+      //     type: "TASK",
+      //     action: "task.open",
+      //     actionText: "view task",
+      //     symbol: "👷🏻",
+      //   }),
+      // });
+
+      EmailQueue.add("task updation", {
+        action: "TASK",
+        data: "Task updation here " + updatedTask?.title + " " + updatedTask?.description,
+        email: (updatedTask?.assignedBy as any)?.userId?.email!,
+        userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
           title: updatedTask?.title!,
           description: updatedTask?.description!,
           type: "TASK",
           action: "task.open",
           actionText: "view task",
-          symbol: "👷🏻",
+          symbol: "👨🏽‍💻",
         }),
+        subject: "New Task has been created",
       });
+      // currently sending a notificaiton to only a owner
+      await sendNotificationFCM({
+        notification: new Notification({
+          title: updatedTask?.title!,
+          description: updatedTask?.description!,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "🍾",
+        }),
+        user: (updatedTask?.assignedBy as any)?.userId as any,
+      });
+
 
       break;
     case "feedback":

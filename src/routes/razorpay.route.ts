@@ -7,6 +7,8 @@ import {
   buySubscription,
   createRazorPayPlan,
   deleteRazorPayPlan,
+  getCustomerCurrentSubscription,
+  getCustomerPaymentHistory,
   getPaymentHistory,
   getRazorPayPlans,
   getUserCurrentSubscription,
@@ -20,12 +22,14 @@ const razorpayRouter = Router();
 // ###################### SUBSCRIPTIONS #########################
 
 razorpayRouter.post("/subscriptions/create", VerifyUserHandler, buySubscription);
-razorpayRouter.get("/subscriptions" ,VerifyUserHandler ,getUSerSubscriptions);
-razorpayRouter.get("/subscriptions/current" ,VerifyUserHandler ,getUserCurrentSubscription);
+razorpayRouter.get("/subscriptions", VerifyUserHandler, getUSerSubscriptions);
+razorpayRouter.get("/subscriptions/current", VerifyUserHandler, getUserCurrentSubscription);
+razorpayRouter.get("/subscriptions/customer/:userId", VerifyUserHandler, getCustomerCurrentSubscription);
 
-razorpayRouter.post("/paymentVerification" , paymentVerification);
-razorpayRouter.post("/paymentVerificationapp" , paymentVerificationApp);
-razorpayRouter.get("/payment/history" ,VerifyUserHandler ,getPaymentHistory)
+razorpayRouter.post("/paymentVerification", paymentVerification);
+razorpayRouter.post("/paymentVerificationapp", paymentVerificationApp);
+razorpayRouter.get("/payment/history", VerifyUserHandler, getPaymentHistory)
+razorpayRouter.get("/payment/history/:userId", VerifyUserHandler, getCustomerPaymentHistory)
 // ###################### PLANS #########################
 
 //Desc: It allows servicing team to fetch their customer's project list

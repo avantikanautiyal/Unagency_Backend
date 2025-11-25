@@ -232,11 +232,11 @@ const NewRegister = asyncHandler(async (req) => {
     }); //CReating a Channel between Customer and Relationship Manager
 
     return new ApiResponse(200, create, "User created successfully");
-  } catch (err) {}
+  } catch (err) { }
 
   return new ApiResponse(200, null, "you are successfully registered");
 });
-const logout = asyncHandler(async (req : RequestUser) => {
+const logout = asyncHandler(async (req: RequestUser) => {
   const user = req.user;
   const body: { fcmToken: string } = req.body;
 
@@ -244,7 +244,7 @@ const logout = asyncHandler(async (req : RequestUser) => {
     throw new ApiError("User or fcmToken not provided", 400);
   }
 
- const res = await Users.updateOne(
+  const res = await Users.updateOne(
     { _id: user.userId },
     { $pull: { fcmTokens: body.fcmToken } }
   );
@@ -267,4 +267,4 @@ const registerFcmToken = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, updated, "FCM token registered successfully.");
 });
 
-export { Verify, Register, NewRegister , logout ,registerFcmToken  };
+export { Verify, Register, NewRegister, logout, registerFcmToken };

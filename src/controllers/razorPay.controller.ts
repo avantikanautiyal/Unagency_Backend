@@ -50,15 +50,6 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     start_at: subscription.current_start,
     expire_by: subscription.current_start,
   });
-
-  // await Users.updateOne(
-  //   { _id: req.user?.userId },
-  //   {
-  //     $set: {
-  //       subscription: { id: subscription.id, status: subscription.status },
-  //     },
-  //   }
-  // );
   return new ApiResponse(
     200,
     createUserSubscription,
@@ -66,11 +57,11 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
   );
 });
 
-export const cancelSubscription = asyncHandler(async (req : RequestUser)=> {
+export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
 
-  const subscription_id = req.user?.subscription?.id ;
-  if(!subscription_id) throw new ApiError("subscription id is missing" , 400);
-  const razrerSubscription =  await razorpayInstance.subscriptions.cancel(subscription_id , true);
+  const subscription_id = req.user?.subscription?.id;
+  if (!subscription_id) throw new ApiError("subscription id is missing", 400);
+  const razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, true);
 
   await Users.findOneAndUpdate(
     { _id: req.user?.userId },
@@ -91,7 +82,7 @@ export const cancelSubscription = asyncHandler(async (req : RequestUser)=> {
     { new: true }
   );
 
-  return new ApiResponse(200 , subs ,"subscription Canceled");
+  return new ApiResponse(200, subs, "subscription Canceled");
 
 });
 
@@ -111,15 +102,44 @@ export const getUserCurrentSubscription = asyncHandler(
   async (req: RequestUser) => {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError("UserId not present", 400);
-
-    // console.log(req.user);
-
+    const razerpSubscription: any = await razorpayInstance.subscriptions.fetch(req.user?.subscription?.id!);
     const subscription = await Subscriptions.findOne({
       subscriptionId: req.user?.subscription?.id,
-      // status: { $in: ["active", "pending"] },
     }).populate({ path: "planId", foreignField: "plan_id" });
 
-    return new ApiResponse(200, subscription, "All subscriptions");
+    const curSubsc = {
+      ...(subscription?.toObject()), status: razerpSubscription.status,
+
+      email: razerpSubscription?.customer_email!,
+      contact: razerpSubscription?.customer_contact!,
+      payment_method: razerpSubscription?.payment_method!,
+    }
+    return new ApiResponse(200, curSubsc, "All subscriptions");
+  }
+);
+// route for the service , admin
+export const getCustomerCurrentSubscription = asyncHandler(
+  async (req: RequestUser) => {
+    const userId = req.params?.userId;
+    if (!userId) throw new ApiError("UserId not present", 400);
+
+    const user = await Users.findById(userId);
+    const razerpSubscription: any = await razorpayInstance.subscriptions.fetch(user?.subscription?.id!);
+    const subscription = await Subscriptions.findOne({
+      subscriptionId: user?.subscription?.id,
+    }).populate({ path: "planId", foreignField: "plan_id" });
+
+    // const curSubsc = { ...subscription, status: razerpSubscription.status }
+
+    const curSubsc = {
+      ...(subscription?.toObject()), status: razerpSubscription.status,
+
+      email: razerpSubscription?.customer_email!,
+      contact: razerpSubscription?.customer_contact!,
+      payment_method: razerpSubscription?.payment_method!,
+    }
+
+    return new ApiResponse(200, curSubsc, "All subscriptions");
   }
 );
 
@@ -159,10 +179,10 @@ export const paymentVerification = asyncHandler(
 
     res.redirect(
       process.env.FRONTEND_URL +
-        "/payment-success?payment_id=" +
-        razorpay_payment_id +
-        "&subscription_id=" +
-        razorpay_subscription_id
+      "/payment-success?payment_id=" +
+      razorpay_payment_id +
+      "&subscription_id=" +
+      razorpay_subscription_id
     );
     // data base comes here
     // await
@@ -206,10 +226,10 @@ export const paymentVerificationApp = asyncHandler(
 
     res.redirect(
       process.env.FRONTEND_URL +
-        "/payment-success?payment_id=" +
-        razorpay_payment_id +
-        +"&subscription_id=" +
-        razorpay_subscription_id
+      "/payment-success?payment_id=" +
+      razorpay_payment_id +
+      +"&subscription_id=" +
+      razorpay_subscription_id
     );
     // data base comes here
     // await
@@ -219,6 +239,32 @@ export const paymentVerificationApp = asyncHandler(
 export const getPaymentHistory = asyncHandler(async (req: RequestUser, res) => {
   const userPaymentHistory = await Payments.find({
     userId: req.user?.userId,
+  }).populate({
+    path: "razorpay_subscription_id",
+    foreignField: "subscriptionId",
+    populate: {
+      path: "planId", // field inside subscription,
+      foreignField: "plan_id",
+    },
+  });
+
+  return new ApiResponse(
+    200,
+    userPaymentHistory,
+    "payment histroy fetched successfully "
+  );
+});
+
+export const getCustomerPaymentHistory = asyncHandler(async (req: RequestUser, res) => {
+
+  const userId = req.params?.userId;
+  if (!userId) throw new ApiError("UserId not present", 400);
+
+  const user = await Users.findById(userId);
+  if (!user) throw new ApiError("User not found", 404);
+
+  const userPaymentHistory = await Payments.find({
+    userId: userId,
   }).populate({
     path: "razorpay_subscription_id",
     foreignField: "subscriptionId",

@@ -22,7 +22,7 @@ router.post("/create-user", VerifyRole(["admin", "superadmin"]), CreateUser);
 // Desc: It allows user (all) to update their account and profile in settings
 router.post(
   "/update-user",
-  VerifyRole(["admin", "superadmin", "customer", "resource"]),
+  VerifyRole(["admin", "superadmin", "customer", "resource", "servicing"]),
   fileUpload.single("image"),
   UpdateUser
 );

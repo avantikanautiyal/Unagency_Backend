@@ -8,6 +8,8 @@ import razorpayInstance from "../utils/razorpayInstance";
 import Users from "../models/users.model";
 import crypto from "crypto";
 import Payments from "../models/payment.model";
+import puppeteer from "puppeteer";
+import { InvoiceHTMLTemplate } from "../utils/invoiceTemplate";
 
 // creating a razor-pay subscription
 export const buySubscription = asyncHandler(async (req: RequestUser) => {
@@ -280,6 +282,86 @@ export const getCustomerPaymentHistory = asyncHandler(async (req: RequestUser, r
     "payment histroy fetched successfully "
   );
 });
+
+
+export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
+  const { paymentId } = req.params;
+  if (!paymentId) throw new ApiError("Payment ID is required", 400);
+
+  const payment = await razorpayInstance.payments.fetch(paymentId);
+  if (!payment) throw new ApiError("Payment not found", 404);
+
+  // Fetch subscription details if available
+  let subscription: any = {};
+  if (payment.notes && payment.notes.subscription_id) {
+
+    // console.log("payment.notes.subscription_id", payment.notes.subscription_id);
+    const dbSubscription = await Subscriptions.findOne({ subscriptionId: payment.notes.subscription_id }).populate({
+      path: "planId",
+      populate: { path: "razorpayPlanItem" }
+    });
+    if (dbSubscription) {
+      subscription = { razorpay_subscription_id: dbSubscription };
+    } else {
+      // Fallback to razorpay fetch if needed, though structure might differ
+      subscription = await razorpayInstance.subscriptions.fetch(payment.notes.subscription_id);
+    }
+  } else if (payment.order_id) {
+    // Try to find subscription via order_id or other means if needed.
+    // For now, let's assume we can find it via the payment's subscription_id or similar.
+    // The user provided example shows a structure where subscription is populated.
+    // Let's try to find the subscription associated with this user and payment.
+
+    // In the user provided example:
+    // "razorpay_payment_id": "pay_RghtnRk9tTs6r0",
+    // "razorpay_subscription_id": { ... }
+
+    // We can search in Payments model
+    // We can search in Payments model
+    const paymentRecord = await Payments.findOne({ razorpay_payment_id: paymentId });
+
+    // console.log("paymentRecord", paymentRecord);
+
+    if (paymentRecord && paymentRecord.razorpay_subscription_id) {
+      const dbSubscription = await Subscriptions.findOne({ subscriptionId: paymentRecord.razorpay_subscription_id }).populate({
+        path: "planId",
+        foreignField: "plan_id"
+      });
+      if (dbSubscription) {
+        subscription = { razorpay_subscription_id: dbSubscription };
+      }
+    }
+  }
+
+  let user: any = null;
+  if (subscription && subscription.razorpay_subscription_id && subscription.razorpay_subscription_id.userId) {
+    user = await Users.findById(subscription.razorpay_subscription_id.userId);
+  } else if (payment.notes && payment.notes.user_id) {
+    user = await Users.findById(payment.notes.user_id);
+  }
+
+  const invoiceHtml = InvoiceHTMLTemplate({ payment, subscription, user });
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+  const page = await browser.newPage();
+  await page.setContent(invoiceHtml, { waitUntil: 'networkidle0' });
+  const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+
+  await browser.close();
+
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename=invoice_${paymentId}.pdf`,
+    "Content-Length": pdfBuffer.length,
+    "Content-Transfer-Encoding": "binary"
+  });
+
+  res.end(Buffer.from(pdfBuffer));
+});
+
 
 // for Plans
 export const getRazorPayPlans = asyncHandler(async (req: RequestUser) => {

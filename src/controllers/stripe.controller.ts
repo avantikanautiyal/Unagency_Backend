@@ -109,7 +109,7 @@ const SubscriptionStatus = asyncHandler(async (req: RequestUser, res) => {
 const UpdateCustomerSubscription = asyncHandler(
   async (req: RequestUser, res) => {
     const { priceId } = req.body;
-    const subscriptionId = req.user?.subscriptionId ?? "";
+    const subscriptionId = req.user?.subscription?.id ?? "";
     if (subscriptionId == "") {
       return new ApiResponse(
         400,
@@ -126,7 +126,7 @@ const UpdateCustomerSubscription = asyncHandler(
 );
 const CancelCustomerSubscription = asyncHandler(
   async (req: RequestUser, res) => {
-    const subscriptionId = req.user?.subscriptionId ?? "";
+    const subscriptionId = req.user?.subscription?.id ?? "";
     if (subscriptionId == "") {
       return new ApiResponse(
         400,

@@ -15,6 +15,7 @@ import {
   getUSerSubscriptions,
   paymentVerification,
   paymentVerificationApp,
+  generateInvoice,
 } from "../controllers/razorPay.controller";
 
 const razorpayRouter = Router();
@@ -29,7 +30,8 @@ razorpayRouter.get("/subscriptions/customer/:userId", VerifyUserHandler, getCust
 razorpayRouter.post("/paymentVerification", paymentVerification);
 razorpayRouter.post("/paymentVerificationapp", paymentVerificationApp);
 razorpayRouter.get("/payment/history", VerifyUserHandler, getPaymentHistory)
-razorpayRouter.get("/payment/history/:userId", VerifyUserHandler, getCustomerPaymentHistory)
+razorpayRouter.get("/payment/history/:userId", VerifyUserHandler, getCustomerPaymentHistory);
+razorpayRouter.get("/invoice/:paymentId", VerifyUserHandler, generateInvoice);
 // ###################### PLANS #########################
 
 //Desc: It allows servicing team to fetch their customer's project list

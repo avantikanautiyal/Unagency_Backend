@@ -15,7 +15,7 @@ export interface IStaff {
 const StaffSchema = new Schema<IStaff>(
   {
     _id: { type: Schema.Types.ObjectId, auto: true },
-    userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "users", required: true },
     experience: { type: Number, required: true },
     specialization: { type: Array, required: true },
     minTaskCapacity: { type: Number, default: 0 },

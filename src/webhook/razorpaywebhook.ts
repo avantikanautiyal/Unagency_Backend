@@ -105,11 +105,15 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
               "subscription.status": event.payload?.subscription?.entity?.status,
             },
           }
-        );
+        ).populate("relationship_manager");
 
-        EmailQueue.add("project creation", {
-          action: "PROJECT",
-          data: "NEW Project creation here",
+        const relationship_manager = await Users.findOne({
+          _id: (customer?.relationship_manager as any)?.userId,
+        });
+
+        EmailQueue.add("subscription taken", {
+          action: "SUBSCRIPTION",
+          data: "NEW Subscription taken here",
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
@@ -122,6 +126,24 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }),
           subject: "Your subscription has been activated",
         });
+
+        if (relationship_manager) {
+          EmailQueue.add("relationship manager subscription taken", {
+            action: "SUBSCRIPTION",
+            data: "NEW Subscription taken here",
+            email: relationship_manager?.email!,
+            userId: relationship_manager?._id.toString(),
+            notification: new Notification({
+              title: (subs?.planId as any)?.name!,
+              description: "Your subscription has been activated",
+              type: "SUBSCRIPTION",
+              action: "subscription.open",
+              actionText: "view subscription",
+              symbol: "🍾",
+            }),
+            subject: "Your client subscription has been activated " + customer?.name,
+          });
+        }
         // currently sending a notificaiton to only a owner
         await sendNotificationFCM({
           notification: new Notification({

@@ -118,6 +118,12 @@ export const addUserToRoom = async (channelId: string, userId: string[]) => {
   return await channel.addMembers([...userId]);
 };
 
+export const removeUserToRoom = async (channelId: string, userId: string[]) => {
+  const channel = streamServerClient.channel("messaging", channelId);
+  // Upsert user before adding to the room
+  return await channel.removeMembers([...userId]);
+};
+
 // this Id is orginizaton and user id
 // export const getUserChannels = async (id: string) => {
 //   try {

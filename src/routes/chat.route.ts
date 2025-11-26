@@ -6,6 +6,7 @@ import {
   createChannelTest,
   getMyRelationShipManagerChat,
   addMemberInChatRoom,
+  removeMemberFromChatRoom,
 } from "../controllers/chat.controller";
 import {
   VerifyRole,
@@ -30,6 +31,8 @@ router.get("/myRMChat", VerifyRole(["customer"])
 
 router.post("/add-member-in-chat-room", VerifyRole(["servicing", "customer"])
   , addMemberInChatRoom);
+router.post("/remove-member-from-chat-room", VerifyRole(["servicing", "customer"])
+  , removeMemberFromChatRoom);
 
 // testing route--------------
 // router.get("/deleteAllChannels", deleteAllChannels);

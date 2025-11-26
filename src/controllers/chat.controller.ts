@@ -3,7 +3,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import { v6 as uuidv6 } from "uuid";
 import { RequestUser } from "../types/user";
 import { streamServerClient } from "../config/getStreamIo.config";
-import { createChatRoom, createDistincChatRoom, addUserToRoom } from "../services/Chatstream";
+import { createChatRoom, createDistincChatRoom, addUserToRoom, removeUserToRoom } from "../services/Chatstream";
 
 import ChatRoom from "../models/chatRoom.model";
 import Users from "../models/users.model";
@@ -98,6 +98,13 @@ export const addMemberInChatRoom = asyncHandler(async (req: RequestUser) => {
   const channelResponse = await addUserToRoom(cid, [...members]);
   return new ApiResponse(200, channelResponse, "member added successfully");
 });
+export const removeMemberFromChatRoom = asyncHandler(async (req: RequestUser) => {
+  const { cid, members = [] } = req.body;
+  console.log("members=>", members);
+  const channelResponse = await removeUserToRoom(cid, [...members]);
+  return new ApiResponse(200, channelResponse, "member added successfully");
+});
+
 
 //-----------------------{testing room create api}--------------------
 // remove in production

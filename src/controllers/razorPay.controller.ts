@@ -346,14 +346,14 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
   try {
     const launchOptions: any = {
       headless: true,
-      args: [
-        '--no-sandbox'
-      ]
+      // args: [
+      //   '--no-sandbox'
+      // ]
     };
-    console.log("path hai = ", process.env.PRODUCTION_PATH_PUPPITER);
     if (process.env.PRODUCTION_PATH_PUPPITER) {
       launchOptions.executablePath = process.env.PRODUCTION_PATH_PUPPITER;
     }
+    console.log("path hai = ", launchOptions);
 
     browser = await puppeteer.launch(launchOptions);
   } catch (error) {

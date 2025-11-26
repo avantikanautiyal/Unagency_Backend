@@ -356,6 +356,7 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
 
     if (process.env.PRODUCTION_PATH_PUPPITER) {
       launchOptions.executablePath = process.env.PRODUCTION_PATH_PUPPITER;
+      console.log("path hai = ", process.env.PRODUCTION_PATH_PUPPITER);
     }
 
     browser = await puppeteer.launch(launchOptions);

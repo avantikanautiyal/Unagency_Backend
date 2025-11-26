@@ -37,6 +37,10 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   );
   const teamsEmail = teams.map((t: any) => t?.userId?.email);
   teamsEmail.push(customer?.email);
+
+  const m = teams.map(
+    (member: any) => member.userId + ""
+  )
   const create = await Projects.create(body);
 
   EmailQueue.add("project creation", {
@@ -81,11 +85,22 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
         { project: create },
         "Project created successfully"
       );
+
+
+
+    console.log("creating roomInfo", {
+      roomName: create.title,
+      roomId: uuid6(),
+      project_id: create._id + "",
+      membersId: [...membersList, req?.user?.userId!, body.userId + "", ...body?.resource as string[]],
+      relationShipManagerId: req?.user?.userId!,
+    })
     const roomInfo = await createRoomForProject({
       roomName: create.title,
       roomId: uuid6(),
       project_id: create._id + "",
-      membersId: [...membersList, req?.user?.userId!, body.userId + ""],
+      membersId: [...membersList, req?.user?.userId!, body.userId + "", ...body?.resource as string[]],
+      org_id: body.orgId + "",
       relationShipManagerId: req?.user?.userId!,
     });
     ChatRoom.create({

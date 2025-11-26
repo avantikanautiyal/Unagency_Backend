@@ -25,6 +25,7 @@ type ProjectRoom = {
   membersId: string[]; // userId to participate in a chat
   project_id: string;
   relationShipManagerId: string; // staff collection
+  org_id: string;
 };
 type RoomGroupProps = {
   roomId: string;
@@ -141,6 +142,7 @@ export const createRoomForProject = async (data: ProjectRoom) => {
       isCustomer: true,
       members: data.membersId,
       project_id: data.project_id,
+      orgId: data.org_id,
       created_by_id: data.relationShipManagerId,
     });
     const c = await channel.create();

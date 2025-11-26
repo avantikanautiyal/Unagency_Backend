@@ -5,6 +5,7 @@ import {
   getMyInvitations,
   inviteAction,
   InviteMemberInOrganization,
+  getCustomerTeamByOrganizationId,
 } from "../controllers/teams.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
@@ -27,5 +28,7 @@ router.post(
 );
 //Desc: It allow customer to fetch all members in the organization.
 router.get("/fetch-team", VerifyRole(["customer"]), fetchUserTeam);
+
+router.get("/client-team/:organizationId", getCustomerTeamByOrganizationId);
 
 export default router;

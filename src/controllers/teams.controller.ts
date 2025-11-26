@@ -143,8 +143,18 @@ export const inviteAction = asyncHandler(async (req: RequestUser, res) => {
   );
 });
 
+const getCustomerTeamByOrganizationId = asyncHandler(async (req: RequestUser, res) => {
+  const { organizationId } = req.params;
+  if (!organizationId) throw new ApiError("organization not provied", 400);
+  const clientTeam = await Teams.find({
+    Organization: new mongoose.Types.ObjectId(organizationId as string),
+  }).populate("userId", "_id name email");
+  return new ApiResponse(200, clientTeam, "Team fetched successfully");
+});
+
 export {
   InviteMemberInOrganization,
   RemoveMemberInOrganization,
   fetchUserTeam,
+  getCustomerTeamByOrganizationId
 };

@@ -342,24 +342,36 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
 
   const invoiceHtml = InvoiceHTMLTemplate({ payment, subscription, user });
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
-  const page = await browser.newPage();
-  await page.setContent(invoiceHtml, { waitUntil: 'networkidle0' });
-  const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+  } catch (error) {
+    console.error("Failed to launch puppeteer browser:", error);
+    throw new ApiError("Failed to generate invoice. Server configuration error: Missing dependencies.", 500);
+  }
 
-  await browser.close();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(invoiceHtml, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    await browser.close();
 
-  res.set({
-    "Content-Type": "application/pdf",
-    "Content-Disposition": `attachment; filename=invoice_${paymentId}.pdf`,
-    "Content-Length": pdfBuffer.length,
-    "Content-Transfer-Encoding": "binary"
-  });
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=invoice_${paymentId}.pdf`,
+      "Content-Length": pdfBuffer.length,
+      "Content-Transfer-Encoding": "binary"
+    });
 
-  res.end(Buffer.from(pdfBuffer));
+    res.end(Buffer.from(pdfBuffer));
+  } catch (error) {
+    if (browser) await browser.close();
+    console.error("Error generating PDF:", error);
+    throw new ApiError("Failed to generate PDF", 500);
+  }
 });
 
 

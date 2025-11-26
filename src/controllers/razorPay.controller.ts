@@ -344,7 +344,7 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
+    const launchOptions: any = {
       headless: true,
       args: [
         '--no-sandbox',
@@ -352,7 +352,13 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
         '--disable-dev-shm-usage',
         '--disable-gpu'
       ]
-    });
+    };
+
+    if (process.env.PRODUCTION_PATH_PUPPITER) {
+      launchOptions.executablePath = process.env.PRODUCTION_PATH_PUPPITER;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
   } catch (error) {
     console.error("Failed to launch puppeteer browser:", error);
     throw new ApiError("Failed to generate invoice. Server configuration error: Missing dependencies.", 500);

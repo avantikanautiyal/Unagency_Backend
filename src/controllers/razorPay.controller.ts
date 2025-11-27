@@ -345,10 +345,10 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
   let browser;
   try {
     const launchOptions: any = {
-      // headless: true,
-      // args: [
-      //   '--no-sandbox'
-      // ]
+      headless: true,
+      args: [
+        '--no-sandbox'
+      ]
     };
     if (process.env.PRODUCTION_PATH_PUPPITER) {
       launchOptions.executablePath = process.env.PRODUCTION_PATH_PUPPITER;

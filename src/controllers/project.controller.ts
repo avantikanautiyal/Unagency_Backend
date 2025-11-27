@@ -12,10 +12,12 @@ import { IStaff } from "../models/staff.model";
 import { v6 as uuid6 } from "uuid";
 import ChatRoom from "../models/chatRoom.model";
 import ProjectLogs from "../models/projectlogs.model";
-import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
 import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
@@ -43,20 +45,27 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   )
   const create = await Projects.create(body);
 
-  EmailQueue.add("project creation", {
+  EmailQueue.add("PROJECT_INITIATED", {
     action: "PROJECT",
-    data: "NEW Project creation here",
+    data: commonTemplate({
+      name: customer?.name!,
+      content: IN_APP_NOTIFICATION_MESSAGES.PROJECT_INITIATED,
+      title: "UNAGENCY",
+      buttonText: "View Project",
+      buttonLink: `${FRONTEND_URL}/project-logs/${create?._id.toString()}`,
+    }),
     email: teamsEmail.join(","),
     userId: customer?._id.toString(),
     notification: new Notification({
       title: create.title,
-      description: create.description,
+      description: IN_APP_NOTIFICATION_MESSAGES.PROJECT_INITIATED,
       type: "PROJECT",
       action: "project.open",
       actionText: "view projects",
+      _id: create._id.toString(),
       symbol: "🍾",
     }),
-    subject: "New Project " + create.title,
+    subject: "Your UNAGENCY project | " + create.title,
   });
   // currently sending a notificaiton to only a owner
   await sendNotificationFCM({
@@ -65,6 +74,7 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       description: create.description,
       type: "PROJECT",
       action: "project.open",
+      _id: create._id.toString(),
       actionText: "view projects",
       symbol: "🍾",
     }),
@@ -235,33 +245,37 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
     const customer = await Users.findById(update?.userId);
     teamsEmail.push(customer?.email);
 
-    EmailQueue.add("project update", {
-      action: "PROJECT",
-      data: "NEW Project Update here ",
-      userId: customer?._id.toString(),
-      email: teamsEmail.join(","),
-      notification: new Notification({
-        title: update?.title!,
-        description: update?.description!,
-        type: "PROJECT",
-        action: "project.open",
-        actionText: "view projects",
-        symbol: "🍾",
-      }),
-      subject: `Project update (${update?.status}) ` + update?.title!,
-    });
-    // currently sending a notificaiton to only a owner
-    await sendNotificationFCM({
-      notification: new Notification({
-        title: update?.title! + " (" + update?.status + ")",
-        description: update?.description!,
-        type: "PROJECT",
-        action: "project.open",
-        actionText: "view projects",
-        symbol: "🍾",
-      }),
-      user: customer as any,
-    });
+    // EmailQueue.add("project update", {
+    //   action: "PROJECT",
+    //   data: commonTemplate({
+    //     name: customer?.name!,
+    //     content: IN_APP_NOTIFICATION_MESSAGES.,
+    //     title: "UNAGENCY",
+    //   }),
+    //   userId: customer?._id.toString(),
+    //   email: teamsEmail.join(","),
+    //   notification: new Notification({
+    //     title: update?.title!,
+    //     description: update?.description!,
+    //     type: "PROJECT",
+    //     action: "project.open",
+    //     actionText: "view projects",
+    //     symbol: "🍾",
+    //   }),
+    //   subject: `Project update (${update?.status}) ` + update?.title!,
+    // });
+    // // currently sending a notificaiton to only a owner
+    // await sendNotificationFCM({
+    //   notification: new Notification({
+    //     title: update?.title! + " (" + update?.status + ")",
+    //     description: update?.description!,
+    //     type: "PROJECT",
+    //     action: "project.open",
+    //     actionText: "view projects",
+    //     symbol: "🍾",
+    //   }),
+    //   user: customer as any,
+    // });
 
     return new ApiResponse(200, update, "Project updated successfully");
   } else {
@@ -414,26 +428,33 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
     const customer = await Users.findById(update?.userId);
     teamsEmail.push(customer?.email);
 
-    EmailQueue.add("project update", {
+    EmailQueue.add(`PROJECT_${stage.toUpperCase()}`, {
       action: "PROJECT",
-      data: "NEW Project Update here ",
+      data: commonTemplate({
+        name: customer?.name!,
+        content: IN_APP_NOTIFICATION_MESSAGES[`PROJECT_${stage.toUpperCase()}` as keyof typeof IN_APP_NOTIFICATION_MESSAGES],
+        title: "UNAGENCY",
+        buttonText: "View Project",
+        buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
+      }),
       userId: customer?._id.toString(),
       email: teamsEmail.join(","),
       notification: new Notification({
-        title: update?.title!,
-        description: update?.description!,
+        title: "Your UNAGENCY project | " + update?.title!,
+        description: IN_APP_NOTIFICATION_MESSAGES[`PROJECT_${stage.toUpperCase()}` as keyof typeof IN_APP_NOTIFICATION_MESSAGES],
         type: "PROJECT",
         action: "project.open",
+        _id: update?._id.toString(),
         actionText: "view projects",
         symbol: "🍾",
       }),
-      subject: `Project update (${update?.status}) ` + update?.title!,
+      subject: "Your UNAGENCY project | " + update?.title!,
     });
     // currently sending a notificaiton to only a owner
     await sendNotificationFCM({
       notification: new Notification({
-        title: update?.title! + " (" + update?.status + ")",
-        description: update?.description!,
+        title: "Your UNAGENCY project | " + update?.title!,
+        description: IN_APP_NOTIFICATION_MESSAGES[`PROJECT_${stage.toUpperCase()}` as keyof typeof IN_APP_NOTIFICATION_MESSAGES],
         type: "PROJECT",
         action: "project.open",
         actionText: "view projects",
@@ -441,24 +462,6 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
       }),
       user: customer as any,
     });
-
-    // await projectNotification.add("project update", {
-    //   action: "UPDATE",
-    //   data: {
-    //     status: stage,
-    //     // userId: staff?.userId?._id,
-    //     userId: project?.userId,
-    //   },
-    //   notification: new Notification({
-    //     title: project?.title!,
-    //     description: project?.description!,
-    //     type: "PROJECT",
-    //     symbol: "🧙🏻‍♂️",
-    //     action: "project.open",
-    //     actionText: "view projects",
-    //   }),
-    // });
-
     return new ApiResponse(200, create, "Project log created successfully");
   } else {
     return new ApiResponse(401, null, "You are not assigned for this Customer");

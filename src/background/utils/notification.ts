@@ -1,18 +1,19 @@
 
-export type NotificationType = "COMMON" | "PROJECT" | "REQUIRMENT" | "TASK" | "SUBSCRIPTION" 
+export type NotificationType = "COMMON" | "PROJECT" | "REQUIRMENT" | "TASK" | "SUBSCRIPTION"
 
 // interface Notofication {
 //     type: NotificationType;
 //     title: string;
 //     description: string;
 // }
-export interface NotificationProps  {
-    symbol : string;
-    title:string;
+export interface NotificationProps {
+    symbol: string;
+    title: string;
     description: string;
-    type: string ;
+    type: string;
     action: string;
-    actionText :string;
+    actionText: string;
+    _id?: string;
 
 }
 export class Notification {
@@ -22,6 +23,7 @@ export class Notification {
     type: string;
     action: string;
     actionText: string;
+    _id?: string;
 
     constructor(props: NotificationProps) {
         this.symbol = props.symbol;
@@ -30,6 +32,7 @@ export class Notification {
         this.type = props.type;
         this.action = props.action;
         this.actionText = props.actionText;
+        this._id = props._id;
     }
 }
 

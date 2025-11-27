@@ -10,6 +10,9 @@ import { Notification } from "../background/utils/notification";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
@@ -34,41 +37,57 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   }).populate("userId");
 
 
-  // return new ApiResponse(200,{rm},"ok")
-  // projectNotification.add(newRequirement._id.toString(), {
-  //   action: "CREATE",
-  //   data: {
-  //     customer: req.user,
-  //     manager: rm,
-  //     requirment: newRequirement,
-  //   },
-  //   notification: new Notification({
-  //     title: newRequirement.title,
-  //     description: newRequirement.description,
-  //     type: "REQUIRMENT",
-  //     symbol: "🔔",
-  //     action: "requirment.open",
-  //     actionText: "view requirment",
-  //   }),
-  // });
   const rmUser = await Users.findOne({
     _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
   });
-  EmailQueue.add("new requirment", {
+  // sending email to relationship manager
+  EmailQueue.add(`NEW_RQUIREMENT_${rmUser?.email}`, {
     action: "REQUIRMENT",
-    data: "NEW Rquirement form  " + req.user?.name,
+    data: commonTemplate({
+      title: "UNAGENCY",
+      content: `review the details and iniciate the required workflow`,
+      name: rmUser?.name!,
+      buttonText: "View Requirement",
+      buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
+    }),
     email: rmUser?.email!,
     userId: rm?.userId?._id.toString()!,
     notification: new Notification({
-      title: "NEW Rquirement form " + req.user?.name,
+      title: `${req?.user?.name} just submitted a new brief in the system`,
       description: "requirement notification text ehre",
       type: "REQUIRMENT",
+      _id: newRequirement._id.toString(),
       symbol: "🫡",
       action: "🔔",
       actionText: "view requirment",
     }),
-    subject: "NEW Rquirement " + req.user?.name,
+    subject: `${req?.user?.name} just submitted a new brief in the system`,
   });
+
+  // sending email to customer
+  EmailQueue.add(`NEW_RQUIREMENT_${req.user?.email}`, {
+    action: "REQUIRMENT",
+    data: commonTemplate({
+      title: "UNAGENCY",
+      content: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_SUBMITTED,
+      name: req.user?.name!,
+      buttonText: "View Requirement",
+      buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
+    }),
+    email: req.user?.email!,
+    userId: req.user?.userId.toString()!,
+    notification: new Notification({
+      title: `Your brief just landed in UNAGENCY | ${newRequirement.title}`,
+      description: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_SUBMITTED,
+      type: "REQUIRMENT",
+      _id: newRequirement._id.toString(),
+      symbol: "🫡",
+      action: "🔔",
+      actionText: "view requirment",
+    }),
+    subject: `Your brief just landed in UNAGENCY | ${newRequirement.title}`,
+  });
+
   // await sendNotificationFCM({
   //   notification: new Notification({
   //     title: "NEW Rquirement form " + req.user?.name,
@@ -149,27 +168,37 @@ export const updateCustomerRequirement = asyncHandler(
     );
     const customer = await Users.findOne({ _id: userId });
 
-    EmailQueue.add("requirment update", {
+    EmailQueue.add(`REQUIRMENT_UPDATE_${customer?.email}`, {
       action: "REQUIRMENT",
-      data: "Rquirement update  " + update?.title,
+      data: commonTemplate({
+        title: "UNAGENCY",
+        content: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_CLOSED,
+        name: req.user?.name!,
+        buttonText: "View Requirement",
+        buttonLink: `${FRONTEND_URL}/requirement-logs/${update?._id}`,
+      }),
       email: customer?.email!,
       userId: customer?._id.toString()!,
       notification: new Notification({
-        title: "NEW Rquirement form " + req.user?.name,
-        description: "requirement notification text ehre",
+        title: `Your brief just touched down at UNAGENCY`,
+        description: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_CLOSED,
+        _id: update?._id.toString()!,
         type: "REQUIRMENT",
         symbol: "🫡",
         action: "🔔",
         actionText: "view requirment",
       }),
-      subject: "NEW Rquirement " + update?.title,
+      subject: `Your brief just touched down at UNAGENCY | ${update?.title}`,
+      // subject: `Your brief just landed in UNAGENCY | ${newRequirement.title}`,
+
     });
 
     await sendNotificationFCM({
       notification: new Notification({
-        title: "Rquirement Update " + update?.title,
-        description: "requirement notification text ehre",
+        title: `Your brief just touched down at UNAGENCY`,
+        description: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_CLOSED,
         type: "REQUIRMENT",
+        _id: update?._id.toString()!,
         symbol: "🫡",
         action: "🔔",
         actionText: "view requirment",

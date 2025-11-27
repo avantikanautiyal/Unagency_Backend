@@ -345,7 +345,7 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
   let browser;
   try {
     const launchOptions: any = {
-      headless: true,
+      // headless: true,
       // args: [
       //   '--no-sandbox'
       // ]

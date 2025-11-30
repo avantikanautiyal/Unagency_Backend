@@ -7,6 +7,8 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
 import { create } from "domain";
 import { Notification } from "../background/utils/notification";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 const webhookSecret = "123456654321";
 export const razorpayWebhook = async (req: Request, res: Response) => {
@@ -113,8 +115,15 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
         EmailQueue.add("subscription taken", {
           action: "SUBSCRIPTION",
-          data: "NEW Subscription taken here",
+          data: commonTemplate({
+            title: "UNAGENCY",
+            content: `Paid. Done. Dusted. Consider the creative gates officially swung open. Welcome to the premium chaos`,
+            name: customer?.name!,
+            buttonText: "View Subscription",
+            buttonLink: `${FRONTEND_URL}/subscription`,
+          }),
           email: customer?.email!,
+
           userId: customer?._id.toString(),
           notification: new Notification({
             title: (subs?.planId as any)?.name!,
@@ -124,13 +133,18 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             actionText: "view subscription",
             symbol: "🍾",
           }),
-          subject: "Your subscription has been activated",
+          subject: "Welcome to UNAGENCY " + (subs?.planId as any)?.razorpayPlanItem?.item?.name,
         });
 
         if (relationship_manager) {
           EmailQueue.add("relationship manager subscription taken", {
             action: "SUBSCRIPTION",
-            data: "NEW Subscription taken here",
+            data: commonTemplate({
+              title: "UNAGENCY",
+              content: `${customer?.name} has paid for the subscription.`,
+              name: relationship_manager?.name!,
+
+            }),
             email: relationship_manager?.email!,
             userId: relationship_manager?._id.toString(),
             notification: new Notification({
@@ -258,15 +272,21 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         );
-
-        EmailQueue.add("project creation", {
-          action: "PROJECT",
-          data: "NEW Project creation here",
+        // todo
+        EmailQueue.add("subscription cancelled", {
+          action: "SUBSCRIPTION",
+          data: commonTemplate({
+            title: "UNAGENCY",
+            content: `${customer?.name} has cancelled the subscription.`,
+            name: customer?.name!,
+            buttonText: "View Subscription",
+            buttonLink: `${FRONTEND_URL}/subscription`,
+          }),
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
             title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been activated",
+            description: "Your subscription has been Cancelled",
             type: "SUBSCRIPTION",
             action: "subscription.open",
             actionText: "view subscription",

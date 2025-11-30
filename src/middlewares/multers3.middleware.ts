@@ -28,16 +28,7 @@ const fileFilter = (
   file: Express.Multer.File,
   callback: multer.FileFilterCallback
 ) => {
-  var ext = path.extname(file.originalname);
-  if (
-    ext !== ".png" &&
-    ext !== ".jpg" &&
-    ext !== ".gif" &&
-    ext !== ".jpeg" &&
-    ext !== ".pdf"
-  ) {
-    return callback(new Error("Only images and Pdf file are allowed"));
-  }
+  // Allow all file types to be uploaded to S3
   callback(null, true);
 };
 

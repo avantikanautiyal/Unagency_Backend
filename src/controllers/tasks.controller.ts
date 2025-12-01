@@ -9,6 +9,8 @@ import { projectNotification } from "../background/queue/projectNotification.que
 import { Notification } from "../background/utils/notification";
 import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
 const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
@@ -74,7 +76,15 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
 
   EmailQueue.add("task creation", {
     action: "TASK",
-    data: "NEW Task creation here " + create.title + " " + create.description,
+    data: commonTemplate({
+      title: "UNAGENCY",
+      content: `well you have a new task assigned to you`,
+      name: (staff?.userId as any)?.name!,
+      buttonText: "View Task",
+      buttonLink: `${FRONTEND_URL}`,
+    })
+
+    ,
     email: (staff?.userId as any)?.email!,
     userId: staff?.userId?._id.toString(),
     notification: new Notification({
@@ -85,7 +95,7 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       actionText: "view task",
       symbol: "👨🏽‍💻",
     }),
-    subject: "New Task has been created",
+    subject: "New Task has been assigned to you",
   });
   // currently sending a notificaiton to only a owner
   await sendNotificationFCM({
@@ -249,7 +259,13 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
 
       EmailQueue.add("task updation", {
         action: "TASK",
-        data: "Task updation here " + updatedTask?.title + " " + updatedTask?.description,
+        data: commonTemplate({
+          title: "UNAGENCY",
+          content: `your assigned task status has been updated`,
+          name: (updatedTask?.assignedBy as any)?.userId?.name!,
+          buttonText: "View Task",
+          buttonLink: `${FRONTEND_URL}/messages`,
+        }),
         email: (updatedTask?.assignedBy as any)?.userId?.email!,
         userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
@@ -260,7 +276,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           actionText: "view task",
           symbol: "👨🏽‍💻",
         }),
-        subject: "New Task has been created",
+        subject: "Task Status has been updated",
       });
       // currently sending a notificaiton to only a owner
       await sendNotificationFCM({
@@ -280,7 +296,13 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     case "feedback":
       EmailQueue.add("task updation", {
         action: "TASK",
-        data: "Task feedback here " + updatedTask?.title + " " + updatedTask?.description,
+        data: commonTemplate({
+          title: "UNAGENCY",
+          content: `your assigned task feedback has been updated`,
+          name: (updatedTask?.assignedTo as any)?.userId?.name!,
+          buttonText: "View Task",
+          buttonLink: `${FRONTEND_URL}`,
+        }),
         email: (updatedTask?.assignedTo as any)?.userId?.email!,
         userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
         notification: new Notification({

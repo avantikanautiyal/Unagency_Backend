@@ -10,6 +10,7 @@ import {
   FetchMyProjects,
 } from "../controllers/project.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
+import { fileUpload } from "../middlewares/multers3.middleware";
 
 const router = Router();
 
@@ -38,7 +39,7 @@ router.post("/update/:projectId", VerifyRole(["servicing"]), updateProject);
 //Desc: It allows customer to fetch the project List
 router.get("/", VerifyRole(["customer"]), FetchMyProjects);
 //Desc :  It allows servicing to create a project for their customers
-router.post("/", VerifyRole(["servicing"]), createProject);
+router.post("/", VerifyRole(["servicing"]), fileUpload.array("files", 10), createProject);
 
 //Desc: It allows users to fetch Logs of a Specific Project
 router.get(

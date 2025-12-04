@@ -14,6 +14,8 @@ export interface NotificationProps {
     action: string;
     actionText: string;
     _id?: string;
+    id?: string;
+
 
 }
 export class Notification {
@@ -24,6 +26,7 @@ export class Notification {
     action: string;
     actionText: string;
     _id?: string;
+    id?: string;
 
     constructor(props: NotificationProps) {
         this.symbol = props.symbol;
@@ -32,7 +35,7 @@ export class Notification {
         this.type = props.type;
         this.action = props.action;
         this.actionText = props.actionText;
-        this._id = props._id;
+        this.id = props._id;
     }
 }
 

@@ -9,6 +9,7 @@ export interface IProject {
   description: string;
   clientTeam: mongoose.Types.ObjectId[] | string[];
   resource: mongoose.Types.ObjectId[] | string[];
+  files: mongoose.Types.ObjectId[] | string[];
   startDate: Date;
   deadline: Date;
   status: string;
@@ -37,6 +38,11 @@ const ProjectSchema = new Schema<IProject>(
       type: [Schema.Types.ObjectId],
       ref: "Teams",
       default: [],
+    },
+    files: {
+      type: [Schema.Types.ObjectId],
+      ref: "MediaFile",
+      default: []
     },
     status: {
       type: String,

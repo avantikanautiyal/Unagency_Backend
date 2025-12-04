@@ -17,12 +17,28 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import MediaFile from "../models/mediaFile.model";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
 const createProject = asyncHandler(async (req: RequestUser, res) => {
   const body: IProject = req.body;
+
+  const files: any = req.files as Express.Multer.File[];
+
+
+  var mediaFileIds = [];
+  if (files.length > 0) {
+    var mediaFiles = await MediaFile.insertMany(
+      files.map((file: any) => ({
+        url: file.location,
+        fileName: file.originalname,
+        tag: "project",
+      }))
+    );
+    mediaFileIds = mediaFiles.map((file: any) => file._id);
+  }
 
   if (body.orgId) {
     const isExistOrgnization = await Organizations.exists({
@@ -43,7 +59,7 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   const m = teams.map(
     (member: any) => member.userId + ""
   )
-  const create = await Projects.create(body);
+  const create = await Projects.create({ ...body, files: mediaFileIds });
 
   EmailQueue.add("PROJECT_INITIATED", {
     action: "PROJECT",

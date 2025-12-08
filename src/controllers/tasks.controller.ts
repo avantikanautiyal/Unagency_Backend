@@ -212,6 +212,29 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   delete updates._id;
   delete updates.assignedBy;
   // Find the task by ID and update it with the new fields
+  const role = req.user?.role;
+  if (updates.status) {
+    if (role === "servicing") {
+      const allowedStatuses = ["feedback", "revision", "approved"];
+      if (!allowedStatuses.includes(updates.status)) {
+        return new ApiResponse(
+          403,
+          null,
+          `Servicing role can only update status to: ${allowedStatuses.join(", ")}`
+        );
+      }
+    } else if (role === "resource") {
+      const allowedStatuses = ["progress", "submitted"];
+      if (!allowedStatuses.includes(updates.status)) {
+        return new ApiResponse(
+          403,
+          null,
+          `Resource role can only update status to: ${allowedStatuses.join(", ")}`
+        );
+      }
+    }
+  }
+
   const updatedTask = await Tasks.findByIdAndUpdate(taskId, updates, {
     new: true,
     runValidators: true,
@@ -234,6 +257,9 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         model: "Users",
       },
     });
+
+
+
   switch (updates.status) {
     case "submitted":
       // here inform a task servicing manager

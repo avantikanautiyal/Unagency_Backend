@@ -15,7 +15,7 @@ router.post(
   VerifyRole(["admin", "superadmin"]),
   AssignManagerToCustomer
 );
-router.post("/delete/:id", VerifyRole(["admin", "superadmin"]), deleteStaff);
+router.delete("/delete/:id", VerifyRole(["admin", "superadmin"]), deleteStaff);
 router.post("/update/:id", VerifyRole(["admin", "superadmin"]), updateStaff);
 router.get("/:id", VerifyRole(["admin", "superadmin"]), fetchStaffById);
 router.post("/", VerifyRole(["admin", "superadmin"]), createStaff);

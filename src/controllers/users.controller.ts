@@ -111,26 +111,56 @@ const UpdateInternalUser = asyncHandler(async (req: RequestUser, res) => {
 
 //TESTED OK = RAHUL
 const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
-  let usersList;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const searchText = req.query.search as string;
+  const skip = (page - 1) * limit;
+
+  let query: any = {};
+
   if (req.user?.role == "superadmin" || req.user?.role == "admin") {
-    usersList = await Users.find({
+    query = {
       role: "customer",
-    }).populate({
-      path: "relationship_manager",
-      select: "userId",
-      populate: { path: "userId", select: ["name", "email"] },
-    });
+    };
   } else {
-    usersList = await Users.find({
+    query = {
       role: "customer",
       relationship_manager: req.user?.staff,
-    }).populate({
+    };
+  }
+
+  if (searchText) {
+    query.$or = [
+      { name: { $regex: searchText, $options: "i" } },
+      { email: { $regex: searchText, $options: "i" } },
+    ];
+  }
+
+  const total = await Users.countDocuments(query);
+  const totalPages = Math.ceil(total / limit);
+
+  const usersList = await Users.find(query)
+    .populate({
       path: "relationship_manager",
       select: "userId",
       populate: { path: "userId", select: ["name", "email"] },
-    });
-  }
-  return new ApiResponse(200, usersList, "Customer fetched successfully");
+    })
+    .skip(skip)
+    .limit(limit);
+
+  return new ApiResponse(
+    200,
+    {
+      users: usersList,
+      pagination: {
+        total,
+        page,
+        pageSize: limit,
+        totalPages,
+      },
+    },
+    "Customer fetched successfully"
+  );
 });
 
 //TESTED OK = RAHUL

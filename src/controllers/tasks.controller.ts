@@ -145,6 +145,10 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
           model: "Users",
           select: "name email",
         },
+      })
+      .populate({
+        path: "project",
+        select: "_id title",
       });
   } else if (role == "servicing") {
     query = await Tasks.find({ assignedBy: staffId })
@@ -165,6 +169,10 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
           model: "Users",
           select: "name email",
         },
+      })
+      .populate({
+        path: "project",
+        select: "_id title",
       });
   } else {
     query = null;

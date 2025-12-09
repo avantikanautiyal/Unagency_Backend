@@ -8,7 +8,7 @@ export interface IRequirement {
     description: string;
     deadline: Date;
     files: string[];
-    status: boolean;
+    status: string;
 }
 
 const RequirementSchema = new Schema<IRequirement>(
@@ -17,7 +17,7 @@ const RequirementSchema = new Schema<IRequirement>(
         userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
         title: { type: String, required: true, unique: true },
         files: { type: [], default: [] },
-        status: { type: Boolean, default: true }, // status true = raised , false = recived
+        status: { type: String, default: "raised" }, // status true = raised , false = recived
         category: {
             type: Schema.Types.ObjectId,
             ref: "Categories",

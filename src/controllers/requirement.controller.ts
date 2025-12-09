@@ -211,6 +211,8 @@ export const updateCustomerRequirement = asyncHandler(
 
 export const getRequirmentById = asyncHandler(async (req: RequestUser) => {
   const id: string = req.params.id;
-  const requirment = await Requirement.findById(id);
+  const requirment = await Requirement.findById(id)
+    .populate("userId")
+    .populate("category");
   return new ApiResponse(200, requirment, "Requirment fetch sucessfully");
 })

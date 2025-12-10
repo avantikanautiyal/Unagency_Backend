@@ -108,7 +108,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         ).populate("relationship_manager");
-
+        console.log("customer activated ", customer);
         const relationship_manager = await Users.findOne({
           _id: (customer?.relationship_manager as any)?.userId,
         });

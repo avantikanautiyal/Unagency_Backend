@@ -5,7 +5,6 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/apiError";
 import Requirement, { IRequirement } from "../models/requestProject.model";
 import mongoose from "mongoose";
-import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";

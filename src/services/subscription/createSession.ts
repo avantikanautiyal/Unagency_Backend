@@ -24,8 +24,10 @@ const createSession = async (item: IItem) => {
         quantity: 1,
       },
     ],
-    success_url: `http://localhost:5173/payments/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `http://localhost:5173/payments/failed?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: process.env.FRONTEND_URL + "/payment-success",
+    // `http://localhost:5173/payments/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: process.env.FRONTEND_URL + "/payment-failure",
+    // `http://localhost:5173/payments/failed?session_id={CHECKOUT_SESSION_ID}`,
   });
 
   return session;

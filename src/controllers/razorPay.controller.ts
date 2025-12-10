@@ -104,7 +104,17 @@ export const getUserCurrentSubscription = asyncHandler(
   async (req: RequestUser) => {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError("UserId not present", 400);
-    const razerpSubscription: any = await razorpayInstance.subscriptions.fetch(req.user?.subscription?.id!);
+    // console.log("razerpSubscription before ");
+    var razerpSubscription: any = null;
+    if (!req.user?.subscription?.id) return new ApiResponse(200, null, "No subscription found no subscription id ");
+    try {
+      razerpSubscription = await razorpayInstance.subscriptions.fetch(req.user?.subscription?.id!);
+
+    } catch (error) {
+      console.log("error ", error);
+      throw new ApiError("error fetching subscription " + (error as any).message, 400);
+    }
+    console.log("razerpSubscription ", razerpSubscription);
     const subscription = await Subscriptions.findOne({
       subscriptionId: req.user?.subscription?.id,
     }).populate({ path: "planId", foreignField: "plan_id" });
@@ -166,7 +176,7 @@ export const paymentVerification = asyncHandler(
 
     const isValidSignature = generated_signature == razorpay_signature;
     if (!isValidSignature)
-      res.redirect(process.env.FRONTEND_URL + "/paymentfail");
+      res.redirect(process.env.FRONTEND_URL + "/payment-failure?payment_id=" + razorpay_payment_id + "&subscription_id=" + razorpay_subscription_id);
 
     const subs = await Subscriptions.findOne({
       subscriptionId: razorpay_subscription_id,

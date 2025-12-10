@@ -49,7 +49,7 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     userId: req.user?.userId,
     planId: subscription.plan_id,
     status: subscription.status,
-    start_at: subscription.current_start,
+    start_at: subscription.current_start, // change this to start_at to future date to test a ubgrade subscription feature
     expire_by: subscription.current_start,
   });
   return new ApiResponse(

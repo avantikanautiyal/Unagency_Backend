@@ -115,15 +115,13 @@ export const getUserCurrentSubscription = asyncHandler(
       console.log("error ", error);
       throw new ApiError("error fetching subscription " + (error as any).message, 200);
     }
-
-
-    console.log("razerpSubscription ", razerpSubscription, Date.now());
-    if (razerpSubscription.current_end && (razerpSubscription.current_end) < Date.now()) {
-      // await Users.findByIdAndUpdate(userId, {
-      //   $set: {
-      //     subscription: {}
-      //   }
-      // });
+    if (razerpSubscription.current_end && (razerpSubscription.current_end * 1000) < Date.now()) {
+      console.log("subscription expired ", userId, razerpSubscription.current_end * 1000, Date.now());
+      await Users.findByIdAndUpdate(userId, {
+        $set: {
+          subscription: {}
+        }
+      });
       return new ApiResponse(200, null, "Subscription expired");
     }
 

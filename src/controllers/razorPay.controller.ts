@@ -109,12 +109,22 @@ export const getUserCurrentSubscription = asyncHandler(
     if (!req.user?.subscription?.id) return new ApiResponse(200, null, "No subscription found no subscription id ");
     try {
       razerpSubscription = await razorpayInstance.subscriptions.fetch(req.user?.subscription?.id!);
+      // razerpSubscription = await razorpayInstance.subscriptions.fetch("sub_RkiCnTgakoK6gh");
 
     } catch (error) {
       console.log("error ", error);
-      throw new ApiError("error fetching subscription " + (error as any).message, 400);
+      throw new ApiError("error fetching subscription " + (error as any).message, 200);
     }
-    console.log("razerpSubscription ", razerpSubscription);
+
+    if (razerpSubscription.current_end && (razerpSubscription.current_end) < Date.now()) {
+      await Users.findByIdAndUpdate(userId, {
+        $set: {
+          subscription: {}
+        }
+      });
+      return new ApiResponse(200, null, "Subscription expired");
+    }
+
     const subscription = await Subscriptions.findOne({
       subscriptionId: req.user?.subscription?.id,
     }).populate({ path: "planId", foreignField: "plan_id" });

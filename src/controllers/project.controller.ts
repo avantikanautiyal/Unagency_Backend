@@ -27,9 +27,8 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
 
   const files: any = req.files as Express.Multer.File[];
 
-
   var mediaFileIds = [];
-  if (files.length > 0) {
+  if (files?.length > 0) {
     var mediaFiles = await MediaFile.insertMany(
       files.map((file: any) => ({
         url: file.location,
@@ -38,6 +37,13 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       }))
     );
     mediaFileIds = mediaFiles.map((file: any) => file._id);
+  }
+
+  if (body.clientTeam && typeof body.clientTeam === "string") {
+    body.clientTeam = JSON.parse(body.clientTeam as string);
+  }
+  if (body.resource && typeof body.resource === "string") {
+    body.resource = JSON.parse(body.resource as string);
   }
 
   if (body.orgId) {

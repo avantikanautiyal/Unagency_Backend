@@ -49,6 +49,7 @@ const createCategory = asyncHandler(async (req: Request, res: Response) => {
   const category = await Categories.create({ title, featuredImage, tags });
   return new ApiResponse(200, category, "Category created");
 });
+
 const fetchCategories = asyncHandler(async (req: Request, res: Response) => {
   const { tagline } = req.query;
 
@@ -65,14 +66,14 @@ const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   const { categoryId } = req.params;
 
   const category = await Categories.findById(categoryId);
-  
+
   if (!category) {
     return new ApiResponse(404, null, "Category not found");
   }
 
   // Extract the key from the featuredImage URL
   const key = category.featuredImage.split('/').pop();
-  
+
   // Delete the image from S3
   const deleteParam = {
     Bucket: "prakriadirect",
@@ -86,4 +87,41 @@ const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   return new ApiResponse(200, null, "Category deleted successfully");
 });
 
-export { createCategory, fetchCategories, deleteCategory };
+
+const updateCategory = asyncHandler(async (req: Request, res: Response) => {
+  const { categoryId } = req.params;
+  const { title, tags, customPath } = req.body;
+  const file = req.file as Express.MulterS3.File | undefined;
+
+  const category = await Categories.findById(categoryId);
+
+  if (!category) {
+    return new ApiResponse(404, null, "Category not found");
+  }
+
+  let updatedData: any = { ...req.body };
+
+  if (file && file.location) {
+    // Delete old image if it exists
+    if (category.featuredImage) {
+      const key = category.featuredImage.split('/').pop();
+      if (key) {
+        await deleteS3File({
+          Bucket: "prakriadirect",
+          Key: key,
+        });
+      }
+    }
+    updatedData.featuredImage = file.location;
+  }
+
+  const updatedCategory = await Categories.findByIdAndUpdate(
+    categoryId,
+    updatedData,
+    { new: true }
+  );
+
+  return new ApiResponse(200, updatedCategory, "Category updated successfully");
+});
+
+export { createCategory, fetchCategories, deleteCategory, updateCategory };

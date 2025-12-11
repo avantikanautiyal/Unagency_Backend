@@ -439,6 +439,27 @@ export const deleteRazorPayPlan = asyncHandler(async (req: RequestUser) => {
 
   if (!plan_id) throw new ApiError("Plan ID is required", 400);
 
-  await PlansModel.findByIdAndDelete(plan_id);
-  return new ApiResponse(200, null, "RazorPay Plan deleted successfully");
+  const plan = await PlansModel.findOneAndDelete({ plan_id: plan_id });
+  return new ApiResponse(200, plan, "RazorPay Plan deleted successfully");
 });
+export const updateRazorPayPlan = asyncHandler(async (req: RequestUser) => {
+  const { plan_id } = req.params;
+
+  if (!plan_id) throw new ApiError("Plan ID is required", 400);
+
+  const plan = await razorpayInstance.plans.fetch(plan_id);
+
+  const updatedPlan = await PlansModel.findOneAndUpdate(
+    { plan_id },
+    {
+      $set: {
+        razorpayPlanItem: plan,
+        ...req.body
+      }
+    },
+    { new: true, runValidators: true }
+  );
+
+  return new ApiResponse(200, updatedPlan, "RazorPay Plan updated successfully");
+});
+

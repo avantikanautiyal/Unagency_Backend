@@ -16,6 +16,7 @@ import {
   paymentVerification,
   paymentVerificationApp,
   generateInvoice,
+  updateRazorPayPlan,
 } from "../controllers/razorPay.controller";
 
 const razorpayRouter = Router();
@@ -42,5 +43,6 @@ razorpayRouter.get(
 );
 
 razorpayRouter.post("/plans", createRazorPayPlan);
-razorpayRouter.delete("/plans/:id", deleteRazorPayPlan);
+razorpayRouter.delete("/plans/:plan_id", deleteRazorPayPlan);
+razorpayRouter.put("/plans/:plan_id", updateRazorPayPlan);
 export default razorpayRouter;

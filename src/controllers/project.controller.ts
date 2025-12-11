@@ -93,7 +93,7 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   await sendNotificationFCM({
     notification: new Notification({
       title: create.title,
-      description: create.description,
+      description: "project onboarded successfully",
       type: "PROJECT",
       action: "project.open",
       _id: create._id.toString(),

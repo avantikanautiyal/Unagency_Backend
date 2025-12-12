@@ -142,12 +142,13 @@ const NewRegister = asyncHandler(async (req) => {
   const body: RegisterBody = req.body;
   if (!(body.email && body.name && body.password))
     throw new ApiError("all fields are required", 400);
-  const isUserExists = await Users.exists({ email: body.email });
+  // console.log("am here", body.email?.toLowerCase());
+  const isUserExists = await Users.exists({ email: body.email?.toLowerCase() });
   if (isUserExists)
-    return new ApiResponse(200, null, "User already registered");
+    return new ApiResponse(400, null, "User already registered");
 
   const firebaseUser = await firebaseAdmin.auth().createUser({
-    email: body.email,
+    email: body.email?.toLowerCase(),
     password: body.password,
     displayName: body.name,
   });

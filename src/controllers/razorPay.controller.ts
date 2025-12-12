@@ -237,8 +237,8 @@ export const paymentVerificationApp = asyncHandler(
     );
     // const user = await Users.findById(req.user?.userId);
     // const subscriptionId = user?.subscription?.id;
-    const user: any = await Users.find({
-      "subscription.id": razorpay_subscription_id,
+    const subs = await Subscriptions.findOne({
+      subscriptionId: razorpay_subscription_id,
     });
 
     const generated_signature = crypto
@@ -254,7 +254,7 @@ export const paymentVerificationApp = asyncHandler(
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      userId: user?._id!,
+      userId: subs?._id!,
     });
 
     res.redirect(

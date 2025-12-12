@@ -11,6 +11,7 @@ import { RequestUser } from "../types/user";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const TECH_SUPPORT_EMAIL = process.env.TECH_SUPPORT_EMAIL;
 //TESTED OK = RAHUL
 const Verify = asyncHandler(async (req: RequestUser, res) => {
@@ -70,24 +71,35 @@ const Register = asyncHandler(async (req, res) => {
 
           if (!relationshipManager) {
             EmailQueue.add("user register", {
-              action: "REQUIRMENT",
-              data: "NEW Rquirement form  ",
+              action: "COMMON",
+              data: commonTemplate({
+                name: verification.name,
+                content: "Welcome to UNAGENCY",
+                title: "Welcome to UNAGENCY",
+              })
+
+              ,
               email: verification?.email!,
               notification: new Notification({
                 title: "NEW Rquirement form ",
                 description: "requirement notification text here",
-                type: "REQUIRMENT",
-                actionText: "view requirment",
-                action: "requirment.view",
+                type: "COMMON",
+                actionText: "view plans",
+                action: "plans.view",
                 symbol: "✨",
               }),
               subject: "Hi we will be assigning you a manger soon",
             });
             EmailQueue.add("user not assigned", {
               action: "COMMON",
-              data:
-                "currently this customer is not assigned to any manager " +
-                verification?.email,
+              data: commonTemplate({
+                name: verification.name,
+                content: "currently this customer is not assigned to any manager " +
+                  verification?.email,
+                title: verification?.email + " | Not assigned to any manager",
+              }),
+
+
               email: TECH_SUPPORT_EMAIL!,
               notification: new Notification({
                 title: "Not assigned to any manager",

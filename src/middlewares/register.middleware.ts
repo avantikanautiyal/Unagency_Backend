@@ -10,6 +10,7 @@ import {
 } from "../services/Chatstream";
 import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 export async function RegisterIfNot(
   req: RequestUser,
   response: Response,
@@ -66,7 +67,12 @@ export async function RegisterIfNot(
         const registration = await Users.create(user); // Creating user in database
         EmailQueue.add("user register", {
           action: "COMMON",
-          data: "Welcome to UNAGENCY " + verification.email,
+          data: commonTemplate({
+            name: verification.name,
+            content: "Welcome to UNAGENCY",
+            title: "Welcome to UNAGENCY",
+          }),
+          // "Welcome to UNAGENCY " + verification.email,
           email: verification.email!,
           notification: new Notification({
             title: "Welcome to UNAGENCY",

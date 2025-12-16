@@ -248,7 +248,7 @@ export const paymentVerificationApp = asyncHandler(
 
     const isValidSignature = generated_signature == razorpay_signature;
     if (!isValidSignature)
-      res.redirect(process.env.FRONTEND_URL + "/payment-fail");
+      res.redirect(process.env.FRONTEND_URL + "/payment-failure");
 
     await Payments.create({
       razorpay_payment_id,

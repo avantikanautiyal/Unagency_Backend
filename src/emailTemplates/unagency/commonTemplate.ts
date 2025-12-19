@@ -135,7 +135,7 @@ export function commonTemplate(props: CommonTemplateProps = { name: "", content:
                                         <table border="0" cellpadding="0" cellspacing="0">
                                             <tr>
                                                 <td style="padding: 0 10px;">
-                                                    <a href="#" style="background-color: #ffffff; border: 2px solid #ea1b58; color: #ea1b58; text-decoration: none; padding: 10px 25px; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 13px;">View Plans</a>
+                                                    <a href="${process.env.FRONTEND_URL}/membership" style="background-color: #ffffff; border: 2px solid #ea1b58; color: #ea1b58; text-decoration: none; padding: 10px 25px; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 13px;">View Plans</a>
                                                 </td>
                                                 <td style="padding: 0 10px;">
                                                     <a href="#" style="background-color: #ffffff; border: 2px solid #ea1b58; color: #ea1b58; text-decoration: none; padding: 10px 25px; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 13px;">Invite Your Team</a>

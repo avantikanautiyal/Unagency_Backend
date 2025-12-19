@@ -4,7 +4,7 @@ export interface IUser {
   _id: mongoose.Types.ObjectId;
   firebaseId: string;
   name: string;
-  password? : string;
+  password?: string;
   relationship_manager?: mongoose.Types.ObjectId;
   role: "admin" | "customer" | "superadmin" | "resource" | "servicing";
   contact?: number;
@@ -15,11 +15,12 @@ export interface IUser {
   image?: string;
   bio?: string;
   isActive: boolean;
-  subscription? : {
-    id : string ;
-    status : string ;
+  subscription?: {
+    id: string;
+    status: string;
   },
   fcmTokens?: [string];
+  emailVerificationCode?: string;
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -40,11 +41,12 @@ const UsersSchema = new Schema<IUser>(
     country: { type: String, default: "" },
     isVerified: { type: Boolean, required: true },
     isActive: { type: Boolean, default: true },
-    subscription : {type : Object, default: {}},
+    subscription: { type: Object, default: {} },
     fcmTokens: {
       type: [String],
       default: []
     },
+    emailVerificationCode: { type: String, default: "" }
 
   },
   { collection: "users", timestamps: true }

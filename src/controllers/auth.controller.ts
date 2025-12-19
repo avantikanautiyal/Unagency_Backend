@@ -13,6 +13,8 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const TECH_SUPPORT_EMAIL = process.env.TECH_SUPPORT_EMAIL;
+const FRONTEND_URL = process.env.FRONTEND_URL;
+const BACKEND_URL = process.env.BACKEND_URL || "https://api.unagency.app";
 //TESTED OK = RAHUL
 const Verify = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, req.user);
@@ -199,6 +201,27 @@ const NewRegister = asyncHandler(async (req) => {
       userRole: create.role,
     });
 
+    EmailQueue.add("user register", {
+      action: "COMMON",
+      data: commonTemplate({
+        name: create.name,
+        content: "Welcome to UNAGENCY",
+        title: "Welcome to UNAGENCY",
+      })
+
+      ,
+      email: create?.email!,
+      notification: new Notification({
+        title: "NEW Rquirement form ",
+        description: "requirement notification text here",
+        type: "COMMON",
+        actionText: "view plans",
+        action: "plans.view",
+        symbol: "✨",
+      }),
+      subject: "Hi we will be assigning you a manger soon",
+    });
+
     if (!relationshipManager) {
       EmailQueue.add("we will assign", {
         action: "REQUIRMENT",
@@ -245,10 +268,15 @@ const NewRegister = asyncHandler(async (req) => {
     }); //CReating a Channel between Customer and Relationship Manager
 
     return new ApiResponse(200, create, "User created successfully");
-  } catch (err) { }
+  } catch (err) {
+
+    console.log("/register-login", err);
+  }
 
   return new ApiResponse(200, null, "you are successfully registered");
 });
+
+
 const logout = asyncHandler(async (req: RequestUser) => {
   const user = req.user;
   const body: { fcmToken: string } = req.body;
@@ -280,4 +308,122 @@ const registerFcmToken = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, updated, "FCM token registered successfully.");
 });
 
-export { Verify, Register, NewRegister, logout, registerFcmToken };
+const forgetPassword = asyncHandler(async (req: RequestUser) => {
+  const body: { email: string } = req.body;
+
+  if (!body.email) {
+    throw new ApiError("User or email not provided", 400);
+  }
+
+  const user = await Users.findOne({ email: body.email });
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  const passwordResetLink = await firebaseAdmin.auth().generatePasswordResetLink(user?.email!);
+
+
+  EmailQueue.add("password reset", {
+    action: "COMMON",
+    data: commonTemplate({
+      name: user?.name!,
+      content: "by clicking below you can reset your password",
+      title: "UNAGENCY",
+      buttonText: "reset password",
+      buttonLink: passwordResetLink,
+    }),
+    email: user?.email!,
+    notification: new Notification({
+      title: "Password Reset",
+      description: "your password reset link sent to your email",
+      type: "COMMON",
+      actionText: "",
+      action: "auth.reset-password",
+      symbol: "✨",
+    }),
+    subject: "UNAGENCY |Password Reset ",
+  });
+
+  return new ApiResponse(200, { message: "password reset mail sent successfully" }, "Password reset link sent successfully.");
+});
+
+const sendEmailVerificationEmail = asyncHandler(async (req: RequestUser) => {
+  const body: { email: string } = req.body;
+
+  if (!body.email) {
+    throw new ApiError("User or email not provided", 400);
+  }
+
+  const user = await Users.findOne({ email: body.email });
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+  const uuid = generateRandomString(52);
+
+
+  user.emailVerificationCode = uuid;
+  await user.save();
+
+  EmailQueue.add("Email Verificaiton mail", {
+    action: "COMMON",
+    data: commonTemplate({
+      name: user?.name!,
+      content: "by clicking below you can verify your Email with unagency",
+      title: "UNAGENCY",
+      buttonText: "verify email",
+      buttonLink: `${BACKEND_URL}/auth/verify-email?code=${uuid}&id=${user?.firebaseId}`,
+    }),
+    email: user?.email!,
+    notification: new Notification({
+      title: "Email verification",
+      description: "your email verification link sent to your email",
+      type: "COMMON",
+      actionText: "",
+      action: "auth.reset-password",
+      symbol: "✨",
+    }),
+    subject: "Your UNAGENCY verification mail",
+  });
+
+  return new ApiResponse(200, { message: "email verification link sent successfully" }, "email verification link sent successfully.");
+});
+
+const verifyEmail = asyncHandler(async (req: RequestUser, res) => {
+  const query: { code: string, id: string } = req.query as any;
+
+
+  if (!query.code) {
+    throw new ApiError("code is not present", 400);
+  }
+
+  const user = await Users.findOne({ firebaseId: query.id });
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  if (user.emailVerificationCode !== query.code) {
+    throw new ApiError("Invalid verification code", 400);
+  }
+
+  await firebaseAdmin.auth().updateUser(user?.firebaseId!, {
+    emailVerified: true,
+  });
+
+  user.emailVerificationCode = "";
+  user.isVerified = true;
+  await user.save();
+
+  res.redirect(`${FRONTEND_URL}/verify-email?code=${query.code}&id=${query.id}`);
+});
+
+function generateRandomString(length: number) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charactersLength = characters.length;
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
+}
+
+export { Verify, Register, NewRegister, logout, registerFcmToken, forgetPassword, verifyEmail, sendEmailVerificationEmail };

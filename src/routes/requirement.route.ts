@@ -20,18 +20,18 @@ router.post(
 );
 //Desc: It allows customer to get their requirement list
 router.get("/", VerifyRole(["customer"]), getRequirement);
-router.get("/get/:id" , getRequirmentById);
+router.get("/get/:id", getRequirmentById);
 
 /* -------------------{ servicing }-----------------------*/
 //Desc: It allows servicing to fetch their customer's requirements list
 router.get(
   "/:userId",
-  VerifyRole(["admin", "superadmin", "servicing","customer"]),
+  VerifyRole(["admin", "superadmin", "servicing", "customer"]),
   getCustomerRequirement
 );
 
 //Desc: It allows servicing to update the status of Requirements
-router.get(
+router.post(
   "/:reqId/:userId/:status",
   VerifyRole(["servicing"]),
   updateCustomerRequirement

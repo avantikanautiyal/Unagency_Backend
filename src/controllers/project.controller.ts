@@ -346,6 +346,20 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
     },
     { $unwind: "$user" },
     {
+      $lookup: {
+        from: "categories",
+        localField: "category",
+        foreignField: "_id",
+        as: "category",
+      },
+    },
+    {
+      $unwind: {
+        path: "$category",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
       $match: {
         "user.relationship_manager": new mongoose.Types.ObjectId(
           (req?.user?.staff as IStaff)?._id

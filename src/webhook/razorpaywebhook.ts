@@ -5,7 +5,6 @@ import crypto from "crypto";
 import Users from "../models/users.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
-import { create } from "domain";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;

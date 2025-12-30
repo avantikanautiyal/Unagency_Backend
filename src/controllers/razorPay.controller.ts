@@ -11,6 +11,7 @@ import Payments from "../models/payment.model";
 import puppeteer from "puppeteer";
 import { InvoiceHTMLTemplate } from "../utils/invoiceTemplate";
 
+const FUTURE_SUBSCRIPTION_START_DATE = Date.now() + 2 * 24 * 60 * 60 * 1000;
 // creating a razor-pay subscription
 export const buySubscription = asyncHandler(async (req: RequestUser) => {
   //   const userId = req.user?.userId;
@@ -49,7 +50,8 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     userId: req.user?.userId,
     planId: subscription.plan_id,
     status: subscription.status,
-    start_at: subscription.current_start, // change this to start_at to future date to test a ubgrade subscription feature
+    start_at: FUTURE_SUBSCRIPTION_START_DATE,
+    //  subscription.current_start, // change this to start_at to future date to test a ubgrade subscription feature
     expire_by: subscription.current_start,
   });
   return new ApiResponse(
@@ -86,6 +88,71 @@ export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
 
   return new ApiResponse(200, subs, "subscription Canceled");
 
+});
+
+export const updateSubscription = asyncHandler(async (req: RequestUser) => {
+  const { plan_id } = req.body;
+  const userId = req.user?.userId;
+
+  if (!plan_id) throw new ApiError("plan_id is required", 400);
+
+  const user = await Users.findById(userId);
+
+  if (!user?.subscription?.id) {
+    throw new ApiError("No active subscription found to update. Please buy a subscription first.", 400);
+  }
+
+  // Fetch current subscription from Razorpay to check its state and current plan
+  var currentSubscription: any;
+  try {
+    currentSubscription = await razorpayInstance.subscriptions.fetch(user.subscription.id);
+  } catch (error: any) {
+    throw new ApiError("Error fetching current subscription from Razorpay: " + error.message, 400);
+  }
+
+  if (currentSubscription.status === "cancelled" || currentSubscription.status === "expired") {
+    throw new ApiError("Cannot update a cancelled or expired subscription. Please buy a new one.", 400);
+  }
+
+  if (currentSubscription.plan_id === plan_id) {
+    throw new ApiError("New plan is the same as the current plan. No update needed.", 400);
+  }
+
+  // Update subscription in Razorpay
+  // We use schedule_change_at: "now" to apply changes immediately. 
+  // Alternatively, "cycle_end" can be used to schedule the change at the end of the current billing cycle.
+  const updatedSubscription = await razorpayInstance.subscriptions.update(user.subscription.id, {
+    plan_id: plan_id,
+    schedule_change_at: "now",
+  });
+
+  return new ApiResponse(
+    200,
+    updatedSubscription,
+    "Subscription update initiated successfully"
+  );
+});
+
+export const cancelUpdateSubscription = asyncHandler(async (req: RequestUser) => {
+  const userId = req.user?.userId;
+  const user = await Users.findById(userId);
+
+  if (!user?.subscription?.id) {
+    throw new ApiError("No active subscription found", 400);
+  }
+
+  try {
+    // Razorpay SDK method to cancel scheduled variations/updates
+    const result = await razorpayInstance.subscriptions.cancelScheduledChanges(user.subscription.id);
+
+    return new ApiResponse(
+      200,
+      result,
+      "Scheduled subscription update has been cancelled"
+    );
+  } catch (error: any) {
+    throw new ApiError(error.message || "Failed to cancel scheduled update. There might be no scheduled update pending.", 400);
+  }
 });
 
 export const getUSerSubscriptions = asyncHandler(async (req: RequestUser) => {

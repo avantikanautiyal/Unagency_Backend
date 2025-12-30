@@ -17,6 +17,9 @@ import {
   paymentVerificationApp,
   generateInvoice,
   updateRazorPayPlan,
+  updateSubscription,
+  cancelUpdateSubscription,
+  cancelSubscription,
 } from "../controllers/razorPay.controller";
 
 const razorpayRouter = Router();
@@ -24,6 +27,9 @@ const razorpayRouter = Router();
 // ###################### SUBSCRIPTIONS #########################
 
 razorpayRouter.post("/subscriptions/create", VerifyUserHandler, buySubscription);
+razorpayRouter.post("/subscriptions/update", VerifyUserHandler, updateSubscription);
+razorpayRouter.post("/subscriptions/cancel-update", VerifyUserHandler, cancelUpdateSubscription);
+razorpayRouter.post("/subscriptions/cancel", VerifyUserHandler, cancelSubscription);
 razorpayRouter.get("/subscriptions", VerifyUserHandler, getUSerSubscriptions);
 razorpayRouter.get("/subscriptions/current", VerifyUserHandler, getUserCurrentSubscription);
 razorpayRouter.get("/subscriptions/customer/:userId", VerifyUserHandler, getCustomerCurrentSubscription);

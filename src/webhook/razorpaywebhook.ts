@@ -336,6 +336,224 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         );
         break;
 
+      case "subscription.authenticated":
+        console.log(
+          "Subscription Authenticated:",
+          event.payload?.subscription?.entity?.id
+        );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        });
+        // Update the user's subscription id and status
+        await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
+        break;
+
+      case "subscription.paused":
+        console.log(
+          "Subscription Paused:",
+          event.payload?.subscription?.entity?.id
+        );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        }).populate({ path: "planId", foreignField: "plan_id" });
+
+        var customer = await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
+
+        // Notify user about paused subscription
+        EmailQueue.add("subscription paused", {
+          action: "SUBSCRIPTION",
+          data: commonTemplate({
+            title: "UNAGENCY",
+            content: `Your subscription has been paused. You can resume it anytime.`,
+            name: customer?.name!,
+            buttonText: "View Subscription",
+            buttonLink: `${FRONTEND_URL}/subscription`,
+          }),
+          email: customer?.email!,
+          userId: customer?._id.toString(),
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been paused",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "⏸️",
+          }),
+          subject: "Your subscription has been paused",
+        });
+
+        await sendNotificationFCM({
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been paused",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "⏸️",
+          }),
+          user: customer as any,
+        });
+        break;
+
+      case "subscription.resumed":
+        console.log(
+          "Subscription Resumed:",
+          event.payload?.subscription?.entity?.id
+        );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        }).populate({ path: "planId", foreignField: "plan_id" });
+
+        var customer = await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
+
+        // Notify user about resumed subscription
+        EmailQueue.add("subscription resumed", {
+          action: "SUBSCRIPTION",
+          data: commonTemplate({
+            title: "UNAGENCY",
+            content: `Welcome back! Your subscription has been resumed successfully.`,
+            name: customer?.name!,
+            buttonText: "View Subscription",
+            buttonLink: `${FRONTEND_URL}/subscription`,
+          }),
+          email: customer?.email!,
+          userId: customer?._id.toString(),
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been resumed",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "▶️",
+          }),
+          subject: "Your subscription has been resumed",
+        });
+
+        await sendNotificationFCM({
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been resumed",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "▶️",
+          }),
+          user: customer as any,
+        });
+        break;
+
+      case "subscription.updated":
+        console.log(
+          "Subscription Updated:",
+          event.payload?.subscription?.entity?.id
+        );
+        await Subscriptions.findOneAndUpdate(
+          { subscriptionId: event.payload?.subscription?.entity?.id },
+          {
+            status: event.payload?.subscription?.entity?.status,
+            planId: event.payload?.subscription?.entity?.plan_id,
+            current_start: event.payload?.subscription?.entity?.current_start,
+            current_end: event.payload?.subscription?.entity?.current_end,
+          }
+        );
+        var subs = await Subscriptions.findOne({
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        }).populate({ path: "planId", foreignField: "plan_id" });
+
+        var customer = await Users.findOneAndUpdate(
+          { _id: subs?.userId },
+          {
+            $set: {
+              "subscription.id": event.payload?.subscription?.entity?.id,
+              "subscription.status": event.payload?.subscription?.entity?.status,
+            },
+          }
+        );
+
+        // Notify user about updated subscription
+        EmailQueue.add("subscription updated", {
+          action: "SUBSCRIPTION",
+          data: commonTemplate({
+            title: "UNAGENCY",
+            content: `Your subscription has been updated successfully.`,
+            name: customer?.name!,
+            buttonText: "View Subscription",
+            buttonLink: `${FRONTEND_URL}/subscription`,
+          }),
+          email: customer?.email!,
+          userId: customer?._id.toString(),
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been updated",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "🔄",
+          }),
+          subject: "Your subscription has been updated",
+        });
+
+        await sendNotificationFCM({
+          notification: new Notification({
+            title: (subs?.planId as any)?.name!,
+            description: "Your subscription has been updated",
+            type: "SUBSCRIPTION",
+            action: "subscription.open",
+            actionText: "view subscription",
+            symbol: "🔄",
+          }),
+          user: customer as any,
+        });
+        break;
+
       default:
         console.log("🔔 Unhandled event:", event.event);
         console.log("🔔 Unhandled event object :", JSON.stringify(event));

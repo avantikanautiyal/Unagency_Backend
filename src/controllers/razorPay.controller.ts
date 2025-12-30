@@ -35,6 +35,7 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     customer_notify: 1,
     quantity: 1,
     total_count: 1,
+    start_at: FUTURE_SUBSCRIPTION_START_DATE,
     // customer_id : userId
 
     // req.body.customer_id,
@@ -50,8 +51,8 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     userId: req.user?.userId,
     planId: subscription.plan_id,
     status: subscription.status,
-    start_at: FUTURE_SUBSCRIPTION_START_DATE,
-    //  subscription.current_start, // change this to start_at to future date to test a ubgrade subscription feature
+    start_at: subscription.current_start, // change this to start_at to future date to test a ubgrade subscription feature
+    // UTURE_SUBSCRIPTION_START_DATE,
     expire_by: subscription.current_start,
   });
   return new ApiResponse(

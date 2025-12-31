@@ -30,20 +30,30 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
     );
   }
 
-  const subscription = await razorpayInstance.subscriptions.create({
-    plan_id: req.body.plan_id,
-    customer_notify: 1,
-    quantity: 1,
-    total_count: 1,
-    start_at: FUTURE_SUBSCRIPTION_START_DATE,
-    // customer_id : userId
+  let subscription = null;
 
-    // req.body.customer_id,
-    // quantity : req.body.quantity,
-    // currency : req.body.currency,
-    // description : req.body.description,
-    // notes : req.body.notes,
-  });
+  try {
+    // console.log(" start_at", FUTURE_SUBSCRIPTION_START_DATE);
+    subscription = await razorpayInstance.subscriptions.create({
+      plan_id: req.body.plan_id,
+      customer_notify: 1,
+      quantity: 1,
+      total_count: 1,
+      start_at: Math.floor(FUTURE_SUBSCRIPTION_START_DATE / 1000),
+      // customer_id : userId
+
+      // req.body.customer_id,
+      // quantity : req.body.quantity,
+      // currency : req.body.currency,
+      // description : req.body.description,
+      // notes : req.body.notes,
+    });
+
+    // subscription = await razorpayInstance.subscriptions.fetch(subscription.id);
+  } catch (error) {
+    throw new ApiError("Error creating subscription: " + (error as any).message, 400);
+  }
+
 
   //   console.log("subscription ", subscription);
   const createUserSubscription = await Subscriptions.create({

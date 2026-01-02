@@ -11,7 +11,7 @@ import Payments from "../models/payment.model";
 import puppeteer from "puppeteer";
 import { InvoiceHTMLTemplate } from "../utils/invoiceTemplate";
 
-const FUTURE_SUBSCRIPTION_START_DATE = Date.now() + 2 * 24 * 60 * 60 * 1000;
+const FUTURE_SUBSCRIPTION_START_DATE = Date.now() + 24 * 60 * 60 * 1000;
 // creating a razor-pay subscription
 export const buySubscription = asyncHandler(async (req: RequestUser) => {
   //   const userId = req.user?.userId;
@@ -76,7 +76,7 @@ export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
 
   const subscription_id = req.user?.subscription?.id;
   if (!subscription_id) throw new ApiError("subscription id is missing", 400);
-  const razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, true);
+  const razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, false);
 
   await Users.findOneAndUpdate(
     { _id: req.user?.userId },
@@ -187,6 +187,7 @@ export const getUserCurrentSubscription = asyncHandler(
     if (!req.user?.subscription?.id) return new ApiResponse(200, null, "No subscription found no subscription id ");
     try {
       razerpSubscription = await razorpayInstance.subscriptions.fetch(req.user?.subscription?.id!);
+      // console.log("razerpSubscription ", razerpSubscription);
       // razerpSubscription = await razorpayInstance.subscriptions.fetch("sub_RkiCnTgakoK6gh");
 
     } catch (error) {

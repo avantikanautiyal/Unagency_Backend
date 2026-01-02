@@ -247,7 +247,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
       case "subscription.cancelled":
         console.log(
           "Subscription Cancelled:",
-          event.payload?.subscription?.entity?.id
+          event.payload?.subscription?.entity?.id,
+
         );
         await Subscriptions.findOneAndUpdate(
           { subscriptionId: event.payload?.subscription?.entity?.id },
@@ -271,6 +272,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         );
+        console.log("subscription cancelled customer : ", customer);
         // todo
         EmailQueue.add("subscription cancelled", {
           action: "SUBSCRIPTION",

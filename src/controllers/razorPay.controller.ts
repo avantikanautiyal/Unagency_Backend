@@ -76,7 +76,7 @@ export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
 
   const subscription_id = req.user?.subscription?.id;
   if (!subscription_id) throw new ApiError("subscription id is missing", 400);
-  const razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, false);
+  const razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, true);
 
   await Users.findOneAndUpdate(
     { _id: req.user?.userId },

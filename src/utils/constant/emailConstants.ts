@@ -21,7 +21,7 @@ export const IN_APP_NOTIFICATION_MESSAGES = {
     REQUIRMENT_SUBMITTED: "Your brief just left your desk and landed on ours. It’s stretching, sipping coffee, and preparing to become art.",
     REQUIRMENT_CLOSED: "Your brief just left your desk and landed on ours. It’s stretching, sipping coffee, and preparing to become art.",
     REQUIRMENT_SUBMITTED_FAILED: "Your brief tried its best… and then tripped on the internet cable. Nothing’s lost. Let’s help it stand up and try again.",
-
+    TEAM_INVITATION: "You've been invited to join a team! A new creative world awaits – jump in and start collaborating.",
 } as const;
 
 export type InAppNotificationKey = keyof typeof IN_APP_NOTIFICATION_MESSAGES;

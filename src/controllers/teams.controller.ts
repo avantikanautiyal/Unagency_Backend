@@ -5,10 +5,14 @@ import { ApiResponse } from "../utils/apiResponse";
 import Teams from "../models/team.model";
 import { ApiError } from "../utils/apiError";
 import Users from "../models/users.model";
-import { invitationTemplate } from "../emailTemplates/invitationEmailTemplate";
-import { generateEmailOption, sendEmail } from "../utils/emailsender";
 import Organizations from "../models/organization.model";
 import mongoose from "mongoose";
+import { EmailQueue } from "../background/queue/email.queue";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { Notification } from "../background/utils/notification";
+
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
 const RemoveMemberInOrganization = asyncHandler(
@@ -85,22 +89,36 @@ const InviteMemberInOrganization = asyncHandler(
     });
     if (isExist) return new ApiResponse(400, null, "Already invitation sent");
 
-    const mail = generateEmailOption({
-      email: email,
-      subject: "Team invitation",
-      html: invitationTemplate({
-        orgnizationName: organization.companyName,
-        name: invitedUser?.name,
-        link: `http://localhost:5173/invitation`,
-      }),
-    });
-    await sendEmail(mail);
     const addMember = await Teams.create({
       userId: invitedUser?._id,
       role: "member",
       invitationStatus: "pending",
       Organization: organization,
     });
+
+    EmailQueue.add("TEAM_INVITATION", {
+      action: "COMMON",
+      data: commonTemplate({
+        name: invitedUser?.name!,
+        content: IN_APP_NOTIFICATION_MESSAGES.TEAM_INVITATION,
+        title: "UNAGENCY Team Invitation",
+        buttonText: "Join Team",
+        buttonLink: `${FRONTEND_URL}/invitation`,
+      }),
+      email: email,
+      userId: invitedUser?._id.toString(),
+      notification: new Notification({
+        title: "Team Invitation",
+        description: IN_APP_NOTIFICATION_MESSAGES.TEAM_INVITATION,
+        type: "COMMON",
+        action: "invitation.open",
+        actionText: "view invitation",
+        _id: addMember._id.toString(),
+        symbol: "🤝",
+      }),
+      subject: "Invitation to join " + organization.companyName + " on UNAGENCY",
+    });
+
     return new ApiResponse(200, addMember, "Member invited successfully");
   }
 );

@@ -92,7 +92,10 @@ export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
   const subs = await Subscriptions.findOneAndUpdate(
     { subscriptionId: subscription_id },
     {
-      status: razrerSubscription.status
+      status: razrerSubscription.status,
+      razorpayCancelRequested: true,
+      cancelledByUser: true,
+      cancelledAt: new Date(),
     },
     { new: true }
   );
@@ -214,6 +217,8 @@ export const getUserCurrentSubscription = asyncHandler(
       email: razerpSubscription?.customer_email!,
       contact: razerpSubscription?.customer_contact!,
       payment_method: razerpSubscription?.payment_method!,
+      remaining_count: razerpSubscription?.remaining_count!,
+      total_count: razerpSubscription?.total_count!,
     }
     return new ApiResponse(200, curSubsc, "All subscriptions");
   }

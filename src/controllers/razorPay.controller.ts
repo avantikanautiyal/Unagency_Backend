@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { PlansModel } from "../models/plan.model";
 import Subscriptions from "../models/subscription.model";
 import { RequestUser } from "../types/user";
@@ -449,10 +450,14 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
   }
 
   let user: any = null;
-  if (subscription && subscription.razorpay_subscription_id && subscription.razorpay_subscription_id.userId) {
-    user = await Users.findById(subscription.razorpay_subscription_id.userId);
-  } else if (payment.notes && payment.notes.user_id) {
-    user = await Users.findById(payment.notes.user_id);
+  const userIdentifier = (subscription?.razorpay_subscription_id?.userId) || (payment.notes && payment.notes.user_id);
+
+  if (userIdentifier) {
+    if (mongoose.Types.ObjectId.isValid(userIdentifier)) {
+      user = await Users.findById(userIdentifier);
+    } else {
+      user = await Users.findOne({ email: userIdentifier });
+    }
   }
 
   const invoiceHtml = InvoiceHTMLTemplate({ payment, subscription, user });

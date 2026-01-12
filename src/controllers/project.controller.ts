@@ -184,6 +184,11 @@ export const FetchAssignedProjects = asyncHandler(
         $unwind: "$category",
       },
       {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+      {
         $project: {
           category: 1,
           title: 1,
@@ -214,7 +219,8 @@ const fetchProjectListByClientId = asyncHandler(
         .populate({
           path: "category",
           select: "title",
-        });
+        })
+        .sort({ createdAt: -1 });
       return new ApiResponse(200, projects, "Projects fetched successfully");
     }
 
@@ -227,7 +233,7 @@ const fetchProjectListByClientId = asyncHandler(
     }
     const projects = await Projects.find({
       userId: req.params?.userId,
-    });
+    }).sort({ createdAt: -1 });
     return new ApiResponse(200, projects, "Projects fetched successfully");
   }
 );
@@ -326,7 +332,8 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
       .populate({
         path: "category",
         select: "title",
-      });
+      })
+      .populate("files");
     return new ApiResponse(200, project, "Project fetched successfully");
   }
 
@@ -368,6 +375,50 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
     },
     { $limit: 1 },
     {
+      $lookup: {
+        from: "mediafiles",
+        localField: "files",
+        foreignField: "_id",
+        as: "files",
+      },
+    },
+    {
+      $lookup: {
+        from: "staff", // Collection name for resources
+        localField: "resource",
+        foreignField: "_id",
+        as: "resourceDetails",
+      },
+    },
+    {
+      $lookup: {
+        from: "teams",
+        localField: "clientTeam",
+        foreignField: "_id",
+        as: "clientTeamDetails",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "userId",
+              foreignField: "_id",
+              as: "userId",
+            },
+          },
+          { $unwind: "$userId" },
+          {
+            $project: {
+              userId: {
+                _id: "$userId._id",
+                name: "$userId.name",
+                email: "$userId.email",
+              },
+            },
+          },
+        ],
+      },
+    },
+    {
       $project: {
         _id: 1, // Include the project ID
         title: 1,
@@ -376,6 +427,7 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
         startDate: 1,
         deadline: 1,
         clientTeam: 1,
+        clientTeamDetails: 1,
         status: 1,
         createdAt: 1,
         updatedAt: 1,
@@ -385,17 +437,11 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
           email: "$user.email",
           image: "$user.image",
         },
-        resource: 1, // Retain the resource field for lookup
+        resource: 1, // Retain the resource field
+        resourceDetails: 1,
+        files: 1,
       },
     },
-    // {
-    //   $lookup: {
-    //     from: "staff", // Adjust this to the actual collection name for resources
-    //     localField: "resource", // This is the field in the project that contains resource IDs
-    //     foreignField: "_id",
-    //     as: "resourceDetails",
-    //   },
-    // },
   ]);
 
   const singleProject = project?.length > 0 ? project[0] : null;
@@ -416,7 +462,8 @@ const FetchMyProjects = asyncHandler(async (req: RequestUser, res) => {
     .populate({
       path: "category",
       select: "title",
-    });
+    })
+    .sort({ createdAt: -1 });
   return new ApiResponse(200, projects, "Projects fetched successfully");
 });
 

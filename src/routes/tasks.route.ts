@@ -7,10 +7,11 @@ import {
   UpdateTask,
 } from "../controllers/tasks.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
+import { fileUpload } from "../middlewares/multers3.middleware";
 
 const router = Router();
 // descs : it's allows servecing tems to create a task for a resource
-router.post("/", VerifyRole(["servicing"]), CreateTask);
+router.post("/", VerifyRole(["servicing"]), fileUpload.array("files", 10), CreateTask);
 // desc : its allows a resource to fetch all assigned task and allows a servecing all the assigned task to a resources
 router.get("/", VerifyRole(["servicing", "resource"]), TaskList);
 // desc : its allows a resource to fetch its 1 week task to use it in a kanbanboard

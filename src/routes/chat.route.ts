@@ -7,6 +7,7 @@ import {
   getMyRelationShipManagerChat,
   addMemberInChatRoom,
   removeMemberFromChatRoom,
+  sendAutomateMessageToUser,
 } from "../controllers/chat.controller";
 import {
   VerifyRole,
@@ -43,5 +44,7 @@ router.post("/remove-member-from-chat-room", VerifyRole(["servicing", "customer"
 // router.post("/create", createChatRoomController);
 // router.post("/add", addMemberToRoom);
 // router.delete("/remove", removeMemberFromRoom);
+
+router.post("/send-automate-message", VerifyRole(["customer"]), sendAutomateMessageToUser);
 
 export default router;

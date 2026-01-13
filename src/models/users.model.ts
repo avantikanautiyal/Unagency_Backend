@@ -21,6 +21,7 @@ export interface IUser {
   },
   fcmTokens?: [string];
   emailVerificationCode?: string;
+  isfirstMessageSent?: boolean;
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -46,7 +47,8 @@ const UsersSchema = new Schema<IUser>(
       type: [String],
       default: []
     },
-    emailVerificationCode: { type: String, default: "" }
+    emailVerificationCode: { type: String, default: "" },
+    isfirstMessageSent: { type: Boolean, default: false },
 
   },
   { collection: "users", timestamps: true }

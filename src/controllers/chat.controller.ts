@@ -9,6 +9,9 @@ import ChatRoom from "../models/chatRoom.model";
 import Users from "../models/users.model";
 import mongoose from "mongoose";
 import Staff from "../models/staff.model";
+
+const template =
+  "Hi Team UNAGENCY, I am interested in exploring your {service} services.";
 //  TESTED OK
 export const getStreamChatToken = asyncHandler(
   async (req: RequestUser, res) => {
@@ -106,6 +109,41 @@ export const removeMemberFromChatRoom = asyncHandler(async (req: RequestUser) =>
 });
 
 
+//------- api end point to send automate message to user
+export const sendAutomateMessageToUser = asyncHandler(async (req: RequestUser) => {
+  const userId = req.user?.userId!;
+
+  const relationship_manager = req.user?.relationship_manager!;
+  const staff = await Staff.findById(relationship_manager);
+
+  if (!staff) {
+    return new ApiResponse(404, null, "Relationship manager not found");
+  }
+
+  const staffUserId = staff.userId.toString();
+
+  const isTextMatched = matchTemplate(template, req.body.text);
+  if (!isTextMatched) {
+    return new ApiResponse(400, null, "Text not matched");
+  }
+  // Create or get a distinct channel where both users are members
+  const channel = streamServerClient.channel('messaging', {
+    members: [userId, staffUserId],
+  });
+
+  await channel.create();
+
+  const messageSendResponse = await channel.sendMessage({
+    text: `Welcome to UNAGENCY!
+We’re dialing in the right person for you. Sit tight!`,
+    user_id: staffUserId, // must be a real user
+  });
+
+  await Users.updateOne({ _id: userId }, { $set: { isfirstMessageSent: true } });
+
+  return new ApiResponse(200, messageSendResponse, "message sent successfully");
+});
+
 //-----------------------{testing room create api}--------------------
 // remove in production
 // TAPI
@@ -154,3 +192,24 @@ export const createChannelTest = asyncHandler(async (req: RequestUser) => {
 
   return new ApiResponse(200, room, "room created");
 });
+
+
+function matchTemplate(
+  template: string,
+  input: string
+): boolean {
+  // Escape regex special characters except {}
+  const escapedTemplate = template.replace(
+    /[-\/\\^$+?.()|[\]]/g,
+    "\\$&"
+  );
+
+  // Convert {placeholder} → regex group (matches words & spaces)
+  const regexPattern = escapedTemplate.replace(
+    /\{[^}]+\}/g,
+    "(.+)"
+  );
+
+  const regex = new RegExp(`^${regexPattern}$`, "i");
+  return regex.test(input);
+}

@@ -17,6 +17,8 @@ export interface ITasks {
   | "feedback"
   | "revision"
   | "approved";
+
+  files: mongoose.Types.ObjectId[];
 }
 
 const TaskSchema = new Schema<ITasks>(
@@ -30,6 +32,11 @@ const TaskSchema = new Schema<ITasks>(
     priority: { type: String, default: "low", enum: ["low", "medium", "high"] },
     deadline: { type: Date, required: true },
     completionDate: { type: Date },
+    files: {
+      type: [Schema.Types.ObjectId],
+      ref: "MediaFile",
+      default: []
+    },
     status: {
       type: String,
       default: "todo",

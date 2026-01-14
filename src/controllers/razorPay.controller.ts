@@ -52,6 +52,7 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
 
     // subscription = await razorpayInstance.subscriptions.fetch(subscription.id);
   } catch (error) {
+    console.log("error creating subscription: ", error);
     throw new ApiError("Error creating subscription: " + (error as any).message, 400);
   }
 

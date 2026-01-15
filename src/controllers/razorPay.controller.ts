@@ -40,7 +40,7 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
       customer_notify: 1,
       quantity: 1,
       total_count: 1,
-      start_at: Math.floor(FUTURE_SUBSCRIPTION_START_DATE / 1000),
+      // start_at: Math.(FUTURE_SUBSCRIPTION_START_DATE / 1000),
       // customer_id : userId
 
       // req.body.customer_id,

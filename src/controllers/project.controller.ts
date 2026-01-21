@@ -20,14 +20,23 @@ import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
 import MediaFile from "../models/mediaFile.model";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
+import { checkPlanLimit } from "../services/planLimit.service";
+
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
 const createProject = asyncHandler(async (req: RequestUser, res) => {
+  console.log("--- createProject Called ---");
+  console.log("User:", req.user?.userId);
+
+  // Check Plan Limit
+  await checkPlanLimit(req.body.userId, req.body.orgId, "START_SERVICE");
+
   const body: IProject = req.body;
 
   const files: any = req.files as Express.Multer.File[];
 
   var mediaFileIds = [];
+
   if (files?.length > 0) {
     var mediaFiles = await MediaFile.insertMany(
       files.map((file: any) => ({

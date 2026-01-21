@@ -69,9 +69,20 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, team, "Team fetched successfully");
 });
 
+import { checkPlanLimit } from "../services/planLimit.service";
+
 // TESTED OK - TODO
 const InviteMemberInOrganization = asyncHandler(
   async (req: RequestUser, res) => {
+    // Determine Org ID - logic exists inside function but we need it before invites
+    // Actually the function fetches organization by owner: req.user.userId
+    // So we can pass undefined or let the service fetch it, OR duplicate the fetch here.
+    // Service has logic: "If no org defined provided, maybe fetch user's owned org"
+    // So passing undefined should work if user is owner.
+
+    // Check Plan Limit
+    await checkPlanLimit(req.user?.userId!, undefined, "INVITE_MEMBER");
+
     const { email }: { email: string } = req.body;
     if (!email) throw new ApiError("Email not provided", 404);
     const invitedUser = await Users.findOne({

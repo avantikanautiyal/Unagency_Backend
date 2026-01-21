@@ -21,6 +21,7 @@ import ChatRouter from "./routes/chat.route";
 import RequirementRouter from "./routes/requirement.route";
 import TaskRouter from "./routes/tasks.route";
 import NotificationRouter from "./routes/notification.route"
+import planRouter from "./routes/plan.routes";
 
 // middleware
 import {
@@ -183,7 +184,7 @@ app.use(cors());
 
 //Use of Express JSON CONFIG
 // app.use("/webhook", express.raw({ type: "application/json" }), StripeWebhook);
-app.use("/razorpay/webhook" ,express.raw({ type: "application/json" }) ,razorpayWebhook )
+app.use("/razorpay/webhook", express.raw({ type: "application/json" }), razorpayWebhook)
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -193,7 +194,7 @@ type CustomExpress = {
 
 //routes declaration
 app.use("/auth", authRouter);
-app.use("/dashboard" , VerifyUserHandler ,dashboardRoute)
+app.use("/dashboard", VerifyUserHandler, dashboardRoute)
 app.use("/categories", VerifyUserHandler, categoryRouter);
 app.use("/users", VerifyUserHandler, userRouter);
 app.use("/organizations", VerifyUserHandler, OrganizationsRouter);
@@ -205,10 +206,11 @@ app.use("/projects", VerifyUserHandler, ProjectRouter);
 app.use("/packages", VerifyUserHandler, packagesRouter);
 app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
+app.use("/plans", VerifyUserHandler, planRouter);
 
 app.use("/notification", VerifyUserHandler, NotificationRouter);
 
-app.use("/razorpay",razorpayRouter );
+app.use("/razorpay", razorpayRouter);
 
 app.use("/", helloWorldRouter);
 

@@ -13,8 +13,13 @@ import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
+import { checkPlanLimit } from "../services/planLimit.service";
+
 // TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
+  // Check Plan Limit
+  await checkPlanLimit(req.user?.userId!, undefined, "CREATE_BRIEF");
+
   const body: IRequirement = req.body;
   if (!body.title && !body.description)
     throw new ApiError("All fields are required", 400);

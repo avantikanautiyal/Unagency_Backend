@@ -39,6 +39,12 @@ interface IRazorpayPlan {
   occurance: "monthly" | "quarterly" | "yearly" | "trial";
   tag: "trial" | "bronze" | "silver" | "gold" | "platinum";
   group_line: string;
+  // New Limit Fields
+  max_concurrent_services: number;
+  max_briefs: number;
+  unlimited_briefs: boolean;
+  max_additional_members: number;
+  user_popup_on_limit: boolean;
 }
 const RazorpayPlanItemSchema: Schema<IRazorpayPlan> = new Schema(
   {
@@ -55,6 +61,13 @@ const RazorpayPlanItemSchema: Schema<IRazorpayPlan> = new Schema(
       required: true,
       enum: ["trial", "bronze", "silver", "gold", "platinum"],
     },
+    // New Limit Fields
+    max_concurrent_services: { type: Number, default: 1 },
+    max_briefs: { type: Number, default: 0 }, // 0 or -1 indicates check unlimited_briefs flag, but logically mixed use. Let's rely on unlimited_briefs for boolean check
+    unlimited_briefs: { type: Boolean, default: false },
+    max_additional_members: { type: Number, default: 0 },
+    user_popup_on_limit: { type: Boolean, default: false },
+
     group_line: { type: String },
   },
   { timestamps: true }

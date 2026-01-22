@@ -8,6 +8,7 @@ import { sendNotificationFCM } from "../utils/FCM";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
 
 const webhookSecret = "123456654321";
 export const razorpayWebhook = async (req: Request, res: Response) => {
@@ -115,24 +116,24 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         EmailQueue.add("subscription taken", {
           action: "SUBSCRIPTION",
           data: commonTemplate({
-            title: "UNAGENCY",
-            content: `Paid. Done. Dusted. Consider the creative gates officially swung open. Welcome to the premium chaos`,
+            title: "Boom. You’re officially in.",
+            content: IN_APP_NOTIFICATION_MESSAGES.PAYMENT_SUCCESSFUL,
             name: customer?.name!,
-            buttonText: "View Subscription",
-            buttonLink: `${FRONTEND_URL}/subscription`,
+            buttonText: "Access Dashboard",
+            buttonLink: `${FRONTEND_URL}/dashboard`,
           }),
           email: customer?.email!,
 
           userId: customer?._id.toString(),
           notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been activated",
+            title: "Payment successful",
+            description: "You’re officially in.",
             type: "SUBSCRIPTION",
             action: "subscription.open",
             actionText: "view subscription",
             symbol: "🍾",
           }),
-          subject: "Welcome to UNAGENCY " + (subs?.planId as any)?.razorpayPlanItem?.item?.name,
+          subject: "Boom. You’re officially in.",
         });
 
         if (relationship_manager) {
@@ -242,6 +243,35 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
         // Warn user to update payment method
+        var subs = await Subscriptions.findOne({
+          subscriptionId: event.payload?.subscription?.entity?.id,
+        }).populate({ path: "planId", foreignField: "plan_id" });
+
+        var customer = await Users.findOne({ _id: subs?.userId });
+
+        if (customer) {
+          EmailQueue.add("payment failed", {
+            action: "SUBSCRIPTION",
+            data: commonTemplate({
+              title: "Payment didn’t land. Let’s fix it.",
+              content: IN_APP_NOTIFICATION_MESSAGES.PAYMENT_FAILED,
+              name: customer?.name!,
+              buttonText: "Retry Payment",
+              buttonLink: `${FRONTEND_URL}/subscription`,
+            }),
+            email: customer?.email!,
+            userId: customer?._id.toString(),
+            notification: new Notification({
+              title: "Payment failed",
+              description: "Payment didn’t land. Let’s fix it.",
+              type: "SUBSCRIPTION",
+              action: "subscription.open",
+              actionText: "view subscription",
+              symbol: "💳",
+            }),
+            subject: "Payment didn’t land. Let’s fix it.",
+          });
+        }
         break;
 
       case "subscription.cancelled":
@@ -277,23 +307,23 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         EmailQueue.add("subscription cancelled", {
           action: "SUBSCRIPTION",
           data: commonTemplate({
-            title: "UNAGENCY",
-            content: `${customer?.name} has cancelled the subscription.`,
+            title: "Plan snoozed. Let’s wake it up.",
+            content: IN_APP_NOTIFICATION_MESSAGES.PLAN_EXPIRED,
             name: customer?.name!,
-            buttonText: "View Subscription",
+            buttonText: "Renew Plan",
             buttonLink: `${FRONTEND_URL}/subscription`,
           }),
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been Cancelled",
+            title: "Plan expired",
+            description: "Plan snoozed. Let’s wake it up.",
             type: "SUBSCRIPTION",
             action: "subscription.open",
             actionText: "view subscription",
-            symbol: "🍾",
+            symbol: "⏰",
           }),
-          subject: "Your subscription has been activated",
+          subject: "Plan snoozed. Let’s wake it up.",
         });
         // currently sending a notificaiton to only a owner
         await sendNotificationFCM({

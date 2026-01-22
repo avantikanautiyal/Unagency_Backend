@@ -29,7 +29,7 @@ export const checkPlanLimit = async (
 
     // Find active subscription
     // Use the subscription ID from the User model as the source of truth
-    if (!user.subscription || !user.subscription.id || user.subscription.status !== 'active') {
+    if (!user.subscription || !user.subscription.id || (user.subscription.status !== 'completed' && user.subscription.status !== 'active')) {
         throw new ApiError("No active subscription found for user.", 403);
     }
 

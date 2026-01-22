@@ -7,6 +7,12 @@ import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
 
+import { EmailQueue } from "../background/queue/email.queue";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { Notification } from "../background/utils/notification";
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
+
 //TESTED OK
 const createOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
@@ -49,6 +55,30 @@ const createOrganization = asyncHandler(
         invitationStatus: "accepted",
         userId: req?.user?.userId,
       });
+
+      // Send Organization Created Email
+      EmailQueue.add("ORG_CREATED", {
+        action: "COMMON",
+        data: commonTemplate({
+          name: req.user?.name!,
+          content: IN_APP_NOTIFICATION_MESSAGES.ORG_CREATED,
+          title: "Your UNAGENCY workspace is ready.",
+          buttonText: "Go to Workspace",
+          buttonLink: `${FRONTEND_URL}/dashboard`,
+        }),
+        email: req.user?.email!,
+        userId: req.user?.userId.toString(),
+        notification: new Notification({
+          title: "Workspace Created",
+          description: "Your UNAGENCY workspace is ready.",
+          type: "COMMON",
+          action: "dashboard.open",
+          actionText: "open dashboard",
+          symbol: "🏢",
+        }),
+        subject: "Your UNAGENCY workspace is ready.",
+      });
+
       return new ApiResponse(
         200,
         organization,

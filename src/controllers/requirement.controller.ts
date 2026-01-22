@@ -73,7 +73,7 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     action: "REQUIRMENT",
     data: commonTemplate({
       title: "UNAGENCY",
-      content: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_SUBMITTED,
+      content: IN_APP_NOTIFICATION_MESSAGES.BRIEF_SUBMITTED,
       name: req.user?.name!,
       buttonText: "View Requirement",
       buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,

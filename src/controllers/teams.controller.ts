@@ -37,6 +37,34 @@ const RemoveMemberInOrganization = asyncHandler(
         throw new ApiError("Member not found in the organization", 404);
       }
       if (removeMember) {
+        // Send notification to Owner (confirmation)
+        if (userId) {
+          const removedUser = await Users.findById(userId);
+          if (removedUser) {
+            EmailQueue.add("MEMBER_REMOVED", {
+              action: "COMMON",
+              data: commonTemplate({
+                name: req.user?.name!,
+                content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_REMOVED.replace("[Member Name]", removedUser.name),
+                title: "Team update in your UNAGENCY workspace.",
+                buttonText: "Manage Team",
+                buttonLink: `${FRONTEND_URL}/settings/team`,
+              }),
+              email: req.user?.email!,
+              userId: req.user?.userId.toString(),
+              notification: new Notification({
+                title: "Member Removed",
+                description: `${removedUser.name} is no longer part of your workspace.`,
+                type: "COMMON",
+                action: "team.open",
+                actionText: "manage team",
+                symbol: "👋",
+              }),
+              subject: "Team update in your UNAGENCY workspace.",
+            });
+          }
+        }
+
         return new ApiResponse(
           200,
           removeMember,
@@ -111,8 +139,8 @@ const InviteMemberInOrganization = asyncHandler(
       action: "COMMON",
       data: commonTemplate({
         name: invitedUser?.name!,
-        content: IN_APP_NOTIFICATION_MESSAGES.TEAM_INVITATION,
-        title: "UNAGENCY Team Invitation",
+        content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_INVITED.replace("[Name]", req?.user?.name!),
+        title: "You’ve been invited to UNAGENCY.",
         buttonText: "Join Team",
         buttonLink: `${FRONTEND_URL}/invitation`,
       }),
@@ -120,14 +148,14 @@ const InviteMemberInOrganization = asyncHandler(
       userId: invitedUser?._id.toString(),
       notification: new Notification({
         title: "Team Invitation",
-        description: IN_APP_NOTIFICATION_MESSAGES.TEAM_INVITATION,
+        description: IN_APP_NOTIFICATION_MESSAGES.MEMBER_INVITED.replace("[Name]", req?.user?.name!),
         type: "COMMON",
         action: "invitation.open",
         actionText: "view invitation",
         _id: addMember._id.toString(),
         symbol: "🤝",
       }),
-      subject: "Invitation to join " + organization.companyName + " on UNAGENCY",
+      subject: "You’ve been invited to UNAGENCY.",
     });
 
     return new ApiResponse(200, addMember, "Member invited successfully");
@@ -165,6 +193,40 @@ export const inviteAction = asyncHandler(async (req: RequestUser, res) => {
     new mongoose.Types.ObjectId(teamId),
     { $set: { invitationStatus: status } } // Replace newStatus with the actual status value you want to set
   );
+  if (status === "accepted") {
+    const teamMember = await Teams.findById(teamId).populate("Organization");
+    const organization: any = teamMember?.Organization;
+    if (organization) {
+      const owner = await Users.findById(organization.owner);
+      const memberUser = await Users.findById(teamMember?.userId);
+
+      // console.log(owner && memberUser, "owner", owner, "member teams", memberUser);
+      if (owner && memberUser) {
+        EmailQueue.add("MEMBER_JOINED", {
+          action: "COMMON",
+          data: commonTemplate({
+            name: owner.name,
+            content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_JOINED.replace("[Member Name]", memberUser.name),
+            title: "New member joined your UNAGENCY workspace.",
+            buttonText: "View Team",
+            buttonLink: `${FRONTEND_URL}/settings/team`,
+          }),
+          email: owner.email,
+          userId: owner._id.toString(),
+          notification: new Notification({
+            title: "New Member Joined",
+            description: `New member joined your workspace.`,
+            type: "COMMON",
+            action: "team.open",
+            actionText: "view team",
+            symbol: "👋",
+          }),
+          subject: "New member joined your UNAGENCY workspace.",
+        });
+      }
+    }
+  }
+
   return new ApiResponse(
     200,
     updated,

@@ -12,6 +12,7 @@ import {
   FetchUserById,
   UpdateInternalUser,
   UpdateUser,
+  UpdateTourCompletion,
 } from "../controllers/users.controller";
 import { fileUpload } from "../middlewares/multers3.middleware";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
@@ -79,5 +80,11 @@ router.get(
 );
 //Desc: It is used in Chat Module of Messaging for User role. NOTE: TAPI
 router.get("/:id", FetchUserById);
+//Desc: It allows users to update their tour completion status
+router.post(
+  "/update-tour-completion",
+  VerifyRole(["admin", "superadmin", "customer", "resource", "servicing"]),
+  UpdateTourCompletion
+);
 
 export default router;

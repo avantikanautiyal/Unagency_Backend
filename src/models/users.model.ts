@@ -22,6 +22,7 @@ export interface IUser {
   fcmTokens?: [string];
   emailVerificationCode?: string;
   isfirstMessageSent?: boolean;
+  tourCompleted?: "incomplete" | "complete" | "skipped";
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -49,6 +50,11 @@ const UsersSchema = new Schema<IUser>(
     },
     emailVerificationCode: { type: String, default: "" },
     isfirstMessageSent: { type: Boolean, default: false },
+    tourCompleted: { 
+      type: String, 
+      enum: ["incomplete", "complete", "skipped"],
+      default: "incomplete" 
+    },
 
   },
   { collection: "users", timestamps: true }

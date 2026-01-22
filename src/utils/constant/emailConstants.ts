@@ -43,6 +43,7 @@ export const IN_APP_NOTIFICATION_MESSAGES = {
     MEMBER_INVITED: "[Name] just invited you to their UNAGENCY workspace. Join the team and start creating together.",
     MEMBER_JOINED: "Hey [Name], [Member Name] just joined your workspace. Say hey and share the vision.",
     MEMBER_REMOVED: "Hey [Name], [Member Name] is no longer part of your workspace. Everything else stays right where you left it.",
+    MEMBER_REMOVED_SELF: "Hi [Member Name],\n\nYour access to this UNAGENCY workspace has been removed and your permissions have been updated.",
     TEAM_LIMIT_REACHED: "Team full, time to upgrade.",
 
     // Messaging

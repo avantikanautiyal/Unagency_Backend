@@ -307,7 +307,6 @@ const registerFcmToken = asyncHandler(async (req: RequestUser) => {
 
   return new ApiResponse(200, updated, "FCM token registered successfully.");
 });
-
 const forgetPassword = asyncHandler(async (req: RequestUser) => {
   const body: { email: string } = req.body;
 
@@ -320,16 +319,45 @@ const forgetPassword = asyncHandler(async (req: RequestUser) => {
     throw new ApiError("User not found", 404);
   }
 
-  const passwordResetLink = await firebaseAdmin.auth().generatePasswordResetLink(user?.email!);
+  if (!FRONTEND_URL) {
+    throw new ApiError(
+      "FRONTEND_URL is not configured on the server; cannot generate password reset redirect URL",
+      500
+    );
+  }
 
+  // Firebase Admin always generates a Firebase-hosted action link.
+  // To send a "your website" link, extract the oobCode and build a frontend URL instead.
+  const actionCodeSettings = {
+    url: `${FRONTEND_URL}/reset-password`,
+    handleCodeInApp: false,
+  };
 
+  const firebaseActionLink = await firebaseAdmin
+    .auth()
+    .generatePasswordResetLink(user.email!, actionCodeSettings as any);
+
+  let passwordResetLink = firebaseActionLink;
+  try {
+    const u = new URL(firebaseActionLink);
+    const oobCode = u.searchParams.get("oobCode");
+    if (oobCode) {
+      const frontendUrl = new URL(`${FRONTEND_URL}/reset-password`);
+      frontendUrl.searchParams.set("oobCode", oobCode);
+      // optional: keep mode for clarity on the frontend
+      frontendUrl.searchParams.set("mode", "resetPassword");
+      passwordResetLink = frontendUrl.toString();
+    }
+  } catch {
+    // fallback to firebaseActionLink
+  }
   EmailQueue.add("password reset", {
     action: "COMMON",
     data: commonTemplate({
       name: user?.name!,
-      content: "by clicking below you can reset your password",
+      content: "Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling.",
       title: "UNAGENCY",
-      buttonText: "reset password",
+      buttonText: "Reset Password",
       buttonLink: passwordResetLink,
     }),
     email: user?.email!,
@@ -341,7 +369,7 @@ const forgetPassword = asyncHandler(async (req: RequestUser) => {
       action: "auth.reset-password",
       symbol: "✨",
     }),
-    subject: "UNAGENCY |Password Reset ",
+    subject: "Reset your UNAGENCY password.",
   });
 
   return new ApiResponse(200, { message: "password reset mail sent successfully" }, "Password reset link sent successfully.");
@@ -368,7 +396,7 @@ const sendEmailVerificationEmail = asyncHandler(async (req: RequestUser) => {
     action: "COMMON",
     data: commonTemplate({
       name: user?.name!,
-      content: "by clicking below you can verify your Email with unagency",
+      content: "UNAGENCY access needs one tiny checkbox: verify your email.",
       title: "UNAGENCY",
       buttonText: "verify email",
       buttonLink: `${BACKEND_URL}/auth/verify-email?code=${uuid}&id=${user?.firebaseId}`,
@@ -379,7 +407,7 @@ const sendEmailVerificationEmail = asyncHandler(async (req: RequestUser) => {
       description: "your email verification link sent to your email",
       type: "COMMON",
       actionText: "",
-      action: "auth.reset-password",
+      action: "auth.verify",
       symbol: "✨",
     }),
     subject: "Your UNAGENCY verification mail",
@@ -412,6 +440,26 @@ const verifyEmail = asyncHandler(async (req: RequestUser, res) => {
   user.emailVerificationCode = "";
   user.isVerified = true;
   await user.save();
+
+  EmailQueue.add("Email Verificaiton mail", {
+    action: "COMMON",
+    data: commonTemplate({
+      name: user?.name!,
+      content: "Your email’s verified, your seat’s saved, and the creative runway is clear. Let’s make something wild.",
+      title: "UNAGENCY",
+    }),
+    email: user?.email!,
+    userId : user._id  + "",
+    notification: new Notification({
+      title: "Verified! You’re officially part of UNAGENCY.",
+      description: "your email verification link sent to your email",
+      type: "COMMON",
+      actionText: "",
+      action: "auth.verify",
+      symbol: "✨",
+    }),
+    subject: "You’re verified, welcome to the crew.",
+  });
 
   res.redirect(`${FRONTEND_URL}/verify-email?code=${query.code}&id=${query.id}`);
 });

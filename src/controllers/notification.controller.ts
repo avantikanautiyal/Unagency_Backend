@@ -4,6 +4,11 @@ import Notifications from "../models/notification.model";
 import { RequestUser } from "../types/user";
 import Users from "../models/users.model";
 import firebaseAdmin from "../libs/firebase";
+import { ApiError } from "../utils/apiError";
+import mongoose from "mongoose";
+import { EmailQueue } from "../background/queue/email.queue";
+import { Notification, NotificationType } from "../background/utils/notification";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const fetchMyNotifications = asyncHandler(async (req: RequestUser) => {
     const notifications = await Notifications.find({
         userId: req.user?.userId
@@ -102,4 +107,75 @@ const sendNotification = asyncHandler(async (req: RequestUser) => {
     return new ApiResponse(200, null, "Notification sent");
 });
 
-export { fetchMyNotifications, sendNotification };
+const sendEmailAndNotification = asyncHandler(async (req: RequestUser) => {
+    const {
+        email,
+        userId,
+        name,
+        title,
+        subject,
+        content,
+        buttonText,
+        buttonLink,
+        notification,
+        notificationTitle,
+        notificationDescription,
+        notificationType,
+        notificationAction,
+        notificationActionText,
+        notificationSymbol,
+    } = req.body;
+
+    const targetUserId: string | undefined = userId || req.user?.userId;
+
+    if (!email && !targetUserId) {
+        throw new ApiError("email or userId is required", 400);
+    }
+
+    if (targetUserId && !mongoose.Types.ObjectId.isValid(targetUserId)) {
+        throw new ApiError("Invalid userId", 400);
+    }
+
+    const targetUser = targetUserId ? await Users.findById(targetUserId) : null;
+
+    if (targetUserId && !targetUser) {
+        throw new ApiError("User not found", 404);
+    }
+
+    const recipientEmail = email || targetUser?.email;
+    if (!recipientEmail) {
+        throw new ApiError("email is required", 400);
+    }
+
+    if (!name || !title || !subject || !content) {
+        throw new ApiError("name, title, subject and content are required", 400);
+    }
+
+    const notificationPayload = new Notification({
+        title: notification?.title ?? notificationTitle ?? title,
+        description: notification?.description ?? notificationDescription ?? content,
+        type: (notification?.type ?? notificationType ?? "COMMON") as NotificationType,
+        action: notification?.action ?? notificationAction ?? "",
+        actionText: notification?.actionText ?? notificationActionText ?? "",
+        symbol: notification?.symbol ?? notificationSymbol ?? "✉️",
+    });
+
+    await EmailQueue.add("CUSTOM_EMAIL_NOTIFICATION", {
+        action: notificationPayload.type as NotificationType,
+        data: commonTemplate({
+            name,
+            title,
+            content,
+            buttonText,
+            buttonLink,
+        }),
+        email: recipientEmail,
+        subject,
+        notification: notificationPayload,
+        userId: targetUserId,
+    });
+
+    return new ApiResponse(200, null, "Email queued successfully");
+});
+
+export { fetchMyNotifications, sendNotification, sendEmailAndNotification };

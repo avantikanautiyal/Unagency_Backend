@@ -41,6 +41,35 @@ const RemoveMemberInOrganization = asyncHandler(
         if (userId) {
           const removedUser = await Users.findById(userId);
           if (removedUser) {
+            // Notify removed member
+            EmailQueue.add("YOU_ARE_REMOVED_FROM_WORKSPACE", {
+              action: "COMMON",
+              data: commonTemplate({
+                name: removedUser.name,
+                content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_REMOVED_SELF.replace(
+                  "[Member Name]",
+                  removedUser.name
+                ),
+                title: "You are removed from workspace",
+                buttonText: "Go to UNAGENCY",
+                buttonLink: `${FRONTEND_URL}`,
+              }),
+              email: removedUser.email,
+              userId: removedUser._id.toString(),
+              notification: new Notification({
+                title: "Member removed from workspace",
+                description: IN_APP_NOTIFICATION_MESSAGES.MEMBER_REMOVED_SELF.replace(
+                  "[Member Name]",
+                  removedUser.name
+                ),
+                type: "COMMON",
+                action: "workspace.removed",
+                actionText: "view details",
+                symbol: "👋",
+              }),
+              subject: "You are removed from workspace",
+            });
+
             EmailQueue.add("MEMBER_REMOVED", {
               action: "COMMON",
               data: commonTemplate({

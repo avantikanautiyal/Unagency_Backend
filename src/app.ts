@@ -208,7 +208,7 @@ app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
 app.use("/plans", VerifyUserHandler, planRouter);
 
-app.use("/notification", VerifyUserHandler, NotificationRouter);
+app.use("/notification", NotificationRouter);
 
 app.use("/razorpay", razorpayRouter);
 

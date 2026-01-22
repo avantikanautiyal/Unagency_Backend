@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Users, { IUser } from "../models/users.model";
 import { ApiResponse } from "../utils/apiResponse";
+import { ApiError } from "../utils/apiError";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
@@ -15,6 +16,9 @@ import StripeCustomers from "../models/customer.model";
 import Subscriptions from "../models/subscription.model";
 import Invoices from "../models/invoices.model";
 import Packages from "../models/packages.model";
+import { EmailQueue } from "../background/queue/email.queue";
+import { Notification } from "../background/utils/notification";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 //TESTED OK = RAHUL
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role }: IUser = req.body;
@@ -338,6 +342,95 @@ const FetchUserById = asyncHandler(async (req, res) => {
   return new ApiResponse(200, user, "User fetched successfully");
 });
 
+//TESTED OK
+const UpdateTourCompletion = asyncHandler(async (req: RequestUser, res) => {
+  const user = req.user;
+  const body: { tourCompleted: "incomplete" | "complete" | "skipped" } = req.body;
+
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  const validStates = ["incomplete", "complete", "skipped"];
+  if (!body.tourCompleted || !validStates.includes(body.tourCompleted)) {
+    throw new ApiError("tourCompleted must be one of: incomplete, complete, skipped", 400);
+  }
+
+  // Fetch current user to check previous tour completion status
+  const currentUser = await Users.findById(user.userId);
+  if (!currentUser) {
+    throw new ApiError("User not found", 404);
+  }
+
+  const previousTourState = currentUser.tourCompleted || "incomplete";
+
+  const updatedUser = await Users.findOneAndUpdate(
+    { _id: user.userId },
+    { $set: { tourCompleted: body.tourCompleted } },
+    { new: true, runValidators: true }
+  );
+
+  if (!updatedUser) {
+    throw new ApiError("User not found", 404);
+  }
+
+  // Send email when tour is newly completed (was not complete, now complete)
+  if (body.tourCompleted === "complete" && previousTourState !== "complete") {
+    EmailQueue.add("tour completion", {
+      action: "COMMON",
+      data: commonTemplate({
+        name: updatedUser.name,
+        content: "Tour's done, setup's complete, now it's your turn. Start your first project and see how fast things move here.",
+        title: "UNAGENCY",
+        buttonText: "Start Creating",
+        buttonLink: `${process.env.FRONTEND_URL}`,
+      }),
+      email: updatedUser.email,
+      userId: updatedUser._id + "",
+      notification: new Notification({
+        title: "You're all set. Let's make something epic.",
+        description: "You've successfully completed the app tour. Start exploring UNAGENCY now!",
+        type: "PROJECT",
+        actionText: "start proejct",
+        action: "project.open",
+        symbol: "🎉",
+      }),
+      subject: "You've unlocked your UNAGENCY workspace.",
+    });
+  }
+
+  // Send email when tour is skipped
+  if (body.tourCompleted === "skipped") {
+    EmailQueue.add("tour skipped", {
+      action: "COMMON",
+      data: commonTemplate({
+        name: updatedUser.name,
+        content: "You skipped the tour (no pressure). When you're ready, hit restart, we'll guide you through like a pro.",
+        title: "Skip today, tour tomorrow.",
+        buttonText: "Start Creating",
+        buttonLink: `${process.env.FRONTEND_URL}`,
+      }),
+      email: updatedUser.email,
+      userId: updatedUser._id + "",
+      notification: new Notification({
+        title: "No problem. You can always come back later.",
+        description: "You skipped the tour (no pressure). When you're ready, hit restart, we'll guide you through like a pro.",
+        type: "PROJECT",
+        actionText: "start proejct",
+        action: "project.open",
+        symbol: "👋",
+      }),
+      subject: "Skip today, tour tomorrow.",
+    });
+  }
+
+  return new ApiResponse(
+    200,
+    { tourCompleted: updatedUser.tourCompleted },
+    "Tour completion status updated successfully"
+  );
+});
+
 export {
   CreateUser,
   FetchCustomers,
@@ -351,4 +444,5 @@ export {
   SearchUsersInChat,
   FetchCustomerById,
   FetchCustomerPlan,
+  UpdateTourCompletion,
 };

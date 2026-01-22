@@ -1,7 +1,9 @@
 import { Router } from "express";
-import { fetchMyNotifications, sendNotification } from "../controllers/notification.controller";
+import { fetchMyNotifications, sendEmailAndNotification, sendNotification } from "../controllers/notification.controller";
+import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 const router = Router();
-router.get("/", fetchMyNotifications);
-router.post("/send", sendNotification);
+router.get("/",VerifyUserHandler ,fetchMyNotifications);
+router.post("/send",VerifyUserHandler ,sendNotification);
+router.post("/send/email", sendEmailAndNotification);
 
 export default router;

@@ -10,6 +10,7 @@ import { Notification } from "../background/utils/notification";
 import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
@@ -77,14 +78,12 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   EmailQueue.add("task creation", {
     action: "TASK",
     data: commonTemplate({
-      title: "UNAGENCY",
-      content: `well you have a new task assigned to you`,
+      title: "New task assigned",
+      content: `You have a new task assigned to you: ${create.title}`,
       name: (staff?.userId as any)?.name!,
       buttonText: "View Task",
-      buttonLink: `${FRONTEND_URL}`,
-    })
-
-    ,
+      buttonLink: `${FRONTEND_URL}/tasks/${create._id}`,
+    }),
     email: (staff?.userId as any)?.email!,
     userId: staff?.userId?._id.toString(),
     notification: new Notification({
@@ -97,6 +96,24 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     }),
     subject: "New Task has been assigned to you",
   });
+
+  // Notify CS about task creation (in-app only, no email)
+  EmailQueue.add("CS task created", {
+    action: "TASK",
+    data: "",
+    email: "",
+    userId: req.user?.userId!,
+    notification: new Notification({
+      title: "A new task has been created",
+      description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_CREATED,
+      type: "TASK",
+      action: "task.view",
+      actionText: "view task",
+      symbol: "📝",
+    }),
+    subject: "",
+  });
+
   // currently sending a notificaiton to only a owner
   await sendNotificationFCM({
     notification: new Notification({
@@ -294,23 +311,23 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       EmailQueue.add("task updation", {
         action: "TASK",
         data: commonTemplate({
-          title: "UNAGENCY",
-          content: `your assigned task status has been updated`,
+          title: "Task submitted",
+          content: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_SUBMITTED,
           name: (updatedTask?.assignedBy as any)?.userId?.name!,
           buttonText: "View Task",
-          buttonLink: `${FRONTEND_URL}/messages`,
+          buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
         }),
         email: (updatedTask?.assignedBy as any)?.userId?.email!,
         userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
-          title: updatedTask?.title!,
-          description: updatedTask?.description!,
+          title: "Task submitted",
+          description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_SUBMITTED,
           type: "TASK",
           action: "task.open",
           actionText: "view task",
-          symbol: "👨🏽‍💻",
+          symbol: "✅",
         }),
-        subject: "Task Status has been updated",
+        subject: "Task submitted",
       });
       // currently sending a notificaiton to only a owner
       await sendNotificationFCM({
@@ -331,23 +348,23 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       EmailQueue.add("task updation", {
         action: "TASK",
         data: commonTemplate({
-          title: "UNAGENCY",
-          content: `your assigned task feedback has been updated`,
+          title: "Feedback added",
+          content: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
           name: (updatedTask?.assignedTo as any)?.userId?.name!,
           buttonText: "View Task",
-          buttonLink: `${FRONTEND_URL}`,
+          buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
         }),
         email: (updatedTask?.assignedTo as any)?.userId?.email!,
         userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
         notification: new Notification({
-          title: updatedTask?.title!,
-          description: updatedTask?.description!,
+          title: "Feedback added",
+          description: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
           type: "TASK",
           action: "task.open",
           actionText: "view task",
-          symbol: "👨🏽‍💻",
+          symbol: "💬",
         }),
-        subject: "Task Feedback",
+        subject: "Feedback added",
       });
 
       await sendNotificationFCM({

@@ -140,22 +140,23 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           EmailQueue.add("relationship manager subscription taken", {
             action: "SUBSCRIPTION",
             data: commonTemplate({
-              title: "UNAGENCY",
-              content: `${customer?.name} has paid for the subscription.`,
+              title: "New client activated",
+              content: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
               name: relationship_manager?.name!,
-
+              buttonText: "View Client",
+              buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
             }),
             email: relationship_manager?.email!,
             userId: relationship_manager?._id.toString(),
             notification: new Notification({
-              title: (subs?.planId as any)?.name!,
-              description: "Your subscription has been activated",
+              title: "Client membership activated successfully",
+              description: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
               type: "SUBSCRIPTION",
-              action: "subscription.open",
-              actionText: "view subscription",
-              symbol: "🍾",
+              action: "customer.view",
+              actionText: "view client",
+              symbol: "🎉",
             }),
-            subject: "Your client subscription has been activated " + customer?.name,
+            subject: "New client activated",
           });
         }
         // currently sending a notificaiton to only a owner
@@ -271,6 +272,35 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             }),
             subject: "Payment didn’t land. Let’s fix it.",
           });
+
+          // Notify CS about payment failure
+          const relationship_manager = await Users.findOne({
+            _id: (customer?.relationship_manager as any),
+          });
+
+          if (relationship_manager) {
+            EmailQueue.add("CS payment failed", {
+              action: "SUBSCRIPTION",
+              data: commonTemplate({
+                title: "Payment failed",
+                content: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_FAILED,
+                name: relationship_manager?.name!,
+                buttonText: "View Client",
+                buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
+              }),
+              email: relationship_manager?.email!,
+              userId: relationship_manager?._id.toString(),
+              notification: new Notification({
+                title: "Client payment failed",
+                description: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_FAILED,
+                type: "SUBSCRIPTION",
+                action: "customer.view",
+                actionText: "view client",
+                symbol: "⚠️",
+              }),
+              subject: "Payment failed",
+            });
+          }
         }
         break;
 
@@ -427,8 +457,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         EmailQueue.add("subscription paused", {
           action: "SUBSCRIPTION",
           data: commonTemplate({
-            title: "UNAGENCY",
-            content: `Your subscription has been paused. You can resume it anytime.`,
+            title: "Client account paused",
+            content: IN_APP_NOTIFICATION_MESSAGES.PLAN_EXPIRED,
             name: customer?.name!,
             buttonText: "View Subscription",
             buttonLink: `${FRONTEND_URL}/subscription`,
@@ -436,15 +466,44 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been paused",
+            title: "Client account paused due to subscription non-renewal",
+            description: IN_APP_NOTIFICATION_MESSAGES.PLAN_EXPIRED,
             type: "SUBSCRIPTION",
             action: "subscription.open",
             actionText: "view subscription",
             symbol: "⏸️",
           }),
-          subject: "Your subscription has been paused",
+          subject: "Client account paused",
         });
+
+        // Notify CS about account pause
+        const rm_paused = await Users.findOne({
+          _id: (customer?.relationship_manager as any),
+        });
+
+        if (rm_paused) {
+          EmailQueue.add("CS subscription paused", {
+            action: "SUBSCRIPTION",
+            data: commonTemplate({
+              title: "Client account paused",
+              content: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_PAUSED,
+              name: rm_paused?.name!,
+              buttonText: "View Client",
+              buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
+            }),
+            email: rm_paused?.email!,
+            userId: rm_paused?._id.toString(),
+            notification: new Notification({
+              title: "Client account paused",
+              description: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_PAUSED,
+              type: "SUBSCRIPTION",
+              action: "customer.view",
+              actionText: "view client",
+              symbol: "⏸️",
+            }),
+            subject: "Client account paused",
+          });
+        }
 
         await sendNotificationFCM({
           notification: new Notification({
@@ -490,7 +549,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         EmailQueue.add("subscription resumed", {
           action: "SUBSCRIPTION",
           data: commonTemplate({
-            title: "UNAGENCY",
+            title: "Client account resumed",
             content: `Welcome back! Your subscription has been resumed successfully.`,
             name: customer?.name!,
             buttonText: "View Subscription",
@@ -499,15 +558,44 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
-            title: (subs?.planId as any)?.name!,
+            title: "Client account has been resumed",
             description: "Your subscription has been resumed",
             type: "SUBSCRIPTION",
             action: "subscription.open",
             actionText: "view subscription",
             symbol: "▶️",
           }),
-          subject: "Your subscription has been resumed",
+          subject: "Client account resumed",
         });
+
+        // Notify CS about account resume
+        const rm_resumed = await Users.findOne({
+          _id: (customer?.relationship_manager as any),
+        });
+
+        if (rm_resumed) {
+          EmailQueue.add("CS subscription resumed", {
+            action: "SUBSCRIPTION",
+            data: commonTemplate({
+              title: "Client account resumed",
+              content: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_RESUMED,
+              name: rm_resumed?.name!,
+              buttonText: "View Client",
+              buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
+            }),
+            email: rm_resumed?.email!,
+            userId: rm_resumed?._id.toString(),
+            notification: new Notification({
+              title: "Client account resumed",
+              description: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_RESUMED,
+              type: "SUBSCRIPTION",
+              action: "customer.view",
+              actionText: "view client",
+              symbol: "▶️",
+            }),
+            subject: "Client account resumed",
+          });
+        }
 
         await sendNotificationFCM({
           notification: new Notification({

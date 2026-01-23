@@ -6,6 +6,7 @@ import Teams from "../models/team.model";
 import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
+import Users from "../models/users.model";
 
 import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
@@ -79,6 +80,36 @@ const createOrganization = asyncHandler(
         subject: "Your UNAGENCY workspace is ready.",
       });
 
+      // Notify CS about organization creation
+      const customer = await Users.findById(req.user?.userId).populate("relationship_manager");
+      const relationship_manager = await Users.findOne({
+        _id: (customer?.relationship_manager as any),
+      });
+
+      if (relationship_manager) {
+        EmailQueue.add("CS ORG_CREATED", {
+          action: "COMMON",
+          data: commonTemplate({
+            title: "Organisation created",
+            content: IN_APP_NOTIFICATION_MESSAGES.CS_ORG_CREATED,
+            name: relationship_manager?.name!,
+            buttonText: "View Client",
+            buttonLink: `${FRONTEND_URL}/customers/${req.user?.userId}`,
+          }),
+          email: relationship_manager?.email!,
+          userId: relationship_manager?._id.toString(),
+          notification: new Notification({
+            title: "Client organisation created",
+            description: IN_APP_NOTIFICATION_MESSAGES.CS_ORG_CREATED,
+            type: "COMMON",
+            action: "customer.view",
+            actionText: "view client",
+            symbol: "🏢",
+          }),
+          subject: "Organisation created",
+        });
+      }
+
       return new ApiResponse(
         200,
         organization,
@@ -128,6 +159,31 @@ const UpdateUserOrganization = asyncHandler(
       },
       { new: true, runValidators: true } // Ensure that validators run during update
     );
+
+    // Notify CS about organization update (in-app only, no email)
+    const customer = await Users.findById(req.user?.userId);
+    const relationship_manager = await Users.findOne({
+      _id: (customer?.relationship_manager as any),
+    });
+
+    if (relationship_manager) {
+      EmailQueue.add("CS ORG_UPDATED", {
+        action: "COMMON",
+        data: "",
+        email: "",
+        userId: relationship_manager?._id.toString(),
+        notification: new Notification({
+          title: "Client organisation details updated",
+          description: IN_APP_NOTIFICATION_MESSAGES.CS_ORG_UPDATED,
+          type: "COMMON",
+          action: "customer.view",
+          actionText: "view client",
+          symbol: "📝",
+        }),
+        subject: "",
+      });
+    }
+
     return new ApiResponse(200, updatedOrganization, "Organization Updated");
   }
 );

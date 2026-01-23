@@ -54,6 +54,41 @@ export const IN_APP_NOTIFICATION_MESSAGES = {
     FEATURE_LAUNCH: "Explore what’s new at UNAGENCY.",
     LIMITED_OFFER: "Your exclusive UNAGENCY offer.",
     PASSWORD_RESET: "Reset your UNAGENCY password.",
+
+    // CS - Client & Organisation Notifications
+    CS_CLIENT_MEMBERSHIP_ACTIVATED: "A client has purchased a membership. Their workspace is now active.",
+    CS_PAYMENT_SUCCESSFUL: "Client payment has been processed successfully and services are active.",
+    CS_PAYMENT_FAILED: "The client's payment attempt failed. Please follow up to resolve.",
+    CS_ASSIGNED_TO_CLIENT: "You have been assigned as the servicing manager for a new client.",
+    CS_ORG_CREATED: "A new client organisation has been created and is ready.",
+    CS_ORG_UPDATED: "Client organisation details have been updated.",
+    CS_ACCOUNT_PAUSED: "The client account has been paused because the subscription was not renewed. Active work may be impacted until renewal.",
+    CS_ACCOUNT_RESUMED: "The client account has been resumed and work may continue.",
+
+    // CS - Brief & Project Flow
+    CS_BRIEF_STARTED: "Client has started filling the brief.",
+    CS_BRIEF_INCOMPLETE: "The client has not completed the brief. A reminder may be required.",
+    CS_BRIEF_SUBMITTED: "A new brief has been submitted by the client. Please review and proceed.",
+    CS_BRIEF_APPROVED: "The brief has been approved and the project is ready to move forward.",
+    CS_BRIEF_UPDATED: "The client has made updates to the brief. Please review changes.",
+    CS_PROJECT_CREATED: "Project created successfully.",
+    CS_PROJECT_IDLE: "The project has seen no activity for a while. Please review.",
+    CS_PROJECT_PAUSED: "The project has been temporarily paused.",
+    CS_PROJECT_RESUMED: "The project has been resumed and work can continue.",
+    CS_PROJECT_DELIVERY_SENT: "Project delivery has been shared with the client.",
+    CS_PROJECT_DEADLINE_APPROACHING: "The project is nearing its deadline. Please ensure progress is on track.",
+    CS_PROJECT_COMPLETED: "The project has been completed successfully.",
+
+    // CS - Task & Resource Management
+    CS_TASK_CREATED: "A new task has been created.",
+    CS_FEEDBACK_ADDED: "Feedback has been added to the task. Resource has been notified.",
+    CS_TASK_SUBMITTED: "A resource has submitted a task for review.",
+    CS_TASK_OVERDUE: "A task has crossed its deadline. Please follow up.",
+    CS_TASK_APPROVED: "Task approved successfully.",
+
+    // CS - Client Activity & Risk
+    CS_CLIENT_MESSAGE: "New message from client.",
+    CS_CLIENT_INACTIVE: "The client has not responded for 48 hours. Please follow up.",
 } as const;
 
 export type InAppNotificationKey = keyof typeof IN_APP_NOTIFICATION_MESSAGES;

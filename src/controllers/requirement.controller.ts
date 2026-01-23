@@ -48,24 +48,24 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   EmailQueue.add(`NEW_RQUIREMENT_${rmUser?.email}`, {
     action: "REQUIRMENT",
     data: commonTemplate({
-      title: "UNAGENCY",
-      content: `review the details and iniciate the required workflow`,
+      title: "New brief submitted",
+      content: IN_APP_NOTIFICATION_MESSAGES.CS_BRIEF_SUBMITTED,
       name: rmUser?.name!,
-      buttonText: "View Requirement",
+      buttonText: "View Brief",
       buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
     }),
     email: rmUser?.email!,
     userId: rm?.userId?._id.toString()!,
     notification: new Notification({
-      title: `${req?.user?.name} just submitted a new brief in the system`,
-      description: "requirement notification text ehre",
+      title: "New brief submitted",
+      description: IN_APP_NOTIFICATION_MESSAGES.CS_BRIEF_SUBMITTED,
       type: "REQUIRMENT",
       _id: newRequirement._id.toString(),
-      symbol: "🫡",
-      action: "🔔",
-      actionText: "view requirment",
+      symbol: "📋",
+      action: "brief.view",
+      actionText: "view brief",
     }),
-    subject: `${req?.user?.name} just submitted a new brief in the system`,
+    subject: "New brief submitted",
   });
 
   // sending email to customer

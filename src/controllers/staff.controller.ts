@@ -4,6 +4,11 @@ import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import Users from "../models/users.model";
 import { createDistincChatRoom } from "../services/Chatstream";
+import { EmailQueue } from "../background/queue/email.queue";
+import { Notification } from "../background/utils/notification";
+import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
 const createStaff = asyncHandler(async (req, res) => {
@@ -98,6 +103,29 @@ const AssignManagerToCustomer = asyncHandler(async (req, res) => {
   }); //CReating a Channel between Customer and Relationship Manager
 
   await checkCustomer.save();
+
+  // Notify CS about assignment
+  EmailQueue.add("CS assigned to client", {
+    action: "COMMON",
+    data: commonTemplate({
+      title: "New client assigned",
+      content: IN_APP_NOTIFICATION_MESSAGES.CS_ASSIGNED_TO_CLIENT,
+      name: (checkStaff?.userId as any)?.name!,
+      buttonText: "View Client",
+      buttonLink: `${FRONTEND_URL}/customers/${checkCustomer?._id}`,
+    }),
+    email: (checkStaff?.userId as any)?.email!,
+    userId: (checkStaff?.userId as any)?._id.toString(),
+    notification: new Notification({
+      title: "New client assigned",
+      description: IN_APP_NOTIFICATION_MESSAGES.CS_ASSIGNED_TO_CLIENT,
+      type: "COMMON",
+      action: "customer.view",
+      actionText: "view client",
+      symbol: "🤝",
+    }),
+    subject: "New client assigned",
+  });
 
   return new ApiResponse(200, null, "Manager is assigned successfully");
 });

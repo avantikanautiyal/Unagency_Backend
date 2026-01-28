@@ -435,6 +435,29 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         }),
         user: (updatedTask?.assignedTo as any)?.userId as any,
       });
+
+      // Notify CS about feedback added
+      EmailQueue.add("CS feedback added", {
+        action: "TASK",
+        data: commonTemplate({
+          title: "Feedback added",
+          content: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
+          name: (updatedTask?.assignedBy as any)?.userId?.name!,
+          buttonText: "View Task",
+          buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
+        }),
+        email: (updatedTask?.assignedBy as any)?.userId?.email!,
+        userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
+        notification: new Notification({
+          title: "Feedback added",
+          description: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "💬",
+        }),
+        subject: "Feedback added",
+      });
       break;
     case "revision":
       EmailQueue.add("task revision", {
@@ -474,6 +497,29 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         notification: new Notification({
           title: "Task approved",
           description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_APPROVED,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "🎉",
+        }),
+        subject: "Task approved",
+      });
+
+      // Notify CS about task approval
+      EmailQueue.add("CS task approved", {
+        action: "TASK",
+        data: commonTemplate({
+          title: "Task approved",
+          content: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_APPROVED,
+          name: (updatedTask?.assignedBy as any)?.userId?.name!,
+          buttonText: "View Task",
+          buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
+        }),
+        email: (updatedTask?.assignedBy as any)?.userId?.email!,
+        userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
+        notification: new Notification({
+          title: "Task approved",
+          description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_APPROVED,
           type: "TASK",
           action: "task.open",
           actionText: "view task",

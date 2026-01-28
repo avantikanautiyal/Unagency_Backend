@@ -3,6 +3,7 @@ import Subscriptions from "../models/subscription.model";
 import PaymentModel from "../models/payment.model";
 import crypto from "crypto";
 import Users from "../models/users.model";
+import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { sendNotificationFCM } from "../utils/FCM";
 import { Notification } from "../background/utils/notification";
@@ -107,57 +108,37 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
               "subscription.status": event.payload?.subscription?.entity?.status,
             },
           }
-        ).populate("relationship_manager");
+        );
+
         console.log("customer activated ", customer);
-        const relationship_manager = await Users.findOne({
-          _id: (customer?.relationship_manager as any)?.userId,
-        });
 
-        EmailQueue.add("subscription taken", {
-          action: "SUBSCRIPTION",
-          data: commonTemplate({
-            title: "Boom. You’re officially in.",
-            content: IN_APP_NOTIFICATION_MESSAGES.PAYMENT_SUCCESSFUL,
-            name: customer?.name!,
-            buttonText: "Access Dashboard",
-            buttonLink: `${FRONTEND_URL}/dashboard`,
-          }),
-          email: customer?.email!,
+        if (customer?.relationship_manager) {
+          const staff = await Staff.findById(customer.relationship_manager).populate("userId");
+          const relationship_manager = staff?.userId as any;
 
-          userId: customer?._id.toString(),
-          notification: new Notification({
-            title: "Payment successful",
-            description: "You’re officially in.",
-            type: "SUBSCRIPTION",
-            action: "subscription.open",
-            actionText: "view subscription",
-            symbol: "🍾",
-          }),
-          subject: "Boom. You’re officially in.",
-        });
-
-        if (relationship_manager) {
-          EmailQueue.add("relationship manager subscription taken", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-              title: "New client activated",
-              content: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
-              name: relationship_manager?.name!,
-              buttonText: "View Client",
-              buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
-            }),
-            email: relationship_manager?.email!,
-            userId: relationship_manager?._id.toString(),
-            notification: new Notification({
-              title: "Client membership activated successfully",
-              description: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
-              type: "SUBSCRIPTION",
-              action: "customer.view",
-              actionText: "view client",
-              symbol: "🎉",
-            }),
-            subject: "New client activated",
-          });
+          if (relationship_manager) {
+            EmailQueue.add("relationship manager subscription taken", {
+              action: "SUBSCRIPTION",
+              data: commonTemplate({
+                title: "New client activated",
+                content: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
+                name: relationship_manager?.name!,
+                buttonText: "View Client",
+                buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
+              }),
+              email: relationship_manager?.email!,
+              userId: relationship_manager?._id.toString(),
+              notification: new Notification({
+                title: "Client membership activated successfully",
+                description: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
+                type: "SUBSCRIPTION",
+                action: "customer.view",
+                actionText: "view client",
+                symbol: "🎉",
+              }),
+              subject: "New client activated",
+            });
+          }
         }
         // currently sending a notificaiton to only a owner
         await sendNotificationFCM({
@@ -191,7 +172,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           subscriptionId: event.payload?.subscription?.entity?.id,
         });
         // Update the user's subscription id and status
-        await Users.findOneAndUpdate(
+        var customer_charged = await Users.findOneAndUpdate(
           { _id: subs?.userId },
           {
             $set: {
@@ -200,6 +181,36 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         );
+
+        // Notify CS about payment success
+        if (customer_charged?.relationship_manager) {
+          const staff_charged = await Staff.findById(customer_charged.relationship_manager).populate("userId");
+          const relationship_manager_charged = staff_charged?.userId as any;
+
+          if (relationship_manager_charged) {
+            EmailQueue.add("CS payment success", {
+              action: "SUBSCRIPTION",
+              data: commonTemplate({
+                title: "Payment successful",
+                content: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_SUCCESSFUL,
+                name: relationship_manager_charged?.name!,
+                buttonText: "View Client",
+                buttonLink: `${FRONTEND_URL}/customers/${subs?.userId}`,
+              }),
+              email: relationship_manager_charged?.email!,
+              userId: relationship_manager_charged?._id.toString(),
+              notification: new Notification({
+                title: "Client payment successful",
+                description: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_SUCCESSFUL,
+                type: "SUBSCRIPTION",
+                action: "customer.view",
+                actionText: "view client",
+                symbol: "💰",
+              }),
+              subject: "Client payment successful",
+            });
+          }
+        }
         break;
 
       case "subscription.pending":

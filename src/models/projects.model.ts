@@ -13,6 +13,7 @@ export interface IProject {
   startDate: Date;
   deadline: Date;
   status: string;
+  idleNotificationSent?: boolean;
 }
 
 const ProjectSchema = new Schema<IProject>(
@@ -57,6 +58,7 @@ const ProjectSchema = new Schema<IProject>(
         "closed",
       ],
     },
+    idleNotificationSent: { type: Boolean, default: false },
   },
   { collection: "projects", timestamps: true }
 );

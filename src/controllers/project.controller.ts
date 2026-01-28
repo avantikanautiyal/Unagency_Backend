@@ -8,7 +8,7 @@ import { createRoomForProject } from "../services/Chatstream";
 import Organizations from "../models/organization.model";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
-import { IStaff } from "../models/staff.model";
+import Staff, { IStaff } from "../models/staff.model";
 import { v6 as uuid6 } from "uuid";
 import ChatRoom from "../models/chatRoom.model";
 import ProjectLogs from "../models/projectlogs.model";
@@ -111,6 +111,36 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
     }),
     user: customer as any,
   });
+
+  // Notify CS about project creation
+  if (customer?.relationship_manager) {
+    const staff = await Staff.findById(customer.relationship_manager).populate("userId");
+    const relationship_manager = staff?.userId as any;
+
+    if (relationship_manager) {
+      EmailQueue.add("CS project created", {
+        action: "PROJECT",
+        data: commonTemplate({
+          title: "New project created",
+          content: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_CREATED,
+          name: relationship_manager?.name!,
+          buttonText: "View Project",
+          buttonLink: `${FRONTEND_URL}/project-logs/${create?._id.toString()}`,
+        }),
+        email: relationship_manager?.email!,
+        userId: relationship_manager?._id.toString(),
+        notification: new Notification({
+          title: "New project created",
+          description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_CREATED,
+          type: "PROJECT",
+          action: "project.view",
+          actionText: "view project",
+          symbol: "🚀",
+        }),
+        subject: "New project created",
+      });
+    }
+  }
   await ProjectLogs.create({
     projectId: create?._id,
     ActionType: "planning",
@@ -270,6 +300,7 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
           description: body?.description,
           startDate: body?.startDate,
           deadline: body?.deadline,
+          idleNotificationSent: false,
         },
       }
     );
@@ -504,7 +535,7 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
       return new ApiResponse(409, null, "Already in records");
     }
     const update = await Projects.findByIdAndUpdate(projectId, {
-      $set: { status: stage },
+      $set: { status: stage, idleNotificationSent: false },
     });
     const create = await ProjectLogs.create({
       projectId: projectId,
@@ -554,6 +585,61 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
       }),
       user: customer as any,
     });
+
+    // Notify CS about project status updates
+    if (customer?.relationship_manager) {
+      const staff = await Staff.findById(customer.relationship_manager).populate("userId");
+      const relationship_manager_log = staff?.userId as any;
+
+      if (relationship_manager_log) {
+        if (stage === "approved") {
+          EmailQueue.add("CS project delivery sent", {
+            action: "PROJECT",
+            data: commonTemplate({
+              title: "Project delivery sent",
+              content: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_DELIVERY_SENT,
+              name: relationship_manager_log?.name!,
+              buttonText: "View Project",
+              buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
+            }),
+            email: relationship_manager_log?.email!,
+            userId: relationship_manager_log?._id.toString(),
+            notification: new Notification({
+              title: "Project delivery sent",
+              description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_DELIVERY_SENT,
+              type: "PROJECT",
+              action: "project.view",
+              actionText: "view project",
+              symbol: "📤",
+            }),
+            subject: "Project delivery sent",
+          });
+        }
+        if (stage === "closed") {
+          EmailQueue.add("CS project completed", {
+            action: "PROJECT",
+            data: commonTemplate({
+              title: "Project completed",
+              content: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_COMPLETED,
+              name: relationship_manager_log?.name!,
+              buttonText: "View Project",
+              buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
+            }),
+            email: relationship_manager_log?.email!,
+            userId: relationship_manager_log?._id.toString(),
+            notification: new Notification({
+              title: "Project completed",
+              description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_COMPLETED,
+              type: "PROJECT",
+              action: "project.view",
+              actionText: "view project",
+              symbol: "🏁",
+            }),
+            subject: "Project completed",
+          });
+        }
+      }
+    }
     return new ApiResponse(200, create, "Project log created successfully");
   } else {
     return new ApiResponse(401, null, "You are not assigned for this Customer");

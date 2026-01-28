@@ -19,6 +19,8 @@ export interface ITasks {
   | "approved";
 
   files: mongoose.Types.ObjectId[];
+  deadlineNotificationSent?: boolean;
+  overdueNotificationSent?: boolean;
 }
 
 const TaskSchema = new Schema<ITasks>(
@@ -49,6 +51,8 @@ const TaskSchema = new Schema<ITasks>(
         "approved",
       ],
     },
+    deadlineNotificationSent: { type: Boolean, default: false },
+    overdueNotificationSent: { type: Boolean, default: false },
   },
   { collection: "tasks", timestamps: true }
 );

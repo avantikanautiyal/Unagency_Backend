@@ -89,6 +89,17 @@ export const IN_APP_NOTIFICATION_MESSAGES = {
     // CS - Client Activity & Risk
     CS_CLIENT_MESSAGE: "New message from client.",
     CS_CLIENT_INACTIVE: "The client has not responded for 48 hours. Please follow up.",
+
+    // Resource - Task Notifications
+    RESOURCE_TASK_ASSIGNED: "A new task has been assigned to you.",
+    RESOURCE_FEEDBACK_ADDED: "New feedback has been added to your task.",
+    RESOURCE_TASK_SUBMITTED: "Task submitted for review.",
+    RESOURCE_TASK_REVISION: "Feedback requires revisions.",
+    RESOURCE_TASK_APPROVED: "Your task has been approved.",
+    RESOURCE_PRIORITY_CHANGED: "Task priority has been updated.",
+    RESOURCE_DEADLINE_APPROACHING: "Reminder: task deadline approaching.",
+    RESOURCE_TASK_OVERDUE: "Task deadline has passed.",
+    RESOURCE_TASK_COMPLETED: "Task marked as completed.",
 } as const;
 
 export type InAppNotificationKey = keyof typeof IN_APP_NOTIFICATION_MESSAGES;

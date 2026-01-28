@@ -4,6 +4,7 @@ import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
 import Tasks, { ITasks } from "../models/tasks.model";
 import Staff from "../models/staff.model";
+import MediaFile from "../models/mediaFile.model";
 import mongoose from "mongoose";
 import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
@@ -49,8 +50,23 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   }).populate("userId");
   if (!staff) return new ApiResponse(400, null, "Invalid resource Staff ID");
 
+  const files = req.files as Express.Multer.File[];
+  const fileIds: mongoose.Types.ObjectId[] = [];
+
+  if (files && files.length > 0) {
+    for (const file of files) {
+      const newFile = await MediaFile.create({
+        url: (file as any).location,
+        fileName: file.originalname,
+        uploadedAt: new Date(),
+      });
+      fileIds.push(newFile._id as mongoose.Types.ObjectId);
+    }
+  }
+
   const create = await Tasks.create({
     ...req.body,
+    files: fileIds,
     assignedTo: staff._id,
     assignedBy: req.user?.staff?._id,
   });
@@ -79,7 +95,7 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     action: "TASK",
     data: commonTemplate({
       title: "New task assigned",
-      content: `You have a new task assigned to you: ${create.title}`,
+      content: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_ASSIGNED,
       name: (staff?.userId as any)?.name!,
       buttonText: "View Task",
       buttonLink: `${FRONTEND_URL}/tasks/${create._id}`,
@@ -87,14 +103,14 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     email: (staff?.userId as any)?.email!,
     userId: staff?.userId?._id.toString(),
     notification: new Notification({
-      title: create.title,
-      description: create.description,
+      title: "New task assigned",
+      description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_ASSIGNED,
       type: "TASK",
       action: "task.open",
       actionText: "view task",
       symbol: "👨🏽‍💻",
     }),
-    subject: "New Task has been assigned to you",
+    subject: "New task assigned",
   });
 
   // Notify CS about task creation (in-app only, no email)
@@ -166,7 +182,8 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
       .populate({
         path: "project",
         select: "_id title",
-      });
+      })
+      .populate("files");
   } else if (role == "servicing") {
     query = await Tasks.find({ assignedBy: staffId })
       .populate({
@@ -190,7 +207,8 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
       .populate({
         path: "project",
         select: "_id title",
-      });
+      })
+      .populate("files");
   } else {
     query = null;
   }
@@ -216,9 +234,9 @@ const TaskListByUserId = asyncHandler(async (req: RequestUser) => {
 
   // Fetch tasks based on user role
   if (role === "resource") {
-    query = await Tasks.find({ assignedBy: staff._id });
+    query = await Tasks.find({ assignedBy: staff._id }).populate("files");
   } else if (role === "servicing") {
-    query = await Tasks.find({ assignedTo: staff._id });
+    query = await Tasks.find({ assignedTo: staff._id }).populate("files");
   } else {
     return new ApiResponse(403, null, "Access denied for this role");
   }
@@ -281,10 +299,32 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         select: "name email _id fcmTokens",
         model: "Users",
       },
+    })
+    .populate("files");
+
+
+
+  // Check for priority change
+  if (updates.priority && updatedTask && updates.priority !== updatedTask.priority) {
+    // Notify Resource about priority change (In-App Only)
+    EmailQueue.add("task priority changed", {
+      action: "TASK",
+      data: "", // No email
+      email: "", // No email
+      userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
+      notification: new Notification({
+        title: "Task priority changed",
+        description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_PRIORITY_CHANGED,
+        type: "TASK",
+        action: "task.open",
+        actionText: "view task",
+        symbol: "⚠️",
+      }),
+      subject: "",
     });
+  }
 
-
-
+  // Check for status change notifications
   switch (updates.status) {
     case "submitted":
       // here inform a task servicing manager
@@ -321,13 +361,30 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
           title: "Task submitted",
-          description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_SUBMITTED,
+          description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_SUBMITTED,
           type: "TASK",
           action: "task.open",
           actionText: "view task",
           symbol: "✅",
         }),
         subject: "Task submitted",
+      });
+
+      // Notify Resource (In-App Only)
+      EmailQueue.add("resource task submitted", {
+        action: "TASK",
+        data: "", // No email
+        email: "", // No email
+        userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
+        notification: new Notification({
+          title: "Task submitted",
+          description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_SUBMITTED,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "✅",
+        }),
+        subject: "",
       });
       // currently sending a notificaiton to only a owner
       await sendNotificationFCM({
@@ -349,7 +406,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         action: "TASK",
         data: commonTemplate({
           title: "Feedback added",
-          content: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
+          content: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_FEEDBACK_ADDED,
           name: (updatedTask?.assignedTo as any)?.userId?.name!,
           buttonText: "View Task",
           buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
@@ -358,7 +415,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
         notification: new Notification({
           title: "Feedback added",
-          description: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
+          description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_FEEDBACK_ADDED,
           type: "TASK",
           action: "task.open",
           actionText: "view task",
@@ -377,6 +434,52 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           symbol: "👷🏻",
         }),
         user: (updatedTask?.assignedTo as any)?.userId as any,
+      });
+      break;
+    case "revision":
+      EmailQueue.add("task revision", {
+        action: "TASK",
+        data: commonTemplate({
+          title: "Revision required",
+          content: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_REVISION,
+          name: (updatedTask?.assignedTo as any)?.userId?.name!,
+          buttonText: "View Task",
+          buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
+        }),
+        email: (updatedTask?.assignedTo as any)?.userId?.email!,
+        userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
+        notification: new Notification({
+          title: "Revision required",
+          description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_REVISION,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "🔄",
+        }),
+        subject: "Revision required",
+      });
+      break;
+    case "approved":
+      EmailQueue.add("task approved", {
+        action: "TASK",
+        data: commonTemplate({
+          title: "Task approved",
+          content: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_APPROVED,
+          name: (updatedTask?.assignedTo as any)?.userId?.name!,
+          buttonText: "View Task",
+          buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
+        }),
+        email: (updatedTask?.assignedTo as any)?.userId?.email!,
+        userId: (updatedTask?.assignedTo as any)?.userId?._id.toString(),
+        notification: new Notification({
+          title: "Task approved",
+          description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_APPROVED,
+          type: "TASK",
+          action: "task.open",
+          actionText: "view task",
+          symbol: "🎉",
+        }),
+        subject: "Task approved",
       });
       break;
     default:
@@ -450,7 +553,8 @@ const TaskListForResource = asyncHandler(async (req: RequestUser) => {
         select: "name email",
         model: "Users",
       },
-    });
+    })
+    .populate("files");
 
   return new ApiResponse(200, query, "Weekly Task List found");
 });

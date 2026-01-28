@@ -22,6 +22,7 @@ import RequirementRouter from "./routes/requirement.route";
 import TaskRouter from "./routes/tasks.route";
 import NotificationRouter from "./routes/notification.route"
 import planRouter from "./routes/plan.routes";
+import { TaskDeadlineQueue } from "./background/queue/taskDeadline.queue";
 
 // middleware
 import {

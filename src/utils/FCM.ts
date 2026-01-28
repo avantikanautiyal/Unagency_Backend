@@ -11,9 +11,11 @@ export async function sendNotificationFCM({
   user: UserType;
 }) {
   const fcmTokens = user.fcmTokens || [];
+  // Deduplicate tokens
+  const uniqueTokens = [...new Set(fcmTokens)];
 
-  if (!fcmTokens.length) {
-    console.log("No FCM tokens found for user:", user.userId);
+  if (!uniqueTokens.length) {
+    console.log("No unique FCM tokens found for user:", user.userId);
     return { sent: 0, removed: 0, failed: 0 };
   }
 
@@ -21,7 +23,7 @@ export async function sendNotificationFCM({
   let removed = 0;
   let failed = 0;
 
-  for (const token of fcmTokens) {
+  for (const token of uniqueTokens) {
     try {
       await firebaseAdmin.messaging().send({
         token,
@@ -49,7 +51,7 @@ export async function sendNotificationFCM({
 
         await Users.updateOne(
           { userId: user.userId },
-          { $pull: { FCM_TOKENS: token } }
+          { $pull: { fcmTokens: token } }
         );
 
         removed++;

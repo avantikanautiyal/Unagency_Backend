@@ -1,5 +1,6 @@
 import { Notification } from "../utils/notification";
 import { generateEmailOption, sendEmail } from "../../utils/emailsender";
+import { sendNotificationFCM } from "../../utils/FCM";
 import Users from "../../models/users.model";
 import Notifications from "../../models/notification.model";
 import { projectCreationTemplate } from "../../emailTemplates/projectCreation";
@@ -45,6 +46,12 @@ async function onProjectCreate(id: string, teamsEmail: string[], notification: N
 
     const user = await Users.findById(id);
     await Notifications.create({ ...notification, userId: user?._id });
+    if (user) {
+        await sendNotificationFCM({
+            notification,
+            user: user as any
+        })
+    }
     await sendEmail(generateEmailOption({
         email: teamsEmail.length > 0 ? [...teamsEmail, user?.email as string] : user?.email as string,
         subject: "Project is Created",
@@ -61,6 +68,12 @@ async function onProjectUpdate(id: string, teamsEmail: string[], notification: N
 
     const user = await Users.findById(id);
     await Notifications.create({ ...notification, userId: user?._id });
+    if (user) {
+        await sendNotificationFCM({
+            notification,
+            user: user as any
+        })
+    }
     await sendEmail(generateEmailOption({
         email: teamsEmail.length > 0 ? [...teamsEmail, user?.email as string] : user?.email as string,
         subject: "Project is Created",
@@ -75,6 +88,13 @@ async function onProjectUpdate(id: string, teamsEmail: string[], notification: N
 async function onRequirmentCreate({ customer, requirment, manager }: any, notification: Notification) {
     try {
         await Notifications.create({ ...notification, userId: manager?._id });
+        const user = await Users.findById(manager?._id);
+        if (user) {
+            await sendNotificationFCM({
+                notification,
+                user: user as any
+            })
+        }
         await sendEmail(generateEmailOption({
             email: manager?.userId?.email as string,
             subject: "Requirment is Created",
@@ -92,6 +112,13 @@ async function onRequirmentCreate({ customer, requirment, manager }: any, notifi
 async function onTaskAssign(data: any, notification: Notification) {
     try {
         await Notifications.create({ ...notification, userId: data?.userId });
+        const user = await Users.findById(data?.userId);
+        if (user) {
+            await sendNotificationFCM({
+                notification,
+                user: user as any
+            })
+        }
         await sendEmail(generateEmailOption({
             email: data.emails,
             subject: "Task is assigned",

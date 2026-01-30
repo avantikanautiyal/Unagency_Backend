@@ -161,6 +161,7 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
   const role = req.user?.role;
   if (role == "resource") {
     query = await Tasks.find({ assignedTo: staffId })
+      .sort({ createdAt: -1 })
       .populate({
         path: "assignedTo",
         select: "userId",
@@ -186,6 +187,7 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
       .populate("files");
   } else if (role == "servicing") {
     query = await Tasks.find({ assignedBy: staffId })
+      .sort({ createdAt: -1 })
       .populate({
         path: "assignedTo",
         select: "userId",
@@ -234,9 +236,13 @@ const TaskListByUserId = asyncHandler(async (req: RequestUser) => {
 
   // Fetch tasks based on user role
   if (role === "resource") {
-    query = await Tasks.find({ assignedBy: staff._id }).populate("files");
+    query = await Tasks.find({ assignedBy: staff._id })
+      .sort({ createdAt: -1 })
+      .populate("files");
   } else if (role === "servicing") {
-    query = await Tasks.find({ assignedTo: staff._id }).populate("files");
+    query = await Tasks.find({ assignedTo: staff._id })
+      .sort({ createdAt: -1 })
+      .populate("files");
   } else {
     return new ApiResponse(403, null, "Access denied for this role");
   }
@@ -582,6 +588,7 @@ const TaskListForResource = asyncHandler(async (req: RequestUser) => {
       $lte: sunday,
     },
   })
+    .sort({ createdAt: -1 })
     .populate({
       path: "assignedTo",
       select: "userId",

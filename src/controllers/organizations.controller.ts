@@ -10,8 +10,9 @@ import Users from "../models/users.model";
 
 import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { Notification } from "../background/utils/notification";
+import { parseNotificationContent } from "../utils/notificationUtils";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 //TESTED OK
@@ -58,26 +59,28 @@ const createOrganization = asyncHandler(
       });
 
       // Send Organization Created Email
+      // Send Organization Created Email
+      const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_body, { Name: req.user?.name || "User" });
       EmailQueue.add("ORG_CREATED", {
         action: "COMMON",
         data: commonTemplate({
           name: req.user?.name!,
-          content: IN_APP_NOTIFICATION_MESSAGES.ORG_CREATED,
-          title: "Your UNAGENCY workspace is ready.",
-          buttonText: "Go to Workspace",
+          content: notificationData.text,
+          title: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_subject,
+          buttonText: notificationData.cta,
           buttonLink: `${FRONTEND_URL}/dashboard`,
         }),
         email: req.user?.email!,
         userId: req.user?.userId.toString(),
         notification: new Notification({
-          title: "Workspace Created",
-          description: "Your UNAGENCY workspace is ready.",
+          title: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.in_app_title,
+          description: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.in_app_body,
           type: "COMMON",
-          action: "dashboard.open",
-          actionText: "open dashboard",
-          symbol: "🏢",
+          action: "/organization",
+          actionText: "view dashboard",
+          symbol: "🚀",
         }),
-        subject: "Your UNAGENCY workspace is ready.",
+        subject: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_subject,
       });
 
       // Notify CS about organization creation
@@ -90,8 +93,8 @@ const createOrganization = asyncHandler(
         EmailQueue.add("CS ORG_CREATED", {
           action: "COMMON",
           data: commonTemplate({
-            title: "Organisation created",
-            content: IN_APP_NOTIFICATION_MESSAGES.CS_ORG_CREATED,
+            title: NOTIFICATION_CONFIG.CS_ORG_CREATED.email_subject,
+            content: NOTIFICATION_CONFIG.CS_ORG_CREATED.email_body,
             name: relationship_manager?.name!,
             buttonText: "View Client",
             buttonLink: `${FRONTEND_URL}/customers/${req.user?.userId}`,
@@ -99,14 +102,14 @@ const createOrganization = asyncHandler(
           email: relationship_manager?.email!,
           userId: relationship_manager?._id.toString(),
           notification: new Notification({
-            title: "Client organisation created",
-            description: IN_APP_NOTIFICATION_MESSAGES.CS_ORG_CREATED,
+            title: NOTIFICATION_CONFIG.CS_ORG_CREATED.in_app_title,
+            description: NOTIFICATION_CONFIG.CS_ORG_CREATED.in_app_body,
             type: "COMMON",
             action: "customer.view",
             actionText: "view client",
             symbol: "🏢",
           }),
-          subject: "Organisation created",
+          subject: NOTIFICATION_CONFIG.CS_ORG_CREATED.email_subject,
         });
       }
 
@@ -173,8 +176,8 @@ const UpdateUserOrganization = asyncHandler(
         email: "",
         userId: relationship_manager?._id.toString(),
         notification: new Notification({
-          title: "Client organisation details updated",
-          description: IN_APP_NOTIFICATION_MESSAGES.CS_ORG_UPDATED,
+          title: NOTIFICATION_CONFIG.CS_ORG_UPDATED.in_app_title,
+          description: NOTIFICATION_CONFIG.CS_ORG_UPDATED.in_app_body,
           type: "COMMON",
           action: "customer.view",
           actionText: "view client",

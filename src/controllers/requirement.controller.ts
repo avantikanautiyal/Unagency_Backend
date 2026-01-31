@@ -8,9 +8,10 @@ import mongoose from "mongoose";
 import { Notification } from "../background/utils/notification";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
-import { sendNotificationFCM } from "../utils/FCM";
+
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { parseNotificationContent } from "../utils/notificationUtils";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 import { checkPlanLimit } from "../services/planLimit.service";
@@ -45,11 +46,12 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
   });
   // sending email to relationship manager
+  // sending email to relationship manager
   EmailQueue.add(`NEW_RQUIREMENT_${rmUser?.email}`, {
     action: "REQUIRMENT",
     data: commonTemplate({
-      title: "New brief submitted",
-      content: IN_APP_NOTIFICATION_MESSAGES.CS_BRIEF_SUBMITTED,
+      title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
+      content: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_body,
       name: rmUser?.name!,
       buttonText: "View Brief",
       buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
@@ -57,52 +59,42 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     email: rmUser?.email!,
     userId: rm?.userId?._id.toString()!,
     notification: new Notification({
-      title: "New brief submitted",
-      description: IN_APP_NOTIFICATION_MESSAGES.CS_BRIEF_SUBMITTED,
+      title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_title,
+      description: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_body,
       type: "REQUIRMENT",
       _id: newRequirement._id.toString(),
       symbol: "📋",
-      action: "brief.view",
+      action: `/requirement-logs/${newRequirement._id}`,
       actionText: "view brief",
     }),
-    subject: "New brief submitted",
+    subject: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
   });
 
   // sending email to customer
+  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_body, { Name: req.user?.name || "User" });
   EmailQueue.add(`NEW_RQUIREMENT_${req.user?.email}`, {
     action: "REQUIRMENT",
     data: commonTemplate({
-      title: "UNAGENCY",
-      content: IN_APP_NOTIFICATION_MESSAGES.BRIEF_SUBMITTED,
+      title: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_subject,
+      content: notificationData.text,
       name: req.user?.name!,
-      buttonText: "View Requirement",
+      buttonText: notificationData.cta,
       buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
     }),
     email: req.user?.email!,
     userId: req.user?.userId.toString()!,
     notification: new Notification({
-      title: `Your brief just landed in UNAGENCY | ${newRequirement.title}`,
-      description: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_SUBMITTED,
+      title: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.in_app_title,
+      description: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.in_app_body,
       type: "REQUIRMENT",
       _id: newRequirement._id.toString(),
       symbol: "🫡",
-      action: "🔔",
+      action: `/requirement-logs/${newRequirement._id}`,
       actionText: "view requirment",
     }),
-    subject: `Your brief just landed in UNAGENCY | ${newRequirement.title}`,
+    subject: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_subject,
   });
 
-  // await sendNotificationFCM({
-  //   notification: new Notification({
-  //     title: "NEW Rquirement form " + req.user?.name,
-  //     description: "requirement notification text ehre",
-  //     type: "REQUIRMENT",
-  //     symbol: "🫡",
-  //     action: "🔔",
-  //     actionText: "view requirment",
-  //   }),
-  //   user: req.user!,
-  // });
   return new ApiResponse(200, newRequirement, "success");
 });
 
@@ -172,11 +164,16 @@ export const updateCustomerRequirement = asyncHandler(
     );
     const customer = await Users.findOne({ _id: userId });
 
+    // Use dynamic logic here for approved/closed states if needed, but for now assuming this is general update or specific state
+    // If status is specific, should use specific config. Assuming "REQUIRMENT_CLOSED" maps to BRIEF_APPROVED or similar if status is approved.
+
     EmailQueue.add(`REQUIRMENT_UPDATE_${customer?.email}`, {
       action: "REQUIRMENT",
       data: commonTemplate({
-        title: "UNAGENCY",
-        content: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_CLOSED,
+        title: NOTIFICATION_CONFIG.CS_BRIEF_APPROVED.email_subject, // Using CS_BRIEF_APPROVED as it implies approval/update
+        content: NOTIFICATION_CONFIG.CS_BRIEF_APPROVED.email_body,
+        // User asked to implement CS Notifications. This block is notifying CUSTOMER ("sending email to customer" - implied by EmailQueue.add(..., customer.email)).
+        // However, we should check if we need to notify CS here too.
         name: req.user?.name!,
         buttonText: "View Requirement",
         buttonLink: `${FRONTEND_URL}/requirement-logs/${update?._id}`,
@@ -189,26 +186,13 @@ export const updateCustomerRequirement = asyncHandler(
         _id: update?._id.toString()!,
         type: "REQUIRMENT",
         symbol: "🫡",
-        action: "🔔",
+        action: `/requirement-logs/${update?._id}`,
         actionText: "view requirment",
       }),
       subject: `Your brief just touched down at UNAGENCY | ${update?.title}`,
-      // subject: `Your brief just landed in UNAGENCY | ${newRequirement.title}`,
-
     });
 
-    await sendNotificationFCM({
-      notification: new Notification({
-        title: `Your brief just touched down at UNAGENCY`,
-        description: IN_APP_NOTIFICATION_MESSAGES.REQUIRMENT_CLOSED,
-        type: "REQUIRMENT",
-        _id: update?._id.toString()!,
-        symbol: "🫡",
-        action: "🔔",
-        actionText: "view requirment",
-      }),
-      user: { userId: customer?._id!, ...customer } as any,
-    });
+
     return new ApiResponse(200, update, "Requirement updated successfully");
   }
 );

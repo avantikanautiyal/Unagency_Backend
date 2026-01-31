@@ -12,6 +12,8 @@ import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { parseNotificationContent } from "../utils/notificationUtils";
 const TECH_SUPPORT_EMAIL = process.env.TECH_SUPPORT_EMAIL;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const BACKEND_URL = process.env.BACKEND_URL || "https://api.unagency.app";
@@ -72,25 +74,29 @@ const Register = asyncHandler(async (req, res) => {
           } as any); // Registring Get Stream IO User
 
           if (!relationshipManager) {
+            const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.FIRST_LOGIN.email_body, { Name: verification.name || "User" });
             EmailQueue.add("user register", {
               action: "COMMON",
               data: commonTemplate({
                 name: verification.name,
-                content: "Welcome to UNAGENCY",
-                title: "Welcome to UNAGENCY",
+                content: notificationData.text,
+                title: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject,
+                buttonText: notificationData.cta,
+                buttonLink: `${FRONTEND_URL}/dashboard`, // As per "Start Tour" or Dashboard
+                showFeatures: true
               })
 
               ,
               email: verification?.email!,
               notification: new Notification({
-                title: "NEW Rquirement form ",
-                description: "requirement notification text here",
+                title: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_title.replace("[Name]", verification.name || "User"),
+                description: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_body,
                 type: "COMMON",
                 actionText: "view plans",
-                action: "plans.view",
+                action: "/membership",
                 symbol: "✨",
               }),
-              subject: "Hi we will be assigning you a manger soon",
+              subject: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", verification.name || "User"),
             });
             EmailQueue.add("user not assigned", {
               action: "COMMON",
@@ -108,7 +114,7 @@ const Register = asyncHandler(async (req, res) => {
                 description: "not assignet to any tech supprot",
                 type: "COMMON",
                 symbol: "📣",
-                action: "message.start",
+                action: "/messages",
                 actionText: "contact us",
               }) as any,
               subject:
@@ -201,25 +207,29 @@ const NewRegister = asyncHandler(async (req) => {
       userRole: create.role,
     });
 
+    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.FIRST_LOGIN.email_body, { Name: create.name || "User" });
     EmailQueue.add("user register", {
       action: "COMMON",
       data: commonTemplate({
         name: create.name,
-        content: "Welcome to UNAGENCY",
-        title: "Welcome to UNAGENCY",
+        content: notificationData.text,
+        title: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", create.name || "User"),
+        buttonText: notificationData.cta,
+        buttonLink: `${FRONTEND_URL}/dashboard`,
+        showFeatures: true
       })
 
       ,
       email: create?.email!,
       notification: new Notification({
-        title: "NEW Rquirement form ",
-        description: "requirement notification text here",
+        title: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_title.replace("[Name]", create.name || "User"),
+        description: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_body,
         type: "COMMON",
         actionText: "view plans",
-        action: "plans.view",
+        action: "/membership",
         symbol: "✨",
       }),
-      subject: "Hi we will be assigning you a manger soon",
+      subject: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", create.name || "User"),
     });
 
     if (!relationshipManager) {
@@ -248,7 +258,7 @@ const NewRegister = asyncHandler(async (req) => {
             title: "Not assigned to any manager",
             description: "not assigned to any tech support",
             type: "COMMON",
-            action: "message.open",
+            action: "/messages",
             actionText: "contact us",
             symbol: "🔔" // generated symbol for notification
           }
@@ -351,25 +361,26 @@ const forgetPassword = asyncHandler(async (req: RequestUser) => {
   } catch {
     // fallback to firebaseActionLink
   }
+  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.email_body, { Name: user?.name || "User" });
   EmailQueue.add("password reset", {
     action: "COMMON",
     data: commonTemplate({
       name: user?.name!,
-      content: "Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling.",
-      title: "UNAGENCY",
-      buttonText: "Reset Password",
+      content: notificationData.text,
+      title: NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.email_subject,
+      buttonText: notificationData.cta,
       buttonLink: passwordResetLink,
     }),
     email: user?.email!,
     notification: new Notification({
-      title: "Password Reset",
-      description: "your password reset link sent to your email",
+      title: NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.in_app_title,
+      description: NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.in_app_body,
       type: "COMMON",
       actionText: "",
       action: "auth.reset-password",
       symbol: "✨",
     }),
-    subject: "Reset your UNAGENCY password.",
+    subject: NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.email_subject.replace("[Name]", user?.name || "User"), // Though subject in config doesn't have [Name] but safeguard
   });
 
   return new ApiResponse(200, { message: "password reset mail sent successfully" }, "Password reset link sent successfully.");
@@ -392,25 +403,26 @@ const sendEmailVerificationEmail = asyncHandler(async (req: RequestUser) => {
   user.emailVerificationCode = uuid;
   await user.save();
 
+  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.EMAIL_VERIFICATION_REQUIRED.email_body, { Name: user?.name || "User" });
   EmailQueue.add("Email Verificaiton mail", {
     action: "COMMON",
     data: commonTemplate({
       name: user?.name!,
-      content: "UNAGENCY access needs one tiny checkbox: verify your email.",
-      title: "UNAGENCY",
-      buttonText: "verify email",
+      content: notificationData.text,
+      title: NOTIFICATION_CONFIG.EMAIL_VERIFICATION_REQUIRED.email_subject,
+      buttonText: notificationData.cta,
       buttonLink: `${BACKEND_URL}/auth/verify-email?code=${uuid}&id=${user?.firebaseId}`,
     }),
     email: user?.email!,
     notification: new Notification({
-      title: "Email verification",
-      description: "your email verification link sent to your email",
+      title: NOTIFICATION_CONFIG.EMAIL_VERIFICATION_REQUIRED.in_app_title,
+      description: NOTIFICATION_CONFIG.EMAIL_VERIFICATION_REQUIRED.in_app_body,
       type: "COMMON",
       actionText: "",
       action: "auth.verify",
       symbol: "✨",
     }),
-    subject: "Your UNAGENCY verification mail",
+    subject: NOTIFICATION_CONFIG.EMAIL_VERIFICATION_REQUIRED.email_subject,
   });
 
   return new ApiResponse(200, { message: "email verification link sent successfully" }, "email verification link sent successfully.");
@@ -441,24 +453,27 @@ const verifyEmail = asyncHandler(async (req: RequestUser, res) => {
   user.isVerified = true;
   await user.save();
 
+  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.EMAIL_VERIFIED.email_body, { Name: user?.name || "User" });
   EmailQueue.add("Email Verificaiton mail", {
     action: "COMMON",
     data: commonTemplate({
       name: user?.name!,
-      content: "Your email’s verified, your seat’s saved, and the creative runway is clear. Let’s make something wild.",
-      title: "UNAGENCY",
+      content: notificationData.text,
+      title: NOTIFICATION_CONFIG.EMAIL_VERIFIED.email_subject,
+      buttonText: notificationData.cta,
+      buttonLink: `${FRONTEND_URL}/dashboard`
     }),
     email: user?.email!,
-    userId : user._id  + "",
+    userId: user._id + "",
     notification: new Notification({
-      title: "Verified! You’re officially part of UNAGENCY.",
-      description: "your email verification link sent to your email",
+      title: NOTIFICATION_CONFIG.EMAIL_VERIFIED.in_app_title,
+      description: NOTIFICATION_CONFIG.EMAIL_VERIFIED.in_app_body,
       type: "COMMON",
       actionText: "",
       action: "auth.verify",
       symbol: "✨",
     }),
-    subject: "You’re verified, welcome to the crew.",
+    subject: NOTIFICATION_CONFIG.EMAIL_VERIFIED.email_subject,
   });
 
   res.redirect(`${FRONTEND_URL}/verify-email?code=${query.code}&id=${query.id}`);

@@ -5,11 +5,12 @@ import crypto from "crypto";
 import Users from "../models/users.model";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
-import { sendNotificationFCM } from "../utils/FCM";
+
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { parseNotificationContent } from "../utils/notificationUtils";
 
 const webhookSecret = "123456654321";
 export const razorpayWebhook = async (req: Request, res: Response) => {
@@ -120,8 +121,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             EmailQueue.add("relationship manager subscription taken", {
               action: "SUBSCRIPTION",
               data: commonTemplate({
-                title: "New client activated",
-                content: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
+                title: NOTIFICATION_CONFIG.CS_CLIENT_ACTIVATED.email_subject,
+                content: NOTIFICATION_CONFIG.CS_CLIENT_ACTIVATED.email_body,
                 name: relationship_manager?.name!,
                 buttonText: "View Client",
                 buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
@@ -129,29 +130,18 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
               email: relationship_manager?.email!,
               userId: relationship_manager?._id.toString(),
               notification: new Notification({
-                title: "Client membership activated successfully",
-                description: IN_APP_NOTIFICATION_MESSAGES.CS_CLIENT_MEMBERSHIP_ACTIVATED,
+                title: NOTIFICATION_CONFIG.CS_CLIENT_ACTIVATED.in_app_title,
+                description: NOTIFICATION_CONFIG.CS_CLIENT_ACTIVATED.in_app_body,
                 type: "SUBSCRIPTION",
                 action: "customer.view",
                 actionText: "view client",
                 symbol: "🎉",
               }),
-              subject: "New client activated",
+              subject: NOTIFICATION_CONFIG.CS_CLIENT_ACTIVATED.email_subject,
             });
           }
         }
-        // currently sending a notificaiton to only a owner
-        await sendNotificationFCM({
-          notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been activated",
-            type: "SUBSCRIPTION",
-            action: "subscription.open",
-            actionText: "view subscription",
-            symbol: "🍾",
-          }),
-          user: customer as any,
-        });
+
         // Mark user subscription active in DB
         break;
 
@@ -182,6 +172,31 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         );
 
+        if (customer_charged) {
+          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.email_body, { Name: customer_charged.name || "User" });
+          EmailQueue.add("payment success", {
+            action: "SUBSCRIPTION",
+            data: commonTemplate({
+              title: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.email_subject,
+              content: notificationData.text,
+              name: customer_charged.name,
+              buttonText: notificationData.cta,
+              buttonLink: `${FRONTEND_URL}/dashboard`,
+            }),
+            email: customer_charged.email,
+            userId: customer_charged._id.toString(),
+            notification: new Notification({
+              title: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.in_app_title,
+              description: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.in_app_body,
+              type: "SUBSCRIPTION",
+              action: "/membership",
+              actionText: "view subscription",
+              symbol: "💰",
+            }),
+            subject: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.email_subject,
+          });
+        }
+
         // Notify CS about payment success
         if (customer_charged?.relationship_manager) {
           const staff_charged = await Staff.findById(customer_charged.relationship_manager).populate("userId");
@@ -191,8 +206,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             EmailQueue.add("CS payment success", {
               action: "SUBSCRIPTION",
               data: commonTemplate({
-                title: "Payment successful",
-                content: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_SUCCESSFUL,
+                title: NOTIFICATION_CONFIG.CS_PAYMENT_SUCCESSFUL.email_subject,
+                content: NOTIFICATION_CONFIG.CS_PAYMENT_SUCCESSFUL.email_body,
                 name: relationship_manager_charged?.name!,
                 buttonText: "View Client",
                 buttonLink: `${FRONTEND_URL}/customers/${subs?.userId}`,
@@ -200,14 +215,14 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
               email: relationship_manager_charged?.email!,
               userId: relationship_manager_charged?._id.toString(),
               notification: new Notification({
-                title: "Client payment successful",
-                description: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_SUCCESSFUL,
+                title: NOTIFICATION_CONFIG.CS_PAYMENT_SUCCESSFUL.in_app_title,
+                description: NOTIFICATION_CONFIG.CS_PAYMENT_SUCCESSFUL.in_app_body,
                 type: "SUBSCRIPTION",
-                action: "customer.view",
+                action: `/customers/${subs?.userId}`,
                 actionText: "view client",
                 symbol: "💰",
               }),
-              subject: "Client payment successful",
+              subject: NOTIFICATION_CONFIG.CS_PAYMENT_SUCCESSFUL.email_subject,
             });
           }
         }
@@ -262,26 +277,27 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         var customer = await Users.findOne({ _id: subs?.userId });
 
         if (customer) {
+          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PAYMENT_FAILED.email_body, { Name: customer.name || "User" });
           EmailQueue.add("payment failed", {
             action: "SUBSCRIPTION",
             data: commonTemplate({
-              title: "Payment didn’t land. Let’s fix it.",
-              content: IN_APP_NOTIFICATION_MESSAGES.PAYMENT_FAILED,
+              title: NOTIFICATION_CONFIG.PAYMENT_FAILED.email_subject,
+              content: notificationData.text,
               name: customer?.name!,
-              buttonText: "Retry Payment",
+              buttonText: notificationData.cta,
               buttonLink: `${FRONTEND_URL}/subscription`,
             }),
             email: customer?.email!,
             userId: customer?._id.toString(),
             notification: new Notification({
-              title: "Payment failed",
-              description: "Payment didn’t land. Let’s fix it.",
+              title: NOTIFICATION_CONFIG.PAYMENT_FAILED.in_app_title,
+              description: NOTIFICATION_CONFIG.PAYMENT_FAILED.in_app_body,
               type: "SUBSCRIPTION",
-              action: "subscription.open",
+              action: "/membership",
               actionText: "view subscription",
               symbol: "💳",
             }),
-            subject: "Payment didn’t land. Let’s fix it.",
+            subject: NOTIFICATION_CONFIG.PAYMENT_FAILED.email_subject,
           });
 
           // Notify CS about payment failure
@@ -293,8 +309,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             EmailQueue.add("CS payment failed", {
               action: "SUBSCRIPTION",
               data: commonTemplate({
-                title: "Payment failed",
-                content: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_FAILED,
+                title: NOTIFICATION_CONFIG.CS_PAYMENT_FAILED.email_subject,
+                content: NOTIFICATION_CONFIG.CS_PAYMENT_FAILED.email_body,
                 name: relationship_manager?.name!,
                 buttonText: "View Client",
                 buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
@@ -302,14 +318,14 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
               email: relationship_manager?.email!,
               userId: relationship_manager?._id.toString(),
               notification: new Notification({
-                title: "Client payment failed",
-                description: IN_APP_NOTIFICATION_MESSAGES.CS_PAYMENT_FAILED,
+                title: NOTIFICATION_CONFIG.CS_PAYMENT_FAILED.in_app_title,
+                description: NOTIFICATION_CONFIG.CS_PAYMENT_FAILED.in_app_body,
                 type: "SUBSCRIPTION",
                 action: "customer.view",
                 actionText: "view client",
                 symbol: "⚠️",
               }),
-              subject: "Payment failed",
+              subject: NOTIFICATION_CONFIG.CS_PAYMENT_FAILED.email_subject,
             });
           }
         }
@@ -345,39 +361,30 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         );
         console.log("subscription cancelled customer : ", customer);
         // todo
+        // todo
+        const notificationDataCancelled = parseNotificationContent(NOTIFICATION_CONFIG.PLAN_EXPIRED.email_body, { Name: customer?.name || "User" });
         EmailQueue.add("subscription cancelled", {
           action: "SUBSCRIPTION",
           data: commonTemplate({
-            title: "Plan snoozed. Let’s wake it up.",
-            content: IN_APP_NOTIFICATION_MESSAGES.PLAN_EXPIRED,
+            title: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
+            content: notificationDataCancelled.text,
             name: customer?.name!,
-            buttonText: "Renew Plan",
+            buttonText: notificationDataCancelled.cta,
             buttonLink: `${FRONTEND_URL}/subscription`,
           }),
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
-            title: "Plan expired",
-            description: "Plan snoozed. Let’s wake it up.",
+            title: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_title,
+            description: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_body,
             type: "SUBSCRIPTION",
-            action: "subscription.open",
+            action: "/membership",
             actionText: "view subscription",
             symbol: "⏰",
           }),
-          subject: "Plan snoozed. Let’s wake it up.",
+          subject: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
         });
-        // currently sending a notificaiton to only a owner
-        await sendNotificationFCM({
-          notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been Cancelled",
-            type: "SUBSCRIPTION",
-            action: "subscription.open",
-            actionText: "view subscriptions",
-            symbol: "🍾",
-          }),
-          user: customer as any,
-        });
+
         // Mark as cancelled in DB
         break;
 
@@ -465,26 +472,28 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         );
 
         // Notify user about paused subscription
+        // Notify user about paused subscription
+        const notificationDataPaused = parseNotificationContent(NOTIFICATION_CONFIG.PLAN_EXPIRED.email_body, { Name: customer?.name || "User" });
         EmailQueue.add("subscription paused", {
           action: "SUBSCRIPTION",
           data: commonTemplate({
-            title: "Client account paused",
-            content: IN_APP_NOTIFICATION_MESSAGES.PLAN_EXPIRED,
+            title: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
+            content: notificationDataPaused.text,
             name: customer?.name!,
-            buttonText: "View Subscription",
+            buttonText: notificationDataPaused.cta,
             buttonLink: `${FRONTEND_URL}/subscription`,
           }),
           email: customer?.email!,
           userId: customer?._id.toString(),
           notification: new Notification({
-            title: "Client account paused due to subscription non-renewal",
-            description: IN_APP_NOTIFICATION_MESSAGES.PLAN_EXPIRED,
+            title: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_title,
+            description: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_body,
             type: "SUBSCRIPTION",
-            action: "subscription.open",
+            action: "/membership",
             actionText: "view subscription",
             symbol: "⏸️",
           }),
-          subject: "Client account paused",
+          subject: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
         });
 
         // Notify CS about account pause
@@ -496,8 +505,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           EmailQueue.add("CS subscription paused", {
             action: "SUBSCRIPTION",
             data: commonTemplate({
-              title: "Client account paused",
-              content: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_PAUSED,
+              title: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.email_subject,
+              content: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.email_body,
               name: rm_paused?.name!,
               buttonText: "View Client",
               buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
@@ -505,28 +514,18 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             email: rm_paused?.email!,
             userId: rm_paused?._id.toString(),
             notification: new Notification({
-              title: "Client account paused",
-              description: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_PAUSED,
+              title: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.in_app_title,
+              description: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.in_app_body,
               type: "SUBSCRIPTION",
               action: "customer.view",
               actionText: "view client",
               symbol: "⏸️",
             }),
-            subject: "Client account paused",
+            subject: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.email_subject,
           });
         }
 
-        await sendNotificationFCM({
-          notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been paused",
-            type: "SUBSCRIPTION",
-            action: "subscription.open",
-            actionText: "view subscription",
-            symbol: "⏸️",
-          }),
-          user: customer as any,
-        });
+
         break;
 
       case "subscription.resumed":
@@ -588,8 +587,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           EmailQueue.add("CS subscription resumed", {
             action: "SUBSCRIPTION",
             data: commonTemplate({
-              title: "Client account resumed",
-              content: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_RESUMED,
+              title: NOTIFICATION_CONFIG.CS_ACCOUNT_RESUMED.email_subject,
+              content: NOTIFICATION_CONFIG.CS_ACCOUNT_RESUMED.email_body,
               name: rm_resumed?.name!,
               buttonText: "View Client",
               buttonLink: `${FRONTEND_URL}/customers/${customer?._id}`,
@@ -597,28 +596,18 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             email: rm_resumed?.email!,
             userId: rm_resumed?._id.toString(),
             notification: new Notification({
-              title: "Client account resumed",
-              description: IN_APP_NOTIFICATION_MESSAGES.CS_ACCOUNT_RESUMED,
+              title: NOTIFICATION_CONFIG.CS_ACCOUNT_RESUMED.in_app_title,
+              description: NOTIFICATION_CONFIG.CS_ACCOUNT_RESUMED.in_app_body,
               type: "SUBSCRIPTION",
               action: "customer.view",
               actionText: "view client",
               symbol: "▶️",
             }),
-            subject: "Client account resumed",
+            subject: NOTIFICATION_CONFIG.CS_ACCOUNT_RESUMED.email_subject,
           });
         }
 
-        await sendNotificationFCM({
-          notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been resumed",
-            type: "SUBSCRIPTION",
-            action: "subscription.open",
-            actionText: "view subscription",
-            symbol: "▶️",
-          }),
-          user: customer as any,
-        });
+
         break;
 
       case "subscription.updated":
@@ -672,17 +661,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           subject: "Your subscription has been updated",
         });
 
-        await sendNotificationFCM({
-          notification: new Notification({
-            title: (subs?.planId as any)?.name!,
-            description: "Your subscription has been updated",
-            type: "SUBSCRIPTION",
-            action: "subscription.open",
-            actionText: "view subscription",
-            symbol: "🔄",
-          }),
-          user: customer as any,
-        });
+
         break;
 
       default:

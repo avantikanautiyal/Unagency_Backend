@@ -4,9 +4,10 @@ type CommonTemplateProps = {
     title: string;
     buttonText?: string;
     buttonLink?: string;
+    showFeatures?: boolean;
 }
 
-export function commonTemplate(props: CommonTemplateProps = { name: "", content: "", title: "Welcome to UNAGENCY" }) {
+export function commonTemplate(props: CommonTemplateProps = { name: "", content: "", title: "Welcome to UNAGENCY", showFeatures: false }) {
 
     return `
     <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -38,7 +39,7 @@ export function commonTemplate(props: CommonTemplateProps = { name: "", content:
                                         </div>
                                     </td>
                                     <td align="right" valign="middle">
-                                        <a href="#" style="background-color: #ffffff; color: #000000; text-decoration: none; padding: 8px 15px; font-size: 12px; font-weight: bold; border-radius: 4px; display: inline-block;">Explore Projects</a>
+                                        <a href="${process.env.FRONTEND_URL}/project-logs" style="background-color: #ffffff; color: #000000; text-decoration: none; padding: 8px 15px; font-size: 12px; font-weight: bold; border-radius: 4px; display: inline-block;">Explore Projects</a>
                                     </td>
                                 </tr>
                             </table>
@@ -65,6 +66,7 @@ export function commonTemplate(props: CommonTemplateProps = { name: "", content:
                             </p>
 
                             <!-- FEATURE BOX -->
+                            ${props.showFeatures ? `
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f9f9; border-radius: 8px; margin-bottom: 30px;">
                                 <tr>
                                     <td style="padding: 30px;">
@@ -121,6 +123,7 @@ export function commonTemplate(props: CommonTemplateProps = { name: "", content:
                                     </td>
                                 </tr>
                             </table>
+                            ` : ""}
 
                             <!-- CALL TO ACTION AREA -->
                             <table border="0" cellpadding="0" cellspacing="0" width="100%">
@@ -129,21 +132,7 @@ export function commonTemplate(props: CommonTemplateProps = { name: "", content:
                                         ${props.buttonText ? `<a href="${props.buttonLink ?? "#"}" style="background-color: #ea1b58; color: #ffffff; text-decoration: none; padding: 15px 30px; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 14px;">${props.buttonText}</a>` : ""}
                                     </td>
                                 </tr>
-                                <tr>
-                                    <td align="center">
-                                        <!-- Secondary Buttons Table for alignment -->
-                                        <table border="0" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="padding: 0 10px;">
-                                                    <a href="${process.env.FRONTEND_URL}/membership" style="background-color: #ffffff; border: 2px solid #ea1b58; color: #ea1b58; text-decoration: none; padding: 10px 25px; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 13px;">View Plans</a>
-                                                </td>
-                                                <td style="padding: 0 10px;">
-                                                    <a href="#" style="background-color: #ffffff; border: 2px solid #ea1b58; color: #ea1b58; text-decoration: none; padding: 10px 25px; border-radius: 5px; font-weight: bold; display: inline-block; font-size: 13px;">Invite Your Team</a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
+
                             </table>
 
                             <!-- PRE-FOOTER TEXT -->

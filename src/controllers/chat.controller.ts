@@ -89,7 +89,14 @@ export const getMyRelationShipManagerChat = asyncHandler(async (req: RequestUser
     type: 'messaging',
     members: [userId?.toString(), myRelationShipManger?.userId?.toString()]
   })
-  return new ApiResponse(200, { channelId: channels[0]?.id }, "manager chat fetch successfully");
+  return new ApiResponse(
+    200,
+    {
+      channelId: channels[0]?.id,
+      managerUserId: myRelationShipManger?.userId,
+    },
+    "manager chat fetch successfully"
+  );
 
 });
 

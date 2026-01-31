@@ -14,9 +14,10 @@ import ChatRoom from "../models/chatRoom.model";
 import ProjectLogs from "../models/projectlogs.model";
 import { Notification } from "../background/utils/notification";
 import { EmailQueue } from "../background/queue/email.queue";
-import { sendNotificationFCM } from "../utils/FCM";
+
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { parseNotificationContent } from "../utils/notificationUtils";
 import MediaFile from "../models/mediaFile.model";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
@@ -76,41 +77,30 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   )
   const create = await Projects.create({ ...body, files: mediaFileIds });
 
-  EmailQueue.add("PROJECT_INITIATED", {
+  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PROJECT_CREATED.email_body, { Name: customer?.name || "User" });
+  EmailQueue.add("PROJECT_CREATED", {
     action: "PROJECT",
     data: commonTemplate({
       name: customer?.name!,
-      content: IN_APP_NOTIFICATION_MESSAGES.PROJECT_INITIATED,
-      title: "UNAGENCY",
-      buttonText: "View Project",
+      content: notificationData.text,
+      title: NOTIFICATION_CONFIG.PROJECT_CREATED.email_subject,
+      buttonText: notificationData.cta,
       buttonLink: `${FRONTEND_URL}/project-logs/${create?._id.toString()}`,
     }),
     email: teamsEmail.join(","),
     userId: customer?._id.toString(),
     notification: new Notification({
-      title: create.title,
-      description: IN_APP_NOTIFICATION_MESSAGES.PROJECT_INITIATED,
+      title: NOTIFICATION_CONFIG.PROJECT_CREATED.in_app_title,
+      description: NOTIFICATION_CONFIG.PROJECT_CREATED.in_app_body,
       type: "PROJECT",
-      action: "project.open",
+      action: `/project-logs/${create._id}`,
       actionText: "view projects",
       _id: create._id.toString(),
       symbol: "🍾",
     }),
-    subject: "Your UNAGENCY project | " + create.title,
+    subject: NOTIFICATION_CONFIG.PROJECT_CREATED.email_subject,
   });
-  // currently sending a notificaiton to only a owner
-  await sendNotificationFCM({
-    notification: new Notification({
-      title: create.title,
-      description: "project onboarded successfully",
-      type: "PROJECT",
-      action: "project.open",
-      _id: create._id.toString(),
-      actionText: "view projects",
-      symbol: "🍾",
-    }),
-    user: customer as any,
-  });
+
 
   // Notify CS about project creation
   if (customer?.relationship_manager) {
@@ -121,8 +111,8 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       EmailQueue.add("CS project created", {
         action: "PROJECT",
         data: commonTemplate({
-          title: "New project created",
-          content: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_CREATED,
+          title: NOTIFICATION_CONFIG.CS_PROJECT_CREATED.email_subject,
+          content: NOTIFICATION_CONFIG.CS_PROJECT_CREATED.email_body,
           name: relationship_manager?.name!,
           buttonText: "View Project",
           buttonLink: `${FRONTEND_URL}/project-logs/${create?._id.toString()}`,
@@ -130,14 +120,14 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
         email: relationship_manager?.email!,
         userId: relationship_manager?._id.toString(),
         notification: new Notification({
-          title: "New project created",
-          description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_CREATED,
+          title: NOTIFICATION_CONFIG.CS_PROJECT_CREATED.in_app_title,
+          description: NOTIFICATION_CONFIG.CS_PROJECT_CREATED.in_app_body,
           type: "PROJECT",
           action: "project.view",
           actionText: "view project",
           symbol: "🚀",
         }),
-        subject: "New project created",
+        subject: NOTIFICATION_CONFIG.CS_PROJECT_CREATED.email_subject,
       });
     }
   }
@@ -551,40 +541,38 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
     const customer = await Users.findById(update?.userId);
     teamsEmail.push(customer?.email);
 
+    let notificationConfig: typeof NOTIFICATION_CONFIG[keyof typeof NOTIFICATION_CONFIG] = NOTIFICATION_CONFIG.PROJECT_STARTED; // Default fallback
+    if (stage === "initiated") notificationConfig = NOTIFICATION_CONFIG.PROJECT_STARTED;
+    if (stage === "delivered") notificationConfig = NOTIFICATION_CONFIG.PROJECT_MOVED_TO_REVIEW;
+    if (stage === "revision") notificationConfig = NOTIFICATION_CONFIG.PROJECT_MOVED_TO_REVISIONS;
+    if (stage === "approved") notificationConfig = NOTIFICATION_CONFIG.FINAL_DELIVERY_READY; // Or PROJECT_COMPLETED? No, approved means final files ready.
+    if (stage === "closed") notificationConfig = NOTIFICATION_CONFIG.PROJECT_COMPLETED;
+
+    const notificationData = parseNotificationContent(notificationConfig.email_body, { Name: customer?.name || "User" });
+
     EmailQueue.add(`PROJECT_${stage.toUpperCase()}`, {
       action: "PROJECT",
       data: commonTemplate({
         name: customer?.name!,
-        content: IN_APP_NOTIFICATION_MESSAGES[`PROJECT_${stage.toUpperCase()}` as keyof typeof IN_APP_NOTIFICATION_MESSAGES],
-        title: "UNAGENCY",
-        buttonText: "View Project",
+        content: notificationData.text,
+        title: notificationConfig.email_subject,
+        buttonText: notificationData.cta,
         buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
       }),
       userId: customer?._id.toString(),
       email: teamsEmail.join(","),
       notification: new Notification({
-        title: "Your UNAGENCY project | " + update?.title!,
-        description: IN_APP_NOTIFICATION_MESSAGES[`PROJECT_${stage.toUpperCase()}` as keyof typeof IN_APP_NOTIFICATION_MESSAGES],
+        title: notificationConfig.in_app_title,
+        description: notificationConfig.in_app_body,
         type: "PROJECT",
-        action: "project.open",
+        action: `/project-logs/${update?._id}`,
         _id: update?._id.toString(),
         actionText: "view projects",
         symbol: "🍾",
       }),
-      subject: "Your UNAGENCY project | " + update?.title!,
+      subject: notificationConfig.email_subject,
     });
-    // currently sending a notificaiton to only a owner
-    await sendNotificationFCM({
-      notification: new Notification({
-        title: "Your UNAGENCY project | " + update?.title!,
-        description: IN_APP_NOTIFICATION_MESSAGES[`PROJECT_${stage.toUpperCase()}` as keyof typeof IN_APP_NOTIFICATION_MESSAGES],
-        type: "PROJECT",
-        action: "project.open",
-        actionText: "view projects",
-        symbol: "🍾",
-      }),
-      user: customer as any,
-    });
+
 
     // Notify CS about project status updates
     if (customer?.relationship_manager) {
@@ -596,8 +584,8 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
           EmailQueue.add("CS project delivery sent", {
             action: "PROJECT",
             data: commonTemplate({
-              title: "Project delivery sent",
-              content: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_DELIVERY_SENT,
+              title: NOTIFICATION_CONFIG.CS_DELIVERY_SENT.email_subject,
+              content: NOTIFICATION_CONFIG.CS_DELIVERY_SENT.email_body,
               name: relationship_manager_log?.name!,
               buttonText: "View Project",
               buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
@@ -605,22 +593,22 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
             email: relationship_manager_log?.email!,
             userId: relationship_manager_log?._id.toString(),
             notification: new Notification({
-              title: "Project delivery sent",
-              description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_DELIVERY_SENT,
+              title: NOTIFICATION_CONFIG.CS_DELIVERY_SENT.in_app_title,
+              description: NOTIFICATION_CONFIG.CS_DELIVERY_SENT.in_app_body,
               type: "PROJECT",
               action: "project.view",
               actionText: "view project",
               symbol: "📤",
             }),
-            subject: "Project delivery sent",
+            subject: NOTIFICATION_CONFIG.CS_DELIVERY_SENT.email_subject,
           });
         }
         if (stage === "closed") {
           EmailQueue.add("CS project completed", {
             action: "PROJECT",
             data: commonTemplate({
-              title: "Project completed",
-              content: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_COMPLETED,
+              title: NOTIFICATION_CONFIG.CS_PROJECT_COMPLETED.email_subject,
+              content: NOTIFICATION_CONFIG.CS_PROJECT_COMPLETED.email_body,
               name: relationship_manager_log?.name!,
               buttonText: "View Project",
               buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
@@ -628,14 +616,14 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
             email: relationship_manager_log?.email!,
             userId: relationship_manager_log?._id.toString(),
             notification: new Notification({
-              title: "Project completed",
-              description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_COMPLETED,
+              title: NOTIFICATION_CONFIG.CS_PROJECT_COMPLETED.in_app_title,
+              description: NOTIFICATION_CONFIG.CS_PROJECT_COMPLETED.in_app_body,
               type: "PROJECT",
               action: "project.view",
               actionText: "view project",
               symbol: "🏁",
             }),
-            subject: "Project completed",
+            subject: NOTIFICATION_CONFIG.CS_PROJECT_COMPLETED.email_subject,
           });
         }
       }

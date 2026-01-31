@@ -71,6 +71,7 @@ export async function RegisterIfNot(
             name: verification.name,
             content: "Welcome to UNAGENCY",
             title: "Welcome to UNAGENCY",
+            showFeatures: true
           }),
           // "Welcome to UNAGENCY " + verification.email,
           email: verification.email!,

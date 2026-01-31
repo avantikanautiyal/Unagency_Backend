@@ -9,9 +9,9 @@ import mongoose from "mongoose";
 import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
 import { EmailQueue } from "../background/queue/email.queue";
-import { sendNotificationFCM } from "../utils/FCM";
+
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
@@ -106,7 +106,7 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       title: "New task assigned",
       description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_ASSIGNED,
       type: "TASK",
-      action: "task.open",
+      action: `/tasks/${create._id}`,
       actionText: "view task",
       symbol: "👨🏽‍💻",
     }),
@@ -114,34 +114,24 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   });
 
   // Notify CS about task creation (in-app only, no email)
+  // Notify CS about task creation (in-app only, no email)
   EmailQueue.add("CS task created", {
     action: "TASK",
     data: "",
     email: "",
     userId: req.user?.userId!,
     notification: new Notification({
-      title: "A new task has been created",
-      description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_CREATED,
+      title: NOTIFICATION_CONFIG.CS_TASK_CREATED.in_app_title,
+      description: NOTIFICATION_CONFIG.CS_TASK_CREATED.in_app_body,
       type: "TASK",
-      action: "task.view",
+      action: `/tasks/${create._id}`, // Assuming CS views same link?
       actionText: "view task",
       symbol: "📝",
     }),
     subject: "",
   });
 
-  // currently sending a notificaiton to only a owner
-  await sendNotificationFCM({
-    notification: new Notification({
-      title: create.title,
-      description: create.description,
-      type: "TASK",
-      action: "task.open",
-      actionText: "view task",
-      symbol: "🍾",
-    }),
-    user: staff?.userId as any,
-  });
+
 
   return new ApiResponse(200, create, "Task assigned successfully");
 });
@@ -322,7 +312,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         title: "Task priority changed",
         description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_PRIORITY_CHANGED,
         type: "TASK",
-        action: "task.open",
+        action: `/tasks/${taskId}`,
         actionText: "view task",
         symbol: "⚠️",
       }),
@@ -357,8 +347,8 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       EmailQueue.add("task updation", {
         action: "TASK",
         data: commonTemplate({
-          title: "Task submitted",
-          content: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_SUBMITTED,
+          title: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.email_subject,
+          content: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.email_body,
           name: (updatedTask?.assignedBy as any)?.userId?.name!,
           buttonText: "View Task",
           buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
@@ -366,14 +356,14 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         email: (updatedTask?.assignedBy as any)?.userId?.email!,
         userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
-          title: "Task submitted",
-          description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_SUBMITTED,
+          title: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.in_app_title,
+          description: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.in_app_body,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "✅",
         }),
-        subject: "Task submitted",
+        subject: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.email_subject,
       });
 
       // Notify Resource (In-App Only)
@@ -386,24 +376,13 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: "Task submitted",
           description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_SUBMITTED,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "✅",
         }),
         subject: "",
       });
-      // currently sending a notificaiton to only a owner
-      await sendNotificationFCM({
-        notification: new Notification({
-          title: updatedTask?.title!,
-          description: updatedTask?.description!,
-          type: "TASK",
-          action: "task.open",
-          actionText: "view task",
-          symbol: "🍾",
-        }),
-        user: (updatedTask?.assignedBy as any)?.userId as any,
-      });
+
 
 
       break;
@@ -423,31 +402,21 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: "Feedback added",
           description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_FEEDBACK_ADDED,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "💬",
         }),
         subject: "Feedback added",
       });
 
-      await sendNotificationFCM({
-        notification: new Notification({
-          title: updatedTask?.title!,
-          description: updatedTask?.description!,
-          type: "TASK",
-          action: "task.open",
-          actionText: "view task",
-          symbol: "👷🏻",
-        }),
-        user: (updatedTask?.assignedTo as any)?.userId as any,
-      });
+
 
       // Notify CS about feedback added
       EmailQueue.add("CS feedback added", {
         action: "TASK",
         data: commonTemplate({
-          title: "Feedback added",
-          content: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
+          title: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.email_subject,
+          content: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.email_body,
           name: (updatedTask?.assignedBy as any)?.userId?.name!,
           buttonText: "View Task",
           buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
@@ -455,14 +424,14 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         email: (updatedTask?.assignedBy as any)?.userId?.email!,
         userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
-          title: "Feedback added",
-          description: IN_APP_NOTIFICATION_MESSAGES.CS_FEEDBACK_ADDED,
+          title: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.in_app_title,
+          description: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.in_app_body,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "💬",
         }),
-        subject: "Feedback added",
+        subject: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.email_subject,
       });
       break;
     case "revision":
@@ -481,7 +450,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: "Revision required",
           description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_REVISION,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "🔄",
         }),
@@ -504,7 +473,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: "Task approved",
           description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_APPROVED,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "🎉",
         }),
@@ -515,23 +484,23 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       EmailQueue.add("CS task approved", {
         action: "TASK",
         data: commonTemplate({
-          title: "Task approved",
-          content: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_APPROVED,
+          title: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_title,
+          content: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_body, // No email body defined in config, using in-app or custom? Using in_app_body which is "Task approved successfully."
           name: (updatedTask?.assignedBy as any)?.userId?.name!,
           buttonText: "View Task",
           buttonLink: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
         }),
-        email: (updatedTask?.assignedBy as any)?.userId?.email!,
+        email: (updatedTask?.assignedBy as any)?.userId?.email!, // Config had email_body as "", but here we are sending email. Should I use default? 
         userId: (updatedTask?.assignedBy as any)?.userId?._id.toString(),
         notification: new Notification({
-          title: "Task approved",
-          description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_APPROVED,
+          title: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_title,
+          description: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_body,
           type: "TASK",
-          action: "task.open",
+          action: `/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "🎉",
         }),
-        subject: "Task approved",
+        subject: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_title, // Title as subject if subject is empty? user said email_subject for Task Approved is "Task approved successfully."
       });
       break;
     default:

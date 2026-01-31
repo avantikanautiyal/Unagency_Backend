@@ -9,8 +9,9 @@ import Organizations from "../models/organization.model";
 import mongoose from "mongoose";
 import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { Notification } from "../background/utils/notification";
+import { parseNotificationContent } from "../utils/notificationUtils";
 
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
@@ -42,54 +43,51 @@ const RemoveMemberInOrganization = asyncHandler(
           const removedUser = await Users.findById(userId);
           if (removedUser) {
             // Notify removed member
+            // Notify removed member
+            const notificationDataSelf = parseNotificationContent(NOTIFICATION_CONFIG.REMOVED_FROM_WORKSPACE.email_body, { Name: removedUser.name || "User" });
             EmailQueue.add("YOU_ARE_REMOVED_FROM_WORKSPACE", {
               action: "COMMON",
               data: commonTemplate({
                 name: removedUser.name,
-                content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_REMOVED_SELF.replace(
-                  "[Member Name]",
-                  removedUser.name
-                ),
-                title: "You are removed from workspace",
-                buttonText: "Go to UNAGENCY",
+                content: notificationDataSelf.text,
+                title: NOTIFICATION_CONFIG.REMOVED_FROM_WORKSPACE.email_subject,
+                buttonText: notificationDataSelf.cta,
                 buttonLink: `${FRONTEND_URL}`,
               }),
               email: removedUser.email,
               userId: removedUser._id.toString(),
               notification: new Notification({
-                title: "Member removed from workspace",
-                description: IN_APP_NOTIFICATION_MESSAGES.MEMBER_REMOVED_SELF.replace(
-                  "[Member Name]",
-                  removedUser.name
-                ),
+                title: NOTIFICATION_CONFIG.REMOVED_FROM_WORKSPACE.in_app_title,
+                description: NOTIFICATION_CONFIG.REMOVED_FROM_WORKSPACE.in_app_body,
                 type: "COMMON",
-                action: "workspace.removed",
+                action: "/organization",
                 actionText: "view details",
                 symbol: "👋",
               }),
-              subject: "You are removed from workspace",
+              subject: NOTIFICATION_CONFIG.REMOVED_FROM_WORKSPACE.email_subject,
             });
 
+            const notificationDataRemoved = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_REMOVED.email_body, { Name: req.user?.name || "User", "Member Name": removedUser.name });
             EmailQueue.add("MEMBER_REMOVED", {
               action: "COMMON",
               data: commonTemplate({
                 name: req.user?.name!,
-                content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_REMOVED.replace("[Member Name]", removedUser.name),
-                title: "Team update in your UNAGENCY workspace.",
-                buttonText: "Manage Team",
+                content: notificationDataRemoved.text,
+                title: NOTIFICATION_CONFIG.MEMBER_REMOVED.email_subject,
+                buttonText: notificationDataRemoved.cta,
                 buttonLink: `${FRONTEND_URL}/settings/team`,
               }),
               email: req.user?.email!,
               userId: req.user?.userId.toString(),
               notification: new Notification({
-                title: "Member Removed",
-                description: `${removedUser.name} is no longer part of your workspace.`,
+                title: NOTIFICATION_CONFIG.MEMBER_REMOVED.in_app_title,
+                description: NOTIFICATION_CONFIG.MEMBER_REMOVED.in_app_body.replace("[Member Name]", removedUser.name),
                 type: "COMMON",
-                action: "team.open",
+                action: "/organization",
                 actionText: "manage team",
                 symbol: "👋",
               }),
-              subject: "Team update in your UNAGENCY workspace.",
+              subject: NOTIFICATION_CONFIG.MEMBER_REMOVED.email_subject,
             });
           }
         }
@@ -164,27 +162,28 @@ const InviteMemberInOrganization = asyncHandler(
       Organization: organization,
     });
 
+    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_INVITED.email_body, { Name: invitedUser.name || "User", "Inviter Name": req?.user?.name || "Someone" });
     EmailQueue.add("TEAM_INVITATION", {
       action: "COMMON",
       data: commonTemplate({
         name: invitedUser?.name!,
-        content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_INVITED.replace("[Name]", req?.user?.name!),
-        title: "You’ve been invited to UNAGENCY.",
-        buttonText: "Join Team",
+        content: notificationData.text,
+        title: NOTIFICATION_CONFIG.MEMBER_INVITED.email_subject,
+        buttonText: notificationData.cta,
         buttonLink: `${FRONTEND_URL}/invitation`,
       }),
       email: email,
       userId: invitedUser?._id.toString(),
       notification: new Notification({
-        title: "Team Invitation",
-        description: IN_APP_NOTIFICATION_MESSAGES.MEMBER_INVITED.replace("[Name]", req?.user?.name!),
+        title: NOTIFICATION_CONFIG.MEMBER_INVITED.in_app_title,
+        description: NOTIFICATION_CONFIG.MEMBER_INVITED.in_app_body.replace("[Name]", req?.user?.name || "Someone"),
         type: "COMMON",
-        action: "invitation.open",
+        action: "/invitation",
         actionText: "view invitation",
         _id: addMember._id.toString(),
         symbol: "🤝",
       }),
-      subject: "You’ve been invited to UNAGENCY.",
+      subject: NOTIFICATION_CONFIG.MEMBER_INVITED.email_subject,
     });
 
     return new ApiResponse(200, addMember, "Member invited successfully");
@@ -231,26 +230,27 @@ export const inviteAction = asyncHandler(async (req: RequestUser, res) => {
 
       // console.log(owner && memberUser, "owner", owner, "member teams", memberUser);
       if (owner && memberUser) {
+        const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_JOINED.email_body, { Name: owner.name, "Member Name": memberUser.name });
         EmailQueue.add("MEMBER_JOINED", {
           action: "COMMON",
           data: commonTemplate({
             name: owner.name,
-            content: IN_APP_NOTIFICATION_MESSAGES.MEMBER_JOINED.replace("[Member Name]", memberUser.name),
-            title: "New member joined your UNAGENCY workspace.",
-            buttonText: "View Team",
+            content: notificationData.text,
+            title: NOTIFICATION_CONFIG.MEMBER_JOINED.email_subject,
+            buttonText: notificationData.cta,
             buttonLink: `${FRONTEND_URL}/settings/team`,
           }),
           email: owner.email,
           userId: owner._id.toString(),
           notification: new Notification({
-            title: "New Member Joined",
-            description: `New member joined your workspace.`,
+            title: NOTIFICATION_CONFIG.MEMBER_JOINED.in_app_title,
+            description: NOTIFICATION_CONFIG.MEMBER_JOINED.in_app_body.replace("[Member Name]", memberUser.name),
             type: "COMMON",
-            action: "team.open",
+            action: "/organization",
             actionText: "view team",
             symbol: "👋",
           }),
-          subject: "New member joined your UNAGENCY workspace.",
+          subject: NOTIFICATION_CONFIG.MEMBER_JOINED.email_subject,
         });
       }
     }

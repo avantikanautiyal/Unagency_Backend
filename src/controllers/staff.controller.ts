@@ -7,7 +7,7 @@ import { createDistincChatRoom } from "../services/Chatstream";
 import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES } from "../utils/constant/emailConstants";
+import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
@@ -117,10 +117,10 @@ const AssignManagerToCustomer = asyncHandler(async (req, res) => {
     email: (checkStaff?.userId as any)?.email!,
     userId: (checkStaff?.userId as any)?._id.toString(),
     notification: new Notification({
-      title: "New client assigned",
-      description: IN_APP_NOTIFICATION_MESSAGES.CS_ASSIGNED_TO_CLIENT,
+      title: NOTIFICATION_CONFIG.CS_ASSIGNED_TO_CLIENT.in_app_title,
+      description: NOTIFICATION_CONFIG.CS_ASSIGNED_TO_CLIENT.in_app_body,
       type: "COMMON",
-      action: "customer.view",
+      action: `/customers/${checkCustomer?._id}`,
       actionText: "view client",
       symbol: "🤝",
     }),

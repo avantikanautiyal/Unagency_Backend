@@ -181,7 +181,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
               content: notificationData.text,
               name: customer_charged.name,
               buttonText: notificationData.cta,
-              buttonLink: `${FRONTEND_URL}/dashboard`,
+              buttonLink: `${FRONTEND_URL}`,
             }),
             email: customer_charged.email,
             userId: customer_charged._id.toString(),

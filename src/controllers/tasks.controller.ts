@@ -44,9 +44,18 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   } else {
     return new ApiResponse(400, null, "Invalid Staff ID");
   }
+  if (!mongoose.Types.ObjectId.isValid(project as any)) {
+    return new ApiResponse(400, null, "Invalid Project ID");
+  }
+
   const assignUserId: string = req.body?.assignedTo as string;
+
+  if (!mongoose.Types.ObjectId.isValid(assignUserId)) {
+    return new ApiResponse(400, null, "Invalid assignedTo ID");
+  }
+
   const staff = await Staff.findOne({
-    userId: new mongoose.Types.ObjectId(assignUserId),
+    userId: assignUserId,
   }).populate("userId");
   if (!staff) return new ApiResponse(400, null, "Invalid resource Staff ID");
 
@@ -219,8 +228,12 @@ const TaskListByUserId = asyncHandler(async (req: RequestUser) => {
 
   const role = req.user?.role;
 
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return new ApiResponse(400, null, "Invalid User ID");
+  }
+
   const staff = await Staff.findOne({
-    userId: new mongoose.Types.ObjectId(userId),
+    userId: userId,
   });
   if (!staff) return new ApiResponse(400, null, "user is not a staff");
 
@@ -244,8 +257,8 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   const { taskId } = req.params; // Task ID from the URL parameters
   const updates: Partial<ITasks> = req.body; // Fields to be updated
 
-  if (!taskId) {
-    return new ApiResponse(400, null, "Task ID is required");
+  if (!taskId || !mongoose.Types.ObjectId.isValid(taskId)) {
+    return new ApiResponse(400, null, "Invalid Task ID");
   }
 
   delete updates._id;

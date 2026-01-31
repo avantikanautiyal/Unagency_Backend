@@ -68,7 +68,7 @@ const createOrganization = asyncHandler(
           content: notificationData.text,
           title: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_subject,
           buttonText: notificationData.cta,
-          buttonLink: `${FRONTEND_URL}/dashboard`,
+          buttonLink: `${FRONTEND_URL}`,
         }),
         email: req.user?.email!,
         userId: req.user?.userId.toString(),

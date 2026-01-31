@@ -82,7 +82,7 @@ const Register = asyncHandler(async (req, res) => {
                 content: notificationData.text,
                 title: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject,
                 buttonText: notificationData.cta,
-                buttonLink: `${FRONTEND_URL}/dashboard`, // As per "Start Tour" or Dashboard
+                buttonLink: `${FRONTEND_URL}`, // As per "Start Tour" or Dashboard
                 showFeatures: true
               })
 
@@ -215,7 +215,7 @@ const NewRegister = asyncHandler(async (req) => {
         content: notificationData.text,
         title: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", create.name || "User"),
         buttonText: notificationData.cta,
-        buttonLink: `${FRONTEND_URL}/dashboard`,
+        buttonLink: `${FRONTEND_URL}`,
         showFeatures: true
       })
 
@@ -461,7 +461,7 @@ const verifyEmail = asyncHandler(async (req: RequestUser, res) => {
       content: notificationData.text,
       title: NOTIFICATION_CONFIG.EMAIL_VERIFIED.email_subject,
       buttonText: notificationData.cta,
-      buttonLink: `${FRONTEND_URL}/dashboard`
+      buttonLink: `${FRONTEND_URL}`
     }),
     email: user?.email!,
     userId: user._id + "",

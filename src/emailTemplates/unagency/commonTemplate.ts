@@ -39,7 +39,7 @@ export function commonTemplate(props: CommonTemplateProps = { name: "", content:
                                         </div>
                                     </td>
                                     <td align="right" valign="middle">
-                                        <a href="${process.env.FRONTEND_URL}/project-logs" style="background-color: #ffffff; color: #000000; text-decoration: none; padding: 8px 15px; font-size: 12px; font-weight: bold; border-radius: 4px; display: inline-block;">Explore Projects</a>
+                                        <a href="${process.env.FRONTEND_URL}/categories" style="background-color: #ffffff; color: #000000; text-decoration: none; padding: 8px 15px; font-size: 12px; font-weight: bold; border-radius: 4px; display: inline-block;">Explore Categories</a>
                                     </td>
                                 </tr>
                             </table>

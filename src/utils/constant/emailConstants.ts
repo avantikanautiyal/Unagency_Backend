@@ -4,7 +4,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "You’re back, [Name]. Let’s roll.",
         in_app_body: "You’re back inside UNAGENCY.",
         email_subject: "You’re back, [Name]. Let’s roll.",
-        email_body: "Hey [Name], Good to see you again. Your creative space missed you — ideas, drafts, and that spark. [Open Dashboard]"
+        email_body: "Hey [Name], Good to see you again. Your creative space missed you — ideas, drafts, and that spark."
     },
     WRONG_PASSWORD: {
         trigger: "Wrong password",
@@ -18,63 +18,63 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Password updated. Safe and sound.",
         in_app_body: "Your UNAGENCY password has been changed.",
         email_subject: "Password updated. Safe and sound.",
-        email_body: "Hey [Name], Your password’s been updated. Everything went smoothly and it’s now officially updated. [Get back to work]"
+        email_body: "Hey [Name], Your password’s been updated. Everything went smoothly and it’s now officially updated."
     },
     PASSWORD_RESET_REQUESTED: {
         trigger: "Password reset requested",
         in_app_title: "Reset your UNAGENCY password.",
         in_app_body: "Reset link sent, check your inbox.",
         email_subject: "Reset your UNAGENCY password.",
-        email_body: "Hey [Name], Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling. [Reset Password]"
+        email_body: "Hey [Name], Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling."
     },
     EMAIL_VERIFICATION_REQUIRED: {
         trigger: "Email verification required",
         in_app_title: "Verify and unlock UNAGENCY",
         in_app_body: "UNAGENCY access needs one tiny checkbox: verify your email.",
         email_subject: "Verify and unlock UNAGENCY",
-        email_body: "Hey [Name], UNAGENCY access needs one tiny checkbox: verify your email. [Verify Now]"
+        email_body: "Hey [Name], UNAGENCY access needs one tiny checkbox: verify your email."
     },
     EMAIL_VERIFIED: {
         trigger: "Email verified",
         in_app_title: "You’re verified, welcome to the crew.",
         in_app_body: "Verified! You’re officially part of UNAGENCY.",
         email_subject: "You’re verified, welcome to the crew.",
-        email_body: "Hey [Name], Your email’s verified, your seat’s saved, and the creative runway is clear. Let’s make something wild. [Go to Dashboard]"
+        email_body: "Hey [Name], Your email’s verified, your seat’s saved, and the creative runway is clear. Let’s make something wild."
     },
     FIRST_LOGIN: {
         trigger: "First login",
         in_app_title: "Welcome to UNAGENCY, [Name]. Let’s get started.",
         in_app_body: "Let’s set up your UNAGENCY space.",
         email_subject: "Welcome to UNAGENCY, [Name]. Let’s get started.",
-        email_body: "Hey [Name], Welcome aboard. This is your new creative HQ. Take a quick tour, we’ll show you where everything lives. [Start Tour]"
+        email_body: "Hey [Name], Welcome aboard. This is your new creative HQ. Take a quick tour, we’ll show you where everything lives."
     },
     TOUR_COMPLETED: {
         trigger: "Tour completed",
         in_app_title: "You’ve unlocked your UNAGENCY workspace.",
         in_app_body: "You’re all set. Let’s make something epic.",
         email_subject: "You’ve unlocked your UNAGENCY workspace.",
-        email_body: "Hey [Name], Tour’s done, setup’s complete, now it’s your turn. Start your first project and see how fast things move here. [Start Project]"
+        email_body: "Hey [Name], Tour’s done, setup’s complete, now it’s your turn. Start your first project and see how fast things move here."
     },
     TOUR_SKIPPED: {
         trigger: "Tour skipped",
         in_app_title: "Skip today, tour tomorrow.",
         in_app_body: "No problem. You can always come back later.",
         email_subject: "Skip today, tour tomorrow.",
-        email_body: "Hey [Name], You skipped the tour (no pressure). When you’re ready, hit restart, we’ll guide you through like a pro. [Restart Tour]"
+        email_body: "Hey [Name], You skipped the tour (no pressure). When you’re ready, hit restart, we’ll guide you through like a pro."
     },
     SUBSCRIPTION_REQUIRED: {
         trigger: "Subscription required",
         in_app_title: "Unlock your full UNAGENCY experience.",
         in_app_body: "Premium zone ahead. Time to unlock it.",
         email_subject: "Unlock your full UNAGENCY experience.",
-        email_body: "Hey [Name], You’ve reached the premium features. Upgrade your plan and access all the good stuff. [View Plans]"
+        email_body: "Hey [Name], You’ve reached the premium features. Upgrade your plan and access all the good stuff."
     },
     BRIEF_SUBMITTED: {
         trigger: "Brief submitted",
         in_app_title: "Your brief just landed in UNAGENCY.",
         in_app_body: "Brief submitted! We’re on it.",
         email_subject: "Your brief just landed in UNAGENCY.",
-        email_body: "Hey [Name], Your brief is in and our team’s warming up. Expect progress updates soon. [Track Project]"
+        email_body: "Hey [Name], Your brief is in and our team’s warming up. Expect progress updates soon."
     },
     BRIEF_SUBMISSION_FAILED: {
         trigger: "Brief submission failed",
@@ -88,21 +88,21 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Welcome to UNAGENCY.",
         in_app_body: "Boom. You’re officially in.",
         email_subject: "Welcome to UNAGENCY.",
-        email_body: "Hey [Name], Your payment’s in and your access is live. You now have full control of your creative world. [Access Dashboard]"
+        email_body: "Hey [Name], Your payment’s in and your access is live. You now have full control of your creative world."
     },
     PAYMENT_FAILED: {
         trigger: "Payment failed",
         in_app_title: "Payment issue on your UNAGENCY account.",
         in_app_body: "Payment didn’t land. Let’s fix it.",
         email_subject: "Payment issue on your UNAGENCY account.",
-        email_body: "Hey [Name], Your payment didn’t go through, no biggie. Update your card and retry. We’ll hold your spot. [Retry Payment]"
+        email_body: "Hey [Name], Your payment didn’t go through, no biggie. Update your card and retry. We’ll hold your spot."
     },
     RENEWAL_UPCOMING: {
         trigger: "Renewal upcoming",
         in_app_title: "Your UNAGENCY plan renews soon.",
         in_app_body: "Heads up! Renewal soon.",
         email_subject: "Your UNAGENCY plan renews soon.",
-        email_body: "Hey [Name], Your plan renews shortly. If you’re loving the ride, do nothing. If you’re planning changes, manage it here. [Manage Plan]"
+        email_body: "Hey [Name], Your plan renews shortly. If you’re loving the ride, do nothing. If you’re planning changes, manage it here."
     },
     PLAN_EXPIRED: {
         trigger: "Plan expired",
@@ -116,21 +116,21 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Your UNAGENCY invoice is here.",
         in_app_body: "Your invoice is ready.",
         email_subject: "Your UNAGENCY invoice is here.",
-        email_body: "Hey [Name], Your invoice has been generated and is ready for download. Official proof of creativity. [Download Invoice]"
+        email_body: "Hey [Name], Your invoice has been generated and is ready for download. Official proof of creativity."
     },
     ORGANIZATION_CREATED: {
         trigger: "Organization created",
         in_app_title: "Your UNAGENCY workspace is ready.",
         in_app_body: "Your workspace is live.",
         email_subject: "Your UNAGENCY workspace is ready.",
-        email_body: "Hey [Name], You just created a workspace, your team’s new creative HQ. Invite your people and get things moving. [Add Members]"
+        email_body: "Hey [Name], You just created a workspace, your team’s new creative HQ. Invite your people and get things moving."
     },
     MEMBER_INVITED: {
         trigger: "Member invited",
         in_app_title: "You’ve been invited to UNAGENCY.",
         in_app_body: "Invite sent. Team’s growing.",
         email_subject: "You’ve been invited to UNAGENCY.",
-        email_body: "Hey [Invitee], [Name] just invited you to their UNAGENCY workspace. Join the team and start creating together. [Join Workspace]"
+        email_body: "Hey [Invitee], [Name] just invited you to their UNAGENCY workspace. Join the team and start creating together."
     },
     MEMBER_JOINED: {
         trigger: "Member joined",
@@ -144,7 +144,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Team update in your UNAGENCY workspace.",
         in_app_body: "One member left the team.",
         email_subject: "Team update in your UNAGENCY workspace.",
-        email_body: "Hey [Name], [Member Name] is no longer part of your workspace. Everything else stays right where you left it. [View Team]"
+        email_body: "Hey [Name], [Member Name] is no longer part of your workspace. Everything else stays right where you left it."
     },
     REMOVED_FROM_WORKSPACE: {
         trigger: "Removed from workspace",
@@ -165,28 +165,28 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "You’ve got a new message in UNAGENCY.",
         in_app_body: "New message, your team’s talking.",
         email_subject: "You’ve got a new message in UNAGENCY.",
-        email_body: "Hey [Name], Someone sent you a message in your workspace. Jump in to keep the creative momentum alive. [Open Chat]"
+        email_body: "Hey [Name], Someone sent you a message in your workspace. Jump in to keep the creative momentum alive."
     },
     PROJECT_CREATED: {
         trigger: "Project created",
         in_app_title: "Your UNAGENCY project is live.",
         in_app_body: "Project created — let’s get to work.",
         email_subject: "Your UNAGENCY project is live.",
-        email_body: "Hey [Name], You just created a project, nice move. Add your details and set things in motion. [Add Details]"
+        email_body: "Hey [Name], You just created a project, nice move. Add your details and set things in motion."
     },
     PROJECT_STARTED: {
         trigger: "Project started",
         in_app_title: "Your UNAGENCY project is underway.",
         in_app_body: "Project started. Momentum’s on.",
         email_subject: "Your UNAGENCY project is underway.",
-        email_body: "Hey [Name], We’ve kicked things off. Your project’s in production — we’ll update you as things unfold. [Track Progress]"
+        email_body: "Hey [Name], We’ve kicked things off. Your project’s in production — we’ll update you as things unfold."
     },
     PROJECT_MOVED_TO_REVIEW: {
         trigger: "Project moved to review",
         in_app_title: "Your project’s ready for feedback.",
         in_app_body: "Ready for your review.",
         email_subject: "Your project’s ready for feedback.",
-        email_body: "Hey [Name], Your latest draft’s ready. Take a look and drop your comments — your input fuels the next step. [Review Now]"
+        email_body: "Hey [Name], Your latest draft’s ready. Take a look and drop your comments — your input fuels the next step."
     },
     PROJECT_MOVED_TO_REVISIONS: {
         trigger: "Project moved to revisions",
@@ -214,7 +214,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Explore what’s new at UNAGENCY.",
         in_app_body: "New feature drop!",
         email_subject: "Explore what’s new at UNAGENCY.",
-        email_body: "Hey [Name], We just launched something fresh. Try it today and make your creative process even smoother. [Try Feature]"
+        email_body: "Hey [Name], We just launched something fresh. Try it today and make your creative process even smoother."
     },
     LIMITED_OFFER: {
         trigger: "Limited offer",
@@ -229,35 +229,35 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "New client activated",
         in_app_body: "Client membership activated successfully.",
         email_subject: "New client activated",
-        email_body: "A client has purchased a membership. Their workspace is now active. [View Client]"
+        email_body: "A client has purchased a membership. Their workspace is now active."
     },
     CS_PAYMENT_SUCCESSFUL: {
         trigger: "Payment successful",
         in_app_title: "Payment successful",
         in_app_body: "Payment confirmed. Services are now live.",
         email_subject: "Payment successful",
-        email_body: "Client payment has been processed successfully and services are active. [View Client]"
+        email_body: "Client payment has been processed successfully and services are active."
     },
     CS_PAYMENT_FAILED: {
         trigger: "Payment failed",
         in_app_title: "Payment failed",
         in_app_body: "Client payment failed. Action required.",
         email_subject: "Payment failed",
-        email_body: "The client’s payment attempt failed. Please follow up to resolve. [View Client]"
+        email_body: "The client’s payment attempt failed. Please follow up to resolve."
     },
     CS_ASSIGNED_TO_CLIENT: {
         trigger: "CS assigned to client",
         in_app_title: "New client assigned",
         in_app_body: "You have been assigned to a new client.",
         email_subject: "New client assigned",
-        email_body: "You have been assigned as the servicing manager for a new client. [View Client]"
+        email_body: "You have been assigned as the servicing manager for a new client."
     },
     CS_ORG_CREATED: {
         trigger: "Client organisation created",
         in_app_title: "Organisation created",
         in_app_body: "Client organisation has been created.",
         email_subject: "Organisation created",
-        email_body: "A new client organisation has been created and is ready. [View Client]"
+        email_body: "A new client organisation has been created and is ready."
     },
     CS_ORG_UPDATED: {
         trigger: "Client organisation details updated",
@@ -271,14 +271,14 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Client account paused",
         in_app_body: "Client account paused due to subscription non-renewal.",
         email_subject: "Client account paused",
-        email_body: "The client account has been paused because the subscription was not renewed. Active work may be impacted until renewal. [View Client]"
+        email_body: "The client account has been paused because the subscription was not renewed. Active work may be impacted until renewal."
     },
     CS_ACCOUNT_RESUMED: {
         trigger: "Client account resumed",
         in_app_title: "Client account resumed",
         in_app_body: "Client account has been resumed.",
         email_subject: "Client account resumed",
-        email_body: "The client account has been resumed and work may continue. [View Client]"
+        email_body: "The client account has been resumed and work may continue."
     },
     CS_BRIEF_STARTED: {
         trigger: "Client started brief",
@@ -292,63 +292,63 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Brief pending",
         in_app_body: "Client has not completed the brief.",
         email_subject: "Brief pending",
-        email_body: "The client has not completed the brief. A reminder may be required. [View Brief]"
+        email_body: "The client has not completed the brief. A reminder may be required."
     },
     CS_BRIEF_SUBMITTED: {
         trigger: "Client submitted brief",
         in_app_title: "New brief submitted",
         in_app_body: "New brief submitted. Review required.",
         email_subject: "New brief submitted",
-        email_body: "A new brief has been submitted by the client. Please review and proceed. [View Brief]"
+        email_body: "A new brief has been submitted by the client. Please review and proceed."
     },
     CS_BRIEF_APPROVED: {
         trigger: "Brief approved by CS",
         in_app_title: "Brief approved",
         in_app_body: "Brief approved. Ready for execution.",
         email_subject: "Brief approved",
-        email_body: "The brief has been approved and the project is ready to move forward. [View Brief]"
+        email_body: "The brief has been approved and the project is ready to move forward."
     },
     CS_BRIEF_UPDATED: {
         trigger: "Brief updated by client",
         in_app_title: "Brief updated",
         in_app_body: "Client updated the brief.",
         email_subject: "Brief updated",
-        email_body: "The client has made updates to the brief. Please review changes. [View Brief]"
+        email_body: "The client has made updates to the brief. Please review changes."
     },
     CS_PROJECT_CREATED: {
         trigger: "Project created",
         in_app_title: "Project created successfully.",
         in_app_body: "Project created successfully.",
-        email_subject: "",
-        email_body: ""
+        email_subject: "Project created",
+        email_body: "A new project has been created."
     },
     CS_PROJECT_IDLE: {
         trigger: "Project idle",
         in_app_title: "Project idle",
         in_app_body: "Project has been inactive for some time.",
         email_subject: "Project idle",
-        email_body: "The project has seen no activity for a while. Please review. [View Project]"
+        email_body: "The project has seen no activity for a while. Please review."
     },
     CS_PROJECT_PAUSED: {
         trigger: "Project paused",
         in_app_title: "Project paused",
         in_app_body: "Project has been paused.",
         email_subject: "Project paused",
-        email_body: "The project has been temporarily paused. [View Project]"
+        email_body: "The project has been temporarily paused."
     },
     CS_PROJECT_RESUMED: {
         trigger: "Project resumed",
         in_app_title: "Project resumed",
         in_app_body: "Project has been resumed.",
         email_subject: "Project resumed",
-        email_body: "The project has been resumed and work can continue. [View Project]"
+        email_body: "The project has been resumed and work can continue."
     },
     CS_DELIVERY_SENT: {
         trigger: "Project delivery sent to client",
         in_app_title: "Delivery sent",
         in_app_body: "Delivery sent to client. Awaiting response.",
         email_subject: "Delivery sent",
-        email_body: "Project delivery has been shared with the client. [View Project]"
+        email_body: "Project delivery has been shared with the client."
     },
     CS_PROJECT_DEADLINE: {
         trigger: "Project deadline approaching",
@@ -362,7 +362,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Project completed",
         in_app_body: "Project marked as completed.",
         email_subject: "Project completed",
-        email_body: "The project has been completed successfully. [View Project]"
+        email_body: "The project has been completed successfully."
     },
     CS_TASK_CREATED: {
         trigger: "Task created",
@@ -376,21 +376,21 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Feedback added",
         in_app_body: "Feedback added to the task.",
         email_subject: "Feedback added",
-        email_body: "Feedback has been added to the task. Resource has been notified. [View Task]"
+        email_body: "Feedback has been added to the task. Resource has been notified."
     },
     CS_TASK_SUBMITTED: {
         trigger: "Resource submitted task",
         in_app_title: "Task submitted",
         in_app_body: "Task submitted for review.",
         email_subject: "Task submitted",
-        email_body: "A resource has submitted a task for review. [View Task]"
+        email_body: "A resource has submitted a task for review."
     },
     CS_TASK_OVERDUE: {
         trigger: "Task overdue",
         in_app_title: "Task overdue",
         in_app_body: "Task deadline crossed. Follow up required.",
         email_subject: "Task overdue",
-        email_body: "A task has crossed its deadline. Please follow up. [View Task]"
+        email_body: "A task has crossed its deadline. Please follow up."
     },
     CS_TASK_APPROVED: {
         trigger: "Task approved",
@@ -411,7 +411,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Client follow-up required",
         in_app_body: "Client inactive for 48 hours. Follow-up required.",
         email_subject: "Client follow-up required",
-        email_body: "The client has not responded for 48 hours. Please follow up. [View Client]"
+        email_body: "The client has not responded for 48 hours. Please follow up."
     },
     CS_PROJECT_LIMIT_REACHED: {
         trigger: "Client reached project limit",
@@ -424,6 +424,70 @@ export const NOTIFICATION_CONFIG = {
         trigger: "Upgrade required",
         in_app_title: "Upgrade required",
         in_app_body: "Upgrade required to proceed further.",
+        email_subject: "",
+        email_body: ""
+    },
+    // Resource Notifications
+    RESOURCE_TASK_ASSIGNED: {
+        trigger: "Task assigned",
+        in_app_title: "New task assigned",
+        in_app_body: "A new task has been assigned to you.",
+        email_subject: "New task assigned",
+        email_body: "A new task has been assigned to you. Please review the details and begin when ready."
+    },
+    RESOURCE_FEEDBACK_ADDED: {
+        trigger: "CS added feedback",
+        in_app_title: "Feedback added",
+        in_app_body: "New feedback has been added to your task.",
+        email_subject: "Feedback added",
+        email_body: "Client Servicing has added feedback. Please review and update accordingly."
+    },
+    RESOURCE_TASK_SUBMITTED: {
+        trigger: "Task submitted",
+        in_app_title: "Task submitted",
+        in_app_body: "Task submitted for review.",
+        email_subject: "",
+        email_body: ""
+    },
+    RESOURCE_TASK_REVISION: {
+        trigger: "Task sent for revision",
+        in_app_title: "Revision required",
+        in_app_body: "Feedback requires revisions.",
+        email_subject: "Revision required",
+        email_body: "Your task needs revisions. Please review feedback and update."
+    },
+    RESOURCE_TASK_APPROVED: {
+        trigger: "Task approved",
+        in_app_title: "Task approved",
+        in_app_body: "Your task has been approved.",
+        email_subject: "Task approved",
+        email_body: "Your task has been approved successfully."
+    },
+    RESOURCE_PRIORITY_CHANGED: {
+        trigger: "Task priority changed",
+        in_app_title: "Task priority changed",
+        in_app_body: "Task priority has been updated.",
+        email_subject: "",
+        email_body: ""
+    },
+    RESOURCE_DEADLINE_APPROACHING: {
+        trigger: "Task deadline approaching",
+        in_app_title: "Deadline reminder",
+        in_app_body: "Reminder: task deadline approaching.",
+        email_subject: "Deadline reminder",
+        email_body: "Your task deadline is approaching. Please ensure progress is on track."
+    },
+    RESOURCE_TASK_OVERDUE: {
+        trigger: "Task overdue",
+        in_app_title: "Task overdue",
+        in_app_body: "Task deadline has passed.",
+        email_subject: "Task overdue",
+        email_body: "The task deadline has passed. Please update status or reach out if blocked."
+    },
+    RESOURCE_TASK_COMPLETED: {
+        trigger: "Task completed",
+        in_app_title: "Task completed",
+        in_app_body: "Task marked as completed.",
         email_subject: "",
         email_body: ""
     }

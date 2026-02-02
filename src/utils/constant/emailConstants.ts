@@ -226,192 +226,192 @@ export const NOTIFICATION_CONFIG = {
     ,
     CS_CLIENT_ACTIVATED: {
         trigger: "Client purchased membership",
-        in_app_title: "New client activated",
-        in_app_body: "Client membership activated successfully.",
+        in_app_title: "Client membership activated successfully",
+        in_app_body: "Client membership activated successfully",
         email_subject: "New client activated",
-        email_body: "A client has purchased a membership. Their workspace is now active."
+        email_body: "A client has purchased a membership. Their workspace is now active"
     },
     CS_PAYMENT_SUCCESSFUL: {
         trigger: "Payment successful",
-        in_app_title: "Payment successful",
-        in_app_body: "Payment confirmed. Services are now live.",
+        in_app_title: "Payment confirmed. Services are now live",
+        in_app_body: "Payment confirmed. Services are now live",
         email_subject: "Payment successful",
-        email_body: "Client payment has been processed successfully and services are active."
+        email_body: "Client payment has been processed successfully and services are active"
     },
     CS_PAYMENT_FAILED: {
         trigger: "Payment failed",
-        in_app_title: "Payment failed",
-        in_app_body: "Client payment failed. Action required.",
+        in_app_title: "Client payment failed. Action required",
+        in_app_body: "Client payment failed. Action required",
         email_subject: "Payment failed",
-        email_body: "The client’s payment attempt failed. Please follow up to resolve."
+        email_body: "The client’s payment attempt failed. Please follow up to resolve"
     },
     CS_ASSIGNED_TO_CLIENT: {
         trigger: "CS assigned to client",
-        in_app_title: "New client assigned",
-        in_app_body: "You have been assigned to a new client.",
+        in_app_title: "You have been assigned to a new client",
+        in_app_body: "You have been assigned to a new client",
         email_subject: "New client assigned",
-        email_body: "You have been assigned as the servicing manager for a new client."
+        email_body: "You have been assigned as the servicing manager for a new client"
     },
     CS_ORG_CREATED: {
         trigger: "Client organisation created",
-        in_app_title: "Organisation created",
-        in_app_body: "Client organisation has been created.",
+        in_app_title: "Client organisation has been created",
+        in_app_body: "Client organisation has been created",
         email_subject: "Organisation created",
-        email_body: "A new client organisation has been created and is ready."
+        email_body: "A new client organisation has been created and is ready"
     },
     CS_ORG_UPDATED: {
         trigger: "Client organisation details updated",
-        in_app_title: "Client organisation details updated.",
-        in_app_body: "Client organisation details updated.",
+        in_app_title: "Client organisation details updated",
+        in_app_body: "Client organisation details updated",
         email_subject: "",
         email_body: ""
     },
     CS_ACCOUNT_PAUSED: {
         trigger: "Client account paused due to non-renewal",
-        in_app_title: "Client account paused",
-        in_app_body: "Client account paused due to subscription non-renewal.",
+        in_app_title: "Client account paused due to subscription non-renewal",
+        in_app_body: "Client account paused due to subscription non-renewal",
         email_subject: "Client account paused",
-        email_body: "The client account has been paused because the subscription was not renewed. Active work may be impacted until renewal."
+        email_body: "The client account has been paused because the subscription was not renewed. Active work"
     },
     CS_ACCOUNT_RESUMED: {
         trigger: "Client account resumed",
-        in_app_title: "Client account resumed",
-        in_app_body: "Client account has been resumed.",
+        in_app_title: "Client account has been resumed",
+        in_app_body: "Client account has been resumed",
         email_subject: "Client account resumed",
-        email_body: "The client account has been resumed and work may continue."
+        email_body: "The client account has been resumed and work may continue"
     },
     CS_BRIEF_STARTED: {
         trigger: "Client started brief",
-        in_app_title: "Client has started filling the brief.",
-        in_app_body: "Client has started filling the brief.",
+        in_app_title: "Client has started filling the brief",
+        in_app_body: "Client has started filling the brief",
         email_subject: "",
         email_body: ""
     },
     CS_BRIEF_PENDING: {
         trigger: "Brief incomplete reminder",
-        in_app_title: "Brief pending",
-        in_app_body: "Client has not completed the brief.",
+        in_app_title: "Client has not completed the brief",
+        in_app_body: "Client has not completed the brief",
         email_subject: "Brief pending",
-        email_body: "The client has not completed the brief. A reminder may be required."
+        email_body: "The client has not completed the brief. A reminder may be required"
     },
     CS_BRIEF_SUBMITTED: {
         trigger: "Client submitted brief",
-        in_app_title: "New brief submitted",
-        in_app_body: "New brief submitted. Review required.",
+        in_app_title: "New brief submitted. Review required",
+        in_app_body: "New brief submitted. Review required",
         email_subject: "New brief submitted",
-        email_body: "A new brief has been submitted by the client. Please review and proceed."
+        email_body: "A new brief has been submitted by the client. Please review and proceed"
     },
     CS_BRIEF_APPROVED: {
         trigger: "Brief approved by CS",
-        in_app_title: "Brief approved",
-        in_app_body: "Brief approved. Ready for execution.",
+        in_app_title: "Brief approved. Ready for execution",
+        in_app_body: "Brief approved. Ready for execution",
         email_subject: "Brief approved",
-        email_body: "The brief has been approved and the project is ready to move forward."
+        email_body: "The brief has been approved and the project is ready to move forward"
     },
     CS_BRIEF_UPDATED: {
         trigger: "Brief updated by client",
-        in_app_title: "Brief updated",
-        in_app_body: "Client updated the brief.",
+        in_app_title: "Client updated the brief",
+        in_app_body: "Client updated the brief",
         email_subject: "Brief updated",
-        email_body: "The client has made updates to the brief. Please review changes."
+        email_body: "The client has made updates to the brief. Please review changes"
     },
     CS_PROJECT_CREATED: {
         trigger: "Project created",
-        in_app_title: "Project created successfully.",
-        in_app_body: "Project created successfully.",
-        email_subject: "Project created",
-        email_body: "A new project has been created."
+        in_app_title: "Project created successfully",
+        in_app_body: "Project created successfully",
+        email_subject: "",
+        email_body: ""
     },
     CS_PROJECT_IDLE: {
         trigger: "Project idle",
-        in_app_title: "Project idle",
-        in_app_body: "Project has been inactive for some time.",
+        in_app_title: "Project has been inactive for some time",
+        in_app_body: "Project has been inactive for some time",
         email_subject: "Project idle",
-        email_body: "The project has seen no activity for a while. Please review."
+        email_body: "The project has seen no activity for a while. Please review"
     },
     CS_PROJECT_PAUSED: {
         trigger: "Project paused",
-        in_app_title: "Project paused",
-        in_app_body: "Project has been paused.",
+        in_app_title: "Project has been paused",
+        in_app_body: "Project has been paused",
         email_subject: "Project paused",
-        email_body: "The project has been temporarily paused."
+        email_body: "The project has been temporarily paused"
     },
     CS_PROJECT_RESUMED: {
         trigger: "Project resumed",
-        in_app_title: "Project resumed",
-        in_app_body: "Project has been resumed.",
+        in_app_title: "Project has been resumed",
+        in_app_body: "Project has been resumed",
         email_subject: "Project resumed",
-        email_body: "The project has been resumed and work can continue."
+        email_body: "The project has been resumed and work can continue"
     },
     CS_DELIVERY_SENT: {
         trigger: "Project delivery sent to client",
-        in_app_title: "Delivery sent",
-        in_app_body: "Delivery sent to client. Awaiting response.",
+        in_app_title: "Delivery sent to client. Awaiting response",
+        in_app_body: "Delivery sent to client. Awaiting response",
         email_subject: "Delivery sent",
-        email_body: "Project delivery has been shared with the client."
+        email_body: "Project delivery has been shared with the client"
     },
     CS_PROJECT_DEADLINE: {
         trigger: "Project deadline approaching",
-        in_app_title: "Project deadline reminder",
-        in_app_body: "Project deadline approaching.",
+        in_app_title: "Project deadline approaching",
+        in_app_body: "Project deadline approaching",
         email_subject: "Project deadline reminder",
-        email_body: "The project is nearing its deadline. Please ensure progress is on track."
+        email_body: "The project is nearing its deadline. Please ensure progress is on track"
     },
     CS_PROJECT_COMPLETED: {
         trigger: "Project completed",
-        in_app_title: "Project completed",
-        in_app_body: "Project marked as completed.",
+        in_app_title: "Project marked as completed",
+        in_app_body: "Project marked as completed",
         email_subject: "Project completed",
-        email_body: "The project has been completed successfully."
+        email_body: "The project has been completed successfully"
     },
     CS_TASK_CREATED: {
         trigger: "Task created",
-        in_app_title: "A new task has been created.",
-        in_app_body: "A new task has been created.",
+        in_app_title: "A new task has been created",
+        in_app_body: "A new task has been created",
         email_subject: "",
         email_body: ""
     },
     CS_FEEDBACK_ADDED: {
         trigger: "CS added feedback",
-        in_app_title: "Feedback added",
-        in_app_body: "Feedback added to the task.",
+        in_app_title: "Feedback added to the task",
+        in_app_body: "Feedback added to the task",
         email_subject: "Feedback added",
-        email_body: "Feedback has been added to the task. Resource has been notified."
+        email_body: "Feedback has been added to the task. Resource has been notified"
     },
     CS_TASK_SUBMITTED: {
         trigger: "Resource submitted task",
-        in_app_title: "Task submitted",
-        in_app_body: "Task submitted for review.",
+        in_app_title: "Task submitted for review",
+        in_app_body: "Task submitted for review",
         email_subject: "Task submitted",
-        email_body: "A resource has submitted a task for review."
+        email_body: "A resource has submitted a task for review"
     },
     CS_TASK_OVERDUE: {
         trigger: "Task overdue",
-        in_app_title: "Task overdue",
-        in_app_body: "Task deadline crossed. Follow up required.",
+        in_app_title: "Task deadline crossed. Follow up required",
+        in_app_body: "Task deadline crossed. Follow up required",
         email_subject: "Task overdue",
-        email_body: "A task has crossed its deadline. Please follow up."
+        email_body: "A task has crossed its deadline. Please follow up"
     },
     CS_TASK_APPROVED: {
         trigger: "Task approved",
-        in_app_title: "Task approved successfully.",
-        in_app_body: "Task approved successfully.",
+        in_app_title: "Task approved successfully",
+        in_app_body: "Task approved successfully",
         email_subject: "",
         email_body: ""
     },
     CS_CLIENT_MESSAGE: {
         trigger: "Client sent message",
-        in_app_title: "New message from client.",
-        in_app_body: "New message from client.",
+        in_app_title: "New message from client",
+        in_app_body: "New message from client",
         email_subject: "",
         email_body: ""
     },
     CS_CLIENT_INACTIVE: {
         trigger: "Client inactive for 48 hours",
-        in_app_title: "Client follow-up required",
-        in_app_body: "Client inactive for 48 hours. Follow-up required.",
+        in_app_title: "Client inactive for 48 hours. Follow-up required",
+        in_app_body: "Client inactive for 48 hours. Follow-up required",
         email_subject: "Client follow-up required",
-        email_body: "The client has not responded for 48 hours. Please follow up."
+        email_body: "The client has not responded for 48 hours. Please follow up"
     },
     CS_PROJECT_LIMIT_REACHED: {
         trigger: "Client reached project limit",
@@ -430,64 +430,64 @@ export const NOTIFICATION_CONFIG = {
     // Resource Notifications
     RESOURCE_TASK_ASSIGNED: {
         trigger: "Task assigned",
-        in_app_title: "New task assigned",
-        in_app_body: "A new task has been assigned to you.",
+        in_app_title: "A new task has been assigned to you",
+        in_app_body: "A new task has been assigned to you",
         email_subject: "New task assigned",
-        email_body: "A new task has been assigned to you. Please review the details and begin when ready."
+        email_body: "A new task has been assigned to you. Please review the details and begin when ready"
     },
     RESOURCE_FEEDBACK_ADDED: {
         trigger: "CS added feedback",
-        in_app_title: "Feedback added",
-        in_app_body: "New feedback has been added to your task.",
+        in_app_title: "New feedback has been added to your task",
+        in_app_body: "New feedback has been added to your task",
         email_subject: "Feedback added",
-        email_body: "Client Servicing has added feedback. Please review and update accordingly."
+        email_body: "Client Servicing has added feedback. Please review and update accordingly"
     },
     RESOURCE_TASK_SUBMITTED: {
         trigger: "Task submitted",
-        in_app_title: "Task submitted",
-        in_app_body: "Task submitted for review.",
+        in_app_title: "Task submitted for review",
+        in_app_body: "Task submitted for review",
         email_subject: "",
         email_body: ""
     },
     RESOURCE_TASK_REVISION: {
         trigger: "Task sent for revision",
-        in_app_title: "Revision required",
-        in_app_body: "Feedback requires revisions.",
+        in_app_title: "Feedback requires revisions",
+        in_app_body: "Feedback requires revisions",
         email_subject: "Revision required",
-        email_body: "Your task needs revisions. Please review feedback and update."
+        email_body: "Your task needs revisions. Please review feedback and update"
     },
     RESOURCE_TASK_APPROVED: {
         trigger: "Task approved",
-        in_app_title: "Task approved",
-        in_app_body: "Your task has been approved.",
+        in_app_title: "Your task has been approved",
+        in_app_body: "Your task has been approved",
         email_subject: "Task approved",
-        email_body: "Your task has been approved successfully."
+        email_body: "Your task has been approved successfully"
     },
     RESOURCE_PRIORITY_CHANGED: {
         trigger: "Task priority changed",
-        in_app_title: "Task priority changed",
-        in_app_body: "Task priority has been updated.",
+        in_app_title: "Task priority has been updated",
+        in_app_body: "Task priority has been updated",
         email_subject: "",
         email_body: ""
     },
     RESOURCE_DEADLINE_APPROACHING: {
         trigger: "Task deadline approaching",
-        in_app_title: "Deadline reminder",
-        in_app_body: "Reminder: task deadline approaching.",
+        in_app_title: "Reminder: task deadline approaching",
+        in_app_body: "Reminder: task deadline approaching",
         email_subject: "Deadline reminder",
-        email_body: "Your task deadline is approaching. Please ensure progress is on track."
+        email_body: "Your task deadline is approaching. Please ensure progress is on track"
     },
     RESOURCE_TASK_OVERDUE: {
         trigger: "Task overdue",
-        in_app_title: "Task overdue",
-        in_app_body: "Task deadline has passed.",
+        in_app_title: "The task deadline has passed",
+        in_app_body: "The task deadline has passed",
         email_subject: "Task overdue",
-        email_body: "The task deadline has passed. Please update status or reach out if blocked."
+        email_body: "The task deadline has passed. Please update status or reach out if blocked"
     },
     RESOURCE_TASK_COMPLETED: {
         trigger: "Task completed",
-        in_app_title: "Task completed",
-        in_app_body: "Task marked as completed.",
+        in_app_title: "Task marked as completed",
+        in_app_body: "Task marked as completed",
         email_subject: "",
         email_body: ""
     }

@@ -13,6 +13,8 @@ export interface ISubscription {
   cancelledByUser: boolean,
   cancelledAt: Date,
   razorpayCancelRequested: boolean,
+  renewalReminderSentAt?: Date,
+  expiredNotificationSent?: boolean,
   // currentPeriodStart: Date; // Subscription start
   // currentPeriodEnd: Date; // Subscription renewal/cancellation date
 }
@@ -33,7 +35,8 @@ const SubscriptionSchema = new Schema<ISubscription>({
   cancelledByUser: { type: Boolean, default: false },
   cancelledAt: { type: Date },
   razorpayCancelRequested: { type: Boolean, default: false },
-
+  renewalReminderSentAt: { type: Date },
+  expiredNotificationSent: { type: Boolean, default: false },
 
   // Subscription status ('active', 'canceled', etc.)
   // currentPeriodStart: { type: Date, required: true }, // Subscription start

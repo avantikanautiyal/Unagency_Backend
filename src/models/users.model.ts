@@ -23,6 +23,7 @@ export interface IUser {
   emailVerificationCode?: string;
   isfirstMessageSent?: boolean;
   tourCompleted?: "incomplete" | "complete" | "skipped";
+  subscriptionReminderSentAt?: Date;
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -50,12 +51,12 @@ const UsersSchema = new Schema<IUser>(
     },
     emailVerificationCode: { type: String, default: "" },
     isfirstMessageSent: { type: Boolean, default: false },
-    tourCompleted: { 
-      type: String, 
+    tourCompleted: {
+      type: String,
       enum: ["incomplete", "complete", "skipped"],
-      default: "incomplete" 
+      default: "incomplete"
     },
-
+    subscriptionReminderSentAt: { type: Date },
   },
   { collection: "users", timestamps: true }
 );

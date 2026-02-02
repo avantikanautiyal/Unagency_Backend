@@ -19,6 +19,8 @@ import Packages from "../models/packages.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
+import { NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { parseNotificationContent } from "../utils/notificationUtils";
 //TESTED OK = RAHUL
 const CreateUser = asyncHandler(async (req, res) => {
   const { email, password, name, role }: IUser = req.body;
@@ -376,51 +378,53 @@ const UpdateTourCompletion = asyncHandler(async (req: RequestUser, res) => {
 
   // Send email when tour is newly completed (was not complete, now complete)
   if (body.tourCompleted === "complete" && previousTourState !== "complete") {
+    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.TOUR_COMPLETED.email_body, { Name: updatedUser.name || "User" });
     EmailQueue.add("tour completion", {
       action: "COMMON",
       data: commonTemplate({
         name: updatedUser.name,
-        content: "Tour's done, setup's complete, now it's your turn. Start your first project and see how fast things move here.",
-        title: "UNAGENCY",
-        buttonText: "Start Creating",
-        buttonLink: `${process.env.FRONTEND_URL}`,
+        content: notificationData.text,
+        title: NOTIFICATION_CONFIG.TOUR_COMPLETED.email_subject,
+        buttonText: "Start Project",
+        buttonLink: `${process.env.FRONTEND_URL}/categories`,
       }),
       email: updatedUser.email,
       userId: updatedUser._id + "",
       notification: new Notification({
-        title: "You're all set. Let's make something epic.",
-        description: "You've successfully completed the app tour. Start exploring UNAGENCY now!",
+        title: NOTIFICATION_CONFIG.TOUR_COMPLETED.in_app_title,
+        description: NOTIFICATION_CONFIG.TOUR_COMPLETED.in_app_body,
         type: "PROJECT",
-        actionText: "start proejct",
-        action: "/",
+        actionText: "Start Project",
+        action: "/categories",
         symbol: "🎉",
       }),
-      subject: "You've unlocked your UNAGENCY workspace.",
+      subject: NOTIFICATION_CONFIG.TOUR_COMPLETED.email_subject,
     });
   }
 
   // Send email when tour is skipped
   if (body.tourCompleted === "skipped") {
+    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.TOUR_SKIPPED.email_body, { Name: updatedUser.name || "User" });
     EmailQueue.add("tour skipped", {
       action: "COMMON",
       data: commonTemplate({
         name: updatedUser.name,
-        content: "You skipped the tour (no pressure). When you're ready, hit restart, we'll guide you through like a pro.",
-        title: "Skip today, tour tomorrow.",
-        buttonText: "Start Creating",
+        content: notificationData.text,
+        title: NOTIFICATION_CONFIG.TOUR_SKIPPED.email_subject,
+        buttonText: "", // no cta
         buttonLink: `${process.env.FRONTEND_URL}`,
       }),
       email: updatedUser.email,
       userId: updatedUser._id + "",
       notification: new Notification({
-        title: "No problem. You can always come back later.",
-        description: "You skipped the tour (no pressure). When you're ready, hit restart, we'll guide you through like a pro.",
+        title: NOTIFICATION_CONFIG.TOUR_SKIPPED.in_app_title,
+        description: NOTIFICATION_CONFIG.TOUR_SKIPPED.in_app_body,
         type: "PROJECT",
-        actionText: "start proejct",
-        action: "/",
+        actionText: "",
+        action: "",
         symbol: "👋",
       }),
-      subject: "Skip today, tour tomorrow.",
+      subject: NOTIFICATION_CONFIG.TOUR_SKIPPED.email_subject,
     });
   }
 

@@ -142,6 +142,31 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           }
         }
 
+        if (customer) {
+          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.INVOICE_GENERATED.email_body, { Name: customer.name || "User" });
+          EmailQueue.add("invoice generated", {
+            action: "SUBSCRIPTION",
+            data: commonTemplate({
+              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
+              content: notificationData.text,
+              name: customer.name,
+              buttonText: "Download Invoice",
+              buttonLink: `${FRONTEND_URL}/profile-settings`,
+            }),
+            email: customer.email,
+            userId: customer._id.toString(),
+            notification: new Notification({
+              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_title,
+              description: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_body,
+              type: "SUBSCRIPTION",
+              action: `/profile-settings`,
+              actionText: "Download Invoice",
+              symbol: "📄",
+            }),
+            subject: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
+          });
+        }
+
         // Mark user subscription active in DB
         break;
 
@@ -198,6 +223,31 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         }
 
         // Notify CS about payment success
+        if (customer_charged) {
+          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.INVOICE_GENERATED.email_body, { Name: customer_charged.name || "User" });
+          EmailQueue.add("invoice generated", {
+            action: "SUBSCRIPTION",
+            data: commonTemplate({
+              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
+              content: notificationData.text,
+              name: customer_charged.name,
+              buttonText: "Download Invoice",
+              buttonLink: `${FRONTEND_URL}/profile-settings`,
+            }),
+            email: customer_charged.email,
+            userId: customer_charged._id.toString(),
+            notification: new Notification({
+              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_title,
+              description: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_body,
+              type: "SUBSCRIPTION",
+              action: `/profile-settings`,
+              actionText: "Download Invoice",
+              symbol: "📄",
+            }),
+            subject: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
+          });
+        }
+
         if (customer_charged?.relationship_manager) {
           const staff_charged = await Staff.findById(customer_charged.relationship_manager).populate("userId");
           const relationship_manager_charged = staff_charged?.userId as any;

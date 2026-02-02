@@ -22,7 +22,7 @@ export const NOTIFICATION_CONFIG = {
     },
     PASSWORD_RESET_REQUESTED: {
         trigger: "Password reset requested",
-        in_app_title: "Reset your UNAGENCY password.",
+        in_app_title: "Reset link sent, check your inbox.",
         in_app_body: "Reset link sent, check your inbox.",
         email_subject: "Reset your UNAGENCY password.",
         email_body: "Hey [Name], Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling."
@@ -36,7 +36,7 @@ export const NOTIFICATION_CONFIG = {
     },
     EMAIL_VERIFIED: {
         trigger: "Email verified",
-        in_app_title: "You’re verified, welcome to the crew.",
+        in_app_title: "Verified! You’re officially part of UNAGENCY.",
         in_app_body: "Verified! You’re officially part of UNAGENCY.",
         email_subject: "You’re verified, welcome to the crew.",
         email_body: "Hey [Name], Your email’s verified, your seat’s saved, and the creative runway is clear. Let’s make something wild."
@@ -45,33 +45,33 @@ export const NOTIFICATION_CONFIG = {
         trigger: "First login",
         in_app_title: "Welcome to UNAGENCY, [Name]. Let’s get started.",
         in_app_body: "Let’s set up your UNAGENCY space.",
-        email_subject: "Welcome to UNAGENCY, [Name]. Let’s get started.",
+        email_subject: "Let’s set up your UNAGENCY space.",
         email_body: "Hey [Name], Welcome aboard. This is your new creative HQ. Take a quick tour, we’ll show you where everything lives."
     },
     TOUR_COMPLETED: {
         trigger: "Tour completed",
-        in_app_title: "You’ve unlocked your UNAGENCY workspace.",
+        in_app_title: "You’re all set. Let’s make something epic.",
         in_app_body: "You’re all set. Let’s make something epic.",
         email_subject: "You’ve unlocked your UNAGENCY workspace.",
         email_body: "Hey [Name], Tour’s done, setup’s complete, now it’s your turn. Start your first project and see how fast things move here."
     },
     TOUR_SKIPPED: {
         trigger: "Tour skipped",
-        in_app_title: "Skip today, tour tomorrow.",
+        in_app_title: "No problem. You can always come back later.",
         in_app_body: "No problem. You can always come back later.",
         email_subject: "Skip today, tour tomorrow.",
         email_body: "Hey [Name], You skipped the tour (no pressure). When you’re ready, hit restart, we’ll guide you through like a pro."
     },
     SUBSCRIPTION_REQUIRED: {
         trigger: "Subscription required",
-        in_app_title: "Unlock your full UNAGENCY experience.",
+        in_app_title: "Premium zone ahead. Time to unlock it.",
         in_app_body: "Premium zone ahead. Time to unlock it.",
         email_subject: "Unlock your full UNAGENCY experience.",
         email_body: "Hey [Name], You’ve reached the premium features. Upgrade your plan and access all the good stuff."
     },
     BRIEF_SUBMITTED: {
         trigger: "Brief submitted",
-        in_app_title: "Your brief just landed in UNAGENCY.",
+        in_app_title: "Brief submitted! We’re on it.",
         in_app_body: "Brief submitted! We’re on it.",
         email_subject: "Your brief just landed in UNAGENCY.",
         email_body: "Hey [Name], Your brief is in and our team’s warming up. Expect progress updates soon. [View Brief]"
@@ -116,25 +116,25 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Your UNAGENCY invoice is here.",
         in_app_body: "Your invoice is ready.",
         email_subject: "Your UNAGENCY invoice is here.",
-        email_body: "Hey [Name], Your invoice has been generated and is ready for download. Official proof of creativity."
+        email_body: "Hey [Name], Your invoice has been generated and is ready for download. Official proof of creativity. [Download Invoice]"
     },
     ORGANIZATION_CREATED: {
         trigger: "Organization created",
-        in_app_title: "Your UNAGENCY workspace is ready.",
+        in_app_title: "Your workspace is live.",
         in_app_body: "Your workspace is live.",
         email_subject: "Your UNAGENCY workspace is ready.",
         email_body: "Hey [Name], You just created a workspace, your team’s new creative HQ. Invite your people and get things moving."
     },
     MEMBER_INVITED: {
         trigger: "Member invited",
-        in_app_title: "You’ve been invited to UNAGENCY.",
+        in_app_title: "Invite sent. Team’s growing.",
         in_app_body: "Invite sent. Team’s growing.",
         email_subject: "You’ve been invited to UNAGENCY.",
         email_body: "Hey [Invitee], [Name] just invited you to their UNAGENCY workspace. Join the team and start creating together."
     },
     MEMBER_JOINED: {
         trigger: "Member joined",
-        in_app_title: "New member joined your UNAGENCY workspace.",
+        in_app_title: "New teammate onboard.",
         in_app_body: "New teammate onboard.",
         email_subject: "New member joined your UNAGENCY workspace.",
         email_body: "Hey [Name], [Member Name] just joined your workspace. Say hey and share the vision. [View Team]"
@@ -169,42 +169,42 @@ export const NOTIFICATION_CONFIG = {
     },
     PROJECT_CREATED: {
         trigger: "Project created",
-        in_app_title: "Your UNAGENCY project is live.",
+        in_app_title: "Project created — let’s get to work.",
         in_app_body: "Project created — let’s get to work.",
         email_subject: "Your UNAGENCY project is live.",
         email_body: "Hey [Name], You just created a project, nice move. Add your details and set things in motion. [View Project]"
     },
     PROJECT_STARTED: {
         trigger: "Project started",
-        in_app_title: "Your UNAGENCY project is underway.",
+        in_app_title: "Project started. Momentum’s on.",
         in_app_body: "Project started. Momentum’s on.",
         email_subject: "Your UNAGENCY project is underway.",
-        email_body: "Hey [Name], We’ve kicked things off. Your project’s in production — we’ll update you as things unfold. [View Progress]"
+        email_body: "Hey [Name], We’ve kicked things off. Your project’s in production — we’ll update you as things unfold."
     },
     PROJECT_MOVED_TO_REVIEW: {
         trigger: "Project moved to review",
-        in_app_title: "Your project’s ready for feedback.",
+        in_app_title: "Ready for your review.",
         in_app_body: "Ready for your review.",
         email_subject: "Your project’s ready for feedback.",
         email_body: "Hey [Name], Your latest draft’s ready. Take a look and drop your comments — your input fuels the next step."
     },
     PROJECT_MOVED_TO_REVISIONS: {
         trigger: "Project moved to revisions",
-        in_app_title: "We’re revising your UNAGENCY project.",
+        in_app_title: "Revisions in progress.",
         in_app_body: "Revisions in progress.",
         email_subject: "We’re revising your UNAGENCY project.",
         email_body: "Hey [Name], We got your feedback and we’re on it. Expect updated designs soon."
     },
     FINAL_DELIVERY_READY: {
         trigger: "Final delivery ready",
-        in_app_title: "Your UNAGENCY delivery is ready.",
+        in_app_title: "Final files ready for you.",
         in_app_body: "Final files ready for you.",
         email_subject: "Your UNAGENCY delivery is ready.",
         email_body: "Hey [Name], Final files are up and waiting. Download them and bring your ideas to life."
     },
     PROJECT_COMPLETED: {
         trigger: "Project completed",
-        in_app_title: "Your UNAGENCY project is complete.",
+        in_app_title: "Project wrapped, well done.",
         in_app_body: "Project wrapped, well done.",
         email_subject: "Your UNAGENCY project is complete.",
         email_body: "Hey [Name], Your project’s officially complete. Thanks for trusting us with your ideas, we hope it looks even better than you imagined."

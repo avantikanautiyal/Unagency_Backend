@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
+import { parseNotificationContent } from "../utils/notificationUtils";
 import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
 import Tasks, { ITasks } from "../models/tasks.model";
@@ -100,13 +101,14 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   //   }),
   // });
 
+  const taskNotificationData = parseNotificationContent(NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.email_body, { Name: (staff?.userId as any)?.name || "Member" });
   EmailQueue.add("task creation", {
     action: "TASK",
     data: commonTemplate({
       title: NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.email_subject,
-      content: NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.email_body,
+      content: taskNotificationData.text,
       name: (staff?.userId as any)?.name!,
-      buttonText: "View Task",
+      buttonText: taskNotificationData.cta || "View Task",
       buttonLink: `${FRONTEND_URL}/tasks/${create._id}`,
     }),
     email: (staff?.userId as any)?.email!,
@@ -115,14 +117,13 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       title: NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.in_app_title,
       description: NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.in_app_body,
       type: "TASK",
-      action: `/tasks/${create._id}`,
-      actionText: "view task",
+      action: `${FRONTEND_URL}/tasks/${create._id}`,
+      actionText: taskNotificationData.cta || "view task",
       symbol: "👨🏽‍💻",
     }),
     subject: NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.email_subject,
   });
 
-  // Notify CS about task creation (in-app only, no email)
   // Notify CS about task creation (in-app only, no email)
   EmailQueue.add("CS task created", {
     action: "TASK",
@@ -133,7 +134,7 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       title: NOTIFICATION_CONFIG.CS_TASK_CREATED.in_app_title,
       description: NOTIFICATION_CONFIG.CS_TASK_CREATED.in_app_body,
       type: "TASK",
-      action: `/tasks/${create._id}`, // Assuming CS views same link?
+      action: `${FRONTEND_URL}/tasks/${create._id}`,
       actionText: "view task",
       symbol: "📝",
     }),
@@ -325,7 +326,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
         title: NOTIFICATION_CONFIG.RESOURCE_PRIORITY_CHANGED.in_app_title,
         description: NOTIFICATION_CONFIG.RESOURCE_PRIORITY_CHANGED.in_app_body,
         type: "TASK",
-        action: `/tasks/${taskId}`,
+        action: `${FRONTEND_URL}/tasks/${taskId}`,
         actionText: "view task",
         symbol: "⚠️",
       }),
@@ -372,7 +373,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.in_app_title,
           description: NOTIFICATION_CONFIG.CS_TASK_SUBMITTED.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "✅",
         }),
@@ -389,7 +390,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.RESOURCE_TASK_SUBMITTED.in_app_title,
           description: NOTIFICATION_CONFIG.RESOURCE_TASK_SUBMITTED.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "✅",
         }),
@@ -415,7 +416,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.RESOURCE_FEEDBACK_ADDED.in_app_title,
           description: NOTIFICATION_CONFIG.RESOURCE_FEEDBACK_ADDED.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "💬",
         }),
@@ -440,7 +441,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.in_app_title,
           description: NOTIFICATION_CONFIG.CS_FEEDBACK_ADDED.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "💬",
         }),
@@ -463,7 +464,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.RESOURCE_TASK_REVISION.in_app_title,
           description: NOTIFICATION_CONFIG.RESOURCE_TASK_REVISION.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "🔄",
         }),
@@ -486,7 +487,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.RESOURCE_TASK_APPROVED.in_app_title,
           description: NOTIFICATION_CONFIG.RESOURCE_TASK_APPROVED.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "🎉",
         }),
@@ -509,7 +510,7 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
           title: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_title,
           description: NOTIFICATION_CONFIG.CS_TASK_APPROVED.in_app_body,
           type: "TASK",
-          action: `/tasks/${updatedTask?._id}`,
+          action: `${FRONTEND_URL}/tasks/${updatedTask?._id}`,
           actionText: "view task",
           symbol: "🎉",
         }),
@@ -594,10 +595,49 @@ const TaskListForResource = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, query, "Weekly Task List found");
 });
 
+const getTaskById = asyncHandler(async (req: RequestUser) => {
+  const { id } = req.params;
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    return new ApiResponse(400, null, "Invalid Task ID");
+  }
+
+  const task = await Tasks.findById(id)
+    .populate({
+      path: "assignedTo",
+      select: "userId",
+      populate: {
+        path: "userId",
+        select: "name email",
+        model: "Users",
+      },
+    })
+    .populate({
+      path: "assignedBy",
+      select: "userId",
+      populate: {
+        path: "userId",
+        select: "name email",
+        model: "Users",
+      },
+    })
+    .populate({
+      path: "project",
+      select: "_id title",
+    })
+    .populate("files");
+
+  if (!task) {
+    return new ApiResponse(404, null, "Task not found");
+  }
+
+  return new ApiResponse(200, task, "Task found");
+});
+
 export {
   CreateTask,
   TaskList,
   UpdateTask,
   TaskListByUserId,
   TaskListForResource,
+  getTaskById,
 };

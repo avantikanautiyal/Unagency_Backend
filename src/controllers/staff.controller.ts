@@ -120,7 +120,7 @@ const AssignManagerToCustomer = asyncHandler(async (req, res) => {
       title: NOTIFICATION_CONFIG.CS_ASSIGNED_TO_CLIENT.in_app_title,
       description: NOTIFICATION_CONFIG.CS_ASSIGNED_TO_CLIENT.in_app_body,
       type: "COMMON",
-      action: `/customers/${checkCustomer?._id}`,
+      action: `${FRONTEND_URL}/customers/${checkCustomer?._id}`,
       actionText: "view client",
       symbol: "🤝",
     }),

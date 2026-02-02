@@ -74,7 +74,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Your brief just landed in UNAGENCY.",
         in_app_body: "Brief submitted! We’re on it.",
         email_subject: "Your brief just landed in UNAGENCY.",
-        email_body: "Hey [Name], Your brief is in and our team’s warming up. Expect progress updates soon."
+        email_body: "Hey [Name], Your brief is in and our team’s warming up. Expect progress updates soon. [View Brief]"
     },
     BRIEF_SUBMISSION_FAILED: {
         trigger: "Brief submission failed",
@@ -172,14 +172,14 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Your UNAGENCY project is live.",
         in_app_body: "Project created — let’s get to work.",
         email_subject: "Your UNAGENCY project is live.",
-        email_body: "Hey [Name], You just created a project, nice move. Add your details and set things in motion."
+        email_body: "Hey [Name], You just created a project, nice move. Add your details and set things in motion. [View Project]"
     },
     PROJECT_STARTED: {
         trigger: "Project started",
         in_app_title: "Your UNAGENCY project is underway.",
         in_app_body: "Project started. Momentum’s on.",
         email_subject: "Your UNAGENCY project is underway.",
-        email_body: "Hey [Name], We’ve kicked things off. Your project’s in production — we’ll update you as things unfold."
+        email_body: "Hey [Name], We’ve kicked things off. Your project’s in production — we’ll update you as things unfold. [View Progress]"
     },
     PROJECT_MOVED_TO_REVIEW: {
         trigger: "Project moved to review",
@@ -193,21 +193,21 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "We’re revising your UNAGENCY project.",
         in_app_body: "Revisions in progress.",
         email_subject: "We’re revising your UNAGENCY project.",
-        email_body: "Hey [Name], We got your feedback and we’re on it. Expect updated designs soon. [View Progress]"
+        email_body: "Hey [Name], We got your feedback and we’re on it. Expect updated designs soon."
     },
     FINAL_DELIVERY_READY: {
         trigger: "Final delivery ready",
         in_app_title: "Your UNAGENCY delivery is ready.",
         in_app_body: "Final files ready for you.",
         email_subject: "Your UNAGENCY delivery is ready.",
-        email_body: "Hey [Name], Final files are up and waiting. Download them and bring your ideas to life. [Download Files]"
+        email_body: "Hey [Name], Final files are up and waiting. Download them and bring your ideas to life."
     },
     PROJECT_COMPLETED: {
         trigger: "Project completed",
         in_app_title: "Your UNAGENCY project is complete.",
         in_app_body: "Project wrapped, well done.",
         email_subject: "Your UNAGENCY project is complete.",
-        email_body: "Hey [Name], Your project’s officially complete. Thanks for trusting us with your ideas, we hope it looks even better than you imagined. [View Summary]"
+        email_body: "Hey [Name], Your project’s officially complete. Thanks for trusting us with your ideas, we hope it looks even better than you imagined."
     },
     FEATURE_LAUNCH: {
         trigger: "Feature launch",
@@ -221,7 +221,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Your exclusive UNAGENCY offer.",
         in_app_body: "Something special’s live.",
         email_subject: "Your exclusive UNAGENCY offer.",
-        email_body: "Hey [Name], We’ve unlocked a limited-time offer just for you. Grab it before it fades away. [Claim Offer]"
+        email_body: "Hey [Name], We’ve unlocked a limited-time offer just for you. Grab it before it fades away."
     }
     ,
     CS_CLIENT_ACTIVATED: {
@@ -355,7 +355,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Project deadline reminder",
         in_app_body: "Project deadline approaching.",
         email_subject: "Project deadline reminder",
-        email_body: "The project is nearing its deadline. Please ensure progress is on track. [View Project]"
+        email_body: "The project is nearing its deadline. Please ensure progress is on track."
     },
     CS_PROJECT_COMPLETED: {
         trigger: "Project completed",

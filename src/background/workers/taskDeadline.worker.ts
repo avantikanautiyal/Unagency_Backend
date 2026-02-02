@@ -45,7 +45,7 @@ export default async function taskDeadlineWorker(job: any) {
                         title: "Deadline reminder",
                         description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_DEADLINE_APPROACHING,
                         type: "TASK",
-                        action: "task.open",
+                        action: `${FRONTEND_URL}/tasks/${task._id}`,
                         actionText: "view task",
                         symbol: "⏰"
                     }),
@@ -89,7 +89,7 @@ export default async function taskDeadlineWorker(job: any) {
                         title: "Task overdue",
                         description: IN_APP_NOTIFICATION_MESSAGES.RESOURCE_TASK_OVERDUE,
                         type: "TASK",
-                        action: "task.open",
+                        action: `${FRONTEND_URL}/tasks/${task._id}`,
                         actionText: "view task",
                         symbol: "🚨"
                     }),
@@ -119,7 +119,7 @@ export default async function taskDeadlineWorker(job: any) {
                         title: "Task overdue",
                         description: IN_APP_NOTIFICATION_MESSAGES.CS_TASK_OVERDUE,
                         type: "TASK",
-                        action: "task.open",
+                        action: `${FRONTEND_URL}/tasks/${task._id}`,
                         actionText: "view task",
                         symbol: "⚠️"
                     }),
@@ -165,7 +165,7 @@ export default async function taskDeadlineWorker(job: any) {
                                 title: "Project Inactivity",
                                 description: IN_APP_NOTIFICATION_MESSAGES.CS_PROJECT_IDLE,
                                 type: "PROJECT",
-                                action: "project.view",
+                                action: `${FRONTEND_URL}/project-logs/${project._id}`,
                                 actionText: "view project",
                                 symbol: "⏳"
                             }),

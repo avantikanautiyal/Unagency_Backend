@@ -5,6 +5,7 @@ import {
   TaskListByUserId,
   TaskListForResource,
   UpdateTask,
+  getTaskById,
 } from "../controllers/tasks.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 import { fileUpload } from "../middlewares/multers3.middleware";
@@ -26,5 +27,8 @@ router.put(
   VerifyRole(["servicing", "resource"]),
   UpdateTask
 );
+
+// get task by id
+router.get("/task-by-id/:id", VerifyRole(["servicing", "resource"]), getTaskById);
 
 export default router;

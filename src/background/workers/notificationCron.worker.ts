@@ -75,7 +75,7 @@ async function checkTaskDeadlineApproaching(now: Date) {
                     title: NOTIFICATION_CONFIG.RESOURCE_DEADLINE_APPROACHING.in_app_title,
                     description: NOTIFICATION_CONFIG.RESOURCE_DEADLINE_APPROACHING.in_app_body,
                     type: "TASK",
-                    action: "task.open",
+                    action: `${FRONTEND_URL}/tasks/${task._id}`,
                     actionText: "view task",
                     symbol: "⏰"
                 }),
@@ -103,7 +103,7 @@ async function checkTaskDeadlineApproaching(now: Date) {
                     title: NOTIFICATION_CONFIG.CS_PROJECT_DEADLINE.in_app_title,
                     description: NOTIFICATION_CONFIG.CS_PROJECT_DEADLINE.in_app_body,
                     type: "TASK",
-                    action: "task.open",
+                    action: `${FRONTEND_URL}/tasks/${task._id}`,
                     actionText: "view task",
                     symbol: "⏰"
                 }),
@@ -154,7 +154,7 @@ async function checkTaskOverdue(now: Date) {
                     title: NOTIFICATION_CONFIG.RESOURCE_TASK_OVERDUE.in_app_title,
                     description: NOTIFICATION_CONFIG.RESOURCE_TASK_OVERDUE.in_app_body,
                     type: "TASK",
-                    action: "task.open",
+                    action: `${FRONTEND_URL}/tasks/${task._id}`,
                     actionText: "view task",
                     symbol: "🚨"
                 }),
@@ -182,7 +182,7 @@ async function checkTaskOverdue(now: Date) {
                     title: NOTIFICATION_CONFIG.CS_TASK_OVERDUE.in_app_title,
                     description: NOTIFICATION_CONFIG.CS_TASK_OVERDUE.in_app_body,
                     type: "TASK",
-                    action: "task.open",
+                    action: `${FRONTEND_URL}/tasks/${task._id}`,
                     actionText: "view task",
                     symbol: "⚠️"
                 }),
@@ -233,7 +233,7 @@ async function checkSubscriptionRequired(now: Date) {
                 title: NOTIFICATION_CONFIG.SUBSCRIPTION_REQUIRED.in_app_title,
                 description: NOTIFICATION_CONFIG.SUBSCRIPTION_REQUIRED.in_app_body,
                 type: "SUBSCRIPTION",
-                action: "/membership",
+                action: `${FRONTEND_URL}/membership`,
                 actionText: "upgrade plan",
                 symbol: "🔓"
             }),
@@ -276,7 +276,7 @@ async function checkSubscriptionRequired(now: Date) {
                     title: NOTIFICATION_CONFIG.SUBSCRIPTION_REQUIRED.in_app_title,
                     description: NOTIFICATION_CONFIG.SUBSCRIPTION_REQUIRED.in_app_body,
                     type: "SUBSCRIPTION",
-                    action: "/membership",
+                    action: `${FRONTEND_URL}/membership`,
                     actionText: "upgrade plan",
                     symbol: "🔓"
                 }),
@@ -329,7 +329,7 @@ async function checkRenewalUpcoming(now: Date) {
                 title: NOTIFICATION_CONFIG.RENEWAL_UPCOMING.in_app_title,
                 description: NOTIFICATION_CONFIG.RENEWAL_UPCOMING.in_app_body,
                 type: "SUBSCRIPTION",
-                action: "/profile",
+                action: `${FRONTEND_URL}/profile`,
                 actionText: "manage plan",
                 symbol: "📅"
             }),
@@ -377,7 +377,7 @@ async function checkPlanExpired(now: Date) {
                 title: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_title,
                 description: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_body,
                 type: "SUBSCRIPTION",
-                action: "/membership",
+                action: `${FRONTEND_URL}/membership`,
                 actionText: "renew plan",
                 symbol: "⏰"
             }),
@@ -415,7 +415,7 @@ async function checkPlanExpired(now: Date) {
                         title: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.in_app_title,
                         description: NOTIFICATION_CONFIG.CS_ACCOUNT_PAUSED.in_app_body,
                         type: "SUBSCRIPTION",
-                        action: "customer.view",
+                        action: `${FRONTEND_URL}/customers/${customer._id}`,
                         actionText: "view client",
                         symbol: "⚠️"
                     }),

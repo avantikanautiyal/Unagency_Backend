@@ -25,14 +25,14 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Reset link sent, check your inbox.",
         in_app_body: "Reset link sent, check your inbox.",
         email_subject: "Reset your UNAGENCY password.",
-        email_body: "Hey [Name], Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling."
+        email_body: "Hey [Name], Here’s your reset link, live for 15 minutes. Let’s get you back in and rolling. [Reset Password]"
     },
     EMAIL_VERIFICATION_REQUIRED: {
         trigger: "Email verification required",
         in_app_title: "Verify and unlock UNAGENCY",
         in_app_body: "UNAGENCY access needs one tiny checkbox: verify your email.",
         email_subject: "Verify and unlock UNAGENCY",
-        email_body: "Hey [Name], UNAGENCY access needs one tiny checkbox: verify your email."
+        email_body: "Hey [Name], UNAGENCY access needs one tiny checkbox: verify your email. [Verify Email]"
     },
     EMAIL_VERIFIED: {
         trigger: "Email verified",
@@ -130,7 +130,7 @@ export const NOTIFICATION_CONFIG = {
         in_app_title: "Invite sent. Team’s growing.",
         in_app_body: "Invite sent. Team’s growing.",
         email_subject: "You’ve been invited to UNAGENCY.",
-        email_body: "Hey [Invitee], [Name] just invited you to their UNAGENCY workspace. Join the team and start creating together."
+        email_body: "Hey [Invitee], [Name] just invited you to their UNAGENCY workspace. Join the team and start creating together. [View Invitation]"
     },
     MEMBER_JOINED: {
         trigger: "Member joined",

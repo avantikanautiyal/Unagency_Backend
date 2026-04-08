@@ -67,7 +67,7 @@ const Register = asyncHandler(async (req, res) => {
         const registration = await Users.create(user); // Creating user in database
         if (registration) {
           await createUserUpster({
-            _id: registration._id,
+            _id: registration._id + "",
             name: registration?.name,
             email: registration.email,
             userRole: registration.role,
@@ -368,7 +368,7 @@ const forgetPassword = asyncHandler(async (req: RequestUser) => {
       name: user?.name!,
       content: notificationData.text,
       title: NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.email_subject,
-      buttonText: notificationData.cta,
+      buttonText: notificationData.cta || "Reset Password",
       buttonLink: passwordResetLink,
     }),
     email: user?.email!,
@@ -410,7 +410,7 @@ const sendEmailVerificationEmail = asyncHandler(async (req: RequestUser) => {
       name: user?.name!,
       content: notificationData.text,
       title: NOTIFICATION_CONFIG.EMAIL_VERIFICATION_REQUIRED.email_subject,
-      buttonText: notificationData.cta,
+      buttonText: notificationData.cta || "Verify Email",
       buttonLink: `${BACKEND_URL}/auth/verify-email?code=${uuid}&id=${user?.firebaseId}`,
     }),
     email: user?.email!,

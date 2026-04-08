@@ -35,12 +35,12 @@ export function parseNotificationContent(
 
     let cta = "";
 
-    // simple regex to find the last [...] block
-    const ctaRegex = /\[([^\]]+)\]$/;
+    // Match CTA in the final [...] block, allowing trailing spaces/punctuation.
+    const ctaRegex = /\s*\[([^\]]+)\]\s*[.!?]?\s*$/;
     const match = content.match(ctaRegex);
 
     if (match) {
-        cta = match[1];
+        cta = match[1].trim();
         content = content.replace(ctaRegex, "").trim();
     }
 

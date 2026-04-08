@@ -162,14 +162,17 @@ const InviteMemberInOrganization = asyncHandler(
       Organization: organization,
     });
 
-    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_INVITED.email_body, { Name: invitedUser.name || "User", "Inviter Name": req?.user?.name || "Someone" });
+    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_INVITED.email_body, {
+      Invitee: invitedUser.name || "User",
+      Name: req?.user?.name || "Someone",
+    });
     EmailQueue.add("TEAM_INVITATION", {
       action: "COMMON",
       data: commonTemplate({
         name: invitedUser?.name!,
         content: notificationData.text,
         title: NOTIFICATION_CONFIG.MEMBER_INVITED.email_subject,
-        buttonText: notificationData.cta,
+        buttonText: notificationData.cta || "View Invitation",
         buttonLink: `${FRONTEND_URL}/invitation`,
       }),
       email: email,

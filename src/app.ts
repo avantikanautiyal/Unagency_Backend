@@ -47,7 +47,7 @@ app.use(cors());
 //   event = await stripe.webhooks.constructEventAsync(
 //     req.body,
 //     sigHeader,
-//     "REDACTED"
+//     process.env.stripe_webhook_endpoint_secret
 //   );
 
 //   let invoice;

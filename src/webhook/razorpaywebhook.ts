@@ -12,7 +12,7 @@ const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { parseNotificationContent } from "../utils/notificationUtils";
 
-const webhookSecret = "123456654321";
+const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET!;
 export const razorpayWebhook = async (req: Request, res: Response) => {
   try {
     console.log("webhook called....");

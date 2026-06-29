@@ -3,8 +3,8 @@ import axios from "axios";
 const axiosInstance = axios.create({
   baseURL: "https://api.razorpay.com",
   auth: {
-    username: "REDACTED",
-    password: "REDACTED",
+    username: process.env.RAZORPAY_KEY!,
+    password: process.env.RAZORPAY_SECRET!,
   },
 });
 

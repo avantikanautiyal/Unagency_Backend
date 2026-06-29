@@ -1,13 +1,27 @@
 import firebaseAdmin from "firebase-admin";
-import serviceAccount from "./key.json"; // Make sure the path is correct
 
-// Check if Firebase Admin has already been initialized
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+
 if (!firebaseAdmin.apps.length) {
+  if (
+    !process.env.FIREBASE_PROJECT_ID ||
+    !process.env.FIREBASE_CLIENT_EMAIL ||
+    !privateKey
+  ) {
+    throw new Error(
+      "Firebase credentials missing. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in .env"
+    );
+  }
+
   firebaseAdmin.initializeApp({
-    credential: firebaseAdmin.credential.cert(
-      serviceAccount as firebaseAdmin.ServiceAccount
-    ),
-    databaseURL: "https://prakria-direct-d6c71.firebaseio.com", // Optional: if you're using Firebase Realtime Database
+    credential: firebaseAdmin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey,
+    }),
+    ...(process.env.FIREBASE_DATABASE_URL && {
+      databaseURL: process.env.FIREBASE_DATABASE_URL,
+    }),
   });
 }
 

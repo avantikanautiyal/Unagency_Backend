@@ -8,3 +8,4 @@ dist/
 .idea/
 # Logs
 *.log
+src/libs/firebase/key.json

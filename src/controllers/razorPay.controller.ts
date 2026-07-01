@@ -11,6 +11,13 @@ import crypto from "crypto";
 import Payments from "../models/payment.model";
 import puppeteer from "puppeteer";
 import { InvoiceHTMLTemplate } from "../utils/invoiceTemplate";
+import {
+  buildDemoRazorpayPayment,
+  buildDemoRazorpaySubscription,
+  isDemoPaymentId,
+  isDemoSeedEnabled,
+  isDemoSubscriptionId,
+} from "../utils/demoSeed";
 
 const FUTURE_SUBSCRIPTION_START_DATE = Date.now() + 24 * 60 * 60 * 1000;
 // creating a razor-pay subscription
@@ -190,14 +197,25 @@ export const getUserCurrentSubscription = asyncHandler(
     // console.log("razerpSubscription before ");
     var razerpSubscription: any = null;
     if (!req.user?.subscription?.id) return new ApiResponse(200, null, "No subscription found no subscription id ");
-    try {
-      razerpSubscription = await razorpayInstance.subscriptions.fetch(req.user?.subscription?.id!);
-      // console.log("razerpSubscription ", razerpSubscription);
-      // razerpSubscription = await razorpayInstance.subscriptions.fetch("sub_RkiCnTgakoK6gh");
 
-    } catch (error) {
-      console.log("error ", error);
-      throw new ApiError("error fetching subscription " + (error as any).message, 200);
+    const subscriptionId = req.user.subscription.id;
+    if (isDemoSeedEnabled() && isDemoSubscriptionId(subscriptionId)) {
+      const dbSubscription = await Subscriptions.findOne({ subscriptionId }).populate({
+        path: "planId",
+        foreignField: "plan_id",
+      });
+      razerpSubscription = buildDemoRazorpaySubscription(
+        subscriptionId,
+        dbSubscription?.planId || "plan_demo_gold_monthly",
+        req.user?.email
+      );
+    } else {
+      try {
+        razerpSubscription = await razorpayInstance.subscriptions.fetch(subscriptionId);
+      } catch (error) {
+        console.log("error ", error);
+        throw new ApiError("error fetching subscription " + (error as any).message, 200);
+      }
     }
     if (razerpSubscription.current_end && (razerpSubscription.current_end * 1000) < Date.now()) {
       console.log("subscription expired ", userId, razerpSubscription.current_end * 1000, Date.now());
@@ -405,8 +423,22 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
   const { paymentId } = req.params;
   if (!paymentId) throw new ApiError("Payment ID is required", 400);
 
-  const payment = await razorpayInstance.payments.fetch(paymentId);
-  if (!payment) throw new ApiError("Payment not found", 404);
+  let payment: any;
+  if (isDemoSeedEnabled() && isDemoPaymentId(paymentId)) {
+    const paymentRecord = await Payments.findOne({ razorpay_payment_id: paymentId });
+    const user = paymentRecord?.userId
+      ? await Users.findById(paymentRecord.userId)
+      : await Users.findById(req.user?.userId);
+    payment = buildDemoRazorpayPayment(
+      paymentId,
+      499900,
+      user?.email || "demo@unagency.test",
+      paymentRecord?.razorpay_subscription_id
+    );
+  } else {
+    payment = await razorpayInstance.payments.fetch(paymentId);
+    if (!payment) throw new ApiError("Payment not found", 404);
+  }
 
   // Fetch subscription details if available
   let subscription: any = {};

@@ -9,6 +9,9 @@
     "build": "tsc",
     "bun:start": "bun ./index.ts",
     "dev": "nodemon --exec ts-node ./index.ts",
+    "seed:demo": "ts-node ./scripts/seed-demo-data.ts",
+    "seed:demo:reset": "ts-node ./scripts/seed-demo-reset.ts",
+    "seed:verify": "node ./scripts/verify-seed.mjs",
     "createPackage": "echo {\"type\":\"module\"} > ./dist/package.json",
     "prod:build": "bun build  --entrypoints ./index.ts --outdir ./dist --target node --minify-whitespace --minify-identifiers --minify-syntax --sourcemap=linked && npm run createPackage"
   },

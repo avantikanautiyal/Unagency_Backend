@@ -1,0 +1,5 @@
+# API Gateway service image (same artifact, SERVICE_ROLE=api)
+ARG BASE_IMAGE=unagency/platform:latest
+FROM ${BASE_IMAGE}
+ENV SERVICE_ROLE=api
+EXPOSE 3000

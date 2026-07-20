@@ -1,0 +1,11 @@
+# Release record — UNAGENCY Platform V1.0
+version: "1.0.0"
+codename: frozen-backend
+released_at: "2026-07-15"
+artifacts:
+  - image: unagency/platform:1.0.0
+  - chart: deployment/helm/unagency
+  - compose: deployment/docker-compose/docker-compose.production.yml
+notes:
+  - Backend architecture frozen; deployment layer only.
+  - Migrations run as pre-install Helm hook / compose migrate service.

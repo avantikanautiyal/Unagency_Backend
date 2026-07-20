@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrations
+  namespace: unagency
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: unagency/platform:1.0.0
+          env:
+            - { name: SERVICE_ROLE, value: migration }
+            - { name: MIGRATION_ENV, value: production }
+          envFrom:
+            - configMapRef: { name: unagency-config }
+            - secretRef: { name: unagency-secrets }

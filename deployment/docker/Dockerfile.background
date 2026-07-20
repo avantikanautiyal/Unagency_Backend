@@ -1,0 +1,4 @@
+# Background services (cron / async jobs)
+ARG BASE_IMAGE=unagency/platform:latest
+FROM ${BASE_IMAGE}
+ENV SERVICE_ROLE=background

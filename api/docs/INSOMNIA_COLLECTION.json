@@ -1,0 +1,944 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-07-17T07:29:06.367Z",
+  "__export_source": "unagency.api.inventory",
+  "resources": [
+    {
+      "_id": "wrk_unagency",
+      "_type": "workspace",
+      "name": "UNAGENCY API Inventory",
+      "description": "Generated from platform inventory"
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_unagency",
+      "name": "Base",
+      "data": {
+        "base_url": "http://localhost:3000",
+        "access_token": ""
+      }
+    },
+    {
+      "_id": "req_1",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/health",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/health",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_2",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/auth/login",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/auth/login",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"\",\n  \"password\": \"\",\n  \"organizationId\": \"\",\n  \"deviceId\": \"\",\n  \"scheme\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_3",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/auth/api-keys",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/auth/api-keys",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"\",\n  \"roles\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_4",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/organizations",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/organizations",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_5",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/organizations/{organizationId}",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/organizations/:organizationId",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_6",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/workspaces",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/workspaces",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"organizationId\": \"\",\n  \"name\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_7",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/workspaces",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/workspaces",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_8",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/users",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/users",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"\",\n  \"displayName\": \"\",\n  \"organizationId\": \"\",\n  \"roles\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_9",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/projects",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/projects",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"organizationId\": \"\",\n  \"workspaceId\": \"\",\n  \"name\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_10",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/capabilities",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/capabilities",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_11",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/providers",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/providers",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_12",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/models",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/models",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_13",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/executions",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/executions",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"prompt\": \"\",\n  \"organizationId\": \"\",\n  \"workspaceId\": \"\",\n  \"capabilityId\": \"\",\n  \"budgetLimit\": \"\",\n  \"tokenBudgetLimit\": \"\",\n  \"stream\": \"\",\n  \"metadata\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_14",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_15",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_16",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/executions/{executionId}/cancel",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/cancel",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_17",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/executions/{executionId}/retry",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/retry",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_18",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/stream",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/stream",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_19",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/artifacts",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/artifacts",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_20",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/diagnostics",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/diagnostics",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_21",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/trace",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/trace",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_22",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/cost",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/cost",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_23",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/cost-breakdown",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/cost-breakdown",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_24",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/evaluation",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/evaluation",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_25",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/experience",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/experience",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_26",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/model-decision",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/model-decision",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_27",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/routing",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/routing",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_28",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/planning",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/planning",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_29",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/timeline",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/timeline",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_30",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/provider",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/provider",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_31",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/metrics",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/metrics",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_32",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/tokens",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/tokens",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_33",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/quality",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/quality",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_34",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/confidence",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/confidence",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_35",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/audit",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/audit",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_36",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/executions/{executionId}/decision-graph",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/executions/:executionId/decision-graph",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_37",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/benchmarks",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/benchmarks",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_38",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/analytics/summary",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/analytics/summary",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_39",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/billing/summary",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/billing/summary",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_40",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/notifications",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/notifications",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_41",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/audit",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/audit",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_42",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/files",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/files",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"\",\n  \"mimeType\": \"\",\n  \"sizeBytes\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_43",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/files/{fileId}",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/files/:fileId",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_44",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/reviews",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/reviews",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_45",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "POST /v1/webhooks",
+      "method": "POST",
+      "url": "{{ _.base_url }}/v1/webhooks",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"url\": \"\",\n  \"events\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_46",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/brand-profiles",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/brand-profiles",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_47",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/knowledge-bases",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/knowledge-bases",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    }
+  ]
+}

@@ -23,7 +23,29 @@ export type JudgeKind =
   | "safety"
   | "factual"
   | "hallucination"
-  | "human";
+  | "human"
+  /** Additive dynamic-evaluation judge kinds (plugins). */
+  | "seo"
+  | "accessibility"
+  | "code_quality"
+  | "architecture"
+  | "performance"
+  | "security"
+  | "legal"
+  | "finance"
+  | "medical"
+  | "research"
+  | "reasoning"
+  | "image_quality"
+  | "video_quality"
+  | "audio_quality"
+  | "marketing"
+  | "social_media"
+  | "creative"
+  | "ux"
+  | "testing"
+  | "maintainability"
+  | "compliance";
 
 export type ReviewDisposition = "mandatory" | "recommended" | "optional" | "skip";
 

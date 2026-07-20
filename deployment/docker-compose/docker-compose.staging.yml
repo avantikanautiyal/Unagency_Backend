@@ -1,0 +1,85 @@
+# UNAGENCY — Staging stack
+name: unagency-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: ../environments/staging/postgres.env
+    volumes: [pgdata_staging:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    env_file: ../environments/staging/mongodb.env
+    volumes: [mongodata_staging:/data/db]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-staging}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+
+  migrate:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
+    env_file: ../environments/staging/app.env
+    environment:
+      SERVICE_ROLE: migration
+      MIGRATION_ENV: staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
+    env_file: ../environments/staging/app.env
+    environment:
+      SERVICE_ROLE: api
+    depends_on: [migrate, redis, mongodb]
+    deploy:
+      replicas: 2
+
+  business:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
+    env_file: ../environments/staging/app.env
+    environment:
+      SERVICE_ROLE: business
+    depends_on: [api]
+
+  intelligence:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
+    env_file: ../environments/staging/app.env
+    environment:
+      SERVICE_ROLE: intelligence
+    depends_on: [api]
+
+  worker:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
+    env_file: ../environments/staging/app.env
+    environment:
+      SERVICE_ROLE: worker
+    depends_on: [api, redis]
+
+  background:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
+    env_file: ../environments/staging/app.env
+    environment:
+      SERVICE_ROLE: background
+    depends_on: [api]
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ../nginx/nginx.staging.conf:/etc/nginx/nginx.conf:ro
+      - ../certificates/staging:/etc/nginx/certs:ro
+    depends_on: [api]
+
+volumes:
+  pgdata_staging:
+  mongodata_staging:

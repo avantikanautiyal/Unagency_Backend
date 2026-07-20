@@ -1,0 +1,5 @@
+# Business Platform service image
+ARG BASE_IMAGE=unagency/platform:latest
+FROM ${BASE_IMAGE}
+ENV SERVICE_ROLE=business
+EXPOSE 3000

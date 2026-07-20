@@ -57,3 +57,27 @@ if (result.ok) {
 - `prompt-compiler` contracts
 
 No provider platform dependency.
+
+## Dynamic Adaptive Evaluation (additive)
+
+Strategy-driven pipelines — does **not** replace the static engine.
+
+```
+Execution → Strategy Resolver → Judge Selection → Weighting → Evidence
+  → Dynamic Rubric → IntelligenceEvaluationEngine (reuse) → Report
+  → Learning Signals + Experience Candidates
+```
+
+```typescript
+import {
+  createDynamicEvaluationPlatform,
+  sampleMarketingCarouselDynamicRequest,
+} from "./platform/intelligence/evaluation";
+
+const { engine } = createDynamicEvaluationPlatform();
+const result = await engine.evaluate(sampleMarketingCarouselDynamicRequest());
+// result.value.strategy.pipelineFamily === "marketing"
+```
+
+See `docs/DYNAMIC_*.md` for models and ACP.
+

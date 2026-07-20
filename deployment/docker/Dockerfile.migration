@@ -1,0 +1,4 @@
+# Persistence migrations job (runs and exits)
+ARG BASE_IMAGE=unagency/platform:latest
+FROM ${BASE_IMAGE}
+ENV SERVICE_ROLE=migration

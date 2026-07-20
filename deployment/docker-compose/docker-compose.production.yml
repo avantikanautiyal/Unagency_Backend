@@ -1,0 +1,95 @@
+# UNAGENCY — Production stack (Compose-compatible blueprint; prefer K8s+Helm in prod)
+name: unagency-production
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: ../environments/production/postgres.env
+    volumes: [pgdata_prod:/var/lib/postgresql/data]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      retries: 10
+
+  mongodb:
+    image: mongo:7
+    env_file: ../environments/production/mongodb.env
+    volumes: [mongodata_prod:/data/db]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    restart: unless-stopped
+
+  migrate:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
+    env_file: ../environments/production/app.env
+    environment:
+      SERVICE_ROLE: migration
+      MIGRATION_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
+    env_file: ../environments/production/app.env
+    environment:
+      SERVICE_ROLE: api
+    depends_on: [migrate, redis, mongodb]
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  business:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
+    env_file: ../environments/production/app.env
+    environment:
+      SERVICE_ROLE: business
+    restart: unless-stopped
+    depends_on: [api]
+
+  intelligence:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
+    env_file: ../environments/production/app.env
+    environment:
+      SERVICE_ROLE: intelligence
+    restart: unless-stopped
+    depends_on: [api]
+
+  worker:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
+    env_file: ../environments/production/app.env
+    environment:
+      SERVICE_ROLE: worker
+    restart: unless-stopped
+    depends_on: [api, redis]
+    deploy:
+      replicas: 2
+
+  background:
+    image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
+    env_file: ../environments/production/app.env
+    environment:
+      SERVICE_ROLE: background
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ../nginx/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - ../certificates/production:/etc/nginx/certs:ro
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  pgdata_prod:
+  mongodata_prod:

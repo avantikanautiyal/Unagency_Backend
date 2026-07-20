@@ -1,0 +1,25 @@
+{{- range $role, $replicas := dict "worker" .Values.replicaCount.worker "business" .Values.replicaCount.business "intelligence" .Values.replicaCount.intelligence "background" .Values.replicaCount.background }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $role }}
+  labels:
+    app: {{ $role }}
+spec:
+  replicas: {{ $replicas }}
+  selector:
+    matchLabels: { app: {{ $role }} }
+  template:
+    metadata:
+      labels: { app: {{ $role }} }
+    spec:
+      containers:
+        - name: {{ $role }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          env:
+            - name: SERVICE_ROLE
+              value: {{ $role }}
+          envFrom:
+            - secretRef: { name: {{ $.Release.Name }}-secrets }
+{{- end }}

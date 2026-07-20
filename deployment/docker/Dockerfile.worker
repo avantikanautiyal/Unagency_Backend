@@ -1,0 +1,4 @@
+# Distributed workers
+ARG BASE_IMAGE=unagency/platform:latest
+FROM ${BASE_IMAGE}
+ENV SERVICE_ROLE=worker

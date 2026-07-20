@@ -1,0 +1,4405 @@
+{
+  "info": {
+    "name": "UNAGENCY Complete API Inventory",
+    "description": "Enterprise Gateway (/v1|/v2) + Legacy Express SaaS surface. Generated inventory — no new endpoints invented.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "legacyBaseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    },
+    {
+      "key": "legacyToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Enterprise Gateway v1",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": true
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Gateway health\nDomain: health\nPermissions: none"
+          }
+        },
+        {
+          "name": "POST /auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": true
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"<email>\",\n  \"password\": \"<password>\",\n  \"organizationId\": \"<organizationId>\",\n  \"deviceId\": \"<deviceId>\",\n  \"scheme\": \"jwt\"\n}"
+            },
+            "description": "Login\nDomain: authentication\nPermissions: none"
+          }
+        },
+        {
+          "name": "POST /auth/api-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "api-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"<name>\",\n  \"roles\": [\n    \"service\"\n  ]\n}"
+            },
+            "description": "Issue API key\nDomain: authentication\nPermissions: admin:*"
+          }
+        },
+        {
+          "name": "POST /organizations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/organizations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "organizations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"<name>\"\n}"
+            },
+            "description": "Create organization\nDomain: organizations\nPermissions: org:write"
+          }
+        },
+        {
+          "name": "GET /organizations/{organizationId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/organizations/:organizationId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "organizations",
+                "organizationId"
+              ]
+            },
+            "description": "Get organization\nDomain: organizations\nPermissions: org:read"
+          }
+        },
+        {
+          "name": "POST /workspaces",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "workspaces"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"<organizationId>\",\n  \"name\": \"<name>\"\n}"
+            },
+            "description": "Create workspace\nDomain: workspaces\nPermissions: workspace:write"
+          }
+        },
+        {
+          "name": "GET /workspaces",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "workspaces"
+              ]
+            },
+            "description": "List workspaces\nDomain: workspaces\nPermissions: workspace:read"
+          }
+        },
+        {
+          "name": "POST /users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "users"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"<email>\",\n  \"displayName\": \"<displayName>\",\n  \"organizationId\": \"<organizationId>\",\n  \"roles\": [\n    \"member\"\n  ]\n}"
+            },
+            "description": "Create user\nDomain: users\nPermissions: org:write"
+          }
+        },
+        {
+          "name": "POST /projects",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "projects"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"<organizationId>\",\n  \"workspaceId\": \"<workspaceId>\",\n  \"name\": \"<name>\"\n}"
+            },
+            "description": "Create project\nDomain: projects\nPermissions: workspace:write"
+          }
+        },
+        {
+          "name": "GET /capabilities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "capabilities"
+              ]
+            },
+            "description": "List capabilities\nDomain: capabilities\nPermissions: capability:read"
+          }
+        },
+        {
+          "name": "GET /providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "providers"
+              ]
+            },
+            "description": "Provider catalog\nDomain: providers\nPermissions: provider:read"
+          }
+        },
+        {
+          "name": "GET /models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/models",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "models"
+              ]
+            },
+            "description": "Model catalog\nDomain: models\nPermissions: provider:read"
+          }
+        },
+        {
+          "name": "POST /executions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"<prompt>\",\n  \"organizationId\": \"<organizationId>\",\n  \"workspaceId\": \"<workspaceId>\",\n  \"capabilityId\": \"<capabilityId>\",\n  \"budgetLimit\": 0,\n  \"tokenBudgetLimit\": 0,\n  \"stream\": false,\n  \"metadata\": {}\n}"
+            },
+            "description": "Create execution\nDomain: executions\nPermissions: execution:create"
+          }
+        },
+        {
+          "name": "GET /executions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions"
+              ]
+            },
+            "description": "Execution history\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId"
+              ]
+            },
+            "description": "Get execution\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "POST /executions/{executionId}/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "cancel"
+              ]
+            },
+            "description": "Cancel execution\nDomain: executions\nPermissions: execution:cancel"
+          }
+        },
+        {
+          "name": "POST /executions/{executionId}/retry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "retry"
+              ]
+            },
+            "description": "Retry execution\nDomain: executions\nPermissions: execution:retry"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/stream",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "stream"
+              ]
+            },
+            "description": "Stream execution (SSE frames in JSON envelope)\nDomain: executions\nPermissions: execution:stream"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/artifacts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/artifacts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "artifacts"
+              ]
+            },
+            "description": "Execution artifacts\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/diagnostics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/diagnostics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "diagnostics"
+              ]
+            },
+            "description": "Execution diagnostics\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/trace",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/trace",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "trace"
+              ]
+            },
+            "description": "Execution trace\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/cost",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/cost",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "cost"
+              ]
+            },
+            "description": "Execution cost\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/cost-breakdown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/cost-breakdown",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "cost-breakdown"
+              ]
+            },
+            "description": "Execution cost breakdown\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/evaluation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/evaluation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "evaluation"
+              ]
+            },
+            "description": "Execution evaluation\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/experience",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/experience",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "experience"
+              ]
+            },
+            "description": "Execution experience\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/model-decision",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/model-decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "model-decision"
+              ]
+            },
+            "description": "Model decision explainability\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/routing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/routing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "routing"
+              ]
+            },
+            "description": "Routing explainability\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/planning",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/planning",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "planning"
+              ]
+            },
+            "description": "Planning explainability\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/timeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/timeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "timeline"
+              ]
+            },
+            "description": "Execution timeline\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/provider",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/provider",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "provider"
+              ]
+            },
+            "description": "Provider selection\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "metrics"
+              ]
+            },
+            "description": "Execution metrics\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/tokens",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "tokens"
+              ]
+            },
+            "description": "Token usage\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/quality",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/quality",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "quality"
+              ]
+            },
+            "description": "Quality scores\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/confidence",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/confidence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "confidence"
+              ]
+            },
+            "description": "Confidence bands\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "audit"
+              ]
+            },
+            "description": "Immutable execution audit\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /executions/{executionId}/decision-graph",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/executions/:executionId/decision-graph",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "executions",
+                "executionId",
+                "decision-graph"
+              ]
+            },
+            "description": "Decision graph summary\nDomain: executions\nPermissions: execution:read"
+          }
+        },
+        {
+          "name": "GET /benchmarks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/benchmarks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "benchmarks"
+              ]
+            },
+            "description": "Benchmarks\nDomain: benchmarks\nPermissions: benchmark:read"
+          }
+        },
+        {
+          "name": "GET /analytics/summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/analytics/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "analytics",
+                "summary"
+              ]
+            },
+            "description": "Analytics summary\nDomain: analytics\nPermissions: analytics:read"
+          }
+        },
+        {
+          "name": "GET /billing/summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "summary"
+              ]
+            },
+            "description": "Billing summary\nDomain: billing\nPermissions: billing:read"
+          }
+        },
+        {
+          "name": "GET /notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "notifications"
+              ]
+            },
+            "description": "List notifications\nDomain: notifications\nPermissions: notification:read"
+          }
+        },
+        {
+          "name": "GET /audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "audit"
+              ]
+            },
+            "description": "Audit logs\nDomain: audit\nPermissions: audit:read"
+          }
+        },
+        {
+          "name": "POST /files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "files"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"<name>\",\n  \"mimeType\": \"<mimeType>\",\n  \"sizeBytes\": 0\n}"
+            },
+            "description": "Upload file metadata\nDomain: files\nPermissions: file:upload"
+          }
+        },
+        {
+          "name": "GET /files/{fileId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/files/:fileId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "files",
+                "fileId"
+              ]
+            },
+            "description": "Get file\nDomain: files\nPermissions: file:read"
+          }
+        },
+        {
+          "name": "GET /reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/reviews",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "reviews"
+              ]
+            },
+            "description": "Human reviews\nDomain: human_reviews\nPermissions: review:read"
+          }
+        },
+        {
+          "name": "POST /webhooks",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "webhooks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<url>\",\n  \"events\": [\n    \"string\"\n  ]\n}"
+            },
+            "description": "Register webhook\nDomain: webhooks\nPermissions: org:write"
+          }
+        },
+        {
+          "name": "GET /brand-profiles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/brand-profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "brand-profiles"
+              ]
+            },
+            "description": "Brand profiles (thin list)\nDomain: brand_profiles\nPermissions: org:read"
+          }
+        },
+        {
+          "name": "GET /knowledge-bases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/knowledge-bases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "knowledge-bases"
+              ]
+            },
+            "description": "Knowledge bases (thin list)\nDomain: knowledge_bases\nPermissions: workspace:read"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Legacy Express SaaS",
+      "item": [
+        {
+          "name": "GET /auth/verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/verify",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Verify session"
+          }
+        },
+        {
+          "name": "POST /auth/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/register",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Register"
+          }
+        },
+        {
+          "name": "POST /auth/register-login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/register-login",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register-login"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Register or login"
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/logout",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Logout"
+          }
+        },
+        {
+          "name": "POST /auth/register-fcm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/register-fcm",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register-fcm"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Register FCM token"
+          }
+        },
+        {
+          "name": "POST /auth/forget-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/forget-password",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forget-password"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Forgot password"
+          }
+        },
+        {
+          "name": "POST /auth/send-email-verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/send-email-verification",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "send-email-verification"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Send email verification"
+          }
+        },
+        {
+          "name": "GET /auth/verify-email",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/auth/verify-email",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ]
+            },
+            "description": "[Legacy Express] Auth: Verify email"
+          }
+        },
+        {
+          "name": "GET /dashboard/customer-project-count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/dashboard/customer-project-count",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "customer-project-count"
+              ]
+            },
+            "description": "[Legacy Express] Dashboard: Customer project count"
+          }
+        },
+        {
+          "name": "POST /categories/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/categories/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "description": "[Legacy Express] Categories: Create category"
+          }
+        },
+        {
+          "name": "GET /categories/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/categories/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "description": "[Legacy Express] Categories: List categories"
+          }
+        },
+        {
+          "name": "DELETE /categories/:categoryId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/categories/:categoryId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "categories",
+                ":categoryId"
+              ]
+            },
+            "description": "[Legacy Express] Categories: Delete category"
+          }
+        },
+        {
+          "name": "PUT /categories/:categoryId",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/categories/:categoryId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "categories",
+                ":categoryId"
+              ]
+            },
+            "description": "[Legacy Express] Categories: Update category"
+          }
+        },
+        {
+          "name": "POST /users/create-user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/create-user",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "create-user"
+              ]
+            },
+            "description": "[Legacy Express] Users: Create user"
+          }
+        },
+        {
+          "name": "POST /users/update-user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/update-user",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "update-user"
+              ]
+            },
+            "description": "[Legacy Express] Users: Update user"
+          }
+        },
+        {
+          "name": "POST /users/update-internal-user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/update-internal-user",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "update-internal-user"
+              ]
+            },
+            "description": "[Legacy Express] Users: Update internal user"
+          }
+        },
+        {
+          "name": "GET /users/fetch-customers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/fetch-customers",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "fetch-customers"
+              ]
+            },
+            "description": "[Legacy Express] Users: Fetch customers"
+          }
+        },
+        {
+          "name": "GET /users/fetch-customer/:customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/fetch-customer/:customer",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "fetch-customer",
+                ":customer"
+              ]
+            },
+            "description": "[Legacy Express] Users: Fetch customer"
+          }
+        },
+        {
+          "name": "GET /users/fetch-customer-plan/:customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/fetch-customer-plan/:customer",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "fetch-customer-plan",
+                ":customer"
+              ]
+            },
+            "description": "[Legacy Express] Users: Fetch customer plan"
+          }
+        },
+        {
+          "name": "GET /users/fetch-resource",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/fetch-resource",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "fetch-resource"
+              ]
+            },
+            "description": "[Legacy Express] Users: Fetch resources"
+          }
+        },
+        {
+          "name": "GET /users/fetch-internal-team",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/fetch-internal-team",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "fetch-internal-team"
+              ]
+            },
+            "description": "[Legacy Express] Users: Fetch internal team"
+          }
+        },
+        {
+          "name": "POST /users/search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/search",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "search"
+              ]
+            },
+            "description": "[Legacy Express] Users: Search users"
+          }
+        },
+        {
+          "name": "GET /users/disable-user/:firebaseID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/disable-user/:firebaseID",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "disable-user",
+                ":firebaseID"
+              ]
+            },
+            "description": "[Legacy Express] Users: Disable user"
+          }
+        },
+        {
+          "name": "GET /users/enable-user/:firebaseID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/enable-user/:firebaseID",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "enable-user",
+                ":firebaseID"
+              ]
+            },
+            "description": "[Legacy Express] Users: Enable user"
+          }
+        },
+        {
+          "name": "GET /users/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Users: Get user"
+          }
+        },
+        {
+          "name": "POST /users/update-tour-completion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/users/update-tour-completion",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "users",
+                "update-tour-completion"
+              ]
+            },
+            "description": "[Legacy Express] Users: Update tour completion"
+          }
+        },
+        {
+          "name": "POST /organizations/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/organizations/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "organizations"
+              ]
+            },
+            "description": "[Legacy Express] Organizations: Create organization"
+          }
+        },
+        {
+          "name": "POST /organizations/update/:organizationId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/organizations/update/:organizationId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "organizations",
+                "update",
+                ":organizationId"
+              ]
+            },
+            "description": "[Legacy Express] Organizations: Update organization"
+          }
+        },
+        {
+          "name": "GET /organizations/user-organization",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/organizations/user-organization",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "organizations",
+                "user-organization"
+              ]
+            },
+            "description": "[Legacy Express] Organizations: Current user organization"
+          }
+        },
+        {
+          "name": "GET /organizations/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/organizations/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "organizations",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Organizations: Organization by user"
+          }
+        },
+        {
+          "name": "POST /teams/invite-member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/teams/invite-member",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "invite-member"
+              ]
+            },
+            "description": "[Legacy Express] Teams: Invite member"
+          }
+        },
+        {
+          "name": "PATCH /teams/invite-action",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/teams/invite-action",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "invite-action"
+              ]
+            },
+            "description": "[Legacy Express] Teams: Accept/reject invite"
+          }
+        },
+        {
+          "name": "GET /teams/my-invitation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/teams/my-invitation",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "my-invitation"
+              ]
+            },
+            "description": "[Legacy Express] Teams: My invitations"
+          }
+        },
+        {
+          "name": "POST /teams/remove-member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/teams/remove-member",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "remove-member"
+              ]
+            },
+            "description": "[Legacy Express] Teams: Remove member"
+          }
+        },
+        {
+          "name": "GET /teams/fetch-team",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/teams/fetch-team",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "fetch-team"
+              ]
+            },
+            "description": "[Legacy Express] Teams: Fetch team"
+          }
+        },
+        {
+          "name": "GET /teams/client-team/:organizationId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/teams/client-team/:organizationId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "teams",
+                "client-team",
+                ":organizationId"
+              ]
+            },
+            "description": "[Legacy Express] Teams: Client team"
+          }
+        },
+        {
+          "name": "POST /requirement/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/requirement/create",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "requirement",
+                "create"
+              ]
+            },
+            "description": "[Legacy Express] Requirements: Create requirement"
+          }
+        },
+        {
+          "name": "GET /requirement/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/requirement/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "requirement"
+              ]
+            },
+            "description": "[Legacy Express] Requirements: List requirements"
+          }
+        },
+        {
+          "name": "GET /requirement/get/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/requirement/get/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "requirement",
+                "get",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Requirements: Get requirement"
+          }
+        },
+        {
+          "name": "GET /requirement/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/requirement/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "requirement",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Requirements: Requirements by user"
+          }
+        },
+        {
+          "name": "POST /requirement/:reqId/:userId/:status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/requirement/:reqId/:userId/:status",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "requirement",
+                ":reqId",
+                ":userId",
+                ":status"
+              ]
+            },
+            "description": "[Legacy Express] Requirements: Update requirement status"
+          }
+        },
+        {
+          "name": "POST /staff/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/staff/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "staff"
+              ]
+            },
+            "description": "[Legacy Express] Staff: Create staff"
+          }
+        },
+        {
+          "name": "GET /staff/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/staff/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "staff"
+              ]
+            },
+            "description": "[Legacy Express] Staff: List staff"
+          }
+        },
+        {
+          "name": "GET /staff/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/staff/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "staff",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Staff: Get staff"
+          }
+        },
+        {
+          "name": "POST /staff/update/:id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/staff/update/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "staff",
+                "update",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Staff: Update staff"
+          }
+        },
+        {
+          "name": "DELETE /staff/delete/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/staff/delete/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "staff",
+                "delete",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Staff: Delete staff"
+          }
+        },
+        {
+          "name": "POST /staff/assign-manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/staff/assign-manager",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "staff",
+                "assign-manager"
+              ]
+            },
+            "description": "[Legacy Express] Staff: Assign manager"
+          }
+        },
+        {
+          "name": "GET /chat/token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/chat/token",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "token"
+              ]
+            },
+            "description": "[Legacy Express] Chat: GetStream token"
+          }
+        },
+        {
+          "name": "POST /chat/create-channel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/chat/create-channel",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "create-channel"
+              ]
+            },
+            "description": "[Legacy Express] Chat: Create channel"
+          }
+        },
+        {
+          "name": "GET /chat/myRMChat",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/chat/myRMChat",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "myRMChat"
+              ]
+            },
+            "description": "[Legacy Express] Chat: My RM chat"
+          }
+        },
+        {
+          "name": "POST /chat/add-member-in-chat-room",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/chat/add-member-in-chat-room",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "add-member-in-chat-room"
+              ]
+            },
+            "description": "[Legacy Express] Chat: Add chat member"
+          }
+        },
+        {
+          "name": "POST /chat/remove-member-from-chat-room",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/chat/remove-member-from-chat-room",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "remove-member-from-chat-room"
+              ]
+            },
+            "description": "[Legacy Express] Chat: Remove chat member"
+          }
+        },
+        {
+          "name": "POST /chat/send-automate-message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/chat/send-automate-message",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "send-automate-message"
+              ]
+            },
+            "description": "[Legacy Express] Chat: Send automated message"
+          }
+        },
+        {
+          "name": "GET /projects/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "[Legacy Express] Projects: List projects"
+          }
+        },
+        {
+          "name": "POST /projects/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Create project"
+          }
+        },
+        {
+          "name": "GET /projects/assigned-projects",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/assigned-projects",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "assigned-projects"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Assigned projects"
+          }
+        },
+        {
+          "name": "GET /projects/client/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/client/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "client",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Client projects"
+          }
+        },
+        {
+          "name": "GET /projects/:projectId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/:projectId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects",
+                ":projectId"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Get project"
+          }
+        },
+        {
+          "name": "POST /projects/update/:projectId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/update/:projectId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "update",
+                ":projectId"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Update project"
+          }
+        },
+        {
+          "name": "GET /projects/logs/:projectId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/logs/:projectId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "logs",
+                ":projectId"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Project logs"
+          }
+        },
+        {
+          "name": "GET /projects/update-log/:customerId/:projectId/:stage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/projects/update-log/:customerId/:projectId/:stage",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "update-log",
+                ":customerId",
+                ":projectId",
+                ":stage"
+              ]
+            },
+            "description": "[Legacy Express] Projects: Update project log stage"
+          }
+        },
+        {
+          "name": "GET /packages/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/packages/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "packages"
+              ]
+            },
+            "description": "[Legacy Express] Packages: List packages"
+          }
+        },
+        {
+          "name": "POST /packages/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/packages/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "packages"
+              ]
+            },
+            "description": "[Legacy Express] Packages: Create package"
+          }
+        },
+        {
+          "name": "GET /packages/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/packages/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "packages",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Packages: Get package"
+          }
+        },
+        {
+          "name": "POST /packages/update/:id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/packages/update/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "packages",
+                "update",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Packages: Update package"
+          }
+        },
+        {
+          "name": "POST /packages/delete/:id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/packages/delete/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "packages",
+                "delete",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Packages: Delete package"
+          }
+        },
+        {
+          "name": "POST /tasks/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/tasks/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            },
+            "description": "[Legacy Express] Tasks: Create task"
+          }
+        },
+        {
+          "name": "GET /tasks/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/tasks/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            },
+            "description": "[Legacy Express] Tasks: List tasks"
+          }
+        },
+        {
+          "name": "GET /tasks/kanban",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/tasks/kanban",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "kanban"
+              ]
+            },
+            "description": "[Legacy Express] Tasks: Kanban tasks"
+          }
+        },
+        {
+          "name": "GET /tasks/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/tasks/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Tasks: Tasks by user"
+          }
+        },
+        {
+          "name": "PUT /tasks/update/:taskId",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/tasks/update/:taskId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "update",
+                ":taskId"
+              ]
+            },
+            "description": "[Legacy Express] Tasks: Update task"
+          }
+        },
+        {
+          "name": "GET /tasks/task-by-id/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/tasks/task-by-id/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "task-by-id",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Tasks: Get task"
+          }
+        },
+        {
+          "name": "POST /subscription/create-checkout-session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/create-checkout-session",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "create-checkout-session"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Create checkout session"
+          }
+        },
+        {
+          "name": "GET /subscription/subscription-status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/subscription-status",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "subscription-status"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Subscription status"
+          }
+        },
+        {
+          "name": "GET /subscription/fetch-checkout-session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/fetch-checkout-session",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "fetch-checkout-session"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Fetch checkout session"
+          }
+        },
+        {
+          "name": "POST /subscription/create-user-subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/create-user-subscription",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "create-user-subscription"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Create user subscription"
+          }
+        },
+        {
+          "name": "GET /subscription/payment-methods",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/payment-methods",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "payment-methods"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: List payment methods"
+          }
+        },
+        {
+          "name": "POST /subscription/create-payment-method",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/create-payment-method",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "create-payment-method"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Create payment method"
+          }
+        },
+        {
+          "name": "POST /subscription/make-default-payment-method",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/make-default-payment-method",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "make-default-payment-method"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Default payment method"
+          }
+        },
+        {
+          "name": "POST /subscription/remove-payment-method",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/remove-payment-method",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "remove-payment-method"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Remove payment method"
+          }
+        },
+        {
+          "name": "GET /subscription/invoice-history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/subscription/invoice-history",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "invoice-history"
+              ]
+            },
+            "description": "[Legacy Express] Subscription: Invoice history"
+          }
+        },
+        {
+          "name": "GET /plans/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/plans/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "plans"
+              ]
+            },
+            "description": "[Legacy Express] Plans: List plans"
+          }
+        },
+        {
+          "name": "GET /plans/check-limit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/plans/check-limit",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "plans",
+                "check-limit"
+              ]
+            },
+            "description": "[Legacy Express] Plans: Check plan limit"
+          }
+        },
+        {
+          "name": "GET /plans/check-limit/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/plans/check-limit/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "plans",
+                "check-limit",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Plans: Check plan limit by user"
+          }
+        },
+        {
+          "name": "PUT /plans/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/plans/:id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "plans",
+                ":id"
+              ]
+            },
+            "description": "[Legacy Express] Plans: Update plan"
+          }
+        },
+        {
+          "name": "GET /notification/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/notification/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "notification"
+              ]
+            },
+            "description": "[Legacy Express] Notifications: List notifications"
+          }
+        },
+        {
+          "name": "POST /notification/send",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/notification/send",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "notification",
+                "send"
+              ]
+            },
+            "description": "[Legacy Express] Notifications: Send notification"
+          }
+        },
+        {
+          "name": "POST /notification/send/email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/notification/send/email",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "notification",
+                "send",
+                "email"
+              ]
+            },
+            "description": "[Legacy Express] Notifications: Send email notification"
+          }
+        },
+        {
+          "name": "POST /razorpay/subscriptions/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions/create",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions",
+                "create"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Create subscription"
+          }
+        },
+        {
+          "name": "POST /razorpay/subscriptions/update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions/update",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions",
+                "update"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Update subscription"
+          }
+        },
+        {
+          "name": "POST /razorpay/subscriptions/cancel-update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions/cancel-update",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions",
+                "cancel-update"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Cancel subscription update"
+          }
+        },
+        {
+          "name": "POST /razorpay/subscriptions/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions/cancel",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions",
+                "cancel"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Cancel subscription"
+          }
+        },
+        {
+          "name": "GET /razorpay/subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: List subscriptions"
+          }
+        },
+        {
+          "name": "GET /razorpay/subscriptions/current",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions/current",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions",
+                "current"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Current subscription"
+          }
+        },
+        {
+          "name": "GET /razorpay/subscriptions/customer/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/subscriptions/customer/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "subscriptions",
+                "customer",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Customer subscriptions"
+          }
+        },
+        {
+          "name": "POST /razorpay/paymentVerification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/paymentVerification",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "paymentVerification"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Payment verification"
+          }
+        },
+        {
+          "name": "POST /razorpay/paymentVerificationapp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/paymentVerificationapp",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "paymentVerificationapp"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: App payment verification"
+          }
+        },
+        {
+          "name": "GET /razorpay/payment/history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/payment/history",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "payment",
+                "history"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Payment history"
+          }
+        },
+        {
+          "name": "GET /razorpay/payment/history/:userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/payment/history/:userId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "payment",
+                "history",
+                ":userId"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Payment history by user"
+          }
+        },
+        {
+          "name": "GET /razorpay/invoice/:paymentId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/invoice/:paymentId",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "invoice",
+                ":paymentId"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Invoice"
+          }
+        },
+        {
+          "name": "GET /razorpay/plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/plans",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "plans"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: List Razorpay plans"
+          }
+        },
+        {
+          "name": "POST /razorpay/plans",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/plans",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "plans"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Create Razorpay plan"
+          }
+        },
+        {
+          "name": "PUT /razorpay/plans/:plan_id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/plans/:plan_id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "plans",
+                ":plan_id"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Update Razorpay plan"
+          }
+        },
+        {
+          "name": "DELETE /razorpay/plans/:plan_id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/plans/:plan_id",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "plans",
+                ":plan_id"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Delete Razorpay plan"
+          }
+        },
+        {
+          "name": "POST /razorpay/webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/webhook",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "webhook"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Razorpay webhook"
+          }
+        },
+        {
+          "name": "POST /razorpay/webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/razorpay/webhook",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "razorpay",
+                "webhook"
+              ]
+            },
+            "description": "[Legacy Express] Razorpay: Mounted webhook alias"
+          }
+        },
+        {
+          "name": "GET /",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": []
+            },
+            "description": "[Legacy Express] System: Hello"
+          }
+        }
+      ]
+    }
+  ]
+}

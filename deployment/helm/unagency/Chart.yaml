@@ -1,0 +1,9 @@
+apiVersion: v2
+name: unagency
+description: UNAGENCY Platform production Helm chart (V1.0 frozen backend)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords: [unagency, intelligence, saas]
+maintainers:
+  - name: UNAGENCY Platform

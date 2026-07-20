@@ -1,0 +1,55 @@
+replicaCount:
+  api: 3
+  worker: 2
+  business: 2
+  intelligence: 2
+  background: 1
+
+image:
+  repository: unagency/platform
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.unagency.io
+  tlsSecret: unagency-tls
+
+autoscaling:
+  api:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  worker:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 75
+
+postgresql:
+  enabled: true
+  storage: 50Gi
+
+mongodb:
+  enabled: true
+  storage: 50Gi
+
+redis:
+  enabled: true
+  storage: 10Gi
+
+env:
+  NODE_ENV: production
+  PERSISTENCE_DIALECT: postgres
+  OBSERVABILITY_ENABLED: "true"
+
+resources:
+  api:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }

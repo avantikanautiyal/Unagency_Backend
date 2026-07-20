@@ -1,0 +1,1 @@
+export const PROVIDER_CATALOG_VERSION = "1.0.0";

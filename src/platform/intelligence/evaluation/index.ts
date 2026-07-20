@@ -1,6 +1,8 @@
 /**
  * Intelligence Evaluation Platform — experience layer for objective output evaluation.
- * No AI execution, providers, learning, or human review UI.
+ * No AI execution, providers, learning ownership, or human review UI.
+ *
+ * Additive: Dynamic Adaptive Evaluation extensions (strategy-driven judge pipelines).
  */
 
 export * from "./contracts";
@@ -18,3 +20,15 @@ export * from "./builders";
 export * from "./engine";
 export * from "./factories";
 export * from "./testing";
+export * from "./strategy";
+export * from "./strategy-resolver";
+export * from "./judge-selection";
+export * from "./judge-registry";
+export * from "./weighting";
+export * from "./evidence";
+export * from "./benchmarks";
+export * from "./capability-profiles";
+export * from "./industry-profiles";
+export * from "./adaptive";
+export * from "./feedback";
+export * from "./explainability";

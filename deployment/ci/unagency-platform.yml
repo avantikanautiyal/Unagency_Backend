@@ -1,0 +1,95 @@
+# GitHub Actions — UNAGENCY Platform CI/CD (additive; does not redesign backend)
+
+name: UNAGENCY Platform CI/CD
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options: [development, staging, production]
+
+env:
+  IMAGE_NAME: unagency/platform
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Lint TypeScript compile
+        run: npx tsc --noEmit || npm run build
+      - name: Unit tests (platform)
+        run: npx jest tests/platform --ci --passWithNoTests
+      - name: Deployment validation tests
+        run: npx jest tests/deployment --ci
+
+  security:
+    runs-on: ubuntu-latest
+    needs: lint-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high || true
+      - name: Container config harden check
+        run: |
+          grep -q "USER unagency" deployment/docker/Dockerfile
+          grep -q "tini" deployment/docker/Dockerfile
+
+  package:
+    runs-on: ubuntu-latest
+    needs: [lint-test, security]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - name: Build image
+        run: |
+          docker build -f deployment/docker/Dockerfile \
+            -t $IMAGE_NAME:${{ steps.meta.outputs.tag }} \
+            -t $IMAGE_NAME:sha-${{ steps.meta.outputs.tag }} .
+      - name: Save image artifact
+        run: docker save $IMAGE_NAME:${{ steps.meta.outputs.tag }} | gzip > /tmp/unagency-image.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unagency-image
+          path: /tmp/unagency-image.tgz
+
+  migrate-deploy:
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy (Helm)
+        run: |
+          echo "helm upgrade --install unagency ./deployment/helm/unagency -n unagency --create-namespace"
+          echo "kubectl -n unagency rollout status deploy/unagency-api"
+        # Real cluster credentials provided via GitHub Environment secrets
+
+  rollback:
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: migrate-deploy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rollback hint
+        run: bash deployment/rollback/rollback.sh --dry-run

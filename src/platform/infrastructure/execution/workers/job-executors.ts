@@ -10,9 +10,18 @@ import type { ExecutionJob } from "../contracts/job";
 import type { IIntelligenceOsIntegrationEngine } from "../../../intelligence/integration/interfaces/integration";
 import type { IProductionValidationEngine } from "../../../production/interfaces/production";
 import { asOrganizationId, asWorkspaceId } from "../../../intelligence/shared/identifiers";
+import { buildIntegrationJobSummary } from "./integration-job-summary";
+
+export interface IntegrationLayerJobExecutorOptions {
+  readonly integrationMode?: "full" | "planning_through_routing";
+  readonly executionMode?: "simulated" | "live";
+}
 
 export class IntegrationLayerJobExecutor implements IJobExecutor {
-  constructor(private readonly integration: IIntelligenceOsIntegrationEngine) {}
+  constructor(
+    private readonly integration: IIntelligenceOsIntegrationEngine,
+    private readonly options: IntegrationLayerJobExecutorOptions = {}
+  ) {}
 
   async execute(
     job: ExecutionJob,
@@ -30,6 +39,16 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
     }
 
     const start = Date.now();
+    const integrationMode =
+      (job.payload.metadata?.integrationMode as
+        | "full"
+        | "planning_through_routing"
+        | undefined) ??
+      this.options.integrationMode ??
+      "planning_through_routing";
+
+    const executionMode = this.options.executionMode ?? "simulated";
+
     const result = await this.integration.run({
       requestId: String(job.jobId),
       rawPrompt: job.payload.rawPrompt,
@@ -43,11 +62,18 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       budgetLimit: job.payload.budgetLimit,
       tokenBudgetLimit: job.payload.tokenBudgetLimit,
       correlationId: job.payload.correlationId ?? String(job.jobId),
-      mode: "full",
+      mode: integrationMode,
       metadata: {
         ...(job.payload.metadata ?? {}),
         distributedJobId: String(job.jobId),
         queueKind: job.queueKind,
+        enterpriseExecutionMode: executionMode,
+        ...(job.payload.capabilityHint
+          ? {
+              capabilityHint: job.payload.capabilityHint,
+              capabilityId: job.payload.capabilityHint,
+            }
+          : {}),
       },
     });
 
@@ -58,16 +84,16 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
     if (!result.ok) return result;
 
     const report = result.value;
+    const summary = buildIntegrationJobSummary({
+      report,
+      executionMode,
+      durationMs: Date.now() - start,
+    });
+
     return success({
-      summary: {
-        success: report.success,
-        resultId: report.resultId,
-        durationMs: report.durationMs,
-        stagesCompleted: report.stagesCompleted.length,
-      },
-      currentProvider: report.artifacts.runtime?.response?.providerId
-        ? String(report.artifacts.runtime.response.providerId)
-        : undefined,
+      summary,
+      currentProvider:
+        typeof summary.provider === "string" ? summary.provider : undefined,
       stages: report.stagesCompleted.map(String),
       durationMs: report.durationMs || Date.now() - start,
     });
@@ -147,7 +173,7 @@ export class StubJobExecutor implements IJobExecutor {
       return failure(new ValidationError("transient provider failure"));
     }
     return success({
-      summary: { ok: true, attempt: n },
+      summary: { ok: true, attempt: n, executionMode: "stub", providerMode: "stub" },
       currentProvider: "stub",
       stages: ["stub_stage"],
       durationMs: 5,

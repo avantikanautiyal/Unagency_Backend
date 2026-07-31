@@ -22,7 +22,7 @@ export function validateApiRequest(request: ApiRequest): Result<ApiRequest> {
     return failure(new ValidationError("unsupported API version"));
   }
   // Path must match declared version prefix for future-compatible contracts
-  if (!request.path.startsWith(`/${request.version}/`) && request.path !== `/${request.version}/health`) {
+  if (!request.path.startsWith(`/${request.version}/`) && request.path !== `/${request.version}/health` && request.path !== `/${request.version}/ready`) {
     if (!request.path.startsWith(`/${request.version}`)) {
       return failure(
         new ValidationError("path version mismatch", {

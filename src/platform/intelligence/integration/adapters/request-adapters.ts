@@ -15,12 +15,8 @@ import type { GovernanceRequest } from "../../execution-governance/contracts/req
 import type { ExperienceInjectionRequest } from "../../experience-injection/contracts/request";
 import type { IntegrationArtifactBag } from "../contracts/artifacts";
 import type { IntelligenceOsIntegrationRequest } from "../contracts/request";
-import { createContextIntelligenceEngine } from "../../context/factories/create-context-engine";
-import { sampleContextBuildRequest } from "../../context/testing";
-import { createKnowledgeIntelligenceEngine } from "../../knowledge/factories/create-knowledge-engine";
-import { KnowledgeRequestBuilder } from "../../knowledge/builders/knowledge-builders";
-import { createPromptCompiler } from "../../prompt-compiler/factories/create-prompt-compiler";
-import { ExecutionIntelligenceRequestBuilder } from "../../execution-intelligence/builders/execution-intelligence-request-builder";
+import { buildExecutionIntelligenceContext } from "../context/execution-intelligence-context-pipeline";
+import type { ExecutionContextResolver } from "../../../business/execution-context";
 import { ModelIntelligenceRequestBuilder } from "../../model-intelligence/builders/model-intelligence-request-builder";
 import type { ExecutionIntelligenceRequest } from "../../execution-intelligence/contracts/request";
 import type { ModelIntelligenceRequest } from "../../model-intelligence/contracts/recommendation";
@@ -161,59 +157,37 @@ export function toExperienceInjectionRequest(
 
 export async function toExecutionIntelligenceRequest(
   requestId: string,
-  bag: IntegrationArtifactBag
-): Promise<ExecutionIntelligenceRequest> {
-  const taskReport = bag.task!;
-  const governanceReport = bag.governance!;
-
-  const contextEngine = createContextIntelligenceEngine();
-  const knowledgeEngine = createKnowledgeIntelligenceEngine({ enableCache: false });
-  const compiler = createPromptCompiler();
-
-  const contextReq = sampleContextBuildRequest();
-  const context = await contextEngine.build({
-    ...contextReq,
-    inputHints: { message: taskReport.request.rawPrompt, task: taskReport.request.rawPrompt },
+  bag: IntegrationArtifactBag,
+  integrationRequest: IntelligenceOsIntegrationRequest,
+  resolver: ExecutionContextResolver
+): Promise<{
+  request: ExecutionIntelligenceRequest;
+  contextTrace: {
+    contextSnapshotId?: string;
+    brandEnrichmentId?: string;
+    brandBrainVersion?: number;
+    knowledgeSnapshotId?: string;
+    promptCompilationId?: string;
+    promptVersion?: string;
+  };
+}> {
+  const built = await buildExecutionIntelligenceContext({
+    requestId,
+    integrationRequest,
+    bag,
+    deps: { resolver },
   });
-  if (!context.ok) throw context.error;
-
-  const knowledgeRequest = KnowledgeRequestBuilder.fromIntelligenceContext(
-    context.value,
-    "brand"
-  ).build();
-  const knowledge = await knowledgeEngine.snapshot(knowledgeRequest);
-  if (!knowledge.ok) throw knowledge.error;
-
-  const compiled = await compiler.compile({
-    templateId: "default.capability",
-    templateVersion: "1.0.0",
-    context: context.value,
-    knowledge: knowledge.value,
-    variables: { "user.input": JSON.stringify({ message: taskReport.request.rawPrompt }) },
-  });
-  if (!compiled.ok) throw compiled.error;
-
-  const capabilityId = bag.capability?.executionPlan.capabilityIds[0]
-    ? asCapabilityId(bag.capability.executionPlan.capabilityIds[0])
-    : asCapabilityId(String(taskReport.capabilityMap.primary));
-
-  return ExecutionIntelligenceRequestBuilder.create()
-    .withRequestId(`${requestId}_ei`)
-    .withCapabilityId(capabilityId)
-    .withContext(context.value)
-    .withKnowledge(knowledge.value)
-    .withCompiledPrompt(compiled.value.compiled)
-    .withPreferences({
-      maxTokenBudget: governanceReport.request.tokenBudgetLimit ?? 500000,
-      prioritizeQuality: true,
-      enableReasoning: taskReport.complexityProfile.tier !== "simple",
-    })
-    .withAttributes({
-      governanceDecision: governanceReport.governanceExecutionPlan.decision.kind,
-      capabilityPlanId: bag.capability?.executionPlan.planId,
-      experiencePackageId: bag.experienceInjection?.package.packageId,
-    })
-    .build();
+  return {
+    request: built.request,
+    contextTrace: {
+      contextSnapshotId: built.contextBundle.trace.contextSnapshotId,
+      brandEnrichmentId: built.contextBundle.trace.brandSnapshotId,
+      brandBrainVersion: built.contextBundle.trace.brandBrainVersion,
+      knowledgeSnapshotId: built.contextBundle.trace.knowledgeSnapshotId,
+      promptCompilationId: built.promptCompilationId,
+      promptVersion: built.request.compiledPrompt?.templateVersion,
+    },
+  };
 }
 
 export function toModelIntelligenceRequest(
@@ -308,11 +282,15 @@ export function toProviderExecutionRequest(
   const routing = bag.routing!;
   const task = bag.task!;
   const providerId = asProviderId(String(routing.plan.primary.providerId ?? "openai"));
+  const promptText = task.request.rawPrompt;
   const base = sampleRequest({
     requestId: `${requestId}_rt`,
     providerId: String(providerId),
     payload: {
-      prompt: task.request.rawPrompt,
+      prompt: promptText,
+      // Embedding leaves read text|prompt|input — keep text for embedding.generate.
+      text: promptText,
+      input: promptText,
       capabilityPlan: bag.capability?.executionPlan.capabilityIds,
     },
   });

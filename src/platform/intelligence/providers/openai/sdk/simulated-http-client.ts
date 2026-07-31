@@ -81,8 +81,50 @@ export class SimulatedOpenAIHttpClient implements IOpenAIHttpClient {
       });
     }
 
+    if (request.path.includes("/audio/speech")) {
+      const inputText = String(request.body?.input ?? "");
+      return success({
+        status: 200,
+        headers: { "content-type": "audio/mpeg" },
+        body: {
+          operation: "audio.speech",
+          model: request.body?.model,
+          _contentType: "audio/mpeg",
+          _audioUrl: "https://example.local/simulated/openai-tts.mp3",
+          _inputCharacters: inputText.length,
+          usage: { characters: inputText.length },
+        },
+        latencyMs: this.clockMs() - start,
+      });
+    }
+
+    if (request.path.includes("/audio/transcriptions")) {
+      return success({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: {
+          operation: "audio.transcriptions",
+          text: "[simulated:openai:whisper] transcription",
+          language: "en",
+          duration: 3.2,
+          usage: { transcriptionSeconds: 3.2 },
+        },
+        latencyMs: this.clockMs() - start,
+      });
+    }
+
     // Default: chat completions
     const model = String(request.body?.model ?? "unknown");
+    const messages = request.body?.messages as Array<Record<string, unknown>> | undefined;
+    const hasVision = messages?.some((m) =>
+      Array.isArray(m.content) &&
+      (m.content as unknown[]).some(
+        (p) => typeof p === "object" && p && (p as Record<string, unknown>).type === "image_url"
+      )
+    );
+    const content = hasVision
+      ? `[simulated:openai:vision] analysis for ${model}`
+      : "Simulated OpenAI response";
     return success({
       status: 200,
       headers: {},
@@ -95,7 +137,7 @@ export class SimulatedOpenAIHttpClient implements IOpenAIHttpClient {
             index: 0,
             message: {
               role: "assistant",
-              content: "Simulated OpenAI response",
+              content,
               ...(request.body?.tools
                 ? {
                     tool_calls: [

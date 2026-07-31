@@ -25,12 +25,22 @@ export class DefaultCapabilityAnalyzer implements ICapabilityAnalyzer {
   }
 
   scoreForCapability(model: CanonicalModel, capabilityId: string): Result<number> {
+    const hasCap = model.capabilities.some(
+      (c) => c.capabilityId === capabilityId && c.supported !== false
+    );
+    if (!hasCap) {
+      return success(0);
+    }
     const bench = CAPABILITY_BENCHMARK_MAP[capabilityId] ?? "conversation";
+    void bench;
     const base = model.qualityTier === "frontier" ? 0.9 : model.qualityTier === "premium" ? 0.8 : 0.65;
     const creativeBoost =
       capabilityId.includes("content") || capabilityId.includes("carousel") ? 0.08 : 0;
-    const hasCap = model.capabilities.some((c) => c.capabilityId === capabilityId);
-    return success(Math.min(0.99, base + creativeBoost + (hasCap ? 0.05 : -0.1)));
+    const embeddingBoost =
+      capabilityId === "embedding.generate" && model.modalities.includes("embedding" as never)
+        ? 0.1
+        : 0;
+    return success(Math.min(0.99, base + creativeBoost + embeddingBoost + 0.05));
   }
 }
 

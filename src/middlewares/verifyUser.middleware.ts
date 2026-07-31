@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ApiError } from "../utils/apiError";
-import firebaseAdmin from "../libs/firebase";
+import { verifyFirebaseIdToken } from "../libs/firebase/verify-id-token";
 import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -21,10 +21,10 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
     return;
   }
   try {
-    const verification = await firebaseAdmin.auth().verifyIdToken(accessToken);
+    const verification = await verifyFirebaseIdToken(accessToken);
     if (verification) {
       const getUser = await Users.findOne({
-        firebaseId: verification?.uid,
+        firebaseId: verification.uid,
         // isActive: true,
       });
       let staff;
@@ -65,7 +65,7 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
 
       req.user = {
         ...getUser.toObject(),
-        isVerified: verification?.email_verified!,
+        isVerified: verification.emailVerified ?? false,
         userId: getUser?._id?.toString(),
         customerId,
         organization: organization as IOrganization,

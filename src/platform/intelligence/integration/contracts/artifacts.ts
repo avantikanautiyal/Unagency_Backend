@@ -33,6 +33,15 @@ export interface RepositoryUpdateSummary {
   readonly snapshotId?: string;
 }
 
+export interface IntegrationContextTrace {
+  readonly contextSnapshotId?: string;
+  readonly brandEnrichmentId?: string;
+  readonly brandBrainVersion?: number;
+  readonly knowledgeSnapshotId?: string;
+  readonly promptCompilationId?: string;
+  readonly promptVersion?: string;
+}
+
 export interface IntegrationArtifactBag {
   readonly task?: TaskIntelligenceReport;
   readonly capability?: CapabilityIntelligenceReport;
@@ -41,6 +50,8 @@ export interface IntegrationArtifactBag {
   readonly governance?: GovernanceReport;
   readonly experienceInjection?: ExperienceInjectionReport;
   readonly executionIntelligence?: ExecutionIntelligenceResult;
+  /** Safe context/prompt trace IDs — no raw prompts or private knowledge. */
+  contextTrace?: IntegrationContextTrace;
   readonly modelIntelligence?: ModelIntelligenceResult;
   readonly negotiation?: NegotiationResult;
   readonly routing?: RoutingDecision;

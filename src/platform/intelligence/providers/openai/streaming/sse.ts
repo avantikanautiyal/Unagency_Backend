@@ -1,6 +1,9 @@
 /**
- * Streaming helpers — SSE chunk parsing reserved for live stream mode.
+ * OpenAI SSE line helper — thin wrapper over incremental parser family.
+ * Prefer IncrementalSseParser for production streaming.
  */
+
+import { IncrementalSseParser } from "../../streaming/parsers/sse-incremental-parser";
 
 export function parseOpenAISseLine(line: string): Record<string, unknown> | null {
   const trimmed = line.trim();
@@ -12,4 +15,24 @@ export function parseOpenAISseLine(line: string): Record<string, unknown> | null
   } catch {
     return null;
   }
+}
+
+/** Parse a complete multi-line SSE buffer into OpenAI data payloads. */
+export function parseOpenAISseBuffer(text: string): Record<string, unknown>[] {
+  const parser = new IncrementalSseParser();
+  const events = parser.push(text.endsWith("\n\n") ? text : `${text}\n\n`);
+  const out: Record<string, unknown>[] = [];
+  for (const ev of events) {
+    if (!ev.data) continue;
+    if (ev.data.trim() === "[DONE]") {
+      out.push({ done: true });
+      continue;
+    }
+    try {
+      out.push(JSON.parse(ev.data) as Record<string, unknown>);
+    } catch {
+      /* skip malformed */
+    }
+  }
+  return out;
 }

@@ -16,6 +16,7 @@ import { InMemoryPerformanceRepository } from "../repositories/in-memory-perform
 import { DefaultScoringEngine } from "../scoring/default-scoring-engine";
 import { DefaultTrendAnalyzer } from "../trend-analysis/default-trend-analyzer";
 import type { IModelIntelligenceEngine } from "../interfaces/model-intelligence";
+import type { ProviderId } from "../../shared/identifiers";
 
 export interface ModelIntelligencePlatform {
   readonly engine: IModelIntelligenceEngine;
@@ -25,6 +26,11 @@ export interface CreateModelIntelligencePlatformOptions {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
+  /**
+   * When set, limit candidate models to a safe subset of providers.
+   * This is used by production composition to avoid selecting catalogue-only providers.
+   */
+  readonly allowedProviderIds?: readonly ProviderId[];
 }
 
 export function createModelIntelligencePlatform(
@@ -34,7 +40,11 @@ export function createModelIntelligencePlatform(
   const registry = createModelRegistryPlatform({ nowIso, loadSeed: true });
   const modelsResult = registry.registry.listModels();
   if (!modelsResult.ok) throw modelsResult.error;
-  const models = modelsResult.value;
+  const models = options.allowedProviderIds?.length
+    ? modelsResult.value.filter((m) =>
+        options.allowedProviderIds!.includes(m.providerId)
+      )
+    : modelsResult.value;
 
   const knowledgeProfiles = models.map((m) => buildKnowledgeProfile(m, nowIso()));
   const knowledge = new InMemoryModelKnowledgeBase(knowledgeProfiles);

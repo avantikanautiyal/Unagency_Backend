@@ -200,15 +200,18 @@ describe("Enterprise API Gateway", () => {
     expect(frames.some((f) => f.event === "done" || f.event === "status")).toBe(true);
   });
 
-  it("rate limits aggressive callers", () => {
+  it("rate limits aggressive callers", async () => {
     const rl = new InMemoryRateLimitService(
       () => "t",
       () => 1000,
       [{ dimension: "user", limit: 2, windowMs: 60_000 }]
     );
-    expect(rl.check({ userId: "u1" }).value.allowed).toBe(true);
-    expect(rl.check({ userId: "u1" }).value.allowed).toBe(true);
-    expect(rl.check({ userId: "u1" }).value.allowed).toBe(false);
+    const a = await rl.check({ userId: "u1" });
+    const b = await rl.check({ userId: "u1" });
+    const c = await rl.check({ userId: "u1" });
+    expect(a.ok && a.value.allowed).toBe(true);
+    expect(b.ok && b.value.allowed).toBe(true);
+    expect(c.ok && c.value.allowed).toBe(false);
   });
 
   it("validates versioned paths", () => {

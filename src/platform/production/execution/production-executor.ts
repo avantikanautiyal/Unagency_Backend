@@ -21,7 +21,12 @@ import {
   asWorkspaceId,
   asCapabilityId,
 } from "../../intelligence/shared/identifiers";
-import { ProductionPinnedOpenAIDispatcher } from "./pinned-openai-dispatcher";
+import { createModelRegistryPlatform } from "../../intelligence/model-registry/factories/create-model-registry-platform";
+import { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
+import { MultiProviderDispatcher } from "../../intelligence/providers/runtime/dispatcher";
+import { registerTextProviders } from "./register-text-providers";
+import { registerAudioProviders } from "./register-audio-providers";
+import { evaluateTextProviderEnv } from "./text-provider-env";
 import type { ProductionExecutionMode } from "../contracts/enums";
 import type { ProductionScenario } from "../contracts/scenario";
 
@@ -44,6 +49,10 @@ export interface ProductionExecutionDeps {
   readonly workspaceId?: string;
   /** Injected openai platform (tests). */
   readonly openai?: OpenAIProviderPlatform;
+  /** When set, avoids live Mongo business-context stores (offline certification). */
+  readonly executionContextStores?: import("../../business/execution-context").IExecutionContextStores;
+  readonly organizationIdForFixtures?: string;
+  readonly workspaceIdForFixtures?: string;
 }
 
 function resolveMode(deps: ProductionExecutionDeps): ProductionExecutionMode {
@@ -70,41 +79,73 @@ export async function bootProductionExecution(
   let identitySessionId: string | undefined;
 
   if (executionMode === "live") {
-    if (!apiKey?.trim()) {
+    const enabledProviders = evaluateTextProviderEnv(process.env).filter((p) => p.enabled);
+    if (enabledProviders.length === 0) {
       return failure(
-        new ValidationError("OPENAI_API_KEY required for live production execution")
+        new ValidationError(
+          "At least one text provider must be enabled and configured for live production execution"
+        )
       );
     }
-    const identity = createIdentityPlatform({});
-    const input = new RegisterCredentialInputBuilder()
-      .withProvider(asProviderId("openai"))
-      .withScheme("api_key")
-      .withSecret(apiKey)
-      .withTenancy("organization")
-      .withOrganization(orgId)
-      .withWorkspace(wsId)
-      .withTrustLevel("high")
-      .withPermissions(["read", "execute"])
-      .build();
+    if (apiKey?.trim()) {
+      const identity = createIdentityPlatform({});
+      const input = new RegisterCredentialInputBuilder()
+        .withProvider(asProviderId("openai"))
+        .withScheme("api_key")
+        .withSecret(apiKey)
+        .withTenancy("organization")
+        .withOrganization(orgId)
+        .withWorkspace(wsId)
+        .withTrustLevel("high")
+        .withPermissions(["read", "execute"])
+        .build();
 
-    const registered = await identity.store.registerCredential(input);
-    if (!registered.ok) return registered;
+      const registered = await identity.store.registerCredential(input);
+      if (!registered.ok) return registered;
 
-    const session = await identity.engine.createCredentialSession({
-      providerId: asProviderId("openai"),
-      organizationId: orgId,
-      workspaceId: wsId,
-      capabilityId: asCapabilityId("cap-text-generation"),
-      requiredPermissions: ["read", "execute"],
-    });
-    if (!session.ok) return session;
-    identitySessionId = session.value.sessionId;
+      const session = await identity.engine.createCredentialSession({
+        providerId: asProviderId("openai"),
+        organizationId: orgId,
+        workspaceId: wsId,
+        capabilityId: asCapabilityId("cap-text-generation"),
+        requiredPermissions: ["read", "execute"],
+      });
+      if (!session.ok) return session;
+      identitySessionId = session.value.sessionId;
+    }
   }
+
+  const modelRegistry = createModelRegistryPlatform({ nowIso, loadSeed: true });
+  const executableProviders = new InMemoryProviderRuntimeRegistry();
+
+  const textProviders = await registerTextProviders({
+    env: process.env,
+    executionMode,
+    modelRegistry: modelRegistry.registry,
+    registry: executableProviders,
+    nowIso,
+    clockMs,
+  });
+  if (!textProviders.ok) return textProviders;
+
+  const audioProviders = registerAudioProviders({
+    env: process.env,
+    executionMode,
+    modelRegistry: modelRegistry.registry,
+    registry: executableProviders,
+    nowIso,
+    clockMs,
+  });
+  if (!audioProviders.ok) return audioProviders;
+
+  const openaiEntry = textProviders.value.find(
+    (p) => String(p.providerId) === "provider.openai"
+  );
 
   let platform: OpenAIProviderPlatform;
   if (deps.openai) {
     platform = deps.openai;
-  } else {
+  } else if (openaiEntry) {
     const created = await createOpenAIProvider({
       mode: executionMode === "live" ? "live" : "simulated",
       auth:
@@ -114,16 +155,46 @@ export async function bootProductionExecution(
       nowIso,
       clockMs,
       createId,
+      skipCertification: true,
+    });
+    if (!created.ok) return created;
+    platform = created.value;
+  } else {
+    const created = await createOpenAIProvider({
+      mode: "simulated",
+      skipCertification: true,
+      nowIso,
+      clockMs,
+      createId,
     });
     if (!created.ok) return created;
     platform = created.value;
   }
 
+  const modelCapabilityResolver = {
+    supportsModelCapability: (modelId: string, capabilityId: string) => {
+      const model = modelRegistry.registry.getModel(modelId);
+      if (!model.ok) return false;
+      return model.value.capabilities.some(
+        (c) => c.capabilityId === capabilityId && c.supported
+      );
+    },
+  };
+
+  const runtimeDispatcher = new MultiProviderDispatcher({
+    registry: executableProviders,
+    modelCapabilityResolver,
+  });
+
   const { engine } = createIntelligenceOsIntegrationPlatform({
     nowIso,
     clockMs,
     createId,
-    runtimeDispatcher: new ProductionPinnedOpenAIDispatcher(platform),
+    runtimeDispatcher,
+    executionContextStores: deps.executionContextStores,
+    useLiveBusinessContext: deps.executionContextStores ? false : undefined,
+    // Prevent LIVE routing from selecting catalogue-only providers.
+    allowedModelProviderIds: executableProviders.listAvailableProviderIds(),
   });
 
   return success({

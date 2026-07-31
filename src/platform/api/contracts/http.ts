@@ -24,6 +24,17 @@ export interface ApiResponse<T = unknown> {
   readonly requestId: string;
   readonly version: ApiVersion;
   readonly durationMs: number;
+  /**
+   * M9.5O — when set, Express transport writes SSE instead of JSON body.
+   * Body may still hold a small meta envelope for non-SSE clients.
+   */
+  readonly sse?: {
+    readonly frames: readonly import("./streaming").SseFrame[];
+    /** Optional async producer for live streams (tests / orchestrator). */
+    readonly frameIterable?: AsyncIterable<import("./streaming").SseFrame>;
+    /** Abort in-flight stream when the HTTP client disconnects. */
+    readonly cancel?: (reason?: string) => void;
+  };
 }
 
 export interface ApiErrorBody {

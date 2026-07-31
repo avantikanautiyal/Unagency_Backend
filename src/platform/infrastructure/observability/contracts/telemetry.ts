@@ -93,8 +93,9 @@ export interface CostRecord {
   readonly recordId: string;
   readonly at: string;
   readonly context: TelemetryContext;
-  readonly amount: number;
-  readonly currency: string;
+  /** Null when unknown — never invent 0 (M9.5Q). */
+  readonly amount: number | null;
+  readonly currency: string | null;
   readonly providerId?: string;
   readonly modelId?: string;
   readonly capabilityId?: string;

@@ -31,7 +31,7 @@ export class InMemoryRateLimitService implements IRateLimitService {
     apiKeyId?: string;
     capabilityId?: string;
     providerId?: string;
-  }): Result<RateLimitDecision> {
+  }): Promise<Result<RateLimitDecision>> {
     const checks: { dimension: RateLimitDimension; value?: string }[] = [
       { dimension: "organization", value: input.organizationId },
       { dimension: "workspace", value: input.workspaceId },
@@ -62,18 +62,24 @@ export class InMemoryRateLimitService implements IRateLimitService {
         dimension: c.dimension,
         key,
       };
-      if (!decision.allowed) return success(decision);
+      if (!decision.allowed) return Promise.resolve(success(decision));
       if (!tightest || decision.remaining < tightest.remaining) tightest = decision;
     }
 
-    return success(
-      tightest ?? {
-        allowed: true,
-        remaining: 999,
-        resetAt: this.nowIso(),
-        dimension: "organization",
-        key: "none",
-      }
+    return Promise.resolve(
+      success(
+        tightest ?? {
+          allowed: true,
+          remaining: 999,
+          resetAt: this.nowIso(),
+          dimension: "organization",
+          key: "none",
+        }
+      )
     );
+  }
+
+  isAvailable(): boolean {
+    return true;
   }
 }

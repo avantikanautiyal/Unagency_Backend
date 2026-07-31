@@ -18,6 +18,7 @@ import type { IIntegrationPipeline } from "../interfaces/integration";
 import type { IntegrationBridgeSet } from "../interfaces/integration";
 import type { RawRequestTaskBridge } from "../bridges/stage-bridges";
 import { INTELLIGENCE_OS_INTEGRATION_VERSION } from "../constants";
+import { applyExplicitCapabilityHint } from "../adapters/capability-hint";
 
 export interface IntegrationPipelineDeps {
   readonly bridges: IntegrationBridgeSet & { readonly rawTask: RawRequestTaskBridge };
@@ -86,7 +87,7 @@ export class IntegrationPipeline implements IIntegrationPipeline {
         return this.failReport(request, bag, stages, bridges, completed, start, "task_intelligence");
       }
       bridges.push(r.value.observability);
-      bag.task = r.value.value;
+      bag.task = applyExplicitCapabilityHint(r.value.value, request);
       push("task_intelligence", "succeeded", "Task plan produced", r.value.observability.durationMs, [
         String(bag.task.resultId),
       ]);

@@ -16,6 +16,42 @@ const fetchMyNotifications = asyncHandler(async (req: RequestUser) => {
     return new ApiResponse(200, notifications, "Notification fetched");
 });
 
+/** M10.9 — mark one notification read (owner only). */
+const markNotificationRead = asyncHandler(async (req: RequestUser) => {
+    const notificationId = req.params?.notificationId;
+    if (!notificationId || !req.user?.userId) {
+        throw new ApiError("notificationId required", 400);
+    }
+    const updated = await Notifications.findOneAndUpdate(
+        {
+            _id: notificationId,
+            userId: req.user.userId,
+        },
+        { $set: { isRead: true } },
+        { new: true }
+    );
+    if (!updated) {
+        throw new ApiError("Notification not found", 404);
+    }
+    return new ApiResponse(200, updated, "Notification marked read");
+});
+
+/** M10.9 — mark all notifications read for authenticated principal. */
+const markAllNotificationsRead = asyncHandler(async (req: RequestUser) => {
+    if (!req.user?.userId) {
+        throw new ApiError("User required", 401);
+    }
+    const result = await Notifications.updateMany(
+        { userId: req.user.userId, isRead: false },
+        { $set: { isRead: true } }
+    );
+    return new ApiResponse(
+        200,
+        { modifiedCount: result.modifiedCount ?? 0 },
+        "All notifications marked read"
+    );
+});
+
 
 const sendNotification = asyncHandler(async (req: RequestUser) => {
     const { title, message, userIds, screen } = req.body;
@@ -178,4 +214,4 @@ const sendEmailAndNotification = asyncHandler(async (req: RequestUser) => {
     return new ApiResponse(200, null, "Email queued successfully");
 });
 
-export { fetchMyNotifications, sendNotification, sendEmailAndNotification };
+export { fetchMyNotifications, sendNotification, sendEmailAndNotification, markNotificationRead, markAllNotificationsRead };

@@ -37,12 +37,31 @@ export interface IDistributedExecutionEngine {
   shutdown(): Promise<Result<void>>;
 }
 
-/** Persistence port — in-memory now; Redis/BullMQ/Kafka later. */
+/**
+ * Persistence port for execution jobs.
+ * Optional tryClaim enables atomic multi-worker claiming (M9.4A).
+ */
 export interface IJobStore {
   save(job: ExecutionJob): void;
   get(jobId: JobId): ExecutionJob | undefined;
   list(): readonly ExecutionJob[];
   delete(jobId: JobId): void;
+  /**
+   * Atomically claim a runnable job for a worker.
+   * Returns undefined if another worker already claimed it.
+   * When present, DistributedExecutionEngine MUST claim before execute.
+   */
+  tryClaim?(
+    jobId: JobId,
+    workerId: WorkerId,
+    ttlMs: number,
+    nowIso: string
+  ): Promise<ExecutionJob | undefined>;
+  /**
+   * Reclaim jobs whose lease expired while reserved/running.
+   * Returns requeued jobs (status → queued).
+   */
+  reclaimExpired?(nowIso: string, nowMs: number): Promise<readonly ExecutionJob[]>;
 }
 
 export interface IQueueBackend {

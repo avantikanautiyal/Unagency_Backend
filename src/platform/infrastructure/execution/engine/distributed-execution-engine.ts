@@ -257,6 +257,16 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     }
     this.promoteReadyRetries();
 
+    // M9.4A: reclaim stale leases before claiming new work
+    if (typeof this.store.reclaimExpired === "function") {
+      const recovered = await this.store.reclaimExpired(this.nowIso(), this.clockMs());
+      for (const job of recovered) {
+        if (!this.queues.get("immediate").list().includes(job.jobId)) {
+          this.queues.get("immediate").enqueue(job.jobId);
+        }
+      }
+    }
+
     const completed: ExecutionJob[] = [];
     for (let i = 0; i < maxJobs; i += 1) {
       if (!this.concurrency.tryAcquire()) break;
@@ -291,25 +301,62 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         break;
       }
 
-      const reservation = this.reservations.reserve(worker.workerId, job.jobId);
-      const lease = this.leases.acquire(
-        worker.workerId,
-        job.jobId,
-        DEFAULT_LEASE_TTL_MS
-      );
-      this.workers.adjustActive(worker.workerId, 1);
+      // M9.4A: atomic claim BEFORE execute when store supports it
+      let reservation;
+      let lease;
+      let running: ExecutionJob;
 
-      let running: ExecutionJob = {
-        ...job,
-        status: "reserved",
-        reservedBy: worker.workerId,
-        reservationId: reservation.reservationId,
-        leaseId: lease.leaseId,
-        leaseExpiresAt: new Date(lease.expiresAtMs).toISOString(),
-        updatedAt: this.nowIso(),
-        attempt: job.attempt + 1,
-      };
-      this.store.save(running);
+      if (typeof this.store.tryClaim === "function") {
+        const claimed = await this.store.tryClaim(
+          job.jobId,
+          worker.workerId,
+          DEFAULT_LEASE_TTL_MS,
+          this.nowIso()
+        );
+        if (!claimed) {
+          // Lost race — another worker claimed this job
+          this.throttle.exit(limits);
+          this.concurrency.release();
+          continue;
+        }
+        reservation = this.reservations.reserve(worker.workerId, claimed.jobId);
+        lease = this.leases.acquire(
+          worker.workerId,
+          claimed.jobId,
+          DEFAULT_LEASE_TTL_MS
+        );
+        running = {
+          ...claimed,
+          status: "reserved",
+          reservedBy: worker.workerId,
+          reservationId: reservation.reservationId,
+          leaseId: lease.leaseId,
+          leaseExpiresAt:
+            claimed.leaseExpiresAt ?? new Date(lease.expiresAtMs).toISOString(),
+          updatedAt: this.nowIso(),
+        };
+        this.store.save(running);
+      } else {
+        reservation = this.reservations.reserve(worker.workerId, job.jobId);
+        lease = this.leases.acquire(
+          worker.workerId,
+          job.jobId,
+          DEFAULT_LEASE_TTL_MS
+        );
+        running = {
+          ...job,
+          status: "reserved",
+          reservedBy: worker.workerId,
+          reservationId: reservation.reservationId,
+          leaseId: lease.leaseId,
+          leaseExpiresAt: new Date(lease.expiresAtMs).toISOString(),
+          updatedAt: this.nowIso(),
+          attempt: job.attempt + 1,
+        };
+        this.store.save(running);
+      }
+
+      this.workers.adjustActive(worker.workerId, 1);
       this.publishProgress(running, "reserved", 5, "reserved");
 
       running = {
@@ -332,7 +379,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         continue;
       }
 
-      const signal = { cancelled: running.cancelRequested };
+      const signal: { cancelled: boolean } = { cancelled: running.cancelRequested };
       // Mid-run cancel check via store
       const latest = this.store.get(running.jobId);
       if (latest?.cancelRequested) signal.cancelled = true;
@@ -472,14 +519,19 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
 
   async shutdown(): Promise<Result<void>> {
     this.shutDown = true;
-    // Graceful: mark running as cancel requested
+    // Graceful: release in-flight claims to recoverable queued state (not permanent RUNNING)
     for (const job of this.store.list()) {
       if (job.status === "running" || job.status === "reserved") {
         this.store.save({
           ...job,
-          cancelRequested: true,
-          status: "cancel_requested",
+          status: "queued",
+          reservedBy: undefined,
+          reservationId: undefined,
+          leaseId: undefined,
+          leaseExpiresAt: undefined,
+          cancelRequested: false,
           updatedAt: this.nowIso(),
+          lastError: job.lastError ?? "shutdown_interrupted",
         });
       }
     }

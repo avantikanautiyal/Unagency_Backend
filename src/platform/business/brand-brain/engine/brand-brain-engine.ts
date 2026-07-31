@@ -1,6 +1,6 @@
 /**
  * Brand Brain Engine — proprietary organizational intelligence.
- * Enriches executions with structured context before Intelligence OS.
+ * Persists via optional IBrandBrainRepository for restart/multi-instance safety.
  */
 
 import { failure, success, type Result } from "../../../intelligence/shared/result";
@@ -12,6 +12,7 @@ import type {
   BrandBrainVersionRecord,
 } from "../contracts";
 import type { IBrandBrainEngine, UpsertBrandBrainInput } from "../interfaces";
+import type { IBrandBrainRepository } from "../../../infrastructure/durability/interfaces/brand-brain-repository";
 import { diffBrandBrainDocuments } from "../versioning/diff";
 import {
   buildEnrichmentPackage,
@@ -22,21 +23,33 @@ export interface BrandBrainEngineDeps {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
+  readonly repository?: IBrandBrainRepository;
 }
 
 export class BrandBrainEngine implements IBrandBrainEngine {
   private readonly nowIso: () => string;
   private readonly createId: (prefix: string) => string;
-  /** organizationId → versions ascending */
+  private readonly repository?: IBrandBrainRepository;
+  /** organizationId → versions ascending (L1 cache) */
   private readonly versions = new Map<string, BrandBrainVersionRecord[]>();
 
   constructor(deps: BrandBrainEngineDeps = {}) {
     this.nowIso = deps.nowIso ?? (() => new Date().toISOString());
     const clockMs = deps.clockMs ?? (() => Date.now());
     this.createId = deps.createId ?? ((p) => `${p}_${clockMs()}`);
+    this.repository = deps.repository;
   }
 
-  upsert(input: UpsertBrandBrainInput): Result<BrandBrainVersionRecord> {
+  async ensureHydrated(organizationId: string): Promise<void> {
+    if (!this.repository) return;
+    if (this.versions.has(organizationId)) return;
+    const persisted = await this.repository.listVersions(organizationId);
+    if (persisted.length) {
+      this.versions.set(organizationId, [...persisted]);
+    }
+  }
+
+  async upsert(input: UpsertBrandBrainInput): Promise<Result<BrandBrainVersionRecord>> {
     if (!input.organizationId?.trim()) {
       return failure(new ValidationError("organizationId required"));
     }
@@ -46,6 +59,8 @@ export class BrandBrainEngine implements IBrandBrainEngine {
     if (!input.changelog?.trim()) {
       return failure(new ValidationError("changelog required for versioning"));
     }
+
+    await this.ensureHydrated(input.organizationId);
 
     const existing = this.versions.get(input.organizationId) ?? [];
     const nextVersion = existing.length ? existing[existing.length - 1]!.version + 1 : 1;
@@ -60,31 +75,42 @@ export class BrandBrainEngine implements IBrandBrainEngine {
       changelog: input.changelog,
     };
     this.versions.set(input.organizationId, [...existing, record]);
+    if (this.repository) {
+      await this.repository.saveVersion(record);
+    }
     return success(record);
   }
 
-  getCurrent(organizationId: string): Result<BrandBrainVersionRecord | undefined> {
+  async getCurrent(
+    organizationId: string
+  ): Promise<Result<BrandBrainVersionRecord | undefined>> {
+    await this.ensureHydrated(organizationId);
     const list = this.versions.get(organizationId) ?? [];
     return success(list.length ? list[list.length - 1] : undefined);
   }
 
-  getVersion(
+  async getVersion(
     organizationId: string,
     version: number
-  ): Result<BrandBrainVersionRecord | undefined> {
+  ): Promise<Result<BrandBrainVersionRecord | undefined>> {
+    await this.ensureHydrated(organizationId);
     const list = this.versions.get(organizationId) ?? [];
     return success(list.find((v) => v.version === version));
   }
 
-  listVersions(organizationId: string): Result<readonly BrandBrainVersionRecord[]> {
+  async listVersions(
+    organizationId: string
+  ): Promise<Result<readonly BrandBrainVersionRecord[]>> {
+    await this.ensureHydrated(organizationId);
     return success(this.versions.get(organizationId) ?? []);
   }
 
-  compare(
+  async compare(
     organizationId: string,
     fromVersion: number,
     toVersion: number
-  ): Result<BrandBrainVersionDiff> {
+  ): Promise<Result<BrandBrainVersionDiff>> {
+    await this.ensureHydrated(organizationId);
     const from = this.versions.get(organizationId)?.find((v) => v.version === fromVersion);
     const to = this.versions.get(organizationId)?.find((v) => v.version === toVersion);
     if (!from || !to) return failure(new NotFoundError("version not found"));
@@ -92,12 +118,14 @@ export class BrandBrainEngine implements IBrandBrainEngine {
     return success({ ...diff, fromVersion, toVersion });
   }
 
-  rollback(
+  async rollback(
     organizationId: string,
     toVersion: number,
     createdBy?: string
-  ): Result<BrandBrainVersionRecord> {
-    const target = this.versions.get(organizationId)?.find((v) => v.version === toVersion);
+  ): Promise<Result<BrandBrainVersionRecord>> {
+    const target = (await this.getVersion(organizationId, toVersion)).ok
+      ? (await this.getVersion(organizationId, toVersion)).value
+      : undefined;
     if (!target) return failure(new NotFoundError("rollback target not found"));
     return this.upsert({
       organizationId,
@@ -108,11 +136,11 @@ export class BrandBrainEngine implements IBrandBrainEngine {
     });
   }
 
-  enrich(query: BrandBrainRetrievalQuery): Result<BrandBrainEnrichmentPackage> {
+  async enrich(query: BrandBrainRetrievalQuery): Promise<Result<BrandBrainEnrichmentPackage>> {
     if (!query.organizationId?.trim()) {
       return failure(new ValidationError("organizationId required"));
     }
-    const current = this.getCurrent(query.organizationId);
+    const current = await this.getCurrent(query.organizationId);
     if (!current.ok) return current;
     if (!current.value) {
       return failure(new NotFoundError("brand brain not found for organization"));

@@ -179,8 +179,15 @@ export function buildExecutionIntelligenceSnapshot(input: {
   const modelVersion = meta.modelVersion ? String(meta.modelVersion) : "latest";
   const candidates = buildCandidates(providerId, providerName, modelId, meta);
   const selected = candidates.find((c) => c.modelId === modelId) ?? candidates[0]!;
-  const totalCost = num(input.execution.cost, 0.01);
-  const evalScore = num(input.execution.evaluationScore, 0.85);
+  const rawCost = input.execution.cost;
+  const totalCost =
+    rawCost != null && Number.isFinite(Number(rawCost)) ? Number(rawCost) : null;
+  const costKnown = totalCost != null;
+  const evalScore =
+    input.execution.evaluationScore != null &&
+    Number.isFinite(input.execution.evaluationScore)
+      ? Number(input.execution.evaluationScore)
+      : null;
   const now = input.nowIso();
 
   return {
@@ -240,28 +247,67 @@ export function buildExecutionIntelligenceSnapshot(input: {
       cachedTokens: num(meta.cachedTokens, 40),
       reasoningTokens: num(meta.reasoningTokens, 120),
     },
-    costs: {
-      currency: "USD",
-      providerCost: Number((totalCost * 0.7).toFixed(6)),
-      modelCost: Number((totalCost * 0.2).toFixed(6)),
-      inputCost: Number((totalCost * 0.35).toFixed(6)),
-      outputCost: Number((totalCost * 0.45).toFixed(6)),
-      storageCost: Number((totalCost * 0.02).toFixed(6)),
-      evaluationCost: Number((totalCost * 0.08).toFixed(6)),
-      totalCost,
-      organizationBudgetRemaining:
-        meta.organizationBudgetRemaining != null
-          ? num(meta.organizationBudgetRemaining, 0)
-          : undefined,
-    },
+    costs: costKnown
+      ? {
+          currency: "USD",
+          providerCost: totalCost,
+          modelCost: null,
+          inputCost: null,
+          outputCost: null,
+          storageCost: null,
+          evaluationCost: null,
+          totalCost,
+          costStatus: "calculated",
+          organizationBudgetRemaining:
+            meta.organizationBudgetRemaining != null
+              ? num(meta.organizationBudgetRemaining, 0)
+              : undefined,
+        }
+      : {
+          currency: null,
+          providerCost: null,
+          modelCost: null,
+          inputCost: null,
+          outputCost: null,
+          storageCost: null,
+          evaluationCost: null,
+          totalCost: null,
+          costStatus: "unknown",
+          organizationBudgetRemaining:
+            meta.organizationBudgetRemaining != null
+              ? num(meta.organizationBudgetRemaining, 0)
+              : undefined,
+        },
     quality: {
       evaluationScore: evalScore,
-      confidence: num(meta.confidence, Math.min(0.99, evalScore + 0.05)),
-      policyCompliance: num(meta.policyCompliance, 0.98),
-      brandCompliance: num(meta.brandCompliance, 0.94),
-      knowledgeCoverage: num(meta.knowledgeCoverage, 0.88),
-      hallucinationRisk: num(meta.hallucinationRisk, Math.max(0.05, 1 - evalScore)),
-      reviewRequired: evalScore < 0.7,
+      confidence:
+        evalScore != null
+          ? num(meta.confidence, Math.min(0.99, evalScore + 0.05))
+          : meta.confidence != null
+            ? num(meta.confidence, 0)
+            : null,
+      policyCompliance:
+        meta.policyCompliance != null ? num(meta.policyCompliance, 0) : null,
+      brandCompliance:
+        meta.brandCompliance != null ? num(meta.brandCompliance, 0) : null,
+      knowledgeCoverage:
+        meta.knowledgeCoverage != null ? num(meta.knowledgeCoverage, 0) : null,
+      hallucinationRisk:
+        evalScore != null
+          ? num(meta.hallucinationRisk, Math.max(0.05, 1 - evalScore))
+          : null,
+      reviewRequired: evalScore != null ? evalScore < 0.7 : false,
+      evaluationStatus:
+        typeof meta.evaluationStatus === "string"
+          ? meta.evaluationStatus
+          : evalScore == null
+            ? "unavailable"
+            : "evaluated",
+      evaluationMethod:
+        typeof meta.evaluationMethod === "string" ? meta.evaluationMethod : undefined,
+      evaluationTrust:
+        typeof meta.evaluationTrust === "string" ? meta.evaluationTrust : undefined,
+      feedbackEligible: meta.feedbackEligible === true,
     },
     timeline: buildTimeline(
       input.execution.executionId,

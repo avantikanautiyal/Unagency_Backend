@@ -21,6 +21,10 @@ import type {
   IRubricResolver,
   IScoreAggregator,
 } from "../interfaces/evaluation-ports";
+import {
+  integrityForPlaceholderJudges,
+  loadEvaluationIntegrityConfig,
+} from "../integrity/evaluation-integrity";
 
 export interface IntelligenceEvaluationEngineDependencies {
   readonly rubricResolver: IRubricResolver;
@@ -35,6 +39,11 @@ export class IntelligenceEvaluationEngine implements IIntelligenceEvaluationEngi
   constructor(private readonly deps: IntelligenceEvaluationEngineDependencies) {}
 
   async evaluate(request: EvaluationRequest): Promise<Result<EvaluationResult>> {
+    const config = loadEvaluationIntegrityConfig();
+    if (!config.enabled) {
+      return failure(new EvaluationValidationError("Evaluation is disabled"));
+    }
+
     if (!request.identity.organizationId || !request.identity.workspaceId) {
       return failure(
         new EvaluationValidationError("organizationId and workspaceId are required")
@@ -82,10 +91,23 @@ export class IntelligenceEvaluationEngine implements IIntelligenceEvaluationEngi
       return review;
     }
 
+    // Default wired judges are placeholder heuristics — display overallScore only.
+    // Adaptive QUALITY feedback requires an explicit trusted evaluator override.
+    const integrity =
+      request.attributes?.integrityOverride &&
+      typeof request.attributes.integrityOverride === "object"
+        ? (request.attributes.integrityOverride as EvaluationResult["integrity"])
+        : integrityForPlaceholderJudges({
+            overallScore: summary.value.overallScore,
+            confidenceScore: confidence.value.confidenceScore,
+            rubricVersion: rubric.value.version,
+          });
+
     return success({
       report,
       confidence: confidence.value,
       review: review.value,
+      integrity,
     });
   }
 }

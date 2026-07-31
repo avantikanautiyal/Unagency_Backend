@@ -175,4 +175,6 @@ export interface EvaluationResult {
   readonly report: EvaluationReport;
   readonly confidence: ConfidenceReport;
   readonly review: ReviewDecision;
+  /** M9.5P — integrity / routing eligibility (null quality when unknown). */
+  readonly integrity?: import("../integrity/evaluation-integrity").EvaluationIntegrity;
 }

@@ -8,12 +8,21 @@ import { ProviderError, ValidationError } from "../../../shared/errors";
 import type { OpenAIAuthenticationConfig } from "../contracts/openai-contracts";
 import { OPENAI_BASE_URL } from "../constants";
 
+export interface OpenAIHttpMultipartFile {
+  readonly fieldName: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly data: Buffer;
+}
+
 export interface OpenAIHttpRequest {
   readonly method: "GET" | "POST";
   readonly path: string;
   readonly body?: Readonly<Record<string, unknown>>;
+  readonly multipart?: OpenAIHttpMultipartFile;
   readonly stream?: boolean;
   readonly timeoutMs?: number;
+  readonly expectBinary?: boolean;
 }
 
 export interface OpenAIHttpResponse {
@@ -21,6 +30,8 @@ export interface OpenAIHttpResponse {
   readonly headers: Readonly<Record<string, string>>;
   readonly body: Readonly<Record<string, unknown>>;
   readonly rawText?: string;
+  readonly binary?: Buffer;
+  readonly contentType?: string;
   readonly latencyMs: number;
 }
 
@@ -43,10 +54,30 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
     const url = `${base.replace(/\/$/, "")}${request.path.startsWith("/") ? "" : "/"}${request.path}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.auth.apiKey}`,
-      "Content-Type": "application/json",
     };
     if (this.auth.organizationId) headers["OpenAI-Organization"] = this.auth.organizationId;
     if (this.auth.projectId) headers["OpenAI-Project"] = this.auth.projectId;
+
+    let body: BodyInit | undefined;
+    if (request.multipart) {
+      const form = new FormData();
+      const blob = new Blob([request.multipart.data], {
+        type: request.multipart.contentType,
+      });
+      form.append(request.multipart.fieldName, blob, request.multipart.filename);
+      if (request.body) {
+        for (const [key, value] of Object.entries(request.body)) {
+          if (key.startsWith("_")) continue;
+          if (value !== undefined && value !== null) {
+            form.append(key, String(value));
+          }
+        }
+      }
+      body = form;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = request.body ? JSON.stringify(request.body) : undefined;
+    }
 
     const start = this.clockMs();
     try {
@@ -57,17 +88,40 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
       const res = await fetch(url, {
         method: request.method,
         headers,
-        body: request.body ? JSON.stringify(request.body) : undefined,
+        body,
         signal: controller.signal,
       });
       clearTimeout(timer);
 
-      const text = await res.text();
-      let body: Record<string, unknown> = {};
-      try {
-        body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-      } catch {
-        body = { raw: text };
+      const contentType = res.headers.get("content-type") ?? undefined;
+      const isBinary =
+        request.expectBinary ||
+        (contentType &&
+          !contentType.includes("application/json") &&
+          !contentType.includes("text/"));
+
+      let text = "";
+      let binary: Buffer | undefined;
+      if (isBinary) {
+        const arrayBuffer = await res.arrayBuffer();
+        binary = Buffer.from(arrayBuffer);
+      } else {
+        text = await res.text();
+      }
+
+      let parsed: Record<string, unknown> = {};
+      if (!isBinary) {
+        try {
+          parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+        } catch {
+          parsed = { raw: text };
+        }
+      } else {
+        parsed = {
+          operation: request.path.includes("/speech") ? "audio.speech" : undefined,
+          _contentType: contentType ?? "application/octet-stream",
+          _audioStorageRef: "inline:binary:0",
+        };
       }
 
       const headerMap: Record<string, string> = {};
@@ -79,7 +133,7 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
         return failure(
           new ProviderError(`OpenAI HTTP ${res.status}`, {
             status: res.status,
-            body,
+            body: parsed,
           })
         );
       }
@@ -87,8 +141,10 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
       return success({
         status: res.status,
         headers: headerMap,
-        body,
-        rawText: text,
+        body: parsed,
+        rawText: isBinary ? undefined : text,
+        binary,
+        contentType,
         latencyMs: this.clockMs() - start,
       });
     } catch (err) {

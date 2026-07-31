@@ -23,3 +23,4 @@ export * from "./diagnostics";
 export * from "./engine";
 export * from "./builders";
 export * from "./factories";
+export * from "./performance";

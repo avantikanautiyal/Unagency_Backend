@@ -30,6 +30,7 @@ import {
   buildRoutingCandidates,
   buildRoutingRequest,
 } from "./stage-adapters";
+import type { ExecutionContextResolver } from "../../../business/execution-context";
 
 export interface PipelineOrchestratorDeps {
   readonly taskIntelligence: ITaskIntelligenceEngine;
@@ -40,6 +41,7 @@ export interface PipelineOrchestratorDeps {
   readonly modelIntelligence: IModelIntelligenceEngine;
   readonly negotiation: IProviderNegotiationEngine;
   readonly routing: IProviderRoutingEngine;
+  readonly executionContextResolver: ExecutionContextResolver;
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
@@ -125,7 +127,8 @@ export class PipelineOrchestrator implements IPipelineOrchestrator {
     const execIntelReq = await buildExecutionIntelligenceRequest(
       `${request.requestId}_ei`,
       taskResult.value,
-      govResult.value
+      govResult.value,
+      this.deps.executionContextResolver
     );
     const execIntelResult = await this.runStage("execution_intelligence", timings, async () => {
       return this.deps.executionIntelligence.optimize(execIntelReq);

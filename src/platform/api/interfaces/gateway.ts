@@ -61,8 +61,16 @@ export interface IAuthorizationService {
   permissionsFor(principal: AuthPrincipal): readonly import("../contracts").Permission[];
 }
 
+export interface ExternalOrganizationSyncInput {
+  readonly organizationId: string;
+  readonly name: string;
+}
+
 export interface ITenantService {
-  ensureTenant(context: TenantContext): Result<TenantContext>;
+  ensureTenant(context: TenantContext): Promise<Result<TenantContext>>;
+  syncOrganizationFromExternal?(
+    input: ExternalOrganizationSyncInput
+  ): Promise<Result<OrganizationRecord>>;
   createOrganization(name: string): Result<OrganizationRecord>;
   createWorkspace(organizationId: string, name: string): Result<WorkspaceRecord>;
   createUser(input: {
@@ -77,16 +85,30 @@ export interface ITenantService {
 
 export interface IExecutionApiService {
   create(req: CreateExecutionRequest, principal: AuthPrincipal): Promise<Result<ExecutionResource>>;
-  get(executionId: string, tenant: TenantContext): Result<ExecutionResource>;
+  /** M10.8 — create + live SSE via StreamingExecutionOrchestrator (simulated FakeStreamingDispatcher). */
+  createStream(
+    req: CreateExecutionRequest,
+    principal: AuthPrincipal,
+    tenant: TenantContext,
+    abortSignal?: AbortSignal
+  ): Promise<Result<import("../services/execution-streaming-service").LiveSseExecutionPayload>>;
+  get(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
   cancel(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
   retry(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
-  history(tenant: TenantContext, limit?: number): Result<readonly ExecutionResource[]>;
-  artifacts(executionId: string, tenant: TenantContext): Result<readonly ExecutionArtifactRef[]>;
-  diagnostics(executionId: string, tenant: TenantContext): Result<ExecutionDiagnostics>;
-  trace(executionId: string, tenant: TenantContext): Result<ExecutionTraceSummary>;
-  cost(executionId: string, tenant: TenantContext): Result<ExecutionCostSummary>;
-  evaluation(executionId: string, tenant: TenantContext): Result<ExecutionEvaluationSummary>;
-  experience(executionId: string, tenant: TenantContext): Result<ExecutionExperienceSummary>;
+  decideToolApproval(
+    executionId: string,
+    invocationKey: string,
+    decision: "approve" | "reject",
+    principal: AuthPrincipal,
+    tenant: TenantContext
+  ): Promise<Result<ExecutionResource>>;
+  history(tenant: TenantContext, limit?: number): Promise<Result<readonly ExecutionResource[]>>;
+  artifacts(executionId: string, tenant: TenantContext): Promise<Result<readonly ExecutionArtifactRef[]>>;
+  diagnostics(executionId: string, tenant: TenantContext): Promise<Result<ExecutionDiagnostics>>;
+  trace(executionId: string, tenant: TenantContext): Promise<Result<ExecutionTraceSummary>>;
+  cost(executionId: string, tenant: TenantContext): Promise<Result<ExecutionCostSummary>>;
+  evaluation(executionId: string, tenant: TenantContext): Promise<Result<ExecutionEvaluationSummary>>;
+  experience(executionId: string, tenant: TenantContext): Promise<Result<ExecutionExperienceSummary>>;
 }
 
 export interface IStreamingService {
@@ -104,7 +126,9 @@ export interface IRateLimitService {
     apiKeyId?: string;
     capabilityId?: string;
     providerId?: string;
-  }): Result<RateLimitDecision>;
+  }): Promise<Result<RateLimitDecision>>;
+  /** True when shared Redis-backed limiter is available (durable mode). */
+  isAvailable?(): boolean;
 }
 
 export interface ICatalogApiService {

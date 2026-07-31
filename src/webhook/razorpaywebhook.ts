@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import Subscriptions from "../models/subscription.model";
 import PaymentModel from "../models/payment.model";
-import crypto from "crypto";
 import Users from "../models/users.model";
 import Staff from "../models/staff.model";
 import { EmailQueue } from "../background/queue/email.queue";
@@ -11,6 +10,11 @@ import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { parseNotificationContent } from "../utils/notificationUtils";
+import {
+  defaultWebhookIdempotencyStore,
+  razorpayWebhookEventId,
+  verifyRazorpayWebhookSignature,
+} from "./razorpay-webhook-security";
 
 const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET!;
 export const razorpayWebhook = async (req: Request, res: Response) => {
@@ -22,21 +26,28 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
     const rawBody = req.body as Buffer;
     const bodyString = rawBody.toString("utf8");
 
-    const expectedSignature = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(bodyString)
-      .digest("hex");
-
-    if (signature !== expectedSignature) {
+    if (
+      !verifyRazorpayWebhookSignature({
+        rawBody: bodyString,
+        signature: typeof signature === "string" ? signature : undefined,
+        secret: webhookSecret ?? "",
+      })
+    ) {
       console.error("❌ Invalid Razorpay webhook signature");
       return res.status(400).send("Invalid signature");
     }
 
     console.log("✅ Webhook verified");
+    const event = JSON.parse(bodyString);
+    const eventId = razorpayWebhookEventId(event);
+    const claim = await defaultWebhookIdempotencyStore.tryClaim(eventId);
+    if (claim === "duplicate") {
+      console.log("♻️ Duplicate Razorpay webhook ignored:", eventId);
+      return res.status(200).json({ status: "duplicate" });
+    }
+
     console.log("============= event body console START============");
     console.log(bodyString);
-    const event = JSON.parse(bodyString);
-
     console.log("event ", event);
     console.log("============= event body console END============");
     // const event = req.body;

@@ -25,6 +25,15 @@ import { IntegrationPipeline } from "../pipeline/integration-pipeline";
 import { IntelligenceOsIntegrationEngine } from "../engine/intelligence-os-integration-engine";
 import type { IIntelligenceOsIntegrationEngine } from "../interfaces/integration";
 import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
+import {
+  createExecutionContextResolver,
+  InMemoryExecutionContextStores,
+  type IExecutionContextStores,
+} from "../../../business/execution-context";
+import type { ProviderId } from "../../shared/identifiers";
+import { createBrandBrainPlatform } from "../../../business/brand-brain/factories/create-brand-brain-platform";
+import { createLiveBusinessContextStores } from "../../../business/execution-context/live";
+import { FailoverOrchestrator } from "../../providers/routing/performance/failover/failover-orchestrator";
 
 export interface IntelligenceOsIntegrationPlatform {
   readonly engine: IIntelligenceOsIntegrationEngine;
@@ -36,6 +45,20 @@ export interface CreateIntelligenceOsIntegrationOptions {
   readonly createId?: (prefix: string) => string;
   /** Defaults to ControllableDispatcher (no networking). Override for OpenAI leaf only. */
   readonly runtimeDispatcher?: IProviderDispatcher;
+  /** Business entity stores for real execution context resolution. */
+  readonly executionContextStores?: IExecutionContextStores;
+  /**
+   * When true (default if stores omitted), use Mongo + Brand Brain live context.
+   * Tests should pass executionContextStores (fixtures) instead.
+   */
+  readonly useLiveBusinessContext?: boolean;
+  readonly brandBrainRepository?: import("../../../infrastructure/durability/interfaces/brand-brain-repository").IBrandBrainRepository;
+  /**
+   * Limits model intelligence candidate models to safe executable providers.
+   * Production LIVE uses this to prevent routing to catalogue-only providers.
+   */
+  readonly allowedModelProviderIds?: readonly ProviderId[];
+  readonly toolRuntime?: import("../../providers/tools/composition/tool-runtime-platform").ToolRuntimePlatform;
 }
 
 export function createIntelligenceOsIntegrationPlatform(
@@ -57,9 +80,13 @@ export function createIntelligenceOsIntegrationPlatform(
     ...clocks,
   });
   const execIntel = createExecutionIntelligencePlatform(clocks);
-  const modelIntel = createModelIntelligencePlatform(clocks);
+  const modelIntel = createModelIntelligencePlatform({
+    ...clocks,
+    allowedProviderIds: options.allowedModelProviderIds,
+  });
   const { engine: negotiation } = setupNegotiation();
-  const { engine: routing } = createRoutingPlatform(clocks);
+  const routingPlatform = createRoutingPlatform(clocks);
+  const { engine: routing } = routingPlatform;
   const runtime = createProviderRuntime({
     dispatcher: options.runtimeDispatcher ?? new ControllableDispatcher({ nowIso }),
     nowIso,
@@ -69,6 +96,36 @@ export function createIntelligenceOsIntegrationPlatform(
   const evaluation = createIntelligenceEvaluationEngine();
   const learning = createLearningIntelligenceEngine();
   const optimization = createExecutionOptimizationPlatform(clocks);
+
+  const brandBrain = createBrandBrainPlatform({
+    ...clocks,
+    repository: options.brandBrainRepository,
+  }).engine;
+  const useLive =
+    options.useLiveBusinessContext === true ||
+    (options.useLiveBusinessContext !== false &&
+      options.executionContextStores === undefined &&
+      process.env.ENTERPRISE_API_EXECUTION_MODE === "live");
+  const stores =
+    options.executionContextStores ??
+    (useLive
+      ? createLiveBusinessContextStores({ brandBrain, ...clocks })
+      : new InMemoryExecutionContextStores());
+
+  const executionContextResolver = createExecutionContextResolver({
+    stores,
+    brandBrain,
+    useLiveBusinessContext: false,
+    ...clocks,
+  });
+
+  const failoverOrchestrator = new FailoverOrchestrator({
+    runtime,
+    failover: routingPlatform.performance!.failoverConfig,
+    nowIso,
+    nowMs: clockMs,
+    createId,
+  });
 
   const bridges = createIntegrationBridges(
     {
@@ -90,7 +147,15 @@ export function createIntelligenceOsIntegrationPlatform(
       experienceIntelligence: experienceIntel.engine,
       experienceRepository: experienceIntel.repository,
     },
-    clocks
+    { ...clocks, executionContextResolver },
+    {
+      failover: {
+        orchestrator: failoverOrchestrator,
+        evidenceWriter: routingPlatform.performance?.evidenceWriter,
+      },
+      performanceStore: routingPlatform.performance?.store,
+      toolRuntime: options.toolRuntime,
+    }
   );
 
   const pipeline = new IntegrationPipeline({ bridges, ...clocks });

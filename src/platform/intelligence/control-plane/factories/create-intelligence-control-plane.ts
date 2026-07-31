@@ -15,6 +15,8 @@ import { PipelineOrchestrator } from "../pipeline/pipeline-orchestrator";
 import { DefaultPipelineValidator } from "../validation/pipeline-validator";
 import { DefaultPipelineSimulator } from "../simulation/pipeline-simulator";
 import type { IIntelligenceControlPlaneEngine } from "../interfaces/control-plane";
+import { seedExecutionContextFixtures } from "../../../business/execution-context/testing/seed-fixtures";
+import { createExecutionContextResolver } from "../../../business/execution-context";
 
 export interface IntelligenceControlPlanePlatform {
   readonly engine: IIntelligenceControlPlaneEngine;
@@ -42,6 +44,22 @@ export function createIntelligenceControlPlane(
   const { engine: negotiation } = setupNegotiation();
   const { engine: routing } = createRoutingPlatform({ createId, nowIso, clockMs });
 
+  const executionContextResolver = createExecutionContextResolver({
+    stores: seedExecutionContextFixtures({
+      organizationId: "org_1",
+      userId: "control_plane_user",
+      organizationName: "Control Plane Org",
+      brand: {
+        brandId: "brand_org_1",
+        name: "Control Plane Brand",
+        toneOfVoice: "professional",
+      },
+    }),
+    createId,
+    nowIso,
+    clockMs,
+  });
+
   const orchestrator = new PipelineOrchestrator({
     taskIntelligence: task.engine,
     agentPlanning: agent.engine,
@@ -51,6 +69,7 @@ export function createIntelligenceControlPlane(
     modelIntelligence: modelIntel.engine,
     negotiation,
     routing,
+    executionContextResolver,
     nowIso,
     clockMs,
     createId,

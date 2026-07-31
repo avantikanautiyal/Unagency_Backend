@@ -83,7 +83,11 @@ export function collectFromIntegrationReport(
             Number((runtime.response?.usage as Record<string, unknown> | undefined)?.completion_tokens ?? 0),
       },
       cost: {
-        amount: Number((runtime.response?.usage as Record<string, unknown> | undefined)?.cost ?? 0.01),
+        amount:
+          typeof (runtime.response?.usage as Record<string, unknown> | undefined)?.cost ===
+          "number"
+            ? Number((runtime.response?.usage as Record<string, unknown>).cost)
+            : null,
         currency: "USD",
         providerId: runtime.response?.providerId
           ? String(runtime.response.providerId)

@@ -3,7 +3,7 @@
  */
 
 import { failure, success, type Result } from "../../intelligence/shared/result";
-import { NotFoundError } from "../../intelligence/shared/errors";
+import { NotFoundError, ValidationError } from "../../intelligence/shared/errors";
 import type { IBlobStorage } from "../interfaces";
 
 export class InMemoryBlobStorage implements IBlobStorage {
@@ -17,6 +17,30 @@ export class InMemoryBlobStorage implements IBlobStorage {
     const text = typeof data === "string" ? data : Buffer.from(data).toString("base64");
     this.blobs.set(key, { data: text, contentType });
     return success({ key, size: text.length });
+  }
+
+  async putStream(
+    key: string,
+    stream: AsyncIterable<Uint8Array>,
+    options?: { contentType?: string; maxBytes?: number }
+  ): Promise<Result<{ key: string; size: number; checksum?: string }>> {
+    const maxBytes = options?.maxBytes ?? 512 * 1024 * 1024;
+    const { createHash } = await import("crypto");
+    const hash = createHash("sha256");
+    let size = 0;
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      const buf = Buffer.from(chunk);
+      size += buf.byteLength;
+      if (size > maxBytes) {
+        return failure(new ValidationError("Stream exceeds max upload size"));
+      }
+      hash.update(buf);
+      chunks.push(buf);
+    }
+    const data = Buffer.concat(chunks).toString("base64");
+    this.blobs.set(key, { data, contentType: options?.contentType });
+    return success({ key, size, checksum: hash.digest("hex") });
   }
 
   async get(

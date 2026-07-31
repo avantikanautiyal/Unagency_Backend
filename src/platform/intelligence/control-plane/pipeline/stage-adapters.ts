@@ -3,13 +3,7 @@
  * Control plane only; does not modify frozen modules.
  */
 
-import { asCapabilityId } from "../../shared/identifiers";
-import { createContextIntelligenceEngine } from "../../context/factories/create-context-engine";
-import { sampleContextBuildRequest } from "../../context/testing";
-import { createKnowledgeIntelligenceEngine } from "../../knowledge/factories/create-knowledge-engine";
-import { KnowledgeRequestBuilder } from "../../knowledge/builders/knowledge-builders";
-import { createPromptCompiler } from "../../prompt-compiler/factories/create-prompt-compiler";
-import { ExecutionIntelligenceRequestBuilder } from "../../execution-intelligence/builders/execution-intelligence-request-builder";
+import { asCapabilityId, asOrganizationId, asProviderId, asWorkspaceId } from "../../shared/identifiers";
 import { ModelIntelligenceRequestBuilder } from "../../model-intelligence/builders/model-intelligence-request-builder";
 import type { TaskIntelligenceReport } from "../../task-intelligence/contracts/result";
 import type { GovernanceReport } from "../../execution-governance/contracts/result";
@@ -17,7 +11,6 @@ import type { ModelIntelligenceResult } from "../../model-intelligence/contracts
 import type { ExecutionIntelligenceRequest } from "../../execution-intelligence/contracts/request";
 import type { ModelIntelligenceRequest } from "../../model-intelligence/contracts/recommendation";
 import type { RoutingCandidate } from "../../providers/routing/contracts/candidate";
-import { asProviderId } from "../../shared/identifiers";
 import {
   makeCapability,
   makePlan,
@@ -29,55 +22,44 @@ import {
 } from "../../providers/negotiation/testing";
 import type { NegotiationRequest } from "../../providers/negotiation/contracts/negotiation-request";
 import { RoutingRequestBuilder } from "../../providers/routing/builders/routing-request-builder";
+import type { ExecutionContextResolver } from "../../../business/execution-context";
+import { buildExecutionIntelligenceContext } from "../../integration/context/execution-intelligence-context-pipeline";
+import type { IntegrationArtifactBag } from "../../integration/contracts/artifacts";
+import type { IntelligenceOsIntegrationRequest } from "../../integration/contracts/request";
 
 export async function buildExecutionIntelligenceRequest(
   requestId: string,
   taskReport: TaskIntelligenceReport,
-  governanceReport: GovernanceReport
+  governanceReport: GovernanceReport,
+  resolver: ExecutionContextResolver
 ): Promise<ExecutionIntelligenceRequest> {
-  const contextEngine = createContextIntelligenceEngine();
-  const knowledgeEngine = createKnowledgeIntelligenceEngine({ enableCache: false });
-  const compiler = createPromptCompiler();
+  const integrationRequest: IntelligenceOsIntegrationRequest = {
+    requestId,
+    rawPrompt: taskReport.request.rawPrompt,
+    organizationId: asOrganizationId(String(governanceReport.request.organizationId)),
+    workspaceId: asWorkspaceId(String(governanceReport.request.workspaceId)),
+    tokenBudgetLimit: governanceReport.request.tokenBudgetLimit,
+    scenarioHint: taskReport.request.industryHint,
+    metadata: {
+      userId: "control_plane_user",
+      organizationId: String(governanceReport.request.organizationId),
+      workspaceId: String(governanceReport.request.workspaceId),
+    },
+  };
 
-  const contextReq = sampleContextBuildRequest();
-  const context = await contextEngine.build({
-    ...contextReq,
-    inputHints: { message: taskReport.request.rawPrompt, task: taskReport.request.rawPrompt },
+  const bag: IntegrationArtifactBag = {
+    task: taskReport,
+    governance: governanceReport,
+  };
+
+  const built = await buildExecutionIntelligenceContext({
+    requestId,
+    integrationRequest,
+    bag,
+    deps: { resolver },
   });
-  if (!context.ok) throw context.error;
 
-  const knowledgeRequest = KnowledgeRequestBuilder.fromIntelligenceContext(
-    context.value,
-    "brand"
-  ).build();
-  const knowledge = await knowledgeEngine.snapshot(knowledgeRequest);
-  if (!knowledge.ok) throw knowledge.error;
-
-  const compiled = await compiler.compile({
-    templateId: "default.capability",
-    templateVersion: "1.0.0",
-    context: context.value,
-    knowledge: knowledge.value,
-    variables: { "user.input": JSON.stringify({ message: taskReport.request.rawPrompt }) },
-  });
-  if (!compiled.ok) throw compiled.error;
-
-  const capabilityId = String(taskReport.capabilityMap.primary);
-  const budget = governanceReport.governanceExecutionPlan.budgetAssessment.totalExecutionBudget;
-
-  return ExecutionIntelligenceRequestBuilder.create()
-    .withRequestId(requestId)
-    .withCapabilityId(asCapabilityId(capabilityId))
-    .withContext(context.value)
-    .withKnowledge(knowledge.value)
-    .withCompiledPrompt(compiled.value.compiled)
-    .withPreferences({
-      maxTokenBudget: governanceReport.request.tokenBudgetLimit ?? 500000,
-      prioritizeQuality: true,
-      enableReasoning: taskReport.complexityProfile.tier !== "simple",
-    })
-    .withAttributes({ governanceDecision: governanceReport.governanceExecutionPlan.decision.kind })
-    .build();
+  return built.request;
 }
 
 export function buildModelIntelligenceRequest(
@@ -102,7 +84,6 @@ export function buildNegotiationRequest(
   taskReport: TaskIntelligenceReport,
   execIntelResult: import("../../execution-intelligence/contracts/result").ExecutionIntelligenceResult
 ): NegotiationRequest {
-  const capabilityId = asCapabilityId(String(taskReport.capabilityMap.primary));
   const plan = makePlan({
     planId: `plan_${requestId}`,
     capabilityId: TEST_CAPABILITY,
@@ -132,7 +113,7 @@ export function buildNegotiationRequest(
 export function buildRoutingCandidates(
   modelResult: ModelIntelligenceResult
 ): RoutingCandidate[] {
-  return modelResult.candidates.candidates.map((c, i) => ({
+  return modelResult.candidates.candidates.map((c) => ({
     providerId: asProviderId(String(c.providerId)),
     vendor: String(c.providerId),
     modelId: String(c.modelId),

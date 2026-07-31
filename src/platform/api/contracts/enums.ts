@@ -50,6 +50,9 @@ export type RoleName =
 export type ExecutionApiStatus =
   | "queued"
   | "running"
+  | "waiting_provider"
+  | "awaiting_approval"
+  | "processing_result"
   | "streaming"
   | "succeeded"
   | "failed"

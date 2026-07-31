@@ -154,15 +154,183 @@ export class ControllableDispatcher implements IProviderDispatcher {
     request: ProviderExecutionRequest,
     streamed: boolean
   ): ProviderExecutionResponse {
+    const toolsPayload = request.payload?.tools;
+    const hasTools =
+      Array.isArray(toolsPayload) && toolsPayload.length > 0;
+
+    // M10.7 — when ToolContinuationOrchestrator attaches tools, emit a
+    // deterministic tool_call (then final text/json on the next round).
+    if (hasTools) {
+      const messages = Array.isArray(request.payload?.messages)
+        ? (request.payload!.messages as readonly Record<string, unknown>[])
+        : [];
+      const hasToolResult = messages.some((m) => m.role === "tool");
+      if (!hasToolResult) {
+        const call = simulatedToolCall(toolsPayload as readonly Record<string, unknown>[]);
+        return {
+          requestId: request.requestId,
+          providerId: request.providerId,
+          output: {
+            content: null,
+            tool_calls: [call],
+            finishReason: "tool_call",
+          },
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+          providerRequestId: `ctrl_${request.requestId}`,
+          streamed,
+          finishedAt: this.nowIso(),
+        };
+      }
+      const structured = simulatedStructuredContent(request);
+      if (structured) {
+        return {
+          requestId: request.requestId,
+          providerId: request.providerId,
+          output: {
+            content: structured,
+            text: structured,
+            message: structured,
+            finishReason: "stop",
+          },
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+          providerRequestId: `ctrl_${request.requestId}`,
+          streamed,
+          finishedAt: this.nowIso(),
+        };
+      }
+    }
+
+    const content = simulatedProviderContent(request);
     return {
       requestId: request.requestId,
       providerId: request.providerId,
-      output: { ok: true, capabilityId: String(request.capabilityId) },
-      usage: { tokens: 0 },
+      output: {
+        ok: true,
+        capabilityId: String(request.capabilityId),
+        content,
+        text: content,
+        message: content,
+      },
+      usage: { tokens: Math.max(1, Math.ceil(content.length / 4)) },
       providerRequestId: `ctrl_${request.requestId}`,
       streamed,
       finishedAt: this.nowIso(),
     };
+  }
+}
+
+/** Pick a write-class tool when present; otherwise first tool. */
+function simulatedToolCall(
+  tools: readonly Record<string, unknown>[]
+): Record<string, unknown> {
+  const names = tools.map((t) => {
+    const fn = (t.function as Record<string, unknown> | undefined) ?? {};
+    return String(fn.name ?? t.name ?? "");
+  });
+  const preferred =
+    names.find((n) => n === "update_test_record") ??
+    names.find((n) => n.length > 0) ??
+    "update_test_record";
+  const args =
+    preferred === "update_test_record"
+      ? { recordId: "draft_1", status: "draft" }
+      : preferred === "lookup_campaign"
+        ? { campaignId: "camp_demo" }
+        : preferred === "calculate_metric"
+          ? { metric: "reach", value: 42 }
+          : {};
+  return {
+    id: `call_sim_${preferred}`,
+    type: "function",
+    function: {
+      name: preferred,
+      arguments: JSON.stringify(args),
+    },
+  };
+}
+
+/** Emit schema-valid JSON when response_format json_schema is present. */
+function simulatedStructuredContent(
+  request: ProviderExecutionRequest
+): string | undefined {
+  const rf = request.payload?.response_format as
+    | { type?: string; json_schema?: { name?: string; schema?: Record<string, unknown> } }
+    | undefined;
+  if (!rf || rf.type !== "json_schema") return undefined;
+  const schema = rf.json_schema?.schema;
+  const name = rf.json_schema?.name ?? "response";
+  // Launch-plan shaped schema (M10.7 product UX).
+  if (
+    schema &&
+    typeof schema === "object" &&
+    schema.properties &&
+    typeof schema.properties === "object" &&
+    "title" in (schema.properties as object) &&
+    "steps" in (schema.properties as object)
+  ) {
+    return JSON.stringify({
+      title: "Launch plan",
+      summary: "Simulated campaign plan after tool approval.",
+      steps: [
+        { title: "Draft", description: "Save draft record via approved tool." },
+        { title: "Review", description: "Validate messaging and assets." },
+        { title: "Ready", description: "Prepare for publish (deferred)." },
+      ],
+    });
+  }
+  if (
+    schema &&
+    typeof schema === "object" &&
+    schema.properties &&
+    typeof schema.properties === "object" &&
+    "campaignId" in (schema.properties as object)
+  ) {
+    return JSON.stringify({
+      campaignId: "camp_demo",
+      name: "Winter Launch",
+      status: "active",
+    });
+  }
+  return JSON.stringify({
+    name,
+    ok: true,
+    note: "Simulated structured output",
+  });
+}
+
+/** Deterministic presentation-safe text for ControllableDispatcher (no network). */
+export function simulatedProviderContent(
+  request: ProviderExecutionRequest
+): string {
+  const capabilityId = String(request.capabilityId ?? "text.generate");
+  const payload = request.payload ?? {};
+  const prompt =
+    (typeof payload.prompt === "string" && payload.prompt) ||
+    (typeof payload.text === "string" && payload.text) ||
+    (typeof payload.input === "string" && payload.input) ||
+    (typeof payload.rawPrompt === "string" && payload.rawPrompt) ||
+    "your brief";
+  const preview = prompt.trim().slice(0, 120);
+  switch (capabilityId) {
+    case "text.generate":
+    case "text.chat":
+      return `Simulated creative copy for: ${preview}`;
+    case "reasoning.analyze":
+      return `Simulated reasoning analysis for: ${preview}`;
+    case "vision.analyze":
+      return `Simulated vision analysis for: ${preview}`;
+    case "embedding.generate":
+      return `Simulated embedding metadata for: ${preview}`;
+    case "audio.synthesize":
+      return `Simulated TTS placeholder for: ${preview}`;
+    case "audio.transcribe":
+      return `Simulated transcript for: ${preview}`;
+    case "image.generate":
+      return `Simulated image generation acknowledged for: ${preview}`;
+    case "video.generate":
+      return `Simulated video generation acknowledged for: ${preview}`;
+    default:
+      return `Simulated ${capabilityId} result for: ${preview}`;
   }
 }
 

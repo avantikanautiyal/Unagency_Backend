@@ -65,7 +65,7 @@ export function assembleKnowledgeContext(input: {
       relatedIds.add(other.entityId);
 
       const relScore =
-        r.weight * 0.7 + scoreEntityMatch(other.tags, hints) * 0.3 + depthBoost(other, q);
+        r.weight * 0.7 + scoreEntityMatch(other.tags, hints) * 0.3 + depthBoost(seed.entityId, other.entityId, used);
       pushRelationshipFact(r, seed, other, relScore, facts, explainability, input.createId);
 
       const path = shortestPath(seed.entityId, other.entityId, input.relationships);

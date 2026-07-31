@@ -28,7 +28,8 @@ export interface RankedModelCandidate {
   readonly reliabilityScore: number;
   readonly confidence: ConfidenceLevel;
   readonly explanation: RankingExplanation;
-  readonly expectedCost: number;
+  /** Pre-execution estimate only when trustworthy; undefined = unknown (M9.5Q). */
+  readonly expectedCost?: number;
   readonly expectedLatencyMs: number;
   readonly expectedQuality: number;
   readonly expectedReliability: number;

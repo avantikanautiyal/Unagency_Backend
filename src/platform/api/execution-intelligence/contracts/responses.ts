@@ -124,36 +124,44 @@ export interface TokensResponse {
 
 export interface CostBreakdownResponse {
   readonly executionId: string;
-  readonly currency: string;
-  readonly providerCost: number;
-  readonly modelCost: number;
-  readonly inputCost: number;
-  readonly outputCost: number;
-  readonly storageCost: number;
-  readonly evaluationCost: number;
-  readonly totalCost: number;
+  /** Null when unknown (M9.5Q — never invent 0). */
+  readonly currency: string | null;
+  readonly providerCost: number | null;
+  readonly modelCost: number | null;
+  readonly inputCost: number | null;
+  readonly outputCost: number | null;
+  readonly storageCost: number | null;
+  readonly evaluationCost: number | null;
+  readonly totalCost: number | null;
+  readonly costStatus?: string;
   readonly organizationBudgetRemaining?: number;
 }
 
 export interface QualityResponse {
   readonly executionId: string;
-  readonly evaluationScore: number;
-  readonly confidence: number;
-  readonly policyCompliance: number;
-  readonly brandCompliance: number;
-  readonly knowledgeCoverage: number;
-  readonly hallucinationRisk: number;
+  /** Null when quality was not evaluated (never invent). */
+  readonly evaluationScore: number | null;
+  readonly confidence: number | null;
+  readonly policyCompliance: number | null;
+  readonly brandCompliance: number | null;
+  readonly knowledgeCoverage: number | null;
+  readonly hallucinationRisk: number | null;
   readonly reviewRequired: boolean;
+  readonly evaluationStatus?: string;
+  readonly evaluationMethod?: string;
+  readonly evaluationTrust?: string;
+  readonly feedbackEligible?: boolean;
 }
 
 export interface ConfidenceResponse {
   readonly executionId: string;
-  readonly overallConfidence: number;
-  readonly modelConfidence: number;
+  /** Null when evaluation quality/confidence unknown (M9.5P — never invent). */
+  readonly overallConfidence: number | null;
+  readonly modelConfidence: number | null;
   readonly routingConfidence: number;
-  readonly evaluationConfidence: number;
+  readonly evaluationConfidence: number | null;
   readonly experienceConfidence: number;
-  readonly bands: Readonly<Record<string, "high" | "medium" | "low">>;
+  readonly bands: Readonly<Record<string, "high" | "medium" | "low" | "unknown">>;
 }
 
 export interface AuditResponse {
@@ -228,24 +236,29 @@ export interface ExecutionIntelligenceSnapshot {
     readonly reasoningTokens: number;
   };
   readonly costs: {
-    readonly currency: string;
-    readonly providerCost: number;
-    readonly modelCost: number;
-    readonly inputCost: number;
-    readonly outputCost: number;
-    readonly storageCost: number;
-    readonly evaluationCost: number;
-    readonly totalCost: number;
+    readonly currency: string | null;
+    readonly providerCost: number | null;
+    readonly modelCost: number | null;
+    readonly inputCost: number | null;
+    readonly outputCost: number | null;
+    readonly storageCost: number | null;
+    readonly evaluationCost: number | null;
+    readonly totalCost: number | null;
+    readonly costStatus?: string;
     readonly organizationBudgetRemaining?: number;
   };
   readonly quality: {
-    readonly evaluationScore: number;
-    readonly confidence: number;
-    readonly policyCompliance: number;
-    readonly brandCompliance: number;
-    readonly knowledgeCoverage: number;
-    readonly hallucinationRisk: number;
+    readonly evaluationScore: number | null;
+    readonly confidence: number | null;
+    readonly policyCompliance: number | null;
+    readonly brandCompliance: number | null;
+    readonly knowledgeCoverage: number | null;
+    readonly hallucinationRisk: number | null;
     readonly reviewRequired: boolean;
+    readonly evaluationStatus?: string;
+    readonly evaluationMethod?: string;
+    readonly evaluationTrust?: string;
+    readonly feedbackEligible?: boolean;
   };
   readonly timeline: readonly TimelineEvent[];
   readonly metrics: {

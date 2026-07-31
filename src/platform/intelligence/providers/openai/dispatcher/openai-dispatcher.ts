@@ -18,6 +18,16 @@ import type { OpenAISdkClient } from "../sdk/openai-sdk-client";
 import { mapOpenAIResponseToCanonical } from "../responses/response-mapper";
 import type { ProviderAdapterRequest } from "../../adapters/contracts/adapter-io";
 import { asProviderAdapterId } from "../../adapters/contracts/identifiers";
+import { toAdapterRequestFromExecution } from "../../common/to-adapter-request";
+import {
+  extractInputAssets,
+  validateInputAssetTenancy,
+} from "../../common/input-asset-validator";
+import {
+  isAudioTranscribeCapability,
+  isImageGenerationCapability,
+  isVisionCapability,
+} from "../../common/resolve-execution-modality";
 import { asSdkExecutionId } from "../../sdk/contracts/identifiers";
 import {
   OPENAI_ADAPTER_ID,
@@ -37,6 +47,8 @@ export class OpenAIDispatcher implements IProviderDispatcher {
   ) {}
 
   supportsStreaming(providerId: ProviderId): boolean {
+    // Legacy catalogue claim — enables buffered dispatchStreaming only.
+    // Native incremental SSE requires INativeStreamingDispatcher (M9.5O1).
     return String(providerId) === OPENAI_PROVIDER_ID;
   }
 
@@ -50,6 +62,22 @@ export class OpenAIDispatcher implements IProviderDispatcher {
   ): Promise<Result<ProviderExecutionResponse>> {
     const start = this.clockMs();
     const adapterRequest = toAdapterRequest(request, this.nowIso());
+
+    if (
+      isVisionCapability(String(request.capabilityId)) ||
+      isImageGenerationCapability(String(request.capabilityId)) ||
+      isAudioTranscribeCapability(String(request.capabilityId))
+    ) {
+      const assets = extractInputAssets(request.payload);
+      if (assets.length > 0) {
+        const tenancy = validateInputAssetTenancy({
+          assets,
+          organizationId: String(request.context.organizationId),
+          workspaceId: String(request.context.workspaceId),
+        });
+        if (!tenancy.ok) return tenancy;
+      }
+    }
 
     const validation = this.adapter.validate(adapterRequest);
     if (!validation.ok) return validation;
@@ -88,12 +116,25 @@ export class OpenAIDispatcher implements IProviderDispatcher {
 
     if (!sdkResult.ok) return sdkResult;
 
-    const canonical = mapOpenAIResponseToCanonical(
-      sdkResult.value.payload,
-      adapterRequest,
-      sdkResult.value.statistics.latencyMs ?? this.clockMs() - start,
-      this.nowIso()
-    );
+    let canonical;
+    try {
+      // Prefer runtime registry provider id (provider.openai) for embedding provenance.
+      const responseRequest = {
+        ...adapterRequest,
+        providerId: request.providerId,
+      };
+      canonical = mapOpenAIResponseToCanonical(
+        sdkResult.value.payload,
+        responseRequest,
+        sdkResult.value.statistics.latencyMs ?? this.clockMs() - start,
+        this.nowIso()
+      );
+    } catch (err) {
+      if (err instanceof ValidationError) return failure(err);
+      return failure(
+        new ValidationError(err instanceof Error ? err.message : "OpenAI response mapping failed")
+      );
+    }
 
     const metrics: OpenAIExecutionMetrics = {
       latencyMs: canonical.latencyMs ?? 0,
@@ -134,7 +175,9 @@ export class OpenAIDispatcher implements IProviderDispatcher {
 
     return success({
       requestId: request.requestId,
-      providerId: asProviderId(OPENAI_PROVIDER_ID),
+      // Preserve routing-selected provider identity in the runtime response.
+      // The leaf still uses the OpenAI wire-provider internally for SDK calls.
+      providerId: request.providerId,
       output: canonical.output,
       usage: canonical.usage as Readonly<Record<string, unknown>>,
       providerRequestId: String(sdkResult.value.payload.id ?? ""),
@@ -167,19 +210,10 @@ function toAdapterRequest(
   request: ProviderExecutionRequest,
   nowIso: string
 ): ProviderAdapterRequest {
-  return {
-    requestId: request.requestId,
-    providerId: asProviderId(OPENAI_PROVIDER_ID),
-    adapterId: asProviderAdapterId(OPENAI_ADAPTER_ID),
-    modelId: request.modelId ?? "",
-    capabilityId: request.capabilityId,
-    modality: "text",
-    input: request.payload,
-    parameters: (request.options as Record<string, unknown>) ?? {},
-    features: [],
-    streaming: request.streaming,
-    timeoutMs: request.timeoutPolicy.executionTimeoutMs ?? 60_000,
-    metadata: request.metadata ?? {},
-    createdAt: nowIso,
-  };
+  return toAdapterRequestFromExecution({
+    request,
+    canonicalProviderId: OPENAI_PROVIDER_ID,
+    adapterId: OPENAI_ADAPTER_ID,
+    nowIso,
+  });
 }

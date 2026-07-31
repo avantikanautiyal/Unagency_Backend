@@ -4,6 +4,11 @@
 
 import { failure, success, type Result } from "../../shared/result";
 import { ValidationError } from "../../shared/errors";
+import {
+  asExecutionId,
+  asOrganizationId,
+  asWorkspaceId,
+} from "../../shared/identifiers";
 import type { ITaskIntelligenceEngine } from "../../task-intelligence/interfaces/task-intelligence";
 import type { ICapabilityIntelligenceEngine } from "../../capability-intelligence/interfaces/capability-intelligence";
 import type { IAgentPlanningEngine } from "../../agent-planning/interfaces/agent-planning";
@@ -69,11 +74,17 @@ import {
   toExperienceIntelligenceRequest,
   seedNegotiationCapability,
 } from "../adapters/request-adapters";
+import {
+  parseToolRequestMetadata,
+  resolveServerTools,
+  type ToolRuntimePlatform,
+} from "../../providers/tools/composition/tool-runtime-platform";
 
 export interface BridgeClockDeps {
   readonly nowIso: () => string;
   readonly clockMs: () => number;
   readonly createId: (prefix: string) => string;
+  readonly executionContextResolver: import("../../../business/execution-context").ExecutionContextResolver;
 }
 
 export interface StageEngines {
@@ -238,8 +249,14 @@ async function runExecutionIntelligence(
     },
     async () => {
       try {
-        const req = await toExecutionIntelligenceRequest(ctx.requestId, bag);
-        return engine.optimize(req);
+        const built = await toExecutionIntelligenceRequest(
+          ctx.requestId,
+          bag,
+          ctx.request,
+          clocks.executionContextResolver
+        );
+        bag.contextTrace = built.contextTrace;
+        return engine.optimize(built.request);
       } catch (e) {
         return failure(
           e instanceof Error
@@ -362,7 +379,12 @@ export class NegotiationRoutingBridge implements INegotiationRoutingBridge {
 export class RoutingRuntimeBridge implements IRoutingRuntimeBridge {
   constructor(
     private readonly engine: IProviderRuntime,
-    private readonly clocks: BridgeClockDeps
+    private readonly clocks: BridgeClockDeps,
+    private readonly failover?: {
+      orchestrator: import("../../providers/routing/performance/failover/failover-orchestrator").FailoverOrchestrator;
+      evidenceWriter?: import("../../providers/routing/performance/feedback/performance-evidence-writer").PerformanceEvidenceWriter;
+    },
+    private readonly toolRuntime?: ToolRuntimePlatform
   ) {}
 
   transfer(ctx: BridgeContext, bag: IntegrationArtifactBag) {
@@ -375,8 +397,164 @@ export class RoutingRuntimeBridge implements IRoutingRuntimeBridge {
         ...this.clocks,
         inputSummary: { primary: String(bag.routing?.plan.primary.providerId) },
       },
-      () => this.engine.execute(toProviderExecutionRequest(ctx.requestId, bag)),
-      (v) => ({ success: v.success, status: v.status })
+      async () => {
+        const base = toProviderExecutionRequest(ctx.requestId, bag);
+        const apiExecutionId =
+          typeof ctx.request.metadata?.apiExecutionId === "string"
+            ? ctx.request.metadata.apiExecutionId
+            : typeof ctx.request.metadata?.executionId === "string"
+              ? ctx.request.metadata.executionId
+              : String(base.context.executionId);
+        const organizationId = String(
+          ctx.request.organizationId ?? base.context.organizationId
+        );
+        const providerRequest = {
+          ...base,
+          context: {
+            ...base.context,
+            organizationId: asOrganizationId(organizationId),
+            workspaceId: ctx.request.workspaceId
+              ? asWorkspaceId(String(ctx.request.workspaceId))
+              : base.context.workspaceId,
+            executionId: asExecutionId(apiExecutionId),
+          },
+        };
+        const toolRequest = parseToolRequestMetadata(ctx.request.metadata);
+        if (toolRequest.toolNames.length > 0 || toolRequest.structuredOutput) {
+          if (!this.toolRuntime) {
+            return failure(new ValidationError("Tool runtime is not configured"));
+          }
+          const tools = resolveServerTools(this.toolRuntime, toolRequest.toolNames);
+          if (!tools.ok) return tools;
+          const result = await this.toolRuntime.orchestrator.execute({
+            providerRequest,
+            tools: tools.value,
+            organizationId,
+            workspaceId: ctx.request.workspaceId ? String(ctx.request.workspaceId) : undefined,
+            principalUserId:
+              typeof ctx.request.metadata?.userId === "string"
+                ? ctx.request.metadata.userId
+                : undefined,
+            roles: Array.isArray(ctx.request.metadata?.roles)
+              ? ctx.request.metadata.roles.filter((role): role is string => typeof role === "string")
+              : undefined,
+            allowedToolNames:
+              toolRequest.toolNames.length > 0 ? toolRequest.toolNames : undefined,
+            structuredOutput: toolRequest.structuredOutput,
+            workerId: "integration-tool-runtime",
+          });
+          if (!result.ok) return result;
+          let providerResult = result.value.providerResult;
+          if (providerResult.error?.code === "TOOL_APPROVAL_REQUIRED") {
+            const records = await this.toolRuntime.invocationStore.listByExecution(
+              apiExecutionId
+            );
+            const invocationKeys = records
+              .filter((record) => record.status === "awaiting_approval")
+              .map((record) => record.invocationKey);
+            providerResult = {
+              ...providerResult,
+              response: {
+                requestId: providerResult.response?.requestId ?? providerResult.requestId,
+                providerId:
+                  providerResult.response?.providerId ??
+                  (providerResult.finalProviderId as never) ??
+                  ("" as never),
+                output: Object.freeze({
+                  ...((providerResult.response?.output ?? {}) as Record<string, unknown>),
+                  toolApproval: { required: true, invocationKeys },
+                  toolOrchestration: {
+                    ...(((providerResult.response?.output as Record<string, unknown> | undefined)
+                      ?.toolOrchestration as Record<string, unknown>) ?? {}),
+                    aggregatedUsage: result.value.aggregatedUsage,
+                    ...result.value.orchestration,
+                  },
+                }),
+                usage: {
+                  ...(providerResult.response?.usage ?? {}),
+                  ...result.value.aggregatedUsage,
+                },
+                streamed: providerResult.response?.streamed ?? false,
+                finishedAt: providerResult.response?.finishedAt ?? this.clocks.nowIso(),
+              },
+            };
+          } else {
+            providerResult = {
+              ...providerResult,
+              response: providerResult.response
+                ? {
+                    ...providerResult.response,
+                    output: Object.freeze({
+                      ...((providerResult.response.output ?? {}) as Record<string, unknown>),
+                      toolOrchestration: {
+                        ...(((providerResult.response.output as Record<string, unknown> | undefined)
+                          ?.toolOrchestration as Record<string, unknown>) ?? {}),
+                        aggregatedUsage: result.value.aggregatedUsage,
+                        ...result.value.orchestration,
+                      },
+                    }),
+                    usage: {
+                      ...(providerResult.response.usage ?? {}),
+                      ...result.value.aggregatedUsage,
+                    },
+                  }
+                : providerResult.response,
+            };
+          }
+          return success(providerResult);
+        }
+        if (!this.failover || !bag.routing) {
+          return this.engine.execute(providerRequest);
+        }
+
+        const outcome = await this.failover.orchestrator.execute(providerRequest, bag.routing);
+        if (!outcome.ok) return outcome;
+
+        if (this.failover.evidenceWriter) {
+          let finalAttemptId: string | undefined;
+          for (const attempt of outcome.value.attempts) {
+            const matching =
+              outcome.value.result.finalProviderId === attempt.providerId &&
+              outcome.value.result.success === attempt.success
+                ? outcome.value.result
+                : {
+                    ...outcome.value.result,
+                    success: attempt.success,
+                    status: attempt.status as typeof outcome.value.result.status,
+                    error: attempt.errorCode
+                      ? { code: attempt.errorCode, message: attempt.errorMessage ?? "" }
+                      : undefined,
+                    statistics: {
+                      ...outcome.value.result.statistics,
+                      totalMs: attempt.latencyMs,
+                      attempts: 1,
+                    },
+                  };
+            await this.failover.evidenceWriter.recordAttempt(attempt, matching, {
+              executionId: apiExecutionId,
+              organizationId,
+              capabilityId: String(providerRequest.capabilityId),
+              routingDecisionId: String(bag.routing.decisionId),
+              createId: this.clocks.createId,
+              nowIso: this.clocks.nowIso,
+            });
+            if (attempt.success) finalAttemptId = attempt.attemptId;
+            else if (!finalAttemptId) finalAttemptId = attempt.attemptId;
+          }
+          // M9.5P — link evaluation attach to the final recorded attempt (mutable metadata bag).
+          if (finalAttemptId && ctx.request.metadata && typeof ctx.request.metadata === "object") {
+            (ctx.request.metadata as Record<string, unknown>).finalAttemptId = finalAttemptId;
+          }
+        }
+
+        return success(outcome.value.result);
+      },
+      (v) => ({
+        success: v.success,
+        status: v.status,
+        attempts: v.attemptHistory?.length ?? 1,
+        finalProvider: v.finalProviderId ?? String(v.response?.providerId ?? ""),
+      })
     );
   }
 }
@@ -422,17 +600,50 @@ export class ConsensusEvaluationBridge implements IConsensusEvaluationBridge {
         ...this.clocks,
         inputSummary: { consensusId: bag.consensus?.resultId },
       },
-      () => this.engine.evaluate(toEvaluationRequest(ctx.requestId, bag)),
+      async () => {
+        // M9.5P — evaluation recursion / internal judge work must not re-enter.
+        if (ctx.request.metadata?.isEvaluationWork === true) {
+          const { buildUnevaluatedEvaluationResult } = await import(
+            "../../evaluation/integrity/unevaluated-result"
+          );
+          return success(
+            buildUnevaluatedEvaluationResult({
+              requestId: ctx.requestId,
+              reason: "evaluation_recursion_blocked",
+            })
+          );
+        }
+        const depth = Number(ctx.request.metadata?.evaluationDepth ?? 0);
+        const maxDepth = Number(process.env.EVALUATION_MAX_DEPTH ?? 1) || 1;
+        if (depth >= maxDepth && ctx.request.metadata?.evaluationDepth != null) {
+          const { buildUnevaluatedEvaluationResult } = await import(
+            "../../evaluation/integrity/unevaluated-result"
+          );
+          return success(
+            buildUnevaluatedEvaluationResult({
+              requestId: ctx.requestId,
+              reason: "evaluation_recursion_blocked",
+            })
+          );
+        }
+        return this.engine.evaluate(toEvaluationRequest(ctx.requestId, bag));
+      },
       (v) => ({
         passed: v.report.summary.passed,
         score: v.report.summary.overallScore,
+        feedbackEligible: v.integrity?.feedbackEligible === true,
+        qualityScore: v.integrity?.qualityScore ?? null,
+        evaluationStatus: v.integrity?.evaluationStatus,
       })
     );
   }
 }
 
 export class EvaluationIntelligenceBridge implements IEvaluationIntelligenceBridge {
-  constructor(private readonly clocks: BridgeClockDeps) {}
+  constructor(
+    private readonly clocks: BridgeClockDeps,
+    private readonly performanceStore?: import("../../providers/routing/performance/interfaces/model-performance-store").IModelPerformanceStore
+  ) {}
 
   transfer(ctx: BridgeContext, evaluation: EvaluationResult) {
     return observeBridgeCall(
@@ -444,13 +655,47 @@ export class EvaluationIntelligenceBridge implements IEvaluationIntelligenceBrid
         ...this.clocks,
         inputSummary: { reportId: evaluation.report.reportId },
       },
-      async () =>
-        success({
+      async () => {
+        const attemptId =
+          typeof ctx.request.metadata?.finalAttemptId === "string"
+            ? ctx.request.metadata.finalAttemptId
+            : typeof ctx.request.metadata?.attemptId === "string"
+              ? ctx.request.metadata.attemptId
+              : undefined;
+        const integrity = evaluation.integrity;
+        if (this.performanceStore && attemptId && integrity) {
+          // Only attach routing quality when feedbackEligible; still record provenance.
+          await this.performanceStore.attachEvaluation(
+            attemptId,
+            integrity.qualityScore,
+            Object.fromEntries(
+              Object.entries(integrity.dimensions).filter(
+                (entry): entry is [string, number] => typeof entry[1] === "number"
+              )
+            ),
+            {
+              feedbackEligible: integrity.feedbackEligible,
+              evaluationTrust: integrity.evaluationTrust,
+              evaluationMethod: integrity.evaluationMethod,
+              evaluationStatus: integrity.evaluationStatus,
+              judgeId: integrity.judgeId,
+              judgeVersion: integrity.judgeVersion,
+              rubricVersion: integrity.rubricVersion,
+              evaluationExclusionReason: integrity.exclusionReason,
+              evaluationMetricNamespace: integrity.metricNamespaces[0],
+            }
+          );
+        }
+        return success({
           evaluationResult: evaluation,
-          readyForLearning: true,
+          // Learning must not treat placeholder heuristics as ground truth.
+          readyForLearning: integrity?.feedbackEligible === true,
           notes:
-            "Evaluation Intelligence is provided by the Evaluation module public outputs (no separate engine).",
-        }),
+            integrity?.feedbackEligible === true
+              ? "Trusted evaluation attached for adaptive QUALITY feedback."
+              : `Evaluation integrity: ${integrity?.evaluationStatus ?? "unknown"}; feedbackEligible=false (${integrity?.exclusionReason ?? "n/a"}).`,
+        });
+      },
       (v) => ({ readyForLearning: v.readyForLearning })
     );
   }
@@ -543,7 +788,7 @@ export class ExperienceRepositoryBridge implements IExperienceRepositoryBridge {
           experiences: bag.experienceIntelligence?.experiences.length ?? 0,
         },
       },
-      () => {
+      async () => {
         const experiences = bag.experienceIntelligence?.experiences ?? [];
         if (experiences.length > 0) {
           const saved = this.repository.saveMany(experiences);
@@ -596,7 +841,15 @@ export class RawRequestTaskBridge {
 
 export function createIntegrationBridges(
   engines: StageEngines,
-  clocks: BridgeClockDeps
+  clocks: BridgeClockDeps,
+  extras?: {
+    readonly failover?: {
+      orchestrator: import("../../providers/routing/performance/failover/failover-orchestrator").FailoverOrchestrator;
+      evidenceWriter?: import("../../providers/routing/performance/feedback/performance-evidence-writer").PerformanceEvidenceWriter;
+    };
+    readonly performanceStore?: import("../../providers/routing/performance/interfaces/model-performance-store").IModelPerformanceStore;
+    readonly toolRuntime?: ToolRuntimePlatform;
+  }
 ): IntegrationBridgeSet & { readonly rawTask: RawRequestTaskBridge } {
   return {
     rawTask: new RawRequestTaskBridge(engines.task, clocks),
@@ -610,10 +863,18 @@ export function createIntegrationBridges(
     executionModel: new ExecutionModelBridge(engines.modelIntelligence, clocks),
     modelNegotiation: new ModelNegotiationBridge(engines.negotiation, clocks),
     negotiationRouting: new NegotiationRoutingBridge(engines.routing, clocks),
-    routingRuntime: new RoutingRuntimeBridge(engines.runtime, clocks),
+    routingRuntime: new RoutingRuntimeBridge(
+      engines.runtime,
+      clocks,
+      extras?.failover,
+      extras?.toolRuntime
+    ),
     runtimeConsensus: new RuntimeConsensusBridge(engines.consensus, clocks),
     consensusEvaluation: new ConsensusEvaluationBridge(engines.evaluation, clocks),
-    evaluationIntelligence: new EvaluationIntelligenceBridge(clocks),
+    evaluationIntelligence: new EvaluationIntelligenceBridge(
+      clocks,
+      extras?.performanceStore
+    ),
     evaluationLearning: new EvaluationLearningBridge(engines.learning, clocks),
     learningOptimization: new LearningOptimizationBridge(engines.optimization, clocks),
     optimizationExperience: new OptimizationExperienceBridge(engines.experienceIntelligence, clocks),

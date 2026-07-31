@@ -33,6 +33,7 @@ import {
   buildRazorpayPlanItem,
 } from "../src/utils/demoSeed";
 import { CATEGORY_SPECS } from "./seed-demo-constants";
+import { upsertCanonicalCategories } from "./seed-categories";
 
 const DEMO_PASSWORD = process.env.DEMO_USER_PASSWORD || "DemoPass123!";
 const GOLD_PLAN_ID = DEMO_PLAN_IDS.gold;
@@ -216,26 +217,13 @@ async function ensureStreamUser(user: { _id: mongoose.Types.ObjectId; name: stri
 
 async function seedCategories() {
   console.log("→ Seeding categories...");
+  const count = await upsertCanonicalCategories();
   const categoryMap = new Map<string, mongoose.Types.ObjectId>();
-
   for (const spec of CATEGORY_SPECS) {
-    const featuredImage = `https://picsum.photos/seed/${spec.slug}/400/400`;
-    const doc = await Categories.findOneAndUpdate(
-      { title: spec.title },
-      {
-        $set: {
-          title: spec.title,
-          featuredImage,
-          tagline: spec.tagline,
-          tags: spec.tagline ? [spec.tagline] : [],
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    categoryMap.set(spec.title, doc._id);
+    const doc = await Categories.findOne({ title: spec.title });
+    if (doc) categoryMap.set(spec.title, doc._id);
   }
-
-  console.log(`  ✓ ${categoryMap.size} categories`);
+  console.log(`  ✓ ${count} categories`);
   return categoryMap;
 }
 

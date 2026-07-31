@@ -20,13 +20,19 @@ import type {
   IRoutingEventPublisher,
   IRoutingHealthProvider,
   IRoutingHistory,
+  IRoutingScorer,
 } from "../interfaces/routing";
+import { createPerformancePlatform } from "../performance/factories/create-performance-platform";
+import type { IModelPerformanceStore } from "../performance/interfaces/model-performance-store";
+import type { PerformancePlatform } from "../performance/factories/create-performance-platform";
 
 export interface RoutingPlatform {
   readonly engine: IProviderRoutingEngine;
   readonly diagnostics: IRoutingDiagnostics;
   readonly history: IRoutingHistory;
   readonly health: IRoutingHealthProvider;
+  /** M9.5H — present when performance feedback platform is attached. */
+  readonly performance?: PerformancePlatform;
 }
 
 export interface CreateRoutingPlatformOptions {
@@ -35,6 +41,12 @@ export interface CreateRoutingPlatformOptions {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
+  /** Optional durable/in-memory performance store (adaptive feedback). */
+  readonly performanceStore?: IModelPerformanceStore;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly durableMongo?: boolean;
+  /** Override scorer (tests). When omitted, uses adaptive scorer wrapping static. */
+  readonly scorer?: IRoutingScorer;
 }
 
 export function createRoutingPlatform(
@@ -42,8 +54,17 @@ export function createRoutingPlatform(
 ): RoutingPlatform {
   const history = new InMemoryRoutingHistory();
   const health = new DefaultRoutingHealthProvider();
-  const scorer = new DefaultRoutingScorer(history);
   const diagnostics = new DefaultRoutingDiagnostics();
+
+  const performance = createPerformancePlatform({
+    env: options.env,
+    store: options.performanceStore,
+    durableMongo: options.durableMongo,
+    history,
+    nowMs: options.clockMs,
+  });
+
+  const scorer = options.scorer ?? performance.scorer;
 
   const engine = new ProviderRoutingEngine({
     scorer,
@@ -61,5 +82,5 @@ export function createRoutingPlatform(
     createId: options.createId,
   });
 
-  return { engine, diagnostics, history, health };
+  return { engine, diagnostics, history, health, performance };
 }

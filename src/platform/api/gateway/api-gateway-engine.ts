@@ -25,9 +25,11 @@ import type {
 } from "../interfaces";
 import type { IExecutionIntelligenceApiService } from "../execution-intelligence";
 import { matchRoute, API_ROUTE_MAP } from "../routes/route-map";
+import { isLiveSsePayload } from "../services/execution-streaming-service";
 import { validateApiRequest } from "../validation/validate-request";
 import { defaultHeaders, serializeError, serializeSuccess } from "../serialization/serialize";
 import { dispatchController, type ControllerDeps } from "../controllers/dispatch";
+import { resolveTenantContext } from "../auth/tenant-resolution";
 
 export interface ApiGatewayDeps {
   readonly auth: IAuthenticationService;
@@ -38,6 +40,7 @@ export interface ApiGatewayDeps {
   readonly rateLimits: IRateLimitService;
   readonly catalog: ICatalogApiService;
   readonly executionIntelligence?: IExecutionIntelligenceApiService;
+  readonly currentPrincipal?: ControllerDeps["currentPrincipal"];
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
 }
@@ -57,6 +60,7 @@ export class ApiGatewayEngine implements IApiGateway {
       streaming: deps.streaming,
       catalog: deps.catalog,
       executionIntelligence: deps.executionIntelligence,
+      currentPrincipal: deps.currentPrincipal,
     };
   }
 
@@ -112,9 +116,9 @@ export class ApiGatewayEngine implements IApiGateway {
       }
     }
 
-    const tenant = resolveTenant(request, principal, params);
+    const tenant = resolveTenantContext(request, principal, params);
     if (route.authRequired && tenant) {
-      const isolation = this.deps.tenants.ensureTenant(tenant);
+      const isolation = await this.deps.tenants.ensureTenant(tenant);
       if (!isolation.ok) {
         const status = isolation.error.code === "NOT_FOUND" ? 404 : 403;
         return success(
@@ -124,7 +128,7 @@ export class ApiGatewayEngine implements IApiGateway {
     }
 
     if (route.authRequired) {
-      const rl = this.deps.rateLimits.check({
+      const rl = await this.deps.rateLimits.check({
         organizationId: tenant?.organizationId ?? principal?.organizationId,
         workspaceId: tenant?.workspaceId ?? principal?.workspaceId,
         userId: principal?.userId,
@@ -135,8 +139,12 @@ export class ApiGatewayEngine implements IApiGateway {
             : undefined,
       });
       if (!rl.ok) {
+        const status =
+          rl.error.message.includes("unavailable") || rl.error.message.includes("fail-closed")
+            ? 503
+            : 500;
         return success(
-          this.errorResponse(request, 500, rl.error.code, rl.error.message, start)
+          this.errorResponse(request, status, rl.error.code, rl.error.message, start)
         );
       }
       if (!rl.value.allowed) {
@@ -172,6 +180,34 @@ export class ApiGatewayEngine implements IApiGateway {
           start
         )
       );
+    }
+
+    // M10.8 — live SSE from StreamingExecutionOrchestrator (simulated FakeStreamingDispatcher).
+    if (isLiveSsePayload(result.value)) {
+      return success({
+        status: 200,
+        headers: {
+          ...defaultHeaders(request.version),
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "x-request-id": request.requestId,
+          "x-correlation-id": request.correlationId ?? request.requestId,
+          "x-execution-id": result.value.executionId,
+        },
+        body: serializeSuccess(
+          { executionId: result.value.executionId, streaming: true },
+          { routeId: route.routeId, domain: route.domain }
+        ),
+        sse: {
+          frames: result.value.frames,
+          frameIterable: result.value.frameIterable,
+          cancel: result.value.cancel,
+        },
+        requestId: request.requestId,
+        version: request.version,
+        durationMs: this.clockMs() - start,
+      });
     }
 
     return success({
@@ -231,28 +267,6 @@ function extractCredential(request: ApiRequest): Result<AuthCredential> {
     return success({ scheme: "jwt", token });
   }
   return failure(new AuthorizationError("unsupported authorization scheme"));
-}
-
-function resolveTenant(
-  request: ApiRequest,
-  principal: AuthPrincipal | undefined,
-  params: Record<string, string>
-): TenantContext | undefined {
-  const organizationId =
-    principal?.organizationId ??
-    params.organizationId ??
-    (request.body as { organizationId?: string } | undefined)?.organizationId ??
-    (request.query?.organizationId as string | undefined);
-  if (!organizationId) return undefined;
-  return {
-    organizationId,
-    workspaceId:
-      principal?.workspaceId ??
-      (request.body as { workspaceId?: string } | undefined)?.workspaceId ??
-      request.query?.workspaceId,
-    userId: principal?.userId,
-    projectId: (request.body as { projectId?: string } | undefined)?.projectId,
-  };
 }
 
 function statusForError(code: string): number {

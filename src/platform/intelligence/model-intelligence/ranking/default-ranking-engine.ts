@@ -12,6 +12,7 @@ import type { InMemoryPerformanceRepository } from "../repositories/in-memory-pe
 import type { ModelKnowledgeProfile } from "../contracts/knowledge";
 import type { IModelKnowledgeBase } from "../interfaces/model-intelligence";
 import type { ICapabilityAnalyzer } from "../interfaces/model-intelligence";
+import { isEmbeddingExecutableProvider } from "../../providers/embedding/configs/verified-embedding-provider-specs";
 
 function confidenceFor(score: number): ConfidenceLevel {
   if (score >= 0.9) return "very_high";
@@ -39,6 +40,23 @@ export class DefaultRankingEngine implements IRankingEngine {
     for (const card of scoreCards) {
       const model = models.get(String(card.modelId));
       if (!model) continue;
+
+      // Inventory authority: only models that declare the requested capability are candidates.
+      // Soft scoring alone allowed text models to outrank embedding models for embedding.generate.
+      const supportsCapability = model.capabilities.some(
+        (c) => c.capabilityId === capId && c.supported !== false
+      );
+      if (!supportsCapability) continue;
+
+      // M9.5K: embedding.generate candidates must be embedding-modality models from
+      // verified executable providers (inventory alone is not enough — e.g. Gemini).
+      if (capId === "embedding.generate") {
+        if (!isEmbeddingExecutableProvider(String(model.providerId))) continue;
+        const hasEmbeddingModality = model.modalities.some(
+          (m) => String(m) === "embedding"
+        );
+        if (!hasEmbeddingModality) continue;
+      }
 
       const knowledge = this.knowledge.get(String(card.modelId));
       const capScore = this.capability.scoreForCapability(model, capId);
@@ -76,7 +94,7 @@ export class DefaultRankingEngine implements IRankingEngine {
         reliabilityScore,
         confidence: confidenceFor(adjusted),
         explanation: buildExplanation(card, knowledgeProfile, adjusted),
-        expectedCost: ((request.expectedOutputTokens ?? 500) / 1000) * 2,
+        expectedCost: undefined,
         expectedLatencyMs: latency.ok ? latency.value : 1000,
         expectedQuality: adjusted,
         expectedReliability: reliabilityScore,

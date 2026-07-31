@@ -229,8 +229,10 @@ export class ExecutionIntelligenceApiService implements IExecutionIntelligenceAp
     const snap = this.scoped(executionId, tenant);
     if (!snap.ok) return snap;
     const q = snap.value.quality;
-    const band = (n: number): "high" | "medium" | "low" =>
-      n >= 0.9 ? "high" : n >= 0.75 ? "medium" : "low";
+    const band = (n: number | null): "high" | "medium" | "low" | "unknown" => {
+      if (n == null || !Number.isFinite(n)) return "unknown";
+      return n >= 0.9 ? "high" : n >= 0.75 ? "medium" : "low";
+    };
     return success({
       executionId: snap.value.executionId,
       overallConfidence: q.confidence,

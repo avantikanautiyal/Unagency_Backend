@@ -1,0 +1,85 @@
+/**
+ * Production Validation Platform enums.
+ */
+
+export type ValidationScenarioId =
+  | "campaign_generation"
+  | "website_generation"
+  | "landing_page"
+  | "logo_generation"
+  | "research_merge"
+  | "gateway_e2e";
+
+export type ValidationStageId =
+  | "organization"
+  | "workspace"
+  | "brand"
+  | "campaign_request"
+  | "task_intelligence"
+  | "capability_intelligence"
+  | "brand_brain"
+  | "knowledge_intelligence"
+  | "planning"
+  | "model_selection"
+  | "provider_selection"
+  | "generation"
+  | "evaluation"
+  | "storage"
+  | "gateway_response"
+  | "page_generation"
+  | "seo"
+  | "brand_adaptation"
+  | "execution_intelligence"
+  | "audit_trail"
+  | "brand_retrieval"
+  | "knowledge_retrieval"
+  | "ai_execution"
+  | "explainability"
+  | "quality_evaluation"
+  | "image_routing"
+  | "metadata"
+  | "cost_tracking"
+  | "research_providers";
+
+export type ValidationCheckStatus = "pass" | "fail" | "warn" | "skip";
+
+export type FailureSimulationKind =
+  | "provider_unavailable"
+  | "provider_timeout"
+  | "invalid_api_key"
+  | "http_429"
+  | "http_500"
+  | "slow_response"
+  | "rate_limit"
+  | "network_interruption"
+  | "database_unavailable"
+  | "redis_unavailable"
+  | "storage_unavailable"
+  | "gateway_restart"
+  | "partial_execution_failure"
+  | "execution_resume"
+  | "provider_fallback";
+
+export type LoadProfileId =
+  | "load_10"
+  | "load_50"
+  | "load_100"
+  | "load_250"
+  | "load_500"
+  | "load_1000";
+
+export type SecurityCheckId =
+  | "jwt_auth"
+  | "rbac"
+  | "tenant_isolation"
+  | "workspace_isolation"
+  | "brand_isolation"
+  | "knowledge_isolation"
+  | "prompt_sanitization"
+  | "secret_leakage"
+  | "prompt_leakage"
+  | "execution_leakage"
+  | "cross_tenant_access"
+  | "api_keys"
+  | "rate_limiting"
+  | "upload_validation";

@@ -22,8 +22,9 @@ import RequirementRouter from "./routes/requirement.route";
 import TaskRouter from "./routes/tasks.route";
 import NotificationRouter from "./routes/notification.route"
 import planRouter from "./routes/plan.routes";
-import { TaskDeadlineQueue } from "./background/queue/taskDeadline.queue";
-import "./background/queue/notificationCron.queue"; // Initialize the cron job
+import productAssetsRouter from "./routes/product-assets.route";
+// Legacy BullMQ/cron workers — started explicitly in app.run() (M9.4A)
+// Do NOT import queue modules at top-level (leaves open handles in tests).
 
 // middleware
 import {
@@ -33,6 +34,17 @@ import {
 import razorpayRouter from "./routes/razorpay.route";
 import { razorpayWebhook } from "./webhook/razorpaywebhook";
 import dashboardRoute from "./routes/dashboard.route";
+import {
+  bootstrapEnterpriseApiRuntime,
+  bootstrapEnterpriseApiRuntimeAsync,
+  logEnterpriseApiMount,
+  parseEnterpriseApiExecutionModeFromEnv,
+  validateEnterpriseApiExecutionConfig,
+} from "./platform/api/runtime";
+import { createExpressPlatformAdapter } from "./platform/api/transports/express";
+import type { EnterpriseApiRuntime } from "./platform/api/runtime";
+import { closeSharedRedisClient } from "./platform/infrastructure/durability";
+
 const app = express();
 
 //Use of CORS
@@ -190,8 +202,22 @@ app.use("/razorpay/webhook", express.raw({ type: "application/json" }), razorpay
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 
+const enterpriseExecutionMode = parseEnterpriseApiExecutionModeFromEnv();
+validateEnterpriseApiExecutionConfig(enterpriseExecutionMode);
+
+let enterpriseApiRuntime: EnterpriseApiRuntime;
+
+if (enterpriseExecutionMode !== "live") {
+  enterpriseApiRuntime = bootstrapEnterpriseApiRuntime({
+    executionMode: enterpriseExecutionMode,
+  });
+  app.use(
+    createExpressPlatformAdapter({ gateway: enterpriseApiRuntime.platform.gateway })
+  );
+}
+
 type CustomExpress = {
-  run: () => void;
+  run: () => Promise<void>;
 } & typeof app;
 
 //routes declaration
@@ -209,6 +235,7 @@ app.use("/packages", VerifyUserHandler, packagesRouter);
 app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
 app.use("/plans", VerifyUserHandler, planRouter);
+app.use("/assets", VerifyUserHandler, productAssetsRouter);
 
 app.use("/notification", NotificationRouter);
 
@@ -223,16 +250,70 @@ app.use(ErrorHandler);
 
 (app as CustomExpress).run = async () => {
   try {
+    if (enterpriseExecutionMode === "live") {
+      enterpriseApiRuntime = await bootstrapEnterpriseApiRuntimeAsync();
+      app.use(
+        createExpressPlatformAdapter({ gateway: enterpriseApiRuntime.platform.gateway })
+      );
+    }
+
+    logEnterpriseApiMount(
+      enterpriseApiRuntime.executionMode,
+      enterpriseApiRuntime.firebaseBridgeEnabled,
+      enterpriseApiRuntime.configuredProviders
+    );
     mongoose.connect(process.env.DB_URI!);
     mongoose.connection.on("connected", () => {
       console.log("DB_CONNECTED");
     });
-    app.listen(process.env.PORT ?? 4000, () => {
+
+    // Explicit legacy background worker lifecycle (not import side-effect)
+    if (process.env.ENTERPRISE_API_START_LEGACY_WORKERS !== "false") {
+      await import("./background/queue/taskDeadline.queue");
+      await import("./background/queue/notificationCron.queue");
+    }
+
+    const server = app.listen(process.env.PORT ?? 4000, () => {
       console.log(
         "⚙️",
         ` Server is running at port : ${process.env.PORT ?? 4000}`
       );
     });
+
+    let shuttingDown = false;
+    const shutdown = (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`⚙️  Received ${signal}, shutting down gracefully`);
+      server.close(() => {
+        void (async () => {
+          try {
+            // M9.5O1 — drain/abort in-flight native streams before stores close.
+            try {
+              const { getActiveStreamRegistry, loadStreamingRuntimeConfig } =
+                await import(
+                  "./platform/intelligence/providers/streaming"
+                );
+              const cfg = loadStreamingRuntimeConfig(process.env);
+              await getActiveStreamRegistry().shutdown({
+                drainMs: cfg.shutdownDrainMs,
+                reason: "server_shutdown",
+              });
+            } catch {
+              /* streaming registry optional if module unload fails */
+            }
+            await enterpriseApiRuntime?.platform.distributed.shutdown();
+            await closeSharedRedisClient();
+            await mongoose.connection.close();
+          } finally {
+            process.exit(0);
+          }
+        })();
+      });
+      setTimeout(() => process.exit(1), 15_000).unref();
+    };
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+    process.once("SIGINT", () => shutdown("SIGINT"));
   } catch (err) {
     console.error((err as Error).message);
     process.exit(1);

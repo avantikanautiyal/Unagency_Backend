@@ -16,7 +16,7 @@ export interface ModelDecisionRecord {
   readonly rankingExplanation: string;
   readonly winningModel: RankedModelCandidate;
   readonly fallbackModels: readonly RankedModelCandidate[];
-  readonly expectedCost: number;
+  readonly expectedCost?: number;
   readonly expectedTokens: number;
   readonly expectedLatencyMs: number;
   readonly expectedQuality: number;

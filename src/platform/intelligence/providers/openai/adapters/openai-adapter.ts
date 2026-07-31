@@ -2,7 +2,8 @@
  * OpenAI Provider Adapter — reference adapter implementation.
  */
 
-import { success, type Result } from "../../../shared/result";
+import { failure, success, type Result } from "../../../shared/result";
+import { ValidationError } from "../../../shared/errors";
 import { asProviderId } from "../../../shared/identifiers";
 import { AbstractMultimodalProviderAdapter } from "../../adapters/base/specialized-adapters";
 import type { AbstractAdapterDeps } from "../../adapters/base/abstract-provider-adapter";
@@ -12,7 +13,10 @@ import type {
   ProviderWirePayload,
 } from "../../adapters/contracts/adapter-io";
 import type { ProviderManifest } from "../../adapters/contracts/provider-manifest";
-import type { ProviderTranslationResult } from "../../adapters/contracts/results";
+import type {
+  ProviderTranslationResult,
+  ProviderValidationResult,
+} from "../../adapters/contracts/results";
 import { asProviderAdapterId } from "../../adapters/contracts/identifiers";
 import { mapCanonicalToOpenAIRequest } from "../requests/request-mapper";
 import type { DesiredCapabilityProfile } from "../contracts/openai-contracts";
@@ -49,11 +53,43 @@ export class OpenAIProviderAdapter extends AbstractMultimodalProviderAdapter {
   ): Result<ProviderTranslationResult<ProviderWirePayload>> {
     const profile = extractProfile(request);
     const inventory = this.discovery.getCached();
+    const requestedModelId = request.modelId?.trim();
+
+    // Routing authority: if the request includes a concrete modelId, use it
+    // as the single source of truth (no independent ranking/select).
+    if (requestedModelId) {
+      // Model Registry canonical ids use the form "<providerVendor>/<modelId>"
+      // (e.g. "openai/gpt-4o"). The OpenAI leaf operates on wire-model ids
+      // (e.g. "gpt-4o"), so strip any canonical provider prefix.
+      const wireModelId = requestedModelId.includes("/")
+        ? requestedModelId.split("/").slice(-1)[0] ?? requestedModelId
+        : requestedModelId;
+
+      const match = inventory.find((m) => m.id === wireModelId);
+      if (!match) {
+        return failure(
+          new ValidationError(
+            `Requested modelId '${requestedModelId}' (wire '${wireModelId}') is not available in OpenAI discovery cache`
+          )
+        );
+      }
+
+      const wire = mapCanonicalToOpenAIRequest(
+        request,
+        wireModelId,
+        profile
+      );
+      return success({
+        value: { ...wire, resolvedModelId: wireModelId },
+        warnings: [],
+        droppedFields: [],
+      });
+    }
+
     const resolved = this.resolver.resolve(profile, inventory);
 
-    const modelId = resolved.ok
-      ? resolved.value.selectedModelId
-      : request.modelId || inventory[0]?.id || "unresolved";
+    const modelId =
+      resolved.ok ? resolved.value.selectedModelId : inventory[0]?.id ?? "unresolved";
 
     const wire = mapCanonicalToOpenAIRequest(request, modelId, profile);
 
@@ -74,6 +110,104 @@ export class OpenAIProviderAdapter extends AbstractMultimodalProviderAdapter {
           ],
       droppedFields: [],
     });
+  }
+
+  validate(request: ProviderAdapterRequest): Result<ProviderValidationResult> {
+    const wireModelId = request.modelId.includes("/")
+      ? request.modelId.split("/").slice(-1)[0] ?? request.modelId
+      : request.modelId;
+
+    if (
+      request.modality === "image" ||
+      String(request.capabilityId).toLowerCase() === "image.generate"
+    ) {
+      const isImageModel =
+        wireModelId.includes("dall-e") || wireModelId.includes("gpt-image");
+      if (!isImageModel) {
+        return success({
+          valid: false,
+          issues: [
+            {
+              code: "model_capability_mismatch",
+              message: `Model '${request.modelId}' does not support image.generate`,
+              severity: "error",
+            },
+          ],
+        });
+      }
+    }
+
+    const cap = String(request.capabilityId).toLowerCase();
+    if (cap === "audio.transcribe" || cap === "speech.transcribe") {
+      const isWhisper = wireModelId.includes("whisper");
+      if (!isWhisper) {
+        return success({
+          valid: false,
+          issues: [
+            {
+              code: "model_capability_mismatch",
+              message: `Model '${request.modelId}' does not support audio.transcribe`,
+              severity: "error",
+            },
+          ],
+        });
+      }
+    }
+
+    if (cap === "audio.synthesize" || cap === "audio.speech_generation" || cap === "speech.synthesize") {
+      const isTts = wireModelId.startsWith("tts-");
+      if (!isTts) {
+        return success({
+          valid: false,
+          issues: [
+            {
+              code: "model_capability_mismatch",
+              message: `Model '${request.modelId}' does not support audio.synthesize`,
+              severity: "error",
+            },
+          ],
+        });
+      }
+    }
+
+    if (
+      cap === "embedding.generate" ||
+      cap === "text.embed" ||
+      request.modality === "embedding"
+    ) {
+      const isEmbeddingModel = wireModelId.includes("embedding");
+      if (!isEmbeddingModel) {
+        return success({
+          valid: false,
+          issues: [
+            {
+              code: "model_capability_mismatch",
+              message: `Model '${request.modelId}' does not support embedding.generate`,
+              severity: "error",
+            },
+          ],
+        });
+      }
+      const text =
+        (typeof request.input.text === "string" && request.input.text.trim()) ||
+        (typeof request.input.prompt === "string" && request.input.prompt.trim()) ||
+        (typeof request.input.input === "string" && request.input.input.trim()) ||
+        "";
+      if (!text) {
+        return success({
+          valid: false,
+          issues: [
+            {
+              code: "invalid_request",
+              message: "embedding.generate requires non-empty text input",
+              severity: "error",
+            },
+          ],
+        });
+      }
+    }
+
+    return super.validate({ ...request, modelId: wireModelId });
   }
 }
 

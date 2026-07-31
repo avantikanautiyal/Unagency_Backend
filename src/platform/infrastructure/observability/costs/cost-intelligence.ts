@@ -38,6 +38,7 @@ export function aggregateCosts(
   let total = 0;
 
   for (const r of list) {
+    if (r.amount == null || !Number.isFinite(r.amount)) continue;
     total += r.amount;
     bump(byOrganization, r.context.organizationId ?? "unknown", r.amount);
     bump(byDepartment, r.department ?? r.context.department ?? "general", r.amount);

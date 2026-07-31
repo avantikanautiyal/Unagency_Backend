@@ -31,6 +31,26 @@ export interface ProviderExecutionError {
 }
 
 /**
+ * Safe per-provider attempt diagnostics (M9.5H failover). No credentials/payloads.
+ */
+export interface ProviderAttemptHistoryEntry {
+  readonly attemptId: string;
+  readonly positionInRoute: number;
+  readonly primaryOrFailover: "primary" | "failover";
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly success: boolean;
+  readonly failureCategory: string;
+  readonly latencyMs: number;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly status: string;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
+  readonly exploratory?: boolean;
+}
+
+/**
  * Terminal outcome of a provider execution through the runtime.
  */
 export interface ProviderExecutionResult {
@@ -42,4 +62,10 @@ export interface ProviderExecutionResult {
   readonly error?: ProviderExecutionError;
   readonly statistics: ProviderExecutionStatistics;
   readonly completedAt: string;
+  /** M9.5H — populated when FailoverOrchestrator runs multi-provider attempts. */
+  readonly attemptHistory?: readonly ProviderAttemptHistoryEntry[];
+  readonly finalProviderId?: string;
+  readonly finalModelId?: string;
+  readonly failoverCount?: number;
+  readonly budgetExhausted?: boolean;
 }

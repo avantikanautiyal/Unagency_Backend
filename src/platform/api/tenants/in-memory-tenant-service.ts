@@ -42,6 +42,18 @@ export class InMemoryTenantService implements ITenantService {
     return success(record);
   }
 
+  registerOrganization(record: OrganizationRecord): Result<OrganizationRecord> {
+    if (!record.organizationId?.trim()) {
+      return failure(new ValidationError("organizationId required"));
+    }
+    const existing = this.orgs.get(record.organizationId);
+    if (existing) {
+      return success(existing);
+    }
+    this.orgs.set(record.organizationId, record);
+    return success(record);
+  }
+
   createWorkspace(organizationId: string, name: string): Result<WorkspaceRecord> {
     if (!this.orgs.has(organizationId)) {
       return failure(new NotFoundError("organization not found"));
@@ -119,7 +131,7 @@ export class InMemoryTenantService implements ITenantService {
     return success(record);
   }
 
-  ensureTenant(context: TenantContext): Result<TenantContext> {
+  async ensureTenant(context: TenantContext): Promise<Result<TenantContext>> {
     if (!context.organizationId) {
       return failure(new ValidationError("organizationId required for tenant isolation"));
     }
@@ -133,6 +145,18 @@ export class InMemoryTenantService implements ITenantService {
       }
     }
     return success(context);
+  }
+
+  async syncOrganizationFromExternal(input: {
+    organizationId: string;
+    name: string;
+  }): Promise<Result<OrganizationRecord>> {
+    return this.registerOrganization({
+      organizationId: input.organizationId,
+      name: input.name.trim() || "Organization",
+      createdAt: this.nowIso(),
+      status: "active",
+    });
   }
 
   getOrganization(organizationId: string): Result<OrganizationRecord | undefined> {

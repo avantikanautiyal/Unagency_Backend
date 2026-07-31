@@ -2,7 +2,8 @@
  * Controllers — thin adapters from HTTP routes to services.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
+import { success, failure, type Result } from "../../intelligence/shared/result";
+import { ValidationError } from "../../intelligence/shared/errors";
 import type {
   ApiRequest,
   AuthPrincipal,
@@ -19,6 +20,9 @@ import type {
 import { CatalogApiService } from "../services/catalog-api-service";
 import type { InMemoryTenantService } from "../tenants/in-memory-tenant-service";
 import type { IExecutionIntelligenceApiService } from "../execution-intelligence";
+import { evaluateReadiness } from "../runtime/readiness";
+import { resolveEnterpriseApiExecutionMode } from "../runtime/execution-mode";
+import { getEnterpriseApiRuntime } from "../runtime/bootstrap-enterprise-api";
 
 export interface ControllerDeps {
   readonly auth: IAuthenticationService;
@@ -27,6 +31,11 @@ export interface ControllerDeps {
   readonly streaming: IStreamingService;
   readonly catalog: ICatalogApiService;
   readonly executionIntelligence?: IExecutionIntelligenceApiService;
+  readonly currentPrincipal?: {
+    getMe: (
+      principal: AuthPrincipal | undefined
+    ) => Promise<Result<unknown>>;
+  };
 }
 
 export async function dispatchController(
@@ -47,6 +56,12 @@ export async function dispatchController(
       deviceId: String(body.deviceId ?? "device_default"),
       scheme: (body.scheme as never) ?? "jwt",
     });
+  }
+  if (routeId.endsWith("_me") || routeId.includes("__me")) {
+    if (!deps.currentPrincipal) {
+      return failure(new ValidationError("current principal service unavailable"));
+    }
+    return deps.currentPrincipal.getMe(principal);
   }
   if (routeId.includes("auth_api-keys")) {
     return deps.auth.issueApiKey({
@@ -89,6 +104,15 @@ export async function dispatchController(
     });
   }
 
+  // Executable runtime truth (M10.5) — must run before catalogue /capabilities match.
+  if (routeId.includes("_intelligence_capabilities")) {
+    const runtime = getEnterpriseApiRuntime();
+    const mode = runtime?.executionMode ?? resolveEnterpriseApiExecutionMode({});
+    const { listIntelligenceCapabilities } = await import(
+      "../services/intelligence-capabilities-service"
+    );
+    return success(listIntelligenceCapabilities(mode));
+  }
   if (routeId.includes("_capabilities")) return deps.catalog.listCapabilities();
   if (routeId.includes("_providers") && !routeId.includes("executions")) {
     return deps.catalog.listProviders();
@@ -98,27 +122,74 @@ export async function dispatchController(
   }
 
   if (routeId.includes("_executions") && request.method === "POST" && !params.executionId) {
+    const metadata = (body.metadata ?? {}) as Record<string, unknown>;
+    const toolNames = body.toolNames ?? metadata.toolNames;
+    const structuredOutput = body.structuredOutput ?? metadata.structuredOutput;
     const createReq: CreateExecutionRequest = {
       prompt: String(body.prompt ?? ""),
+      // Prefer body when present so spoof attempts fail AuthorizationError (403).
+      // ExecutionApiService then binds the trusted principal.organizationId for Firebase.
       organizationId: String(body.organizationId ?? principal?.organizationId ?? ""),
-      workspaceId: body.workspaceId ? String(body.workspaceId) : principal?.workspaceId,
+      workspaceId: body.workspaceId
+        ? String(body.workspaceId)
+        : principal?.workspaceId,
+      projectId: body.projectId ? String(body.projectId) : undefined,
       capabilityId: body.capabilityId ? String(body.capabilityId) : undefined,
+      providerId: body.providerId ? String(body.providerId) : undefined,
+      modelId: body.modelId ? String(body.modelId) : undefined,
       budgetLimit: body.budgetLimit != null ? Number(body.budgetLimit) : undefined,
       tokenBudgetLimit:
         body.tokenBudgetLimit != null ? Number(body.tokenBudgetLimit) : undefined,
-      stream: Boolean(body.stream),
-      metadata: body.metadata as never,
+      stream: Boolean(body.stream) || routeId.includes("_stream"),
+      toolNames: Array.isArray(toolNames)
+        ? toolNames.filter((name): name is string => typeof name === "string")
+        : undefined,
+      structuredOutput: structuredOutput as CreateExecutionRequest["structuredOutput"],
+      metadata: {
+        ...metadata,
+        ...(toolNames !== undefined ? { toolNames } : {}),
+        ...(structuredOutput !== undefined ? { structuredOutput } : {}),
+      },
+      idempotencyKey:
+        (request.headers["idempotency-key"] ??
+          request.headers["x-idempotency-key"]) as string | undefined,
     };
+    // M10.8 — POST /v1/executions/stream → live SSE (not theatrical JSON stub).
+    if (routeId.includes("_stream")) {
+      if (!tenant) return failure(new ValidationError("tenant required"));
+      return deps.executions.createStream(createReq, principal!, tenant);
+    }
     return deps.executions.create(createReq, principal!);
   }
   if (routeId.includes("_executions") && request.method === "GET" && !params.executionId) {
     return deps.executions.history(tenant!, 50);
+  }
+  if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_media") && tenant) {
+    const apiRuntime = getEnterpriseApiRuntime();
+    const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
+    if (delivery) {
+      return delivery.resolveArtifactMediaUrl(params.artifactId, tenant.organizationId);
+    }
+    return failure(new ValidationError("Media delivery unavailable"));
   }
 
   const execId = params.executionId;
   if (execId && tenant) {
     if (routeId.includes("_cancel")) return deps.executions.cancel(execId, tenant);
     if (routeId.includes("_retry")) return deps.executions.retry(execId, tenant);
+    if (routeId.includes("_tool-approvals")) {
+      const decision = body.decision;
+      if (decision !== "approve" && decision !== "reject") {
+        return failure(new ValidationError("decision must be 'approve' or 'reject'"));
+      }
+      return deps.executions.decideToolApproval(
+        execId,
+        params.invocationId ?? "",
+        decision,
+        principal!,
+        tenant
+      );
+    }
     if (routeId.includes("_stream")) {
       const sub = deps.streaming.subscribe(execId, "sse");
       if (!sub.ok) return sub;
@@ -144,17 +215,17 @@ export async function dispatchController(
       if (!events.ok) return events;
       return deps.streaming.toSse(events.value);
     }
-    if (routeId.includes("_artifacts")) return deps.executions.artifacts(execId, tenant);
-    if (routeId.includes("_diagnostics")) return deps.executions.diagnostics(execId, tenant);
-    if (routeId.includes("_trace")) return deps.executions.trace(execId, tenant);
+    if (routeId.includes("_artifacts")) return await deps.executions.artifacts(execId, tenant);
+    if (routeId.includes("_diagnostics")) return await deps.executions.diagnostics(execId, tenant);
+    if (routeId.includes("_trace")) return await deps.executions.trace(execId, tenant);
     if (routeId.includes("_cost-breakdown") && deps.executionIntelligence) {
       return deps.executionIntelligence.costBreakdown(execId, tenant);
     }
     if (routeId.includes("_cost") && !routeId.includes("cost-breakdown")) {
-      return deps.executions.cost(execId, tenant);
+      return await deps.executions.cost(execId, tenant);
     }
-    if (routeId.includes("_evaluation")) return deps.executions.evaluation(execId, tenant);
-    if (routeId.includes("_experience")) return deps.executions.experience(execId, tenant);
+    if (routeId.includes("_evaluation")) return await deps.executions.evaluation(execId, tenant);
+    if (routeId.includes("_experience")) return await deps.executions.experience(execId, tenant);
 
     if (deps.executionIntelligence && request.method === "GET") {
       if (routeId.includes("_model-decision")) {
@@ -192,7 +263,7 @@ export async function dispatchController(
       }
     }
 
-    if (request.method === "GET") return deps.executions.get(execId, tenant);
+    if (request.method === "GET") return await deps.executions.get(execId, tenant);
   }
 
   if (routeId.includes("_health")) {
@@ -201,6 +272,17 @@ export async function dispatchController(
       gateway: "enterprise-api",
       onlyEntryPoint: true,
     });
+  }
+  if (routeId.includes("_ready")) {
+    const mode =
+      getEnterpriseApiRuntime()?.executionMode ??
+      resolveEnterpriseApiExecutionMode({});
+    return success(
+      await evaluateReadiness({
+        executionMode: mode,
+        durableStores: getEnterpriseApiRuntime()?.platform.durableStores,
+      })
+    );
   }
   if (routeId.includes("_benchmarks")) return success([]);
   if (routeId.includes("_analytics")) return success({ executions: 0, cost: 0 });

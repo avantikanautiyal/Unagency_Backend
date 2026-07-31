@@ -182,7 +182,7 @@ function push(
   out: ScoredCandidate[],
   section: BrandBrainSection,
   key: string,
-  value: string | readonly string[] | Readonly<Record<string, unknown>>,
+  value: unknown,
   sourceRef: string,
   relevance: EnrichmentRelevance,
   confidence: number,
@@ -194,11 +194,24 @@ function push(
   out.push({
     section,
     key,
-    value,
+    value: normalizeContextValue(value),
     sourceRef,
     relevance,
     confidence,
     whySelected,
     score: Math.min(1, baseScore + boost),
   });
+}
+
+function normalizeContextValue(
+  value: unknown
+): string | readonly string[] | Readonly<Record<string, unknown>> {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
+    return value as readonly string[];
+  }
+  if (value !== null && typeof value === "object") {
+    return value as Readonly<Record<string, unknown>>;
+  }
+  return String(value ?? "");
 }

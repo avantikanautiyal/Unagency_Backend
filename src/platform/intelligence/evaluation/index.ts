@@ -31,4 +31,4 @@ export * from "./capability-profiles";
 export * from "./industry-profiles";
 export * from "./adaptive";
 export * from "./feedback";
-export * from "./explainability";
+export * from "./integrity";

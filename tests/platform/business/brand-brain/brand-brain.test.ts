@@ -9,7 +9,7 @@ import {
 import { createBrandBrainPlatform } from "../../../../src/platform/business/brand-brain/factories/create-brand-brain-platform";
 
 describe("Brand Brain & Organizational Intelligence", () => {
-  it("stores versioned brand brains per organization", () => {
+  it("stores versioned brand brains per organization", async () => {
     const { engine } = setupBrandBrain();
     const doc = sampleBrandBrain({
       organizationId: "org_nova",
@@ -19,7 +19,7 @@ describe("Brand Brain & Organizational Intelligence", () => {
       region: "US",
       competitor: "RivalCo",
     });
-    const v1 = engine.upsert(
+    const v1 = await engine.upsert(
       BrandBrainUpsertBuilder.create()
         .withOrganization("org_nova")
         .withDocument(doc)
@@ -32,17 +32,17 @@ describe("Brand Brain & Organizational Intelligence", () => {
       ...doc,
       tone: { ...doc.tone, adjectives: ["bold", "precise"] },
     };
-    const v2 = engine.upsert({
+    const v2 = await engine.upsert({
       organizationId: "org_nova",
       document: updated,
       changelog: "tone refresh",
     });
     expect(v2.ok && v2.value.version).toBe(2);
-    const versions = engine.listVersions("org_nova");
+    const versions = await engine.listVersions("org_nova");
     expect(versions.ok && versions.value.length).toBe(2);
   });
 
-  it("enriches with structured facts only — no prompts or raw documents", () => {
+  it("enriches with structured facts only — no prompts or raw documents", async () => {
     const { engine } = setupBrandBrain();
     const doc = sampleBrandBrain({
       organizationId: "org_a",
@@ -52,13 +52,13 @@ describe("Brand Brain & Organizational Intelligence", () => {
       region: "UK",
       competitor: "BetaMart",
     });
-    engine.upsert({
+    await engine.upsert({
       organizationId: "org_a",
       document: doc,
       changelog: "seed",
     });
 
-    const enrichment = engine.enrich(
+    const enrichment = await engine.enrich(
       BrandBrainRetrievalBuilder.create()
         .forOrganization("org_a")
         .withCapability("marketing.copy")
@@ -83,9 +83,9 @@ describe("Brand Brain & Organizational Intelligence", () => {
     expect(Array.isArray(bb.facts)).toBe(true);
   });
 
-  it("produces different enrichment for different organizations on the same ask", () => {
+  it("produces different enrichment for different organizations on the same ask", async () => {
     const { engine } = setupBrandBrain();
-    engine.upsert({
+    await engine.upsert({
       organizationId: "org_lux",
       document: sampleBrandBrain({
         organizationId: "org_lux",
@@ -97,7 +97,7 @@ describe("Brand Brain & Organizational Intelligence", () => {
       }),
       changelog: "lux brain",
     });
-    engine.upsert({
+    await engine.upsert({
       organizationId: "org_bolt",
       document: sampleBrandBrain({
         organizationId: "org_bolt",
@@ -111,8 +111,8 @@ describe("Brand Brain & Organizational Intelligence", () => {
     });
 
     const q = { capabilityId: "marketing.copy", department: "marketing" };
-    const lux = engine.enrich({ organizationId: "org_lux", ...q });
-    const bolt = engine.enrich({ organizationId: "org_bolt", ...q });
+    const lux = await engine.enrich({ organizationId: "org_lux", ...q });
+    const bolt = await engine.enrich({ organizationId: "org_bolt", ...q });
     expect(lux.ok && bolt.ok).toBe(true);
     if (!lux.ok || !bolt.ok) return;
 
@@ -126,7 +126,7 @@ describe("Brand Brain & Organizational Intelligence", () => {
     expect(JSON.stringify(boltTone?.value)).toContain("playful");
   });
 
-  it("retrieves audience, competitors, campaign history, localization", () => {
+  it("retrieves audience, competitors, campaign history, localization", async () => {
     const { engine } = setupBrandBrain();
     const doc = sampleBrandBrain({
       organizationId: "org_ret",
@@ -136,9 +136,9 @@ describe("Brand Brain & Organizational Intelligence", () => {
       region: "APAC",
       competitor: "MegaShop",
     });
-    engine.upsert({ organizationId: "org_ret", document: doc, changelog: "seed" });
+    await engine.upsert({ organizationId: "org_ret", document: doc, changelog: "seed" });
 
-    const pack = engine.enrich({
+    const pack = await engine.enrich({
       organizationId: "org_ret",
       audienceId: doc.audiences[0]!.audienceId,
       campaignId: doc.campaignHistory[0]!.campaignId,
@@ -157,7 +157,7 @@ describe("Brand Brain & Organizational Intelligence", () => {
     );
   });
 
-  it("supports version compare and rollback", () => {
+  it("supports version compare and rollback", async () => {
     const { engine } = setupBrandBrain();
     const doc = sampleBrandBrain({
       organizationId: "org_ver",
@@ -167,8 +167,8 @@ describe("Brand Brain & Organizational Intelligence", () => {
       region: "US",
       competitor: "Cashly",
     });
-    engine.upsert({ organizationId: "org_ver", document: doc, changelog: "v1" });
-    engine.upsert({
+    await engine.upsert({ organizationId: "org_ver", document: doc, changelog: "v1" });
+    await engine.upsert({
       organizationId: "org_ver",
       document: {
         ...doc,
@@ -177,17 +177,17 @@ describe("Brand Brain & Organizational Intelligence", () => {
       changelog: "mission change",
     });
 
-    const diff = engine.compare("org_ver", 1, 2);
+    const diff = await engine.compare("org_ver", 1, 2);
     expect(diff.ok && diff.value.changedPaths.length).toBeGreaterThan(0);
 
-    const rolled = engine.rollback("org_ver", 1, "admin");
+    const rolled = await engine.rollback("org_ver", 1, "admin");
     expect(rolled.ok && rolled.value.version).toBe(3);
     expect(rolled.ok && rolled.value.document.identity.mission).toContain(
       "Empower customers"
     );
   });
 
-  it("records explainability for every selected fact", () => {
+  it("records explainability for every selected fact", async () => {
     const { engine } = setupBrandBrain();
     const doc = sampleBrandBrain({
       organizationId: "org_x",
@@ -197,8 +197,8 @@ describe("Brand Brain & Organizational Intelligence", () => {
       region: "US",
       competitor: "NoiseCo",
     });
-    engine.upsert({ organizationId: "org_x", document: doc, changelog: "seed" });
-    const pack = engine.enrich({ organizationId: "org_x" });
+    await engine.upsert({ organizationId: "org_x", document: doc, changelog: "seed" });
+    const pack = await engine.enrich({ organizationId: "org_x" });
     expect(pack.ok).toBe(true);
     if (!pack.ok) return;
     expect(pack.value.explainability.length).toBe(pack.value.facts.length);
@@ -209,9 +209,9 @@ describe("Brand Brain & Organizational Intelligence", () => {
     }
   });
 
-  it("rejects enrichment without a brand brain", () => {
+  it("rejects enrichment without a brand brain", async () => {
     const { engine } = createBrandBrainPlatform();
-    const missing = engine.enrich({ organizationId: "missing" });
+    const missing = await engine.enrich({ organizationId: "missing" });
     expect(missing.ok).toBe(false);
   });
 });

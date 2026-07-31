@@ -76,7 +76,16 @@ export class ProviderRoutingEngine implements IProviderRoutingEngine {
     }
 
     const filteredRequest = { ...request, candidates: filtered.value };
-    const scored = this.deps.scorer.scoreAll(filtered.value, filteredRequest);
+    // M9.5H: AdaptiveRoutingScorer exposes scoreAllAsync for durable feedback blend.
+    const scorerWithAsync = this.deps.scorer as IRoutingScorer & {
+      scoreAllAsync?: (
+        candidates: typeof filtered.value,
+        request: typeof filteredRequest
+      ) => Promise<Result<readonly import("../contracts/candidate").RoutingScore[]>>;
+    };
+    const scored = scorerWithAsync.scoreAllAsync
+      ? await scorerWithAsync.scoreAllAsync(filtered.value, filteredRequest)
+      : this.deps.scorer.scoreAll(filtered.value, filteredRequest);
     if (!scored.ok) return scored;
 
     const ranked = this.deps.ranker.rank(

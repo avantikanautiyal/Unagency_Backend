@@ -24,14 +24,35 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   const body: IRequirement = req.body;
   if (!body.title && !body.description)
     throw new ApiError("All fields are required", 400);
-  const files = (req.files as any)?.map((file: any) => file.location);
+  const files = (req.files as any)?.map((file: any) => file.location) ?? [];
+
+  // M10.4 — accept product asset ids (server-validated ownership)
+  const assetIdsRaw = (req.body as { assetIds?: string | string[] }).assetIds;
+  const assetIds = Array.isArray(assetIdsRaw)
+    ? assetIdsRaw.map(String)
+    : typeof assetIdsRaw === "string" && assetIdsRaw.trim()
+      ? assetIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  if (assetIds.length > 0) {
+    const { productAssetService } = await import(
+      "../services/product-asset-service"
+    );
+    for (const assetId of assetIds) {
+      await productAssetService.get({
+        userId: String(req.user?.userId),
+        assetId,
+      });
+    }
+  }
+
   const requirementBody = {
     title: body.title,
     description: body.description,
     userId: new mongoose.Types.ObjectId(req.user?.userId),
     category: body.category,
     deadline: body.deadline,
-    files: files ?? [],
+    files: [...files, ...assetIds],
   };
 
   // console.log(requirementBody) ;

@@ -9,10 +9,13 @@ export interface BrandBrainPlatform {
   readonly engine: IBrandBrainEngine;
 }
 
+import type { IBrandBrainRepository } from "../../../infrastructure/durability/interfaces/brand-brain-repository";
+
 export interface CreateBrandBrainOptions {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
+  readonly repository?: IBrandBrainRepository;
 }
 
 export function createBrandBrainPlatform(

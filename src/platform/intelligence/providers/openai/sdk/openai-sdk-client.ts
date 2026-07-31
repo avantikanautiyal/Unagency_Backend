@@ -59,13 +59,27 @@ export class OpenAISdkClient implements IOpenAISdk {
     const body = (request.payload.body as Record<string, unknown>) ?? {
       ...request.payload,
     };
+    const operation = String(request.payload.operation ?? "");
+    const audioAsset = body._audioAsset as Record<string, unknown> | undefined;
+    const multipart =
+      operation === "audio.transcriptions" && audioAsset
+        ? {
+            fieldName: "file",
+            filename: "audio.mp3",
+            contentType:
+              typeof audioAsset.mimeType === "string" ? audioAsset.mimeType : "audio/mpeg",
+            data: Buffer.from("simulated-audio-bytes"),
+          }
+        : undefined;
 
     const httpResult = await this.http.send({
       method: "POST",
       path,
       body,
+      multipart,
       stream: request.streaming,
       timeoutMs: request.timeoutPolicy?.requestTimeoutMs,
+      expectBinary: operation === "audio.speech" || path.includes("/audio/speech"),
     });
 
     if (!httpResult.ok) {
@@ -73,12 +87,16 @@ export class OpenAISdkClient implements IOpenAISdk {
     }
 
     const latencyMs = httpResult.value.latencyMs || this.clockMs() - start;
+    const payload = {
+      ...httpResult.value.body,
+      operation: operation || httpResult.value.body.operation,
+    };
     return success({
       requestId: request.requestId,
       providerId: asProviderId(OPENAI_PROVIDER_ID),
       vendor: this.vendor,
       success: true,
-      payload: httpResult.value.body,
+      payload,
       headers: httpResult.value.headers,
       statusHint: httpResult.value.status,
       streamed: request.streaming,

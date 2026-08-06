@@ -4,6 +4,39 @@ import deleteS3File from "../services/deleteS3File";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 
+/** Production service taxonomy seed (M10.12 recovery) — idempotent. */
+const PRODUCTION_CATEGORY_TITLES = [
+  "Social Media",
+  "Website",
+  "Landing Page",
+  "Logo",
+  "Brand Identity",
+  "Performance Marketing",
+  "SEO",
+  "Email Marketing",
+  "Video",
+  "Reels",
+  "Photography",
+  "Packaging",
+  "UI/UX",
+  "App Development",
+  "AI",
+  "Automation",
+] as const;
+
+async function ensureProductionCategoriesSeeded(): Promise<void> {
+  const count = await Categories.countDocuments();
+  if (count > 0) return;
+  await Categories.insertMany(
+    PRODUCTION_CATEGORY_TITLES.map((title) => ({
+      title,
+      featuredImage: "",
+      tags: [],
+      tagline: "service",
+    }))
+  );
+}
+
 const validateTags = (tags: any): boolean => {
   if (!Array.isArray(tags)) return false;
   return tags.every((tag) => typeof tag === "string");
@@ -30,9 +63,6 @@ const createCategory = asyncHandler(async (req: Request, res: Response) => {
   ) {
     return new ApiResponse(400, null, "Invalid Featured Image");
   }
-  // if (!validateTags(tags)) {
-  //   return new ApiResponse(400, null, "Invalid Tags");
-  // }
   const isExist = await Categories.exists({ title: req.body.title });
   if (isExist) {
     const deleteParam = {
@@ -51,6 +81,8 @@ const createCategory = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const fetchCategories = asyncHandler(async (req: Request, res: Response) => {
+  await ensureProductionCategoriesSeeded();
+
   const { tagline } = req.query;
 
   let filter: any = {};
@@ -58,7 +90,7 @@ const fetchCategories = asyncHandler(async (req: Request, res: Response) => {
     filter.tagline = tagline;
   }
 
-  const categories = await Categories.find(filter);
+  const categories = await Categories.find(filter).sort({ title: 1 });
   return new ApiResponse(200, categories, "Categories Fetched");
 });
 
@@ -72,21 +104,22 @@ const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Extract the key from the featuredImage URL
-  const key = category.featuredImage.split('/').pop();
+  const key = category.featuredImage?.split("/").pop();
 
   // Delete the image from S3
-  const deleteParam = {
-    Bucket: "prakriadirect",
-    Key: key,
-  };
-  await deleteS3File(deleteParam);
+  if (key) {
+    const deleteParam = {
+      Bucket: "prakriadirect",
+      Key: key,
+    };
+    await deleteS3File(deleteParam);
+  }
 
   // Delete the category from database
   await Categories.findByIdAndDelete(categoryId);
 
   return new ApiResponse(200, null, "Category deleted successfully");
 });
-
 
 const updateCategory = asyncHandler(async (req: Request, res: Response) => {
   const { categoryId } = req.params;
@@ -104,7 +137,7 @@ const updateCategory = asyncHandler(async (req: Request, res: Response) => {
   if (file && file.location) {
     // Delete old image if it exists
     if (category.featuredImage) {
-      const key = category.featuredImage.split('/').pop();
+      const key = category.featuredImage.split("/").pop();
       if (key) {
         await deleteS3File({
           Bucket: "prakriadirect",

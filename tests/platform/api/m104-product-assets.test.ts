@@ -44,6 +44,17 @@ jest.mock("../../../src/models/mediaFile.model", () => {
         });
         return rows;
       }),
+      findOne: jest.fn(async (q: any) => {
+        const rows = [...store.values()].filter((d) => {
+          if (q.status?.$ne && d.status === q.status.$ne) return false;
+          if (q.organizationId && d.organizationId?.toString() !== q.organizationId.toString())
+            return false;
+          if (q.checksum && d.checksum !== q.checksum) return false;
+          if (q.storageKey?.$exists && !d.storageKey) return false;
+          return true;
+        });
+        return rows[0] || null;
+      }),
       findById: jest.fn(async (id: string) => store.get(String(id)) || null),
       __store: store,
     },
@@ -83,6 +94,15 @@ jest.mock("../../../src/models/categories.model", () => ({
       ...update.$set,
     })),
   },
+}));
+
+jest.mock("../../../src/platform/media/processing/media-processing-job-store", () => ({
+  enqueuePostUploadJobs: jest.fn(async () => undefined),
+  enqueueMediaJob: jest.fn(async () => undefined),
+}));
+
+jest.mock("../../../src/platform/media/audit/media-access-audit", () => ({
+  auditMediaAccess: jest.fn(async () => undefined),
 }));
 
 import Organizations from "../../../src/models/organization.model";

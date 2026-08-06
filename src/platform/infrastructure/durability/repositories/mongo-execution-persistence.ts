@@ -15,7 +15,13 @@ import type {
   IArtifactRepository,
   IExecutionExtrasRepository,
   IExecutionRepository,
+  ExecutionHistoryPage,
+  ExecutionHistoryQuery,
 } from "../interfaces/execution-store-ports";
+import {
+  mongoHistoryFilter,
+  normalizeExecutionHistoryQuery,
+} from "./execution-history-list";
 import { EnterpriseArtifact } from "../mongo/models/enterprise-artifact.model";
 import { EnterpriseExecution } from "../mongo/models/enterprise-execution.model";
 import { EnterpriseExecutionExtras } from "../mongo/models/enterprise-execution-extras.model";
@@ -37,13 +43,24 @@ export class MongoExecutionRepository implements IExecutionRepository {
 
   async listByTenant(
     organizationId: string,
-    limit = 50
-  ): Promise<readonly ExecutionResource[]> {
-    const docs = await EnterpriseExecution.find({ organizationId })
-      .sort({ createdAt: -1 })
-      .limit(limit)
+    queryOrLimit?: ExecutionHistoryQuery | number
+  ): Promise<ExecutionHistoryPage> {
+    const query = normalizeExecutionHistoryQuery(queryOrLimit);
+    const filter = mongoHistoryFilter(organizationId, queryOrLimit);
+    const sort =
+      query.sort === "oldest" ? { createdAt: 1 as const } : { createdAt: -1 as const };
+    const total = await EnterpriseExecution.countDocuments(filter);
+    const docs = await EnterpriseExecution.find(filter)
+      .sort(sort)
+      .skip(query.offset)
+      .limit(query.limit)
       .lean();
-    return docs as unknown as ExecutionResource[];
+    return {
+      items: docs as unknown as ExecutionResource[],
+      page: query.page,
+      limit: query.limit,
+      total,
+    };
   }
 
   async update(execution: ExecutionResource): Promise<void> {

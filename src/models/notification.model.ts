@@ -13,6 +13,8 @@ export interface INotification {
   action: string;
   actionText: string;
   symbol: string;
+  archived?: boolean;
+  category?: string;
 }
 
 const NotificationSchema = new Schema<INotification>(
@@ -26,7 +28,9 @@ const NotificationSchema = new Schema<INotification>(
     description: { type: String, required: true },
     type: { type: String, required: true },
     action: { type: String },
-    actionText: { type: String }
+    actionText: { type: String },
+    archived: { type: Boolean, default: false, index: true },
+    category: { type: String, default: "general", index: true },
   },
   { collection: "Notifications", timestamps: true }
 );

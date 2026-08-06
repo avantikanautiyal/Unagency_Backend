@@ -80,6 +80,13 @@ export interface ExecutionResource {
   readonly result?: ExecutionResultPayload;
   /** Durable ExecutionArtifact ids when media finalize completed (M10.6). */
   readonly artifactIds?: readonly string[];
+  /** M10.16 — history UX flags (optional, persistence-backed). */
+  readonly pinned?: boolean;
+  readonly favorite?: boolean;
+  readonly deletedAt?: string;
+  readonly brandId?: string;
+  readonly modelId?: string;
+  readonly providerId?: string;
 }
 
 export interface ExecutionArtifactRef {

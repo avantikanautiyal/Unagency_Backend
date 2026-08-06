@@ -116,6 +116,33 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     subject: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_subject,
   });
 
+  // M10.19 — auto-provision brief collaboration channel (non-blocking)
+  void (async () => {
+    try {
+      const { collaborationChannelService } = await import(
+        "../services/collaboration/collaboration-channel-service"
+      );
+      if (!collaborationChannelService.isConfigured()) return;
+      const orgId =
+        (req.user?.organization as { _id?: { toString(): string } } | null)?._id?.toString() ||
+        "";
+      const members = [String(req.user?.userId)];
+      if (rmUser?._id) members.push(String(rmUser._id));
+      await collaborationChannelService.provisionForBrief({
+        briefId: newRequirement._id.toString(),
+        name: String(newRequirement.title || "Brief"),
+        organizationId: orgId || String(req.user?.userId),
+        memberUserIds: members,
+        createdByUserId: String(req.user?.userId),
+      });
+    } catch (err) {
+      console.warn(
+        "[requirement] collaboration channel provision failed (non-fatal):",
+        err instanceof Error ? err.message : err
+      );
+    }
+  })();
+
   return new ApiResponse(200, newRequirement, "success");
 });
 

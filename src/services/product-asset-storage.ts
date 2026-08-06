@@ -19,7 +19,12 @@ export type ProductAssetBlobStorage = IBlobStorage & {
   readonly mode: ProductAssetStorageMode;
   createSignedGetUrl?(
     key: string,
-    ttlSeconds: number
+    ttlSeconds: number,
+    options?: {
+      disposition?: "inline" | "attachment";
+      filename?: string;
+      cacheControl?: string;
+    }
   ): Promise<Result<string>>;
 };
 

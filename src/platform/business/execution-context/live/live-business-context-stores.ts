@@ -3,7 +3,7 @@
  * Implements IExecutionContextStores as a read projection (not a second database).
  */
 
-import type { Types } from "mongoose";
+import mongoose, { type Types } from "mongoose";
 import { sampleBrandBrain } from "../../brand-brain/builders/sample-brand-brain";
 import type { IBrandBrainEngine } from "../../brand-brain/interfaces/brand-brain";
 import type {
@@ -16,6 +16,8 @@ import type { Organization, Project, BusinessUser } from "../../contracts/tenanc
 import type { BusinessRole } from "../../contracts/enums";
 import type { IExecutionContextStores } from "../stores/execution-context-stores";
 import { brandProfileFromBrandBrainDocument } from "./brand-from-brain";
+import { mapBrandDtoToBrandBrainDocument, syncProductBrandToBrain } from "../../../../services/brand-brain-sync-service";
+import { toBrandDto, type BrandDto } from "../../../../services/brand-service";
 
 export interface LiveBusinessContextStoresDeps {
   readonly brandBrain: IBrandBrainEngine;
@@ -116,9 +118,18 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
     if (this.brandCache.has(brandId)) {
       return this.brandCache.get(brandId);
     }
-    // Brand Brain is authoritative — scan via known org is not possible from brandId alone.
-    // Callers typically list by org first; getBrand verifies brandId against brain docs by
-    // requiring organizationId embedded as brand_${orgId} or matching document.brandId.
+    // M10.17 — Mongo product Brand is source of truth when it exists.
+    const productBrand = await this.findProductBrandById(brandId);
+    if (productBrand) {
+      const profile = brandProfileFromBrandBrainDocument(
+        mapBrandDtoToBrandBrainDocument(productBrand)
+      );
+      this.brandCache.set(brandId, profile);
+      void syncProductBrandToBrain(productBrand).catch(() => undefined);
+      return profile;
+    }
+    // Brand Brain fallback (sampleBrandBrain org-level convention) — only
+    // used when no Mongo product brand exists for this organization.
     const profile = await this.findBrandAcrossKnownPattern(brandId);
     this.brandCache.set(brandId, profile);
     return profile;
@@ -127,6 +138,19 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
   async listBrandsForOrganization(organizationId: string): Promise<readonly BrandProfile[]> {
     if (this.brandListCache.has(organizationId)) {
       return this.brandListCache.get(organizationId)!;
+    }
+    // M10.17 — prefer Mongo product brands over sampleBrandBrain when present.
+    const productBrands = await this.listProductBrandsForOrg(organizationId);
+    if (productBrands.length) {
+      const profiles = productBrands.map((b) =>
+        brandProfileFromBrandBrainDocument(mapBrandDtoToBrandBrainDocument(b))
+      );
+      profiles.forEach((p) => this.brandCache.set(p.brandId, p));
+      this.brandListCache.set(organizationId, profiles);
+      // Keep org-level Brand Brain populated (primary brand) for any
+      // consumer calling engine.enrich(organizationId) directly.
+      void syncProductBrandToBrain(productBrands[0]!).catch(() => undefined);
+      return profiles;
     }
     const current = await this.deps.brandBrain.getCurrent(organizationId);
     if (!current.ok || !current.value) {
@@ -137,6 +161,43 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
     this.brandCache.set(profile.brandId, profile);
     this.brandListCache.set(organizationId, [profile]);
     return [profile];
+  }
+
+  private async findProductBrandById(
+    brandId: string
+  ): Promise<BrandDto | undefined> {
+    if (!mongoose.isValidObjectId(brandId)) return undefined;
+    // No live Mongo connection (e.g. in-memory/testing harnesses that inject
+    // deps directly) — Mongoose would otherwise buffer this query until its
+    // internal timeout. Skip straight to the Brand Brain fallback instead.
+    if (mongoose.connection.readyState !== 1) return undefined;
+    try {
+      const Brands = (await import("../../../../models/brand.model")).default;
+      const doc = await Brands.findById(brandId);
+      if (!doc) return undefined;
+      return toBrandDto(doc);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async listProductBrandsForOrg(
+    organizationId: string
+  ): Promise<BrandDto[]> {
+    if (!mongoose.isValidObjectId(organizationId)) return [];
+    if (mongoose.connection.readyState !== 1) return [];
+    try {
+      const Brands = (await import("../../../../models/brand.model")).default;
+      const docs = await Brands.find({
+        organizationId,
+        status: "active",
+      })
+        .sort({ updatedAt: -1 })
+        .limit(50);
+      return docs.map(toBrandDto);
+    } catch {
+      return [];
+    }
   }
 
   async getProject(projectId: string): Promise<Project | undefined> {

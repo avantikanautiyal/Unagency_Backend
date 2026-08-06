@@ -23,6 +23,15 @@ import TaskRouter from "./routes/tasks.route";
 import NotificationRouter from "./routes/notification.route"
 import planRouter from "./routes/plan.routes";
 import productAssetsRouter from "./routes/product-assets.route";
+import brandRouter from "./routes/brand.route";
+import voiceRouter from "./routes/voice.route";
+import {
+  analyticsRouter,
+  preferencesRouter,
+  helpRouter,
+  savedRoutesRouter,
+  searchRouter,
+} from "./routes/product-domain.route";
 // Legacy BullMQ/cron workers — started explicitly in app.run() (M9.4A)
 // Do NOT import queue modules at top-level (leaves open handles in tests).
 
@@ -236,6 +245,13 @@ app.use("/tasks", VerifyUserHandler, TaskRouter);
 app.use("/subscription", VerifyUserHandler, SubscriptionRouter);
 app.use("/plans", VerifyUserHandler, planRouter);
 app.use("/assets", VerifyUserHandler, productAssetsRouter);
+app.use("/voice", VerifyUserHandler, voiceRouter);
+app.use("/brands", VerifyUserHandler, brandRouter);
+app.use("/analytics", VerifyUserHandler, analyticsRouter);
+app.use("/preferences", VerifyUserHandler, preferencesRouter);
+app.use("/help", VerifyUserHandler, helpRouter);
+app.use("/saved-routes", VerifyUserHandler, savedRoutesRouter);
+app.use("/search", VerifyUserHandler, searchRouter);
 
 app.use("/notification", NotificationRouter);
 
@@ -273,12 +289,40 @@ app.use(ErrorHandler);
       await import("./background/queue/notificationCron.queue");
     }
 
+    // M10.18 — media processing worker (claimable Mongo jobs; not BullMQ)
+    let mediaProcessingWorker: { shutdown(): Promise<void> } | undefined;
+    try {
+      const { startMediaProcessingWorker } = await import(
+        "./platform/media/processing/media-processing-worker"
+      );
+      mediaProcessingWorker = startMediaProcessingWorker();
+    } catch (err) {
+      console.warn(
+        "[M10.18] media processing worker not started:",
+        err instanceof Error ? err.message : err
+      );
+    }
+
     const server = app.listen(process.env.PORT ?? 4000, () => {
       console.log(
         "⚙️",
         ` Server is running at port : ${process.env.PORT ?? 4000}`
       );
     });
+
+    // M10.19 — first-party Collaboration OS (Socket.IO)
+    try {
+      const { attachCollaborationSocketGateway } = await import(
+        "./platform/collaboration/socket-gateway"
+      );
+      await attachCollaborationSocketGateway(server);
+      console.log("[Collaboration OS] Socket.IO gateway listening on /collaboration/socket.io");
+    } catch (err) {
+      console.warn(
+        "[Collaboration OS] socket gateway failed to start:",
+        err instanceof Error ? err.message : err
+      );
+    }
 
     let shuttingDown = false;
     const shutdown = (signal: string) => {
@@ -301,6 +345,19 @@ app.use(ErrorHandler);
               });
             } catch {
               /* streaming registry optional if module unload fails */
+            }
+            try {
+              await mediaProcessingWorker?.shutdown();
+            } catch {
+              /* media worker optional */
+            }
+            try {
+              const { shutdownCollaborationSocketGateway } = await import(
+                "./platform/collaboration/socket-gateway"
+              );
+              await shutdownCollaborationSocketGateway();
+            } catch {
+              /* collaboration optional */
             }
             await enterpriseApiRuntime?.platform.distributed.shutdown();
             await closeSharedRedisClient();

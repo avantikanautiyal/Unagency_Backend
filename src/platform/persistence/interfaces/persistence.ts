@@ -99,7 +99,11 @@ export interface BlobPutStreamOptions {
 }
 
 export interface IBlobStorage {
-  put(key: string, data: Uint8Array | string, contentType?: string): Promise<Result<{ key: string; size: number }>>;
+  put(
+    key: string,
+    data: Uint8Array | string,
+    contentType?: string
+  ): Promise<Result<{ key: string; size: number; checksum?: string }>>;
   /** Stream upload — avoids loading large media into memory. Optional for backwards compatibility. */
   putStream?(
     key: string,

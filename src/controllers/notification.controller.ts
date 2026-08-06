@@ -10,10 +10,29 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { Notification, NotificationType } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const fetchMyNotifications = asyncHandler(async (req: RequestUser) => {
-    const notifications = await Notifications.find({
-        userId: req.user?.userId
-    }).sort({ createdAt: -1 });
-    return new ApiResponse(200, notifications, "Notification fetched");
+    const page = Math.max(1, Number(req.query.page ?? 1) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50) || 50));
+    const includeArchived = req.query.archived === "1";
+    const category = req.query.category as string | undefined;
+    const filter: Record<string, unknown> = {
+        userId: req.user?.userId,
+    };
+    if (!includeArchived) {
+        filter.archived = { $ne: true };
+    }
+    if (category) filter.category = category;
+    const [notifications, total] = await Promise.all([
+        Notifications.find(filter)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit),
+        Notifications.countDocuments(filter),
+    ]);
+    return new ApiResponse(
+        200,
+        { items: notifications, page, limit, total },
+        "Notification fetched"
+    );
 });
 
 /** M10.9 — mark one notification read (owner only). */
@@ -42,7 +61,7 @@ const markAllNotificationsRead = asyncHandler(async (req: RequestUser) => {
         throw new ApiError("User required", 401);
     }
     const result = await Notifications.updateMany(
-        { userId: req.user.userId, isRead: false },
+        { userId: req.user.userId, isRead: false, archived: { $ne: true } },
         { $set: { isRead: true } }
     );
     return new ApiResponse(
@@ -50,6 +69,35 @@ const markAllNotificationsRead = asyncHandler(async (req: RequestUser) => {
         { modifiedCount: result.modifiedCount ?? 0 },
         "All notifications marked read"
     );
+});
+
+/** M10.12 — archive one notification (owner only). */
+const archiveNotification = asyncHandler(async (req: RequestUser) => {
+    const notificationId = req.params?.notificationId;
+    if (!notificationId || !req.user?.userId) {
+        throw new ApiError("notificationId required", 400);
+    }
+    const updated = await Notifications.findOneAndUpdate(
+        { _id: notificationId, userId: req.user.userId },
+        { $set: { archived: true } },
+        { new: true }
+    );
+    if (!updated) throw new ApiError("Notification not found", 404);
+    return new ApiResponse(200, updated, "Notification archived");
+});
+
+/** M10.12 — delete one notification (owner only). */
+const deleteNotification = asyncHandler(async (req: RequestUser) => {
+    const notificationId = req.params?.notificationId;
+    if (!notificationId || !req.user?.userId) {
+        throw new ApiError("notificationId required", 400);
+    }
+    const deleted = await Notifications.findOneAndDelete({
+        _id: notificationId,
+        userId: req.user.userId,
+    });
+    if (!deleted) throw new ApiError("Notification not found", 404);
+    return new ApiResponse(200, { deleted: true, id: notificationId }, "Notification deleted");
 });
 
 
@@ -214,4 +262,12 @@ const sendEmailAndNotification = asyncHandler(async (req: RequestUser) => {
     return new ApiResponse(200, null, "Email queued successfully");
 });
 
-export { fetchMyNotifications, sendNotification, sendEmailAndNotification, markNotificationRead, markAllNotificationsRead };
+export {
+  fetchMyNotifications,
+  sendNotification,
+  sendEmailAndNotification,
+  markNotificationRead,
+  markAllNotificationsRead,
+  archiveNotification,
+  deleteNotification,
+};

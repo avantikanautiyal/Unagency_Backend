@@ -16,6 +16,9 @@ export interface MediaArtifactRecord {
   readonly providerId: string;
   readonly modelId: string;
   readonly capabilityId: string;
+  /** M10.18 lineage — optional, non-breaking */
+  readonly brandId?: string;
+  readonly promptHash?: string;
 }
 
 export class MediaArtifactService {
@@ -57,10 +60,22 @@ export class MediaArtifactService {
     providerId: string;
     modelId: string;
     capabilityId: string;
+    brandId?: string;
+    promptHash?: string;
   }): Promise<MediaArtifactRecord> {
     const key = `${input.operationId}:${input.outputIndex}`;
     const existingLocal = this.finalized.get(key);
-    if (existingLocal) return existingLocal;
+    if (existingLocal) {
+      // Immutability: refuse divergent blob checksum on re-finalize
+      if (
+        existingLocal.blob.checksum &&
+        input.blob.checksum &&
+        existingLocal.blob.checksum !== input.blob.checksum
+      ) {
+        return existingLocal;
+      }
+      return existingLocal;
+    }
 
     const artifactId = this.buildArtifactId(input.operationId, input.outputIndex);
     const durableExisting = await this.artifacts.get(artifactId);
@@ -75,6 +90,8 @@ export class MediaArtifactService {
         providerId: input.providerId,
         modelId: input.modelId,
         capabilityId: input.capabilityId,
+        brandId: input.brandId,
+        promptHash: input.promptHash,
       };
       this.finalized.set(key, record);
       return record;
@@ -89,6 +106,8 @@ export class MediaArtifactService {
       providerId: input.providerId,
       modelId: input.modelId,
       capabilityId: input.capabilityId,
+      brandId: input.brandId,
+      promptHash: input.promptHash,
     };
 
     const ref: ExecutionArtifactRef = {

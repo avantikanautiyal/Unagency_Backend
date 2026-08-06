@@ -30,6 +30,10 @@ import type {
   ExecutionArtifactRef,
   SseFrame,
 } from "../contracts";
+import type {
+  ExecutionHistoryPage,
+  ExecutionHistoryQuery,
+} from "../../infrastructure/durability/interfaces/execution-store-ports";
 
 export interface IApiGateway {
   handle(request: ApiRequest): Promise<Result<ApiResponse>>;
@@ -95,6 +99,18 @@ export interface IExecutionApiService {
   get(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
   cancel(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
   retry(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
+  duplicate(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
+  softDelete(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>>;
+  setPinned(
+    executionId: string,
+    tenant: TenantContext,
+    pinned: boolean
+  ): Promise<Result<ExecutionResource>>;
+  setFavorite(
+    executionId: string,
+    tenant: TenantContext,
+    favorite: boolean
+  ): Promise<Result<ExecutionResource>>;
   decideToolApproval(
     executionId: string,
     invocationKey: string,
@@ -102,7 +118,10 @@ export interface IExecutionApiService {
     principal: AuthPrincipal,
     tenant: TenantContext
   ): Promise<Result<ExecutionResource>>;
-  history(tenant: TenantContext, limit?: number): Promise<Result<readonly ExecutionResource[]>>;
+  history(
+    tenant: TenantContext,
+    query?: ExecutionHistoryQuery
+  ): Promise<Result<ExecutionHistoryPage>>;
   artifacts(executionId: string, tenant: TenantContext): Promise<Result<readonly ExecutionArtifactRef[]>>;
   diagnostics(executionId: string, tenant: TenantContext): Promise<Result<ExecutionDiagnostics>>;
   trace(executionId: string, tenant: TenantContext): Promise<Result<ExecutionTraceSummary>>;

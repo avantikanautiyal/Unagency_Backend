@@ -5,12 +5,16 @@ import {
   sendNotification,
   markNotificationRead,
   markAllNotificationsRead,
+  archiveNotification,
+  deleteNotification,
 } from "../controllers/notification.controller";
 import { VerifyUserHandler } from "../middlewares/verifyUser.middleware";
 const router = Router();
 router.get("/", VerifyUserHandler, fetchMyNotifications);
 router.post("/read-all", VerifyUserHandler, markAllNotificationsRead);
 router.post("/:notificationId/read", VerifyUserHandler, markNotificationRead);
+router.post("/:notificationId/archive", VerifyUserHandler, archiveNotification);
+router.delete("/:notificationId", VerifyUserHandler, deleteNotification);
 router.post("/send", VerifyUserHandler, sendNotification);
 router.post("/send/email", sendEmailAndNotification);
 

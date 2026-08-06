@@ -62,6 +62,10 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "GET", "/executions/:executionId", "executions", "Get execution", ["execution:read"]),
     v(version, "POST", "/executions/:executionId/cancel", "executions", "Cancel execution", ["execution:cancel"]),
     v(version, "POST", "/executions/:executionId/retry", "executions", "Retry execution", ["execution:retry"]),
+    v(version, "POST", "/executions/:executionId/delete", "executions", "Soft delete execution", ["execution:cancel"]),
+    v(version, "POST", "/executions/:executionId/pin", "executions", "Pin execution", ["execution:read"]),
+    v(version, "POST", "/executions/:executionId/favorite", "executions", "Favorite execution", ["execution:read"]),
+    v(version, "POST", "/executions/:executionId/duplicate", "executions", "Duplicate execution", ["execution:create"]),
     v(version, "POST", "/executions/:executionId/tool-approvals/:invocationId", "executions", "Decide tool approval", ["review:write"]),
     v(version, "GET", "/executions/:executionId/stream", "executions", "Stream execution", ["execution:stream"]),
     v(version, "GET", "/executions/:executionId/artifacts", "executions", "Execution artifacts", ["execution:read"]),
@@ -94,6 +98,10 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "POST", "/webhooks", "webhooks", "Register webhook", ["org:write"]),
     v(version, "GET", "/brand-profiles", "brand_profiles", "Brand profiles", ["org:read"]),
     v(version, "GET", "/knowledge-bases", "knowledge_bases", "Knowledge bases", ["workspace:read"]),
+    v(version, "GET", "/search", "search", "Global search (M10.17)", ["search:read"]),
+    v(version, "GET", "/search/suggestions", "search", "Search suggestions", ["search:read"]),
+    v(version, "GET", "/search/recent", "search", "Recent searches", ["search:read"]),
+    v(version, "DELETE", "/search/recent", "search", "Clear recent searches", ["search:read"]),
   ];
 }
 

@@ -15,10 +15,13 @@ import type {
   IArtifactRepository,
   IExecutionExtrasRepository,
   IExecutionRepository,
+  ExecutionHistoryPage,
+  ExecutionHistoryQuery,
   IdempotencyRecord,
   IIdempotencyStore,
   ITenantUsageStore,
 } from "../interfaces/execution-store-ports";
+import { applyExecutionHistoryQuery } from "./execution-history-list";
 
 export class InMemoryExecutionRepository implements IExecutionRepository {
   private readonly store = new Map<string, ExecutionResource>();
@@ -33,11 +36,13 @@ export class InMemoryExecutionRepository implements IExecutionRepository {
 
   async listByTenant(
     organizationId: string,
-    limit = 50
-  ): Promise<readonly ExecutionResource[]> {
-    return [...this.store.values()]
-      .filter((e) => e.organizationId === organizationId)
-      .slice(0, limit);
+    queryOrLimit?: ExecutionHistoryQuery | number
+  ): Promise<ExecutionHistoryPage> {
+    return applyExecutionHistoryQuery(
+      [...this.store.values()],
+      organizationId,
+      queryOrLimit
+    );
   }
 
   async update(execution: ExecutionResource): Promise<void> {

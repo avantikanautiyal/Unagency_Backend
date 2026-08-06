@@ -12,7 +12,7 @@ const CategorySchema = new Schema<ICategories>(
   {
     _id: { type: Schema.Types.ObjectId, auto: true },
     title: { type: String, required: true },
-    featuredImage: { type: String, required: true },
+    featuredImage: { type: String, default: "" },
     tags: { type: Array },
     tagline: { type: String, default: "" },
   },

@@ -1,6 +1,6 @@
 # END TO END REPORT
 
-Generated: 2026-07-27T12:18:59.608Z
+Generated: 2026-08-01T16:16:01.384Z
 
 ## gateway_e2e
 
@@ -31,19 +31,19 @@ Generated: 2026-07-27T12:18:59.608Z
 - Checks: 3
 
 ### capability intelligence — fail
-- Duration: 217ms
+- Duration: 273ms
 - Checks: 2
 
 ### provider selection — fail
-- Duration: 217ms
+- Duration: 252ms
 - Checks: 2
 
 ### generation — fail
-- Duration: 217ms
+- Duration: 252ms
 - Checks: 2
 
 ### evaluation — fail
-- Duration: 217ms
+- Duration: 252ms
 - Checks: 2
 
 ### gateway response — pass

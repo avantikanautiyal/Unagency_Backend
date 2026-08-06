@@ -162,7 +162,24 @@ export async function dispatchController(
     return deps.executions.create(createReq, principal!);
   }
   if (routeId.includes("_executions") && request.method === "GET" && !params.executionId) {
-    return deps.executions.history(tenant!, 50);
+    const q = request.query ?? {};
+    const parseBool = (v: unknown): boolean | undefined => {
+      if (v === "true") return true;
+      if (v === "false") return false;
+      return undefined;
+    };
+    const pageRaw = Number(q.page ?? 1);
+    const limitRaw = Number(q.limit ?? 50);
+    return deps.executions.history(tenant!, {
+      page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
+      limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50,
+      status: typeof q.status === "string" ? q.status : undefined,
+      q: typeof q.q === "string" ? q.q : undefined,
+      sort: q.sort === "oldest" ? "oldest" : "newest",
+      pinned: parseBool(q.pinned),
+      favorite: parseBool(q.favorite),
+      includeDeleted: q.includeDeleted === "true",
+    });
   }
   if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_media") && tenant) {
     const apiRuntime = getEnterpriseApiRuntime();
@@ -177,6 +194,18 @@ export async function dispatchController(
   if (execId && tenant) {
     if (routeId.includes("_cancel")) return deps.executions.cancel(execId, tenant);
     if (routeId.includes("_retry")) return deps.executions.retry(execId, tenant);
+    if (routeId.includes("_delete") && routeId.includes("_executions")) {
+      return deps.executions.softDelete(execId, tenant);
+    }
+    if (routeId.includes("_pin") && routeId.includes("_executions")) {
+      return deps.executions.setPinned(execId, tenant, Boolean(body.pinned));
+    }
+    if (routeId.includes("_favorite") && routeId.includes("_executions")) {
+      return deps.executions.setFavorite(execId, tenant, Boolean(body.favorite));
+    }
+    if (routeId.includes("_duplicate") && routeId.includes("_executions")) {
+      return deps.executions.duplicate(execId, tenant);
+    }
     if (routeId.includes("_tool-approvals")) {
       const decision = body.decision;
       if (decision !== "approve" && decision !== "reject") {
@@ -321,6 +350,61 @@ export async function dispatchController(
   }
   if (routeId.includes("_brand-profiles")) return success([]);
   if (routeId.includes("_knowledge-bases")) return success([]);
+
+  // M10.17 — Enterprise /v1/search* thin adapter over the same
+  // ProductSearchService used by the legacy /search routes (no second
+  // search engine).
+  if (routeId.includes("_search")) {
+    const { productSearchService } = await import(
+      "../../../services/product-search-service"
+    );
+    const userId = principal?.userId ?? principal?.principalId ?? "";
+    const organizationId = tenant?.organizationId ?? principal?.organizationId;
+    const q = request.query ?? {};
+    if (routeId.includes("_suggestions")) {
+      return success(
+        await productSearchService.suggestions({
+          userId,
+          organizationId,
+          q: String(q.q ?? ""),
+          limit: q.limit ? Number(q.limit) : undefined,
+        })
+      );
+    }
+    if (routeId.includes("_recent")) {
+      if (request.method === "DELETE") {
+        return success(
+          await productSearchService.clearRecent({ userId, organizationId })
+        );
+      }
+      return success(
+        await productSearchService.listRecent({
+          userId,
+          organizationId,
+          limit: q.limit ? Number(q.limit) : undefined,
+        })
+      );
+    }
+    const typesRaw = q.types;
+    const types = typesRaw
+      ? String(typesRaw)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : undefined;
+    return success(
+      await productSearchService.search({
+        userId,
+        organizationId,
+        brandId: q.brandId,
+        q: String(q.q ?? ""),
+        types: types as never,
+        page: q.page ? Number(q.page) : undefined,
+        limit: q.limit ? Number(q.limit) : undefined,
+        cursor: q.cursor,
+      })
+    );
+  }
 
   return success({ ok: true, routeId });
 }

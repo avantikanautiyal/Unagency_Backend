@@ -3,6 +3,7 @@
  * Never exposes Runtime/Routing/Providers to clients.
  */
 
+import mongoose from "mongoose";
 import { failure, success, type Result } from "../../intelligence/shared/result";
 import { ValidationError, NotFoundError, AuthorizationError } from "../../intelligence/shared/errors";
 import type { IDistributedExecutionEngine } from "../../infrastructure/execution/interfaces/execution";
@@ -35,9 +36,15 @@ import type {
   IExecutionRepository,
   IIdempotencyStore,
   ITenantUsageStore,
+  ExecutionHistoryPage,
+  ExecutionHistoryQuery,
 } from "../../infrastructure/durability/interfaces/execution-store-ports";
+import { applyExecutionHistoryQuery } from "../../infrastructure/durability/repositories/execution-history-list";
 import type { AsyncExecutionCoordinator } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
 import { isAsyncExecutionRequest } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
+import { isAudioTranscribeCapability } from "../../intelligence/providers/common/resolve-execution-modality";
+import { enrichExecutionMetadataWithProductAssets } from "../../../services/product-asset-intelligence-bridge";
+import { ApiError } from "../../../utils/apiError";
 import {
   isImageGenerationCapability,
   isVideoGenerationCapability,
@@ -259,13 +266,19 @@ export class ExecutionApiService implements IExecutionApiService {
     req: CreateExecutionRequest,
     principal: AuthPrincipal
   ): Promise<Result<ExecutionResource>> {
-    if (!req.prompt?.trim()) {
+    const capabilityIdRaw = String(req.capabilityId ?? "");
+    const isStt = isAudioTranscribeCapability(capabilityIdRaw);
+    let prompt = req.prompt?.trim() ?? "";
+    if (!prompt && isStt) {
+      prompt = "Transcribe the attached audio.";
+    }
+    if (!prompt) {
       return failure(new ValidationError("prompt is required"));
     }
     if (!req.organizationId) {
       return failure(new ValidationError("organizationId is required"));
     }
-    if (req.prompt.length > ExecutionApiService.MAX_PROMPT_CHARS) {
+    if (prompt.length > ExecutionApiService.MAX_PROMPT_CHARS) {
       return failure(new ValidationError("prompt exceeds maximum length"));
     }
     if (req.metadata) {
@@ -302,6 +315,118 @@ export class ExecutionApiService implements IExecutionApiService {
       isFirebaseAuthenticatedPrincipal(principal) && principal.organizationId
         ? principal.organizationId
         : req.organizationId;
+
+    // M10.15 — ProductAsset ids → Intelligence audio/assets payload
+    let workingMetadata: Record<string, unknown> | undefined = req.metadata
+      ? { ...req.metadata }
+      : undefined;
+    const rawAssetIds = workingMetadata?.assetIds;
+    const hasAssetIds =
+      (Array.isArray(rawAssetIds) && rawAssetIds.length > 0) ||
+      (typeof rawAssetIds === "string" && rawAssetIds.trim().length > 0);
+    if (hasAssetIds && principal.userId) {
+      try {
+        workingMetadata = await enrichExecutionMetadataWithProductAssets({
+          userId: principal.userId,
+          organizationId: trustedOrganizationId,
+          metadata: workingMetadata,
+        });
+      } catch (err) {
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Failed to resolve product assets for intelligence";
+        return failure(new ValidationError(message));
+      }
+    }
+
+    // M10.17 — Brand Guidelines + Knowledge Intelligence enrichment.
+    // Internal/system executions (e.g. embedding generation used by the
+    // document indexer) opt out via metadata.skipBrandKnowledge to avoid
+    // recursive enrichment overhead. Never fails execution creation.
+    // Skip entirely when Mongo isn't connected (e.g. simulated/in-memory
+    // test harnesses) — otherwise every buffered Mongoose query would hang
+    // until its internal timeout on every single execution create call.
+    const mongoConnected = mongoose.connection.readyState === 1;
+    if (workingMetadata?.skipBrandKnowledge !== true && mongoConnected) {
+      try {
+        const { assembleExecutionKnowledge } = await import(
+          "../../../services/brand-knowledge-context-service"
+        );
+        let brandId =
+          typeof workingMetadata?.brandId === "string" && workingMetadata.brandId
+            ? workingMetadata.brandId
+            : undefined;
+        if (!brandId && principal.userId) {
+          try {
+            const { brandService } = await import(
+              "../../../services/brand-service"
+            );
+            const brands = await brandService.list({
+              userId: principal.userId,
+              organizationId: trustedOrganizationId,
+              status: "active",
+            });
+            brandId = brands[0]?.id;
+          } catch {
+            // No organisation/brands yet — proceed without a default brand.
+          }
+        }
+
+        const knowledge = await assembleExecutionKnowledge({
+          organizationId: trustedOrganizationId,
+          brandId,
+          userId: principal.userId,
+          prompt,
+          service: req.capabilityId,
+        });
+
+        const enrichedPromptParts = [
+          knowledge.styleInstructions
+            ? `[Brand context]\n${knowledge.styleInstructions}`
+            : "",
+          Object.keys(knowledge.brandGuidelines).length
+            ? `[Guidelines]\n${JSON.stringify(knowledge.brandGuidelines)}`
+            : "",
+          knowledge.negativeInstructions.length
+            ? `[Avoid]\n${knowledge.negativeInstructions.join("; ")}`
+            : "",
+          `[User prompt]\n${prompt}`,
+        ].filter((part) => part.length > 0);
+        const enrichedPrompt = enrichedPromptParts.join("\n");
+
+        workingMetadata = {
+          ...workingMetadata,
+          ...(brandId ? { brandId } : {}),
+          brandKnowledge: knowledge,
+          styleInstructions: knowledge.styleInstructions,
+          negativeInstructions: knowledge.negativeInstructions,
+          // Internal-only — provider payload uses this, never surfaced to FE UI.
+          enrichedPrompt,
+        };
+      } catch (err) {
+        console.warn(
+          "[execution-api-service] brand knowledge assembly failed (non-fatal):",
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    req = {
+      ...req,
+      prompt,
+      metadata: workingMetadata,
+    };
+
+    // M10.17 — provider-facing prompt carries brand/knowledge enrichment;
+    // promptPreview (client-facing) always stays the user's raw prompt.
+    const providerPrompt =
+      typeof workingMetadata?.enrichedPrompt === "string" &&
+      workingMetadata.enrichedPrompt
+        ? workingMetadata.enrichedPrompt
+        : req.prompt;
 
     const requestFingerprint = JSON.stringify({
       prompt: req.prompt,
@@ -446,15 +571,16 @@ export class ExecutionApiService implements IExecutionApiService {
         executionId,
         organizationId: trustedOrganizationId,
         workspaceId: req.workspaceId,
-        prompt: req.prompt,
+        prompt: providerPrompt,
         correlationId,
         providerId,
         modelId,
         capabilityId,
         payload: {
-          prompt: req.prompt,
+          prompt: providerPrompt,
           ...(req.metadata?.payload as Record<string, unknown> | undefined),
           ...(Array.isArray(req.metadata?.assets) ? { assets: req.metadata.assets } : {}),
+          ...(req.metadata?.audio ? { audio: req.metadata.audio } : {}),
           ...(req.metadata?.image ? { image: req.metadata.image } : {}),
           ...(req.metadata?.duration != null ? { duration: req.metadata.duration } : {}),
           ...(req.metadata?.aspectRatio != null
@@ -506,7 +632,7 @@ export class ExecutionApiService implements IExecutionApiService {
     if (this.deps.distributed) {
       const enq = await this.deps.distributed.enqueue({
         payload: {
-          rawPrompt: req.prompt,
+          rawPrompt: providerPrompt,
           organizationId: trustedOrganizationId,
           workspaceId: req.workspaceId,
           budgetLimit: req.budgetLimit,
@@ -584,7 +710,7 @@ export class ExecutionApiService implements IExecutionApiService {
       status = "running";
       const run = await this.deps.integration.run({
         requestId: executionId,
-        rawPrompt: req.prompt,
+        rawPrompt: providerPrompt,
         organizationId: asOrganizationId(trustedOrganizationId),
         workspaceId: req.workspaceId
           ? asWorkspaceId(req.workspaceId)
@@ -1013,6 +1139,11 @@ export class ExecutionApiService implements IExecutionApiService {
         organizationId: tenant.organizationId,
         workspaceId: tenant.workspaceId ?? got.value.workspaceId,
         capabilityId: got.value.capabilityId,
+        providerId: got.value.providerId,
+        modelId: got.value.modelId,
+        metadata: got.value.brandId
+          ? { brandId: got.value.brandId, retriedFrom: executionId }
+          : { retriedFrom: executionId },
       },
       {
         principalId: tenant.userId ?? "retry",
@@ -1025,21 +1156,115 @@ export class ExecutionApiService implements IExecutionApiService {
     );
   }
 
-  async history(tenant: TenantContext, limit = 50): Promise<Result<readonly ExecutionResource[]>> {
+  async duplicate(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<ExecutionResource>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const src = got.value;
+    return this.create(
+      {
+        prompt: src.promptPreview,
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId ?? src.workspaceId,
+        capabilityId: src.capabilityId,
+        providerId: src.providerId,
+        modelId: src.modelId,
+        metadata: {
+          ...(src.brandId ? { brandId: src.brandId } : {}),
+          duplicatedFrom: executionId,
+        },
+      },
+      {
+        principalId: tenant.userId ?? "duplicate",
+        kind: "user",
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        roles: ["member"],
+        userId: tenant.userId,
+      }
+    );
+  }
+
+  async softDelete(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<ExecutionResource>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const now = this.deps.nowIso();
+    const updated: ExecutionResource = {
+      ...got.value,
+      deletedAt: now,
+      updatedAt: now,
+    };
+    await this.persistExecution(updated);
+    return success(updated);
+  }
+
+  async setPinned(
+    executionId: string,
+    tenant: TenantContext,
+    pinned: boolean
+  ): Promise<Result<ExecutionResource>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const updated: ExecutionResource = {
+      ...got.value,
+      pinned,
+      updatedAt: this.deps.nowIso(),
+    };
+    await this.persistExecution(updated);
+    return success(updated);
+  }
+
+  async setFavorite(
+    executionId: string,
+    tenant: TenantContext,
+    favorite: boolean
+  ): Promise<Result<ExecutionResource>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const updated: ExecutionResource = {
+      ...got.value,
+      favorite,
+      updatedAt: this.deps.nowIso(),
+    };
+    await this.persistExecution(updated);
+    return success(updated);
+  }
+
+  async history(
+    tenant: TenantContext,
+    query?: ExecutionHistoryQuery
+  ): Promise<Result<ExecutionHistoryPage>> {
     if (this.deps.persistence) {
-      const rows = await this.deps.persistence.executions.listByTenant(
+      const page = await this.deps.persistence.executions.listByTenant(
         tenant.organizationId,
-        limit
+        query
       );
-      return success(
-        rows.filter((e) => !tenant.workspaceId || e.workspaceId === tenant.workspaceId)
-      );
+      if (tenant.workspaceId) {
+        return success({
+          ...page,
+          items: page.items.filter(
+            (e) => !e.workspaceId || e.workspaceId === tenant.workspaceId
+          ),
+        });
+      }
+      return success(page);
     }
-    const rows = [...this.executionStore.values()]
-      .filter((e) => e.organizationId === tenant.organizationId)
-      .filter((e) => !tenant.workspaceId || e.workspaceId === tenant.workspaceId)
-      .slice(0, limit);
-    return success(rows);
+    const page = applyExecutionHistoryQuery(
+      [...this.executionStore.values()],
+      tenant.organizationId,
+      query
+    );
+    const items = tenant.workspaceId
+      ? page.items.filter(
+          (e) => !e.workspaceId || e.workspaceId === tenant.workspaceId
+        )
+      : page.items;
+    return success({ ...page, items, total: items.length });
   }
 
   async artifacts(
@@ -1122,6 +1347,13 @@ export class ExecutionApiService implements IExecutionApiService {
       return success(extras.experience);
     }
     return success(this.extrasStore.get(executionId)!.experience);
+  }
+
+  private async persistExecution(resource: ExecutionResource): Promise<void> {
+    this.executionStore.set(resource.executionId, resource);
+    if (this.deps.persistence) {
+      await this.deps.persistence.executions.update(resource);
+    }
   }
 
   private async loadExecution(executionId: string): Promise<ExecutionResource | undefined> {

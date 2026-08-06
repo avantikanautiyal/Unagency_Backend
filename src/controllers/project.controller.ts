@@ -159,18 +159,42 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
     })
     const roomInfo = await createRoomForProject({
       roomName: create.title,
-      roomId: uuid6(),
+      roomId: `project_${String(create._id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 48)}`,
       project_id: create._id + "",
       membersId: [...membersList, req?.user?.userId!, body.userId + "", ...body?.resource as string[]],
       org_id: body.orgId + "",
       relationShipManagerId: req?.user?.userId!,
     });
+    // Also mirror via collaboration authority (idempotent)
+    void import("../services/collaboration/collaboration-channel-service")
+      .then(({ collaborationChannelService }) => {
+        if (!collaborationChannelService.isConfigured()) return;
+        return collaborationChannelService.provisionForProject({
+          projectId: String(create._id),
+          name: String(create.title || "Project"),
+          organizationId: String(body.orgId || ""),
+          memberUserIds: [
+            ...membersList,
+            String(req?.user?.userId),
+            String(body.userId),
+            ...(Array.isArray(body?.resource) ? body.resource.map(String) : []),
+          ],
+          createdByUserId: String(req?.user?.userId),
+        });
+      })
+      .catch(() => undefined);
     ChatRoom.create({
       cid: roomInfo?.cid,
       project_id: create._id + "",
-      room_type: "group",
+      room_type: "project",
+      entityKind: "project",
+      entityId: String(create._id),
+      organizationId: body.orgId
+        ? new mongoose.Types.ObjectId(String(body.orgId))
+        : undefined,
       roomId: roomInfo?.roomId,
       members: [...membersList, req?.user?.userId!, body.userId + ""],
+      name: create.title,
     });
     return new ApiResponse(
       200,

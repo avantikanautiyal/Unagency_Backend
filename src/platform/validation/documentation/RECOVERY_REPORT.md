@@ -1,6 +1,6 @@
 # RECOVERY REPORT
 
-Generated: 2026-07-27T12:18:59.608Z
+Generated: 2026-08-01T16:16:01.384Z
 
 - **Execution restart** (execution_restart): PASS — Retry creates new execution with preserved org/workspace context
 - **Retry** (retry_policy): PASS — Transient failures classified retryable by infrastructure retry policy

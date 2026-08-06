@@ -12,10 +12,32 @@ import type {
   ExecutionTraceSummary,
 } from "../../../api/contracts";
 
+export type ExecutionHistoryQuery = {
+  limit?: number;
+  offset?: number;
+  page?: number;
+  status?: string;
+  q?: string;
+  sort?: "newest" | "oldest";
+  pinned?: boolean;
+  favorite?: boolean;
+  includeDeleted?: boolean;
+};
+
+export type ExecutionHistoryPage = {
+  items: readonly ExecutionResource[];
+  page: number;
+  limit: number;
+  total: number;
+};
+
 export interface IExecutionRepository {
   save(execution: ExecutionResource): Promise<void>;
   get(executionId: string): Promise<ExecutionResource | undefined>;
-  listByTenant(organizationId: string, limit?: number): Promise<readonly ExecutionResource[]>;
+  listByTenant(
+    organizationId: string,
+    query?: ExecutionHistoryQuery | number
+  ): Promise<ExecutionHistoryPage>;
   update(execution: ExecutionResource): Promise<void>;
 }
 

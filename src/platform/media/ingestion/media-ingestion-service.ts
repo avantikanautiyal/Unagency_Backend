@@ -162,6 +162,30 @@ export class MediaIngestionService {
       extension: ext,
     });
 
+    // M10.18 — artifact immutability: refuse overwrite when existing checksum differs
+    const existingOwned = await this.resolveExistingRef(
+      storageKey,
+      input.organizationId
+    );
+    if (existingOwned?.checksum && existingOwned.checksum !== checksum) {
+      return failure(
+        new ValidationError(
+          "Execution artifact blob is immutable — checksum conflict on storage key"
+        )
+      );
+    }
+    if (existingOwned?.checksum && existingOwned.checksum === checksum) {
+      return success({
+        blobId: `blob_${input.artifactId}_${input.outputIndex}`,
+        storageKey,
+        organizationId: input.organizationId,
+        mimeType,
+        sizeBytes: existingOwned.sizeBytes ?? buffer.byteLength,
+        checksum,
+        createdAt: existingOwned.createdAt ?? this.nowIso(),
+      });
+    }
+
     const put = await this.blobs.put(storageKey, buffer, mimeType);
     if (!put.ok) return put;
 

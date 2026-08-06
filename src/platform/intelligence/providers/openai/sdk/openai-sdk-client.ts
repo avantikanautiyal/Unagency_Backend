@@ -65,10 +65,15 @@ export class OpenAISdkClient implements IOpenAISdk {
       operation === "audio.transcriptions" && audioAsset
         ? {
             fieldName: "file",
-            filename: "audio.mp3",
+            filename:
+              typeof audioAsset.filename === "string"
+                ? audioAsset.filename
+                : "audio.m4a",
             contentType:
-              typeof audioAsset.mimeType === "string" ? audioAsset.mimeType : "audio/mpeg",
-            data: Buffer.from("simulated-audio-bytes"),
+              typeof audioAsset.mimeType === "string"
+                ? audioAsset.mimeType
+                : "audio/mpeg",
+            data: resolveAudioBytes(audioAsset),
           }
         : undefined;
 
@@ -174,4 +179,25 @@ export class OpenAISdkClient implements IOpenAISdk {
   asSdkAuth(): SdkAuthentication {
     return toSdkAuthentication(this.authConfig);
   }
+}
+
+/** Decode STT audio bytes from Intelligence input asset (data URL / base64). */
+function resolveAudioBytes(audioAsset: Record<string, unknown>): Buffer {
+  const url = typeof audioAsset.url === "string" ? audioAsset.url : "";
+  if (url.startsWith("data:") && url.includes(";base64,")) {
+    const b64 = url.split(";base64,", 2)[1] ?? "";
+    if (b64) return Buffer.from(b64, "base64");
+  }
+  if (typeof audioAsset.data === "string" && audioAsset.data.trim()) {
+    const raw = audioAsset.data.trim();
+    if (raw.startsWith("data:") && raw.includes(";base64,")) {
+      return Buffer.from(raw.split(";base64,", 2)[1] ?? "", "base64");
+    }
+    return Buffer.from(raw, "base64");
+  }
+  if (Buffer.isBuffer(audioAsset.data)) {
+    return audioAsset.data as Buffer;
+  }
+  // Simulated / missing bytes — dispatcher still exercises multipart path.
+  return Buffer.from("simulated-audio-bytes");
 }

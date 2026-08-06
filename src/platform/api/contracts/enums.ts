@@ -37,6 +37,7 @@ export type Permission =
   | "file:read"
   | "review:read"
   | "review:write"
+  | "search:read"
   | "admin:*";
 
 export type RoleName =
@@ -98,4 +99,5 @@ export type ApiDomain =
   | "assets"
   | "human_reviews"
   | "webhooks"
+  | "search"
   | "health";

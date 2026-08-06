@@ -67,6 +67,7 @@ import {
   toNegotiationRequest,
   toRoutingRequest,
   toProviderExecutionRequest,
+  withIntelligenceInputAssets,
   toConsensusRequest,
   toEvaluationRequest,
   toLearningRequest,
@@ -398,7 +399,10 @@ export class RoutingRuntimeBridge implements IRoutingRuntimeBridge {
         inputSummary: { primary: String(bag.routing?.plan.primary.providerId) },
       },
       async () => {
-        const base = toProviderExecutionRequest(ctx.requestId, bag);
+        const base = withIntelligenceInputAssets(
+          toProviderExecutionRequest(ctx.requestId, bag),
+          ctx.request.metadata
+        );
         const apiExecutionId =
           typeof ctx.request.metadata?.apiExecutionId === "string"
             ? ctx.request.metadata.apiExecutionId

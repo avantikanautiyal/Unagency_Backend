@@ -312,6 +312,29 @@ export function toProviderExecutionRequest(
   };
 }
 
+/** M10.15 — merge ProductAsset-bridged audio/assets from integration metadata into provider payload. */
+export function withIntelligenceInputAssets(
+  request: ProviderExecutionRequest,
+  metadata?: Readonly<Record<string, unknown>>
+): ProviderExecutionRequest {
+  if (!metadata) return request;
+  const assets = Array.isArray(metadata.assets) ? metadata.assets : undefined;
+  const audio =
+    metadata.audio && typeof metadata.audio === "object" ? metadata.audio : undefined;
+  const language =
+    typeof metadata.language === "string" ? metadata.language : undefined;
+  if (!assets && !audio && !language) return request;
+  return {
+    ...request,
+    payload: {
+      ...request.payload,
+      ...(assets ? { assets } : {}),
+      ...(audio ? { audio } : {}),
+      ...(language ? { language } : {}),
+    },
+  };
+}
+
 export function toConsensusRequest(
   requestId: string,
   runtime: ProviderExecutionResult

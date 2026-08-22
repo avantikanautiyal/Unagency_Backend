@@ -7,6 +7,8 @@ import {
   removeMemberFromChatRoom,
   sendAutomateMessageToUser,
   listCollaborationChannels,
+  ensureBrandChannel,
+  listChannelMembers,
   listChannelMessages,
   sendChannelMessage,
   shareAssetInChannel,
@@ -28,6 +30,16 @@ router.get("/token", VerifyRole([...roles]), getStreamChatToken);
 
 /** M10.19 — collaboration channels (product-entity scoped) */
 router.get("/channels", VerifyRole([...roles]), listCollaborationChannels);
+router.post(
+  "/ensure-brand-channel",
+  VerifyRole([...roles]),
+  ensureBrandChannel
+);
+router.get(
+  "/channels/:channelId/members",
+  VerifyRole([...roles]),
+  listChannelMembers
+);
 router.get(
   "/channels/:channelId/messages",
   VerifyRole([...roles]),

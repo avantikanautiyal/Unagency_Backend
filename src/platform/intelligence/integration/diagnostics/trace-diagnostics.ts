@@ -4,6 +4,7 @@
 
 import type { IntegrationExecutionTrace } from "../contracts/trace";
 import type { IntelligenceOsIntegrationReport } from "../contracts/result";
+import { INTEGRATION_PIPELINE_ORDER } from "../contracts/enums";
 
 export function summarizeTrace(trace: IntegrationExecutionTrace): string {
   const stages = trace.stages.map((s) => `${s.stage}:${s.status}`).join(" → ");
@@ -12,16 +13,9 @@ export function summarizeTrace(trace: IntegrationExecutionTrace): string {
 }
 
 export function isCompleteFullPipeline(report: IntelligenceOsIntegrationReport): boolean {
-  return (
-    report.success &&
-    report.stagesCompleted.includes("task_intelligence") &&
-    report.stagesCompleted.includes("capability_intelligence") &&
-    report.stagesCompleted.includes("provider_runtime") &&
-    report.stagesCompleted.includes("consensus") &&
-    report.stagesCompleted.includes("evaluation") &&
-    report.stagesCompleted.includes("learning") &&
-    report.stagesCompleted.includes("experience_intelligence") &&
-    report.stagesCompleted.includes("repository_updates")
+  if (!report.success) return false;
+  return INTEGRATION_PIPELINE_ORDER.every((stage) =>
+    report.stagesCompleted.includes(stage)
   );
 }
 

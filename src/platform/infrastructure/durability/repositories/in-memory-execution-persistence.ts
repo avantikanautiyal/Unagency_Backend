@@ -96,6 +96,14 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       cost: ExecutionCostSummary;
       evaluation: ExecutionEvaluationSummary;
       experience: ExecutionExperienceSummary;
+      osLifecycle?: string;
+      governance?: unknown;
+      asyncLane?: unknown;
+      structuredBrief?: unknown;
+      structuredBrandContext?: unknown;
+      structuredKnowledgeContext?: unknown;
+      structuredExecutionPlan?: unknown;
+      structuredTaskGraphState?: unknown;
     }
   >();
 
@@ -108,6 +116,14 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       cost: ExecutionCostSummary;
       evaluation: ExecutionEvaluationSummary;
       experience: ExecutionExperienceSummary;
+      osLifecycle?: string;
+      governance?: unknown;
+      asyncLane?: unknown;
+      structuredBrief?: unknown;
+      structuredBrandContext?: unknown;
+      structuredKnowledgeContext?: unknown;
+      structuredExecutionPlan?: unknown;
+      structuredTaskGraphState?: unknown;
     }
   ): Promise<void> {
     this.store.set(executionId, { organizationId, ...extras });
@@ -116,8 +132,47 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
   async get(executionId: string) {
     const row = this.store.get(executionId);
     if (!row) return undefined;
-    const { diagnostics, trace, cost, evaluation, experience } = row;
-    return { diagnostics, trace, cost, evaluation, experience };
+    const {
+      diagnostics,
+      trace,
+      cost,
+      evaluation,
+      experience,
+      osLifecycle,
+      governance,
+      asyncLane,
+      structuredBrief,
+      structuredBrandContext,
+      structuredKnowledgeContext,
+      structuredExecutionPlan,
+      structuredTaskGraphState,
+    } = row;
+    return {
+      diagnostics,
+      trace,
+      cost,
+      evaluation,
+      experience,
+      ...(osLifecycle != null ? { osLifecycle } : {}),
+      ...(governance != null ? { governance } : {}),
+      ...(asyncLane != null ? { asyncLane } : {}),
+      ...(structuredBrief != null ? { structuredBrief } : {}),
+      ...(structuredBrandContext != null ? { structuredBrandContext } : {}),
+      ...(structuredKnowledgeContext != null
+        ? { structuredKnowledgeContext }
+        : {}),
+      ...(structuredExecutionPlan != null
+        ? { structuredExecutionPlan }
+        : {}),
+      ...(structuredTaskGraphState != null
+        ? { structuredTaskGraphState }
+        : {}),
+    };
+  }
+
+  /** Test helper — organizationId that owns extras (tenant isolation). */
+  getOrganizationId(executionId: string): string | undefined {
+    return this.store.get(executionId)?.organizationId;
   }
 
   clear(): void {

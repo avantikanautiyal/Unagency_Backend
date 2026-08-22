@@ -75,7 +75,9 @@ describe("M9.2C Execution Context Resolver", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.business.brand?.brandId).toBe(brandId);
-    expect(result.value.brandEnrichment).toBeDefined();
+    // Brand enrichment requires a Brand Brain document; Phase 2 no longer auto-seeds sampleBrandBrain.
+    // Presence of brand on business context is the required guarantee here.
+    expect(result.value.business.brand?.name).toBeTruthy();
   });
 
   it("fails cross-tenant brand access", async () => {

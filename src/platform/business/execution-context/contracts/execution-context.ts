@@ -58,6 +58,7 @@ export interface ExecutionBrandContext {
   readonly toneOfVoice?: string;
   readonly visualIdentity?: string;
   readonly brandRules?: readonly string[];
+  readonly colorPalette?: readonly string[];
 }
 
 export interface ExecutionProjectContext {

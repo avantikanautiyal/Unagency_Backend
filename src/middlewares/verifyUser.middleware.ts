@@ -4,8 +4,6 @@ import { verifyFirebaseIdToken } from "../libs/firebase/verify-id-token";
 import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import { asyncHandler } from "../utils/asyncHandler";
-import StripeCustomers from "../models/customer.model";
-import Subscriptions from "../models/subscription.model";
 import Organizations, { IOrganization } from "../models/organization.model";
 import Staff from "../models/staff.model";
 
@@ -40,23 +38,6 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         organization = await Organizations.findOne({
           owner: getUser?._id,
         });
-
-
-        // inject a user current subscription from here
-
-        // const customer = await StripeCustomers.findOne({
-        //   email: verification.email,
-        // });
-        // if (customer) {
-        //   customerId = customer.stripeCustomerId;
-        // }
-        // const subscription = await Subscriptions.findOne({
-        //   customerId: customerId,
-        //   status: { $ne: "canceled" },
-        // });
-        // if (subscription) {
-        //   subscriptionId = subscription.subscriptionId;
-        // }
       }
 
       if (!getUser) {
@@ -107,17 +88,5 @@ export const IsMembershipUser = asyncHandler(async function IsMembershipUser(
   res: Response,
   next: NextFunction
 ) {
-
   next(new ApiError("bnd kr diya hai ye change kr ", 400));
-  return;
-  const subscription = await Subscriptions.findOne({
-    _id: (req.user as any)?.subscriptionId,
-  });
-  if (subscription?.status == "active") {
-    next();
-    return;
-  }
-  const err = new Error("Please activate your membership");
-  next(new ApiError((err as Error).message, 400));
-  return;
 });

@@ -39,7 +39,11 @@ export interface IExecutionSession {
   pause(): Promise<void>;
   resume(): Promise<void>;
   cancel(reason?: string): Promise<void>;
-  fail(message: string, errorCode?: string): Promise<void>;
+  fail(
+    message: string,
+    errorCode?: string,
+    output?: Readonly<Record<string, unknown>>,
+  ): Promise<void>;
   complete(output?: Readonly<Record<string, unknown>>): Promise<void>;
   snapshot(): ExecutionSnapshot;
 }

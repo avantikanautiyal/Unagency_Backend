@@ -61,6 +61,8 @@ export function buildContextBuildRequest(input: {
       brandVoice,
       brandTone,
       brandGuidelines,
+      brandColors: brand?.colorPalette ?? [],
+      brandVisualIdentity: brand?.visualIdentity,
       campaignId: campaign?.campaignId,
       campaignObjective: campaign?.objective,
       campaignChannels: campaign?.channels,

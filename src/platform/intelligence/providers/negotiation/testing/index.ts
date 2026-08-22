@@ -194,8 +194,10 @@ export function makeRequest(
 
 /**
  * Minimal fake capability registry implementing the real port.
+ * TEST-ONLY — marked so production composition assertions can reject it.
  */
 export class FakeCapabilityRegistry implements ICapabilityRegistry {
+  readonly __unagencyTestFake = true as const;
   private readonly items = new Map<string, CapabilityDefinition>();
 
   seed(capability: CapabilityDefinition): void {

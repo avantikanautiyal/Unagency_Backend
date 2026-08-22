@@ -29,6 +29,8 @@ export async function bootstrapIntelligenceGateway(
   const platform = createIntelligencePlatform({
     config: options.config,
     registerMocks: options.registerMocks,
+    integration: options.integration,
+    capabilityRegistry: options.capabilityRegistry,
   });
 
   if (options.autoStartKernel !== false) {

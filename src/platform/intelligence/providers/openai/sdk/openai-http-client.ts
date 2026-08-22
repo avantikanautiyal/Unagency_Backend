@@ -82,7 +82,7 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
     const start = this.clockMs();
     try {
       const controller = new AbortController();
-      const timeout = request.timeoutMs ?? 60_000;
+      const timeout = request.timeoutMs ?? 120_000;
       const timer = setTimeout(() => controller.abort(), timeout);
 
       const res = await fetch(url, {

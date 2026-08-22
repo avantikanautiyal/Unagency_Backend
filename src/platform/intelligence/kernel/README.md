@@ -1,52 +1,11 @@
-# Kernel Module (M1.1)
+# Intelligence Kernel
 
-## Purpose
+The Kernel provides **platform infrastructure**: composition/DI, lifecycle, registry primitives, events, telemetry, and shared types.
 
-Operating-system kernel for the Intelligence Platform: lifecycle, DI, composition, registries, and health.
+## Phase 0 ownership
 
-## Public API
+- **Kernel is infrastructure**, not the production HTTP AI orchestrator.
+- Production HTTP path: **Enterprise Gateway → ExecutionApiService → IntegrationPipeline → Provider Runtime**.
+- `IntelligenceGateway` / `IntelligenceOrchestrator` (built via `bootstrapIntelligenceGateway`) are **not** mounted by `app.ts`.
 
-| Export | Role |
-|--------|------|
-| `bootstrapIntelligencePlatform()` | Create container, kernel, register foundation, start |
-| `shutdownIntelligencePlatform()` | Stop lifecycle, dispose services, clear registry |
-| `IPlatformKernel` / `PlatformKernel` | Kernel surface |
-| `ServiceContainer` | DI container |
-| `ModuleRegistry` | Module registration |
-| `LifecycleManager` | Module lifecycle coordination |
-| `HealthManager` | Internal health checks |
-| `CompositionRoot` | Sole wiring site for concrete implementations |
-
-## Responsibilities
-
-- Platform bootstrap / initialize / shutdown
-- Constructor-injection DI (`ServiceContainer`)
-- Composition root wiring (only place for `new` of foundation adapters)
-- Module registry (`registerModule`, `validate`, …)
-- Health manager (no HTTP)
-- Platform metadata (`getVersion`, `getStatus`, `getInfo`)
-
-## Usage
-
-```typescript
-import {
-  bootstrapIntelligencePlatform,
-  shutdownIntelligencePlatform,
-} from "./platform/intelligence/kernel";
-
-const kernel = await bootstrapIntelligencePlatform();
-const status = kernel.getStatus();
-const health = await kernel.health();
-await shutdownIntelligencePlatform();
-```
-
-## Dependencies
-
-- `shared`, `config`, `events`, `security`, `telemetry` (wired only in CompositionRoot)
-
-## What This Module MUST NOT Do
-
-- Execute AI capabilities
-- Implement providers, catalog, planner, gateway
-- Open HTTP routes
-- Modify business modules
+Do not treat Kernel folder completeness as production OS completeness.

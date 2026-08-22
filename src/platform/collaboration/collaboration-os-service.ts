@@ -21,6 +21,7 @@ import {
   type MemberRole,
 } from "./models";
 import Notifications from "../../models/notification.model";
+import Users from "../../models/users.model";
 
 export type MessageDto = {
   id: string;
@@ -574,6 +575,41 @@ export class CollaborationOsService {
       },
       { upsert: true }
     );
+  }
+
+  async listMembers(input: {
+    userId: string;
+    channelId: string;
+  }): Promise<
+    Array<{
+      userId: string;
+      role: MemberRole;
+      name?: string;
+      email?: string;
+      image?: string;
+    }>
+  > {
+    const { conversation } = await this.assertMembership(
+      input.userId,
+      input.channelId
+    );
+    const members = await ConversationMember.find({
+      conversationId: conversation._id,
+    }).limit(100);
+    const users = await Users.find({
+      _id: { $in: members.map((m) => m.userId) },
+    }).select("name email image");
+    const byId = new Map(users.map((u) => [u._id.toString(), u]));
+    return members.map((m) => {
+      const user = byId.get(m.userId.toString());
+      return {
+        userId: m.userId.toString(),
+        role: m.role,
+        name: user?.name,
+        email: user?.email,
+        image: user?.image,
+      };
+    });
   }
 
   async addMembers(input: {

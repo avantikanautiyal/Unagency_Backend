@@ -14,6 +14,11 @@ import { createRoutingPlatform } from "../../routing/factories/create-routing-pl
 import { toRoutingRequest } from "../../../integration/adapters/request-adapters";
 import type { IProviderRuntimeRegistry } from "../../runtime/registry/in-memory-provider-runtime-registry";
 import { isAsyncProviderDispatcher } from "../../async/interfaces/async-provider-dispatcher";
+import {
+  pickFirstExecutablePref,
+  resolveVideoCreativeUseCase,
+  VIDEO_USE_CASE_PREFERENCES,
+} from "../../routing/matrix/matrix-use-case-routing";
 
 export interface VideoRouteDecision {
   readonly providerId: string;
@@ -90,6 +95,21 @@ export class VideoExecutionRouter {
 
     let providerId = String(decision.value.plan.primary.providerId);
     let modelId = String(decision.value.plan.primary.modelId);
+
+    // Matrix use-case preference when caller did not pin a provider.
+    if (!input.preferredProviderId?.trim()) {
+      const useCase = resolveVideoCreativeUseCase(input.prompt);
+      const matrixPick = pickFirstExecutablePref(
+        VIDEO_USE_CASE_PREFERENCES[useCase],
+        allowed
+      );
+      if (matrixPick) {
+        providerId = matrixPick.providerId;
+        modelId = matrixPick.modelId.includes("/")
+          ? matrixPick.modelId
+          : `${matrixPick.providerId.replace(/^provider\./, "")}/${matrixPick.modelId}`;
+      }
+    }
 
     if (input.preferredProviderId?.trim()) {
       const pref = input.preferredProviderId.trim();

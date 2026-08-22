@@ -27,7 +27,7 @@ export {
 } from "./auth/firebase";
 export { resolveTenantContext } from "./auth/tenant-resolution";
 /** @deprecated Use FirebaseAuthenticationAdapter */
-export { FirebasePlatformIdentityBridge } from "./authentication/firebase-platform-identity-bridge";
+export { FirebaseAuthenticationAdapter as FirebasePlatformIdentityBridge } from "./auth/firebase";
 export { RbacAuthorizationService } from "./authorization/rbac-authorization-service";
 export { permissionsForRoles, hasPermission } from "./authorization/rbac";
 export { InMemoryTenantService } from "./tenants/in-memory-tenant-service";

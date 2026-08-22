@@ -342,6 +342,86 @@ async function validateStage(
       );
       break;
     }
+    case "client_authentication": {
+      const denied = await gateway.gateway.handle(
+        apiRequest({ method: "POST", path: "/v1/os/refinements", body: {} })
+      );
+      checks.push(
+        assertCheck(
+          "client_unauthenticated",
+          "gateway",
+          denied.ok && denied.value.status === 401,
+          "Unauthenticated OS client is rejected",
+          { stageId }
+        )
+      );
+      const { token } = await loginDemo(gateway);
+      const authed = await gateway.gateway.handle(
+        apiRequest({
+          method: "GET",
+          path: "/v1/os/executions/exec_missing/task-graph",
+          headers: { authorization: `Bearer ${token}` },
+        })
+      );
+      checks.push(
+        assertCheck(
+          "client_authenticated",
+          "gateway",
+          authed.ok && authed.value.status !== 401,
+          "Authenticated OS client reaches Gateway",
+          { stageId, status: authed.ok ? authed.value.status : 0 }
+        )
+      );
+      break;
+    }
+    case "client_execution_lifecycle": {
+      const { token, organizationId } = await loginDemo(gateway);
+      const created = await gateway.gateway.handle(
+        apiRequest({
+          method: "POST",
+          path: "/v1/executions",
+          headers: { authorization: `Bearer ${token}` },
+          body: {
+            prompt: "Phase 9 client execution lifecycle",
+            organizationId,
+            workspaceId: gateway.seed!.workspaceId,
+            capabilityId: "text.generate",
+          },
+        })
+      );
+      const executionId =
+        created.ok && created.value.status < 400
+          ? (created.value.body as { data?: { executionId?: string } }).data?.executionId
+          : undefined;
+      checks.push(
+        assertCheck(
+          "client_create_execution",
+          "gateway",
+          Boolean(executionId),
+          "Client created an execution through Gateway",
+          { stageId }
+        )
+      );
+      if (executionId) {
+        const graph = await gateway.gateway.handle(
+          apiRequest({
+            method: "GET",
+            path: `/v1/os/executions/${executionId}/task-graph`,
+            headers: { authorization: `Bearer ${token}` },
+          })
+        );
+        checks.push(
+          assertCheck(
+            "client_task_graph",
+            "gateway",
+            graph.ok && (graph.value.status === 200 || graph.value.status === 404),
+            "Client reads task graph or genuine empty state",
+            { stageId, status: graph.ok ? graph.value.status : 0 }
+          )
+        );
+      }
+      break;
+    }
     default:
       checks.push(assertCheck(`stage_${stageId}`, "validation", true, `Stage ${stageId} validated`, { stageId }));
   }

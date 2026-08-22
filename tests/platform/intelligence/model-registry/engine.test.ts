@@ -4,6 +4,7 @@ import {
   TEST_OPENAI_PROVIDER,
   sampleSearchRequest,
 } from "../../../../src/platform/intelligence/model-registry/testing";
+import { SEED_PROVIDERS } from "../../../../src/platform/intelligence/model-registry/discovery/inventory-seed";
 
 describe("Model Registry engine", () => {
   it("loads seed inventory with providers and models", () => {
@@ -14,7 +15,7 @@ describe("Model Registry engine", () => {
     expect(providers.ok).toBe(true);
     expect(models.ok).toBe(true);
     if (!providers.ok || !models.ok) return;
-    expect(providers.value.length).toBe(11);
+    expect(providers.value.length).toBe(SEED_PROVIDERS.length);
     expect(models.value.length).toBeGreaterThanOrEqual(29);
   });
 

@@ -6,6 +6,8 @@ export interface CanonicalMediaOutput {
   readonly type: "image" | "text" | "audio";
   readonly mimeType?: string;
   readonly url?: string;
+  /** Raw base64 payload for ingestion — never log this field. */
+  readonly base64?: string;
   readonly storageRef?: string;
   readonly width?: number;
   readonly height?: number;
@@ -13,27 +15,58 @@ export interface CanonicalMediaOutput {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
+function pickImageBase64(item: Readonly<Record<string, unknown>>): string | undefined {
+  for (const key of ["b64_json", "b64", "base64", "image_base64"] as const) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function pickImageUrl(item: Readonly<Record<string, unknown>>): string | undefined {
+  for (const key of ["url", "image_url"] as const) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+/** Normalize OpenAI/Gemini-style image data arrays into canonical media outputs. */
 export function mapOpenAIImageDataToOutputs(
   raw: Readonly<Record<string, unknown>>
 ): readonly CanonicalMediaOutput[] {
-  const data = raw.data as Array<Record<string, unknown>> | undefined;
-  if (!Array.isArray(data) || data.length === 0) return [];
+  const data = Array.isArray(raw.data)
+    ? (raw.data as Array<Record<string, unknown>>)
+    : undefined;
+  if (!data || data.length === 0) return [];
 
-  return data.map((item, index) => {
-    const url = typeof item.url === "string" ? item.url : undefined;
-    const b64 = typeof item.b64_json === "string" ? item.b64_json : undefined;
-    return Object.freeze({
-      type: "image" as const,
-      mimeType: "image/png",
-      url,
-      storageRef: b64 ? `inline:base64:${index}` : undefined,
-      metadata: Object.freeze({
-        revisedPrompt: typeof item.revised_prompt === "string" ? item.revised_prompt : undefined,
-        providerFormat: b64 ? "base64" : "url",
-        // Never embed base64 body in diagnostics — reference only.
-      }),
-    });
-  });
+  return data
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const url = pickImageUrl(item);
+      const b64 = pickImageBase64(item);
+      if (!url && !b64) return null;
+      const mimeType =
+        typeof item.mime_type === "string"
+          ? item.mime_type
+          : typeof item.mimeType === "string"
+            ? item.mimeType
+            : "image/png";
+      return Object.freeze({
+        type: "image" as const,
+        mimeType,
+        // Prefer vendor HTTPS URL; keep base64 separate (avoid doubling multi-MB strings).
+        url: url && /^https?:\/\//i.test(url) ? url : undefined,
+        base64: b64,
+        storageRef: b64 ? `inline:base64:${index}` : undefined,
+        metadata: Object.freeze({
+          revisedPrompt:
+            typeof item.revised_prompt === "string" ? item.revised_prompt : undefined,
+          providerFormat: b64 ? "base64" : "url",
+        }),
+      });
+    })
+    .filter((item): item is CanonicalMediaOutput => item != null);
 }
 
 export function attachMediaOutputs(
@@ -44,7 +77,8 @@ export function attachMediaOutputs(
   return Object.freeze({
     ...output,
     outputs,
-    content: output.content ?? `[${outputs.length} image(s)]`,
+    // Always replace non-string vendor payloads (e.g. raw data[]) with a stable summary.
+    content: `[${outputs.length} image(s)]`,
   });
 }
 

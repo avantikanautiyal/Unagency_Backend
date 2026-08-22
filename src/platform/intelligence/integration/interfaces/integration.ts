@@ -6,7 +6,8 @@
 import type { Result } from "../../shared/result";
 import type { IntelligenceOsIntegrationRequest } from "../contracts/request";
 import type { IntelligenceOsIntegrationReport } from "../contracts/result";
-import type { BridgeObservabilityRecord } from "../contracts/trace";
+import type { BridgeObservabilityRecord, StageTraceRecord } from "../contracts/trace";
+import type { IntegrationStageKind } from "../contracts/enums";
 import type { IntegrationArtifactBag } from "../contracts/artifacts";
 import type { TaskIntelligenceReport } from "../../task-intelligence/contracts/result";
 import type { CapabilityIntelligenceReport } from "../../capability-intelligence/contracts/result";
@@ -41,12 +42,28 @@ export interface BridgeInvocationResult<T> {
   readonly observability: BridgeObservabilityRecord;
 }
 
+export interface IntegrationPostProcessingOptions {
+  readonly priorStages?: readonly StageTraceRecord[];
+  readonly priorBridges?: readonly BridgeObservabilityRecord[];
+  readonly priorStagesCompleted?: readonly IntegrationStageKind[];
+}
+
 export interface IIntelligenceOsIntegrationEngine {
   run(request: IntelligenceOsIntegrationRequest): Promise<Result<IntelligenceOsIntegrationReport>>;
+  runPostProcessing(
+    request: IntelligenceOsIntegrationRequest,
+    bag: IntegrationArtifactBag,
+    options?: IntegrationPostProcessingOptions
+  ): Promise<Result<IntelligenceOsIntegrationReport>>;
 }
 
 export interface IIntegrationPipeline {
   execute(request: IntelligenceOsIntegrationRequest): Promise<Result<IntelligenceOsIntegrationReport>>;
+  executePostProcessing(
+    request: IntelligenceOsIntegrationRequest,
+    bag: IntegrationArtifactBag,
+    options?: IntegrationPostProcessingOptions
+  ): Promise<Result<IntelligenceOsIntegrationReport>>;
 }
 
 /** Listed bridges */

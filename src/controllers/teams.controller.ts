@@ -120,7 +120,7 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
     Organization: checkUser?.Organization,
     invitationStatus: !!status ? "accepted" : { $exists: true },
     role: !!status ? "member" : { $exists: true },
-  }).populate("userId", "name email");
+  }).populate("userId", "name email image");
   return new ApiResponse(200, team, "Team fetched successfully");
 });
 

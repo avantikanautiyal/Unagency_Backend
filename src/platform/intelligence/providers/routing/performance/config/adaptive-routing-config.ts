@@ -71,12 +71,12 @@ export function loadProviderFailoverConfig(
     failoverEnabled: envBool(env, "PROVIDER_FAILOVER_ENABLED", true),
     maxProviderAttempts: Math.max(
       1,
-      Math.floor(envNum(env, "PROVIDER_FAILOVER_MAX_ATTEMPTS", 3))
+      Math.floor(envNum(env, "PROVIDER_FAILOVER_MAX_ATTEMPTS", 5))
     ),
-    maxFailovers: Math.max(0, Math.floor(envNum(env, "PROVIDER_FAILOVER_MAX_FAILOVERS", 2))),
+    maxFailovers: Math.max(0, Math.floor(envNum(env, "PROVIDER_FAILOVER_MAX_FAILOVERS", 4))),
     maxTotalLatencyMs: Math.max(
       1_000,
-      Math.floor(envNum(env, "PROVIDER_FAILOVER_MAX_LATENCY_MS", 120_000))
+      Math.floor(envNum(env, "PROVIDER_FAILOVER_MAX_LATENCY_MS", 180_000))
     ),
     maxTokenBudget: (() => {
       const n = envNum(env, "PROVIDER_FAILOVER_MAX_TOKEN_BUDGET", 0);

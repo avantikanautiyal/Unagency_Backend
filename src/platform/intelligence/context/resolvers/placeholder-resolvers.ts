@@ -71,10 +71,18 @@ export class PlaceholderBrandResolver implements IBrandContextResolver {
     request: ContextBuildRequest
   ): Promise<Result<ResolvedContextFacts>> {
     const brandId = request.attributes?.brandId;
+    const colors = Array.isArray(request.attributes?.brandColors)
+      ? (request.attributes.brandColors as string[]).filter(Boolean).join(", ")
+      : typeof request.attributes?.brandColors === "string"
+        ? request.attributes.brandColors
+        : undefined;
     return availableFacts(brandId !== undefined, {
       brandId,
+      name: request.attributes?.brandName,
       voice: request.attributes?.brandVoice,
       tone: request.attributes?.brandTone,
+      colors,
+      visualIdentity: request.attributes?.brandVisualIdentity,
     });
   }
 }

@@ -6,6 +6,8 @@ import mongoose from "mongoose";
 import SavedRoutes, { type ISavedRoute } from "../models/savedRoute.model";
 import { ApiError } from "../utils/apiError";
 import { resolveCustomerOrganizationId } from "./product-asset-service";
+import type { IBrandBrainEngine } from "../platform/business/brand-brain/interfaces";
+import { learnFromRouteSelection } from "../platform/business/brand-brain/learning/selection-signal-learner";
 
 export type SavedRouteDto = {
   id: string;
@@ -13,8 +15,13 @@ export type SavedRouteDto = {
   organizationId: string;
   title: string;
   prompt: string;
+  subtitle?: string;
   intent?: string;
   capabilityId?: string;
+  artifactId?: string;
+  executionId?: string;
+  sourceRouteId?: string;
+  mediaKind?: string;
   pinned: boolean;
   favorite: boolean;
   lastUsedAt?: string;
@@ -29,8 +36,13 @@ function toDto(doc: ISavedRoute): SavedRouteDto {
     organizationId: doc.organizationId.toString(),
     title: doc.title,
     prompt: doc.prompt,
+    subtitle: doc.subtitle,
     intent: doc.intent,
     capabilityId: doc.capabilityId,
+    artifactId: doc.artifactId,
+    executionId: doc.executionId,
+    sourceRouteId: doc.sourceRouteId,
+    mediaKind: doc.mediaKind,
     pinned: Boolean(doc.pinned),
     favorite: Boolean(doc.favorite),
     lastUsedAt: doc.lastUsedAt?.toISOString(),
@@ -39,11 +51,25 @@ function toDto(doc: ISavedRoute): SavedRouteDto {
   };
 }
 
+function optionalTrim(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export class SavedRouteService {
+  private brandBrainEngine?: IBrandBrainEngine;
+
+  /** Inject the brand brain engine so route selections are learned. */
+  setBrandBrainEngine(engine: IBrandBrainEngine): void {
+    this.brandBrainEngine = engine;
+  }
+
   async list(input: {
     userId: string;
     organizationId?: string;
     favoritesOnly?: boolean;
+    executionId?: string;
   }): Promise<SavedRouteDto[]> {
     const organizationId = await resolveCustomerOrganizationId(
       input.userId,
@@ -54,6 +80,7 @@ export class SavedRouteService {
       organizationId: new mongoose.Types.ObjectId(organizationId),
     };
     if (input.favoritesOnly) filter.favorite = true;
+    if (input.executionId) filter.executionId = input.executionId;
     const docs = await SavedRoutes.find(filter)
       .sort({ pinned: -1, lastUsedAt: -1, updatedAt: -1 })
       .limit(100);
@@ -65,10 +92,17 @@ export class SavedRouteService {
     organizationId?: string;
     title: string;
     prompt: string;
+    subtitle?: string;
     intent?: string;
     capabilityId?: string;
+    artifactId?: string;
+    executionId?: string;
+    sourceRouteId?: string;
+    mediaKind?: string;
     pinned?: boolean;
     favorite?: boolean;
+    /** Product brand to compound preferences into (optional). */
+    brandId?: string;
   }): Promise<SavedRouteDto> {
     const organizationId = await resolveCustomerOrganizationId(
       input.userId,
@@ -79,18 +113,99 @@ export class SavedRouteService {
     if (!title || !prompt) {
       throw new ApiError("title and prompt are required", 400);
     }
-    const doc = await SavedRoutes.create({
-      userId: new mongoose.Types.ObjectId(input.userId),
-      organizationId: new mongoose.Types.ObjectId(organizationId),
+
+    const sourceRouteId = optionalTrim(input.sourceRouteId);
+    const payload = {
       title,
       prompt,
-      intent: input.intent,
-      capabilityId: input.capabilityId,
+      subtitle: optionalTrim(input.subtitle),
+      intent: optionalTrim(input.intent),
+      capabilityId: optionalTrim(input.capabilityId),
+      artifactId: optionalTrim(input.artifactId),
+      executionId: optionalTrim(input.executionId),
+      sourceRouteId,
+      mediaKind: optionalTrim(input.mediaKind),
       pinned: Boolean(input.pinned),
       favorite: Boolean(input.favorite),
       lastUsedAt: new Date(),
+    };
+
+    // Upsert by sourceRouteId so re-saving the same carousel card does not
+    // create duplicate "Route N of M" entries.
+    if (sourceRouteId) {
+      const existing = await SavedRoutes.findOne({
+        userId: new mongoose.Types.ObjectId(input.userId),
+        sourceRouteId,
+      });
+      if (existing) {
+        existing.title = payload.title;
+        existing.prompt = payload.prompt;
+        if (payload.subtitle !== undefined) existing.subtitle = payload.subtitle;
+        if (payload.intent !== undefined) existing.intent = payload.intent;
+        if (payload.capabilityId !== undefined) {
+          existing.capabilityId = payload.capabilityId;
+        }
+        if (payload.artifactId !== undefined) {
+          existing.artifactId = payload.artifactId;
+        }
+        if (payload.executionId !== undefined) {
+          existing.executionId = payload.executionId;
+        }
+        if (payload.mediaKind !== undefined) {
+          existing.mediaKind = payload.mediaKind;
+        }
+        existing.pinned = payload.pinned;
+        existing.favorite = payload.favorite;
+        existing.lastUsedAt = payload.lastUsedAt;
+        await existing.save();
+        const upsertResult = toDto(existing);
+
+        // Brand learning on re-save too
+        if (this.brandBrainEngine) {
+          void learnFromRouteSelection(
+            {
+              organizationId,
+              brandId: optionalTrim(input.brandId),
+              title: upsertResult.title,
+              prompt: upsertResult.prompt,
+              intent: upsertResult.intent,
+              mediaKind: upsertResult.mediaKind,
+              capabilityId: upsertResult.capabilityId,
+              favorite: upsertResult.favorite,
+            },
+            { brandBrainEngine: this.brandBrainEngine },
+          );
+        }
+
+        return upsertResult;
+      }
+    }
+
+    const doc = await SavedRoutes.create({
+      userId: new mongoose.Types.ObjectId(input.userId),
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      ...payload,
     });
-    return toDto(doc);
+    const result = toDto(doc);
+
+    // Brand learning — best-effort, fire-and-forget
+    if (this.brandBrainEngine) {
+      void learnFromRouteSelection(
+        {
+          organizationId,
+          brandId: optionalTrim(input.brandId),
+          title: result.title,
+          prompt: result.prompt,
+          intent: result.intent,
+          mediaKind: result.mediaKind,
+          capabilityId: result.capabilityId,
+          favorite: result.favorite,
+        },
+        { brandBrainEngine: this.brandBrainEngine },
+      );
+    }
+
+    return result;
   }
 
   async update(input: {
@@ -99,6 +214,8 @@ export class SavedRouteService {
     patch: Partial<{
       title: string;
       prompt: string;
+      subtitle: string;
+      artifactId: string;
       pinned: boolean;
       favorite: boolean;
       touch: boolean;
@@ -112,6 +229,10 @@ export class SavedRouteService {
     if (input.patch.title != null) doc.title = String(input.patch.title).trim();
     if (input.patch.prompt != null)
       doc.prompt = String(input.patch.prompt).trim();
+    if (input.patch.subtitle != null)
+      doc.subtitle = String(input.patch.subtitle).trim();
+    if (input.patch.artifactId != null)
+      doc.artifactId = String(input.patch.artifactId).trim();
     if (input.patch.pinned != null) doc.pinned = Boolean(input.patch.pinned);
     if (input.patch.favorite != null)
       doc.favorite = Boolean(input.patch.favorite);

@@ -14,6 +14,31 @@ import type { IModelKnowledgeBase } from "../interfaces/model-intelligence";
 import type { ICapabilityAnalyzer } from "../interfaces/model-intelligence";
 import { isEmbeddingExecutableProvider } from "../../providers/embedding/configs/verified-embedding-provider-specs";
 
+function modelDeclaresCapability(model: CanonicalModel, capId: string): boolean {
+  return model.capabilities.some((c) => c.capabilityId === capId && c.supported !== false);
+}
+
+/** Product capabilities (research.market.analysis, marketing.copywriting, …) run on text leaves. */
+function modelSupportsRequestedCapability(model: CanonicalModel, capId: string): boolean {
+  if (modelDeclaresCapability(model, capId)) return true;
+  if (capId === "embedding.generate") return false;
+  if (capId.startsWith("image.")) return modelDeclaresCapability(model, "image.generate");
+  if (capId.startsWith("video.")) return modelDeclaresCapability(model, "video.generate");
+  if (capId.startsWith("audio.") || capId.startsWith("speech.") || capId.startsWith("music.")) {
+    return modelDeclaresCapability(model, "audio.synthesize");
+  }
+  if (capId === "research.web_search") {
+    return (
+      modelDeclaresCapability(model, "research.web_search") ||
+      modelDeclaresCapability(model, "text.chat")
+    );
+  }
+  return (
+    modelDeclaresCapability(model, "text.generate") ||
+    modelDeclaresCapability(model, "text.chat")
+  );
+}
+
 function confidenceFor(score: number): ConfidenceLevel {
   if (score >= 0.9) return "very_high";
   if (score >= 0.75) return "high";
@@ -43,9 +68,7 @@ export class DefaultRankingEngine implements IRankingEngine {
 
       // Inventory authority: only models that declare the requested capability are candidates.
       // Soft scoring alone allowed text models to outrank embedding models for embedding.generate.
-      const supportsCapability = model.capabilities.some(
-        (c) => c.capabilityId === capId && c.supported !== false
-      );
+      const supportsCapability = modelSupportsRequestedCapability(model, capId);
       if (!supportsCapability) continue;
 
       // M9.5K: embedding.generate candidates must be embedding-modality models from

@@ -33,10 +33,26 @@ export interface CreateCompatTextProviderOptions {
 
 function buildManifest(config: TextProviderConfig, nowIso: string): ProviderManifest {
   const visionModels =
-    config.vendor === "xai" ? (["grok-2"] as const) : undefined;
+    config.vendor === "xai"
+      ? (["grok-4", "grok-2"] as const)
+      : config.vendor === "meta"
+        ? ([
+            "Llama-4-Maverick-17B-128E-Instruct-FP8",
+            "Llama-4-Scout-17B-16E-Instruct",
+          ] as const)
+        : undefined;
   const capabilities: string[] = ["text.generate", "text.chat"];
   if (visionModels) capabilities.push("vision.analyze");
   if (config.vendor === "mistral") capabilities.push("embedding.generate");
+  if (config.vendor === "perplexity") capabilities.push("research.web_search");
+  if (
+    config.vendor === "alibaba" ||
+    config.vendor === "moonshot" ||
+    config.vendor === "deepseek" ||
+    config.vendor === "perplexity"
+  ) {
+    capabilities.push("reasoning.analyze");
+  }
   return buildTextProviderManifest({
     providerId: config.canonicalProviderId,
     vendor: config.vendor,

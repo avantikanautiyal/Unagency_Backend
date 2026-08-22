@@ -18,7 +18,11 @@ export type SdkVendor =
   | "together"
   | "fireworks"
   | "cohere"
-  | "xai";
+  | "xai"
+  | "alibaba"
+  | "moonshot"
+  | "meta"
+  | "perplexity";
 
 export type SdkAuthenticationKind =
   | "api_key"

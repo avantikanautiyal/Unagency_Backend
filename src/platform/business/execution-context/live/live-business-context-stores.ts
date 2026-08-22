@@ -4,7 +4,6 @@
  */
 
 import mongoose, { type Types } from "mongoose";
-import { sampleBrandBrain } from "../../brand-brain/builders/sample-brand-brain";
 import type { IBrandBrainEngine } from "../../brand-brain/interfaces/brand-brain";
 import type {
   BrandProfile,
@@ -125,7 +124,15 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
         mapBrandDtoToBrandBrainDocument(productBrand)
       );
       this.brandCache.set(brandId, profile);
-      void syncProductBrandToBrain(productBrand).catch(() => undefined);
+      try {
+        await syncProductBrandToBrain(productBrand, this.deps.brandBrain);
+      } catch (err) {
+        console.warn(
+          `[UNAGENCY OS] brand.brain.sync.failed brand=${brandId} — ${
+            err instanceof Error ? err.message : "unknown"
+          }`
+        );
+      }
       return profile;
     }
     // Brand Brain fallback (sampleBrandBrain org-level convention) — only
@@ -147,9 +154,11 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
       );
       profiles.forEach((p) => this.brandCache.set(p.brandId, p));
       this.brandListCache.set(organizationId, profiles);
-      // Keep org-level Brand Brain populated (primary brand) for any
-      // consumer calling engine.enrich(organizationId) directly.
-      void syncProductBrandToBrain(productBrands[0]!).catch(() => undefined);
+      try {
+        await syncProductBrandToBrain(productBrands[0]!, this.deps.brandBrain);
+      } catch {
+        // Non-fatal — product brand profile is already in the cache.
+      }
       return profiles;
     }
     const current = await this.deps.brandBrain.getCurrent(organizationId);
@@ -189,7 +198,7 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
     try {
       const Brands = (await import("../../../../models/brand.model")).default;
       const docs = await Brands.find({
-        organizationId,
+        organizationId: new mongoose.Types.ObjectId(organizationId),
         status: "active",
       })
         .sort({ updatedAt: -1 })
@@ -237,29 +246,39 @@ export class LiveBusinessContextStores implements IExecutionContextStores {
     return [];
   }
 
-  /** Ensure Brand Brain exists for org using organisation name (not demo tenant). */
+  /** Ensure Brand Brain exists only when a real synced document is needed.
+   * Phase 2: NEVER bootstrap sampleBrandBrain into production orgs.
+   */
   async ensureBrandBrainFromOrganization(
     organizationId: string,
-    organizationName: string,
-    industry?: string
+    _organizationName: string,
+    _industry?: string
   ): Promise<void> {
     const current = await this.deps.brandBrain.getCurrent(organizationId);
-    if (current.ok && current.value) return;
-
-    await this.deps.brandBrain.upsert({
-      organizationId,
-      document: sampleBrandBrain({
-        organizationId,
-        brandName: organizationName,
-        industry: industry ?? "general",
-        tone: ["professional"],
-        region: "global",
-        competitor: "generic competitor",
-      }),
-      changelog: "live business context bootstrap from organisation",
-      label: "live-context-bootstrap",
-    });
-    this.brandListCache.delete(organizationId);
+    const hasIdentityName = Boolean(
+      current.ok &&
+        current.value &&
+        (current.value.document.identity?.name?.trim() ||
+          current.value.document.organization?.legalName?.trim())
+    );
+    if (hasIdentityName) return;
+    const productBrands = await this.listProductBrandsForOrg(organizationId);
+    if (productBrands[0]) {
+      try {
+        await syncProductBrandToBrain(productBrands[0], this.deps.brandBrain);
+        return;
+      } catch (err) {
+        console.warn(
+          `[UNAGENCY OS] brand.brain.sync.failed org=${organizationId} — ${
+            err instanceof Error ? err.message : "unknown"
+          }`
+        );
+        return;
+      }
+    }
+    console.warn(
+      `[UNAGENCY OS] brand.context.missing org=${organizationId} — skipping sampleBrandBrain bootstrap (Phase 2)`
+    );
   }
 
   private async resolveUserOrganizationId(userId: string): Promise<string | undefined> {

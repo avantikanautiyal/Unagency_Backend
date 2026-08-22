@@ -108,6 +108,42 @@ describe("M10.7 tool approval + structured HTTP E2E", () => {
     expect(dup.ok).toBe(true);
   }, 60_000);
 
+  it("auto-approves tools in ai product mode without manual step", async () => {
+    resetEnterpriseApiRuntimeForTests();
+    const runtime = bootstrapEnterpriseApiRuntime({
+      executionMode: "simulated",
+      seedDemoTenant: true,
+    });
+    const { token, organizationId } = await loginDemo(runtime.platform);
+    const gateway = runtime.platform.gateway;
+
+    const created = await gateway.handle(
+      apiRequest({
+        method: "POST",
+        path: "/v1/executions",
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          prompt: "Prepare a campaign plan and save it as a draft",
+          capabilityId: "text.generate",
+          organizationId,
+          productMode: "ai",
+          toolNames: ["update_test_record"],
+          structuredOutput: {
+            schema: launchPlanSchema,
+            name: "LaunchPlan",
+            strict: true,
+          },
+        },
+      })
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const body = (created.value?.body as { data: Record<string, unknown> }).data;
+    expect(body.status).toBe("succeeded");
+    expect(body.approvalRequired).toBeFalsy();
+    expect(body.result).toMatchObject({ kind: "structured" });
+  }, 60_000);
+
   it("reject never completes as structured success", async () => {
     resetEnterpriseApiRuntimeForTests();
     const runtime = bootstrapEnterpriseApiRuntime({

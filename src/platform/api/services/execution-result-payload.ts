@@ -41,7 +41,17 @@ export function buildExecutionResultPayload(input: {
       : undefined);
 
   if (structured != null) {
-    return { kind: "structured", data: structured };
+    const data =
+      runtimeOutput?.presentationMeta != null &&
+      typeof structured === "object" &&
+      structured !== null &&
+      !("presentationMeta" in (structured as Record<string, unknown>))
+        ? {
+            ...(structured as Record<string, unknown>),
+            presentationMeta: runtimeOutput.presentationMeta,
+          }
+        : structured;
+    return { kind: "structured", data };
   }
 
   const fromSummary =

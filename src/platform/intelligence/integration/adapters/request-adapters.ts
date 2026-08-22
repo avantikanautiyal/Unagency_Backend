@@ -22,23 +22,19 @@ import type { ExecutionIntelligenceRequest } from "../../execution-intelligence/
 import type { ModelIntelligenceRequest } from "../../model-intelligence/contracts/recommendation";
 import type { ModelIntelligenceResult } from "../../model-intelligence/contracts/result";
 import type { ExecutionIntelligenceResult } from "../../execution-intelligence/contracts/result";
-import {
-  makeCapability,
-  makePlan,
-  makeRequest,
-  TEST_CAPABILITY,
-  TEST_ORG,
-  TEST_PROVIDER,
-  TEST_WORKSPACE,
-} from "../../providers/negotiation/testing";
 import type { NegotiationRequest } from "../../providers/negotiation/contracts/negotiation-request";
 import type { NegotiationResult } from "../../providers/negotiation/contracts/negotiation-result";
+import {
+  buildProductionNegotiationPlan,
+  buildProductionNegotiationRequest,
+} from "../../providers/negotiation/builders/production-negotiation-request";
 import { RoutingRequestBuilder } from "../../providers/routing/builders/routing-request-builder";
 import type { RoutingCandidate } from "../../providers/routing/contracts/candidate";
 import type { RoutingDecision } from "../../providers/routing/contracts/plan";
 import type { ProviderExecutionRequest } from "../../providers/runtime/contracts/provider-execution-request";
 import type { ProviderExecutionResult } from "../../providers/runtime/contracts/provider-execution-response";
 import { sampleRequest } from "../../providers/runtime/testing";
+import { resolveExecutableModelId } from "../../providers/routing/performance/failover/executable-model-id";
 import { ConsensusRequestBuilder } from "../../provider-consensus/builders/consensus-request-builder";
 import { makeCandidate } from "../../provider-consensus/testing";
 import type { ConsensusRequest } from "../../provider-consensus/contracts/request";
@@ -46,8 +42,10 @@ import { EvaluationRequestBuilder, evaluationIdentityFromIds } from "../../evalu
 import type { EvaluationRequest, EvaluationResult } from "../../evaluation/contracts/evaluation-models";
 import { sampleExecutionResult } from "../../evaluation/testing";
 import { LearningRequestBuilder, learningIdentityFromIds } from "../../learning/builders/learning-builders";
-import { sampleArtifactSnapshots } from "../../learning/testing";
 import type { LearningRequest } from "../../learning/contracts/learning-models";
+import type { BridgeContext } from "../interfaces/integration";
+import { buildBagArtifactSnapshots } from "./bag-artifact-snapshots";
+import { resolveIntegrationTenant } from "./integration-tenant-scope";
 import { ExecutionOptimizationRequestBuilder } from "../../execution-optimization/builders/execution-optimization-request-builder";
 import { makeObservabilityReport } from "../../execution-optimization/testing";
 import type { ExecutionOptimizationRequest } from "../../execution-optimization/contracts/request";
@@ -210,42 +208,55 @@ export function toModelIntelligenceRequest(
 
 export function toNegotiationRequest(
   requestId: string,
-  bag: IntegrationArtifactBag
+  bag: IntegrationArtifactBag,
+  integrationRequest?: IntelligenceOsIntegrationRequest
 ): NegotiationRequest {
   const taskReport = bag.task!;
   const execIntelResult = bag.executionIntelligence!;
-  const plan = makePlan({
-    planId: `plan_${requestId}`,
-    capabilityId: TEST_CAPABILITY,
-    providerSelection: {
-      primaryProviderId: TEST_PROVIDER,
-      fallbackProviderIds: [],
-      modelId: execIntelResult.strategy.kind,
-    },
-    budget: {
-      maxCost: execIntelResult.budget.totalEstimated,
-      currency: "USD",
-    },
-    metadata: {
-      ...makePlan().metadata,
-      capabilityId: TEST_CAPABILITY,
-      costEstimate: { estimated: execIntelResult.budget.totalEstimated },
-    },
+  const modelPrimary = bag.modelIntelligence?.candidates?.candidates?.[0];
+  const capabilityId = String(
+    taskReport.capabilityMap.primary ??
+      bag.capability?.executionPlan?.capabilityIds?.[0] ??
+      "text.generate"
+  );
+  const primaryProviderId = String(
+    modelPrimary?.providerId ??
+      bag.routing?.plan?.primary?.providerId ??
+      "provider.openai"
+  );
+  const organizationId = String(
+    integrationRequest?.organizationId ??
+      (bag as { organizationId?: string }).organizationId ??
+      "org_unknown"
+  );
+  const workspaceId =
+    integrationRequest?.workspaceId != null
+      ? String(integrationRequest.workspaceId)
+      : undefined;
+
+  const plan = buildProductionNegotiationPlan({
+    requestId,
+    capabilityId,
+    primaryProviderId,
+    modelId: String(modelPrimary?.modelId ?? execIntelResult.strategy.kind),
+    maxCost: execIntelResult.budget.totalEstimated,
+    nowIso: new Date().toISOString(),
   });
 
-  return makeRequest(plan, {
-    requestId: `${requestId}_neg`,
-    organizationId: TEST_ORG,
-    workspaceId: TEST_WORKSPACE,
+  return buildProductionNegotiationRequest({
+    requestId,
+    organizationId,
+    workspaceId,
+    plan,
   });
 }
 
-export function seedNegotiationCapability(taskReport: TaskIntelligenceReport) {
-  return makeCapability({
-    id: TEST_CAPABILITY,
-    name: String(taskReport.capabilityMap.primary),
-    displayName: taskReport.structuredTask.title,
-  });
+/**
+ * @deprecated Prefer ProductionNegotiationPlatform.ensureCapabilityFromTask.
+ * Kept as a no-op marker for bridge call sites during Phase 0 migration.
+ */
+export function seedNegotiationCapability(_taskReport: TaskIntelligenceReport): void {
+  // Capability seeding is performed by ProductionNegotiationPlatform.
 }
 
 export function toRoutingCandidates(modelResult: ModelIntelligenceResult): RoutingCandidate[] {
@@ -265,14 +276,47 @@ export function toRoutingCandidates(modelResult: ModelIntelligenceResult): Routi
   }));
 }
 
-export function toRoutingRequest(requestId: string, modelResult: ModelIntelligenceResult) {
+export function toRoutingRequest(
+  requestId: string,
+  modelResult: ModelIntelligenceResult,
+  preferences?: {
+    preferredProviders?: readonly string[];
+    preferredModelId?: string;
+  }
+) {
   const candidates = toRoutingCandidates(modelResult);
-  return RoutingRequestBuilder.create()
+  let ordered = candidates;
+  if (preferences?.preferredProviders?.length) {
+    const preferred = new Set(preferences.preferredProviders.map(String));
+    const preferredModel = preferences.preferredModelId?.trim();
+    ordered = [
+      ...candidates.filter(
+        (c) =>
+          preferred.has(String(c.providerId)) &&
+          (!preferredModel || String(c.modelId) === preferredModel)
+      ),
+      ...candidates.filter(
+        (c) =>
+          preferred.has(String(c.providerId)) &&
+          preferredModel &&
+          String(c.modelId) !== preferredModel
+      ),
+      ...candidates.filter((c) => !preferred.has(String(c.providerId))),
+    ];
+  }
+  const builder = RoutingRequestBuilder.create()
     .withRequestId(`${requestId}_route`)
     .withCapabilityId(modelResult.candidates.capabilityId)
-    .withCandidates(candidates)
-    .withStrategy("balanced")
-    .build();
+    .withCandidates(ordered)
+    .withStrategy("balanced");
+  if (preferences?.preferredProviders?.length) {
+    builder.withPreferences({
+      preferredProviders: preferences.preferredProviders.map((id) =>
+        asProviderId(id)
+      ),
+    });
+  }
+  return builder.build();
 }
 
 export function toProviderExecutionRequest(
@@ -283,6 +327,8 @@ export function toProviderExecutionRequest(
   const task = bag.task!;
   const providerId = asProviderId(String(routing.plan.primary.providerId ?? "openai"));
   const promptText = task.request.rawPrompt;
+  // sampleRequest defaults to a 1s test timeout — far too short for LIVE
+  // Gemini/OpenAI structured Create Design (was surfacing as "execution timed out").
   const base = sampleRequest({
     requestId: `${requestId}_rt`,
     providerId: String(providerId),
@@ -293,14 +339,29 @@ export function toProviderExecutionRequest(
       input: promptText,
       capabilityPlan: bag.capability?.executionPlan.capabilityIds,
     },
+    timeoutPolicy: {
+      // LIVE gpt-image / Imagen often needs 40–90s; keep headroom for retries.
+      executionTimeoutMs: 120_000,
+      streamingTimeoutMs: 120_000,
+      queueTimeoutMs: 30_000,
+    },
+    retryPolicy: {
+      strategy: "exponential",
+      // Cross-provider failover owns retries — don't burn the latency budget twice on one leaf.
+      maxAttempts: 1,
+      baseDelayMs: 250,
+    },
   });
   return {
     ...base,
     capabilityId: task.capabilityMap.primary,
     providerId,
-    modelId: routing.plan.primary.modelId
-      ? String(routing.plan.primary.modelId)
-      : base.modelId,
+    modelId: resolveExecutableModelId(
+      String(providerId),
+      routing.plan.primary.modelId
+        ? String(routing.plan.primary.modelId)
+        : base.modelId
+    ),
     context: {
       ...base.context,
       providerId,
@@ -339,17 +400,34 @@ export function toConsensusRequest(
   requestId: string,
   runtime: ProviderExecutionResult
 ): ConsensusRequest {
-  const providerId = String(runtime.response?.providerId ?? "openai");
+  const providerId = String(
+    runtime.response?.providerId ?? runtime.finalProviderId ?? "openai"
+  );
+  const execution: ProviderExecutionResult = runtime.response
+    ? runtime
+    : {
+        ...runtime,
+        response: {
+          requestId: runtime.requestId,
+          providerId: asProviderId(providerId),
+          output: Object.freeze({
+            content: runtime.error?.message ?? "",
+            ...(runtime.error ? { error: runtime.error } : {}),
+          }),
+          streamed: false,
+          finishedAt: runtime.completedAt,
+        },
+      };
   const candidate = makeCandidate(providerId, "integrated result", {
     quality: 0.8,
-    latencyMs: runtime.statistics.totalMs,
+    latencyMs: execution.statistics?.totalMs ?? 0,
   });
   return ConsensusRequestBuilder.create()
     .withRequestId(`${requestId}_cons`)
     .withCandidates([
       {
         ...candidate,
-        execution: runtime,
+        execution,
       },
     ])
     .withStrategy("single_winner")
@@ -357,9 +435,14 @@ export function toConsensusRequest(
 }
 
 export function toEvaluationRequest(
-  requestId: string,
+  ctx: BridgeContext,
   bag: IntegrationArtifactBag
 ): EvaluationRequest {
+  const tenant = resolveIntegrationTenant({
+    request: ctx.request,
+    requestId: ctx.requestId,
+    bag,
+  });
   const output =
     bag.consensus?.consensus.canonicalResponse.output ??
     bag.runtime?.response?.output ??
@@ -368,11 +451,11 @@ export function toEvaluationRequest(
   return EvaluationRequestBuilder.create()
     .withIdentity(
       evaluationIdentityFromIds({
-        organizationId: "org_1",
-        workspaceId: "ws_1",
-        executionId: `${requestId}_exec`,
-        capabilityId: String(bag.task?.capabilityMap.primary ?? "general"),
-        correlationId: requestId,
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        executionId: tenant.executionId,
+        capabilityId: tenant.capabilityId,
+        correlationId: ctx.correlationId,
       })
     )
     .withExecutionResult(
@@ -386,20 +469,25 @@ export function toEvaluationRequest(
 }
 
 export async function toLearningRequest(
-  requestId: string,
+  ctx: BridgeContext,
   bag: IntegrationArtifactBag
 ): Promise<LearningRequest> {
-  const artifacts = await sampleArtifactSnapshots();
+  const tenant = resolveIntegrationTenant({
+    request: ctx.request,
+    requestId: ctx.requestId,
+    bag,
+  });
+  const artifacts = await buildBagArtifactSnapshots(ctx, bag);
   return LearningRequestBuilder.create()
     .withIdentity(
       learningIdentityFromIds({
-        organizationId: "org_1",
-        workspaceId: "ws_1",
-        capabilityId: String(bag.task?.capabilityMap.primary ?? "general"),
-        executionId: `${requestId}_exec`,
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        capabilityId: tenant.capabilityId,
+        executionId: tenant.executionId,
       })
     )
-    .withScope({ kind: "workspace", scopeId: "ws_1" })
+    .withScope({ kind: "workspace", scopeId: tenant.workspaceId })
     .withArtifacts(artifacts)
     .build();
 }

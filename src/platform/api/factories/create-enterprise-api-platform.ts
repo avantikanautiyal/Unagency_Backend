@@ -20,13 +20,25 @@ import { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/ru
 import { createModelRegistryPlatform } from "../../intelligence/model-registry/factories/create-model-registry-platform";
 import { registerVideoProviders } from "../../production/execution/register-video-providers";
 import { registerAudioProviders } from "../../production/execution/register-audio-providers";
+import { registerImageProviders } from "../../production/execution/register-image-providers";
+import { registerResearchProviders } from "../../production/execution/register-research-providers";
 import type { IVideoHttpClient } from "../../intelligence/providers/video/http/video-http-client";
 import type { IAudioHttpClient } from "../../intelligence/providers/audio/http/audio-http-client";
 import { createVideoExecutionRouter } from "../../intelligence/providers/video/routing/video-execution-router";
+import { createImageExecutionRouter } from "../../intelligence/providers/image/routing/image-execution-router";
+import { createAudioExecutionRouter } from "../../intelligence/providers/audio/routing/audio-execution-router";
+import { createTextExecutionRouter } from "../../intelligence/providers/routing/text/text-execution-router";
 import { resolveVideoCertificationAllowedProviderIds } from "../../production/execution/video-certification-config";
 import { asProviderId } from "../../intelligence/shared/identifiers";
 import { failure } from "../../intelligence/shared/result";
 import { ValidationError } from "../../intelligence/shared/errors";
+import { createBrandBrainPlatform } from "../../business/brand-brain/factories/create-brand-brain-platform";
+import { InMemoryTelemetryStore } from "../../infrastructure/observability/tracing/in-memory-telemetry-store";
+import { InMemoryOsWorkQueue } from "../../os/runtime/queues/in-memory-os-work-queue";
+import { createOsProductionRuntime } from "../../os/runtime/os-production-runtime";
+import { OsProductionWorker } from "../../os/runtime/os-production-worker";
+import { createOsDeliveryService } from "../../os/delivery/engine/delivery-service";
+import { BusinessPlatformEngine } from "../../business/engine/business-platform-engine";
 import { AsyncFailoverOrchestrator } from "../../intelligence/providers/routing/performance/failover/async-failover-orchestrator";
 import { loadProviderFailoverConfig } from "../../intelligence/providers/routing/performance/config/adaptive-routing-config";
 import { PerformanceEvidenceWriter } from "../../intelligence/providers/routing/performance/feedback/performance-evidence-writer";
@@ -52,6 +64,7 @@ import {
   FakeAsyncProviderDispatcher,
   fakeAsyncProviderId,
 } from "../../intelligence/providers/async/fake/fake-async-provider";
+import { assertProductionComposition } from "../../os";
 import { CatalogApiService } from "../services/catalog-api-service";
 import { CurrentPrincipalService } from "../services/current-principal-service";
 import { ApiGatewayEngine } from "../gateway/api-gateway-engine";
@@ -76,10 +89,28 @@ export interface EnterpriseApiPlatform {
   readonly rateLimits: IRateLimitService;
   readonly catalog: CatalogApiService;
   readonly distributed: IDistributedExecutionEngine;
+  /** Routes distributed jobs through IntelligenceGateway once wired. */
+  readonly intelligenceGatewayHolder?: import("../../infrastructure/execution/workers/job-executors").IntelligenceGatewayHolder;
+  readonly integrationEngine?: IIntelligenceOsIntegrationEngine;
   readonly durableStores?: DurableStores;
   readonly asyncReconciler?: AsyncReconciliationWorker;
   readonly providerRuntimeRegistry?: InMemoryProviderRuntimeRegistry;
   readonly toolRuntime?: ToolRuntimePlatform;
+  /** Brand Brain engine exposed for cross-service brand learning. */
+  readonly brandBrainEngine: import("../../business/brand-brain/interfaces").IBrandBrainEngine;
+  /**
+   * Intelligence Gateway — the kernel/control-plane entry point.
+   * Wired after async bootstrap; undefined until bootstrapIntelligenceGateway() resolves.
+   */
+  intelligencePlatform?: import("../../intelligence/gateway/factories/platform-composition-root").IntelligencePlatform;
+  /** Shared in-memory telemetry store for cost recording and observability. */
+  readonly telemetryStore: import("../../infrastructure/observability/tracing/in-memory-telemetry-store").InMemoryTelemetryStore;
+  /** OsProductionRuntime — async task queue. Ready to process tasks once enqueued. */
+  readonly osRuntime: import("../../os/runtime/os-production-runtime").OsProductionRuntime;
+  /** Background OS worker — delivery + task queue ticks when durable OS bundle is present. */
+  readonly osProductionWorker?: OsProductionWorker;
+  /** BusinessPlatformEngine — all 26 SaaS domain modules wired to the API gateway. */
+  readonly businessPlatform: import("../../business/engine/business-platform-engine").BusinessPlatformEngine;
   readonly seed?: {
     readonly organizationId: string;
     readonly workspaceId: string;
@@ -120,6 +151,14 @@ export interface CreateEnterpriseApiOptions {
   readonly runtimeDispatcher?: IProviderDispatcher;
   /** Seed deterministic certification tools outside LIVE unless explicitly disabled. */
   readonly seedToolCertificationTools?: boolean;
+  /** Phase 2 — injectable brand record source (tests / simulated). */
+  readonly brandSource?: import("../../os/brand").IBrandRecordSource;
+  /** Phase 3 — injectable knowledge hit source (tests / simulated). */
+  readonly knowledgeSource?: import("../../os/knowledge").IKnowledgeHitSource;
+  /** Phase 5 — injectable task capability runner (tests). */
+  readonly taskCapabilityRunner?: import("../../os/task-graph-executor").ITaskCapabilityRunner;
+  /** Phase 5 — shared task graph run store (tests). */
+  readonly taskGraphStore?: import("../../os/task-graph-executor").ITaskGraphRunStore;
 }
 
 export function createEnterpriseApiPlatform(
@@ -184,8 +223,24 @@ export function createEnterpriseApiPlatform(
     durableStores.isDurable && durableStores.rateLimits
       ? durableStores.rateLimits
       : new InMemoryRateLimitService(nowIso, clockMs);
+
+  // Phase 0: ControllableDispatcher is SIMULATED-only. LIVE must inject a real dispatcher
+  // via bootstrapEnterpriseApiRuntimeAsync / bootProductionExecution.
+  if (executionMode === "live" && !options.runtimeDispatcher) {
+    throw new Error(
+      "LIVE createEnterpriseApiPlatform requires runtimeDispatcher — ControllableDispatcher is forbidden"
+    );
+  }
   const runtimeDispatcher =
-    options.runtimeDispatcher ?? new ControllableDispatcher({ nowIso });
+    options.runtimeDispatcher ??
+    new ControllableDispatcher({ nowIso });
+  if (executionMode === "live") {
+    assertProductionComposition({
+      executionMode: "live",
+      runtimeDispatcher,
+      negotiationSource: "production",
+    });
+  }
   const toolRuntime =
     options.toolRuntime ??
     createToolRuntimePlatform({
@@ -247,8 +302,12 @@ export function createEnterpriseApiPlatform(
       : undefined);
 
   let distributed = options.distributed;
+  let intelligenceGatewayHolder:
+    | import("../../infrastructure/execution/workers/job-executors").IntelligenceGatewayHolder
+    | undefined;
+  let integrationEngine = options.integration;
   if (!distributed) {
-    distributed = createDistributedExecutionPlatform({
+    const distributedPlatform = createDistributedExecutionPlatform({
       nowIso,
       clockMs,
       createId,
@@ -261,7 +320,11 @@ export function createEnterpriseApiPlatform(
       jobStore: durableStores.jobStore,
       runtimeDispatcher,
       toolRuntime,
-    }).engine;
+      asyncMedia: durableStores.asyncMedia,
+    });
+    distributed = distributedPlatform.engine;
+    intelligenceGatewayHolder = distributedPlatform.intelligenceGatewayHolder;
+    integrationEngine = distributedPlatform.integration ?? integrationEngine;
   }
 
   const providerRuntimeRegistry =
@@ -316,6 +379,32 @@ export function createEnterpriseApiPlatform(
     throw new Error(`audio provider registration failed: ${audioRegistration.error.message}`);
   }
 
+  const imageRegistration = registerImageProviders({
+    env: process.env,
+    executionMode: executionMode === "live" ? "live" : "openai_simulated",
+    modelRegistry: modelRegistryPlatform.registry,
+    registry: providerRuntimeRegistry,
+    nowIso,
+    clockMs,
+  });
+  if (!imageRegistration.ok) {
+    throw new Error(`image provider registration failed: ${imageRegistration.error.message}`);
+  }
+
+  const researchRegistration = registerResearchProviders({
+    env: process.env,
+    executionMode: executionMode === "live" ? "live" : "openai_simulated",
+    modelRegistry: modelRegistryPlatform.registry,
+    registry: providerRuntimeRegistry,
+    nowIso,
+    clockMs,
+  });
+  if (!researchRegistration.ok) {
+    throw new Error(
+      `research provider registration failed: ${researchRegistration.error.message}`
+    );
+  }
+
   const resolveVideoDispatcher = (providerId: string) => {
     const entry = providerRuntimeRegistry.resolveAvailable(asProviderId(providerId));
     if (entry?.dispatcher && isAsyncProviderDispatcher(entry.dispatcher)) {
@@ -324,17 +413,53 @@ export function createEnterpriseApiPlatform(
     return undefined;
   };
 
+  // Brand Brain engine shared by brand learning (refinement signals → brain)
+  const brandBrainEngineForLearning = createBrandBrainPlatform({
+    nowIso,
+    createId,
+    repository: durableStores.brandBrain,
+  }).engine;
+
+  const osQueue = durableStores.os?.workQueue ?? new InMemoryOsWorkQueue();
+  const osRuntimeHolder: {
+    runtime?: import("../../os/runtime/os-production-runtime").OsProductionRuntime;
+  } = {};
+  const useQueuedOsWorkers = Boolean(durableStores.os);
+  const osDeliveryService = useQueuedOsWorkers
+    ? createOsDeliveryService({
+        artifacts: durableStores.os!.artifacts,
+        receipts: durableStores.os!.deliveries,
+        mode: "queued",
+        onQueued: async (receipt) => {
+          if (!osRuntimeHolder.runtime) {
+            throw new Error("os_runtime_not_ready");
+          }
+          await osRuntimeHolder.runtime.enqueueDelivery(receipt);
+        },
+      })
+    : undefined;
+
   const executions = new ExecutionApiService({
     nowIso,
     createId,
     clockMs,
     distributed,
-    integration: options.integration,
+    integration: integrationEngine ?? options.integration,
     executionMode,
     toolRuntime,
     streaming,
     autoTick: true,
-    onIntelligenceSnapshot: (snap) => executionIntelligence.attachSnapshot(snap),
+    brandSource: options.brandSource,
+    knowledgeSource: options.knowledgeSource,
+    taskCapabilityRunner: options.taskCapabilityRunner,
+    taskGraphStore: options.taskGraphStore ?? durableStores.os?.taskGraph,
+    osBundle: durableStores.os,
+    deliveryService: osDeliveryService,
+    brandBrainEngine: brandBrainEngineForLearning,
+    onIntelligenceSnapshot: (snap) => {
+      executionIntelligence.attachSnapshot(snap);
+      recordSnapshotCost(snap);
+    },
     persistence:
       durableStores.isDurable || durableStores.asyncMedia
         ? {
@@ -345,6 +470,7 @@ export function createEnterpriseApiPlatform(
             tenantUsage: durableStores.tenantUsage,
           }
         : undefined,
+    asyncMedia: durableStores.asyncMedia,
     videoRouter: createVideoExecutionRouter({
       registry: providerRuntimeRegistry,
       createId,
@@ -355,6 +481,25 @@ export function createEnterpriseApiPlatform(
         providerRuntimeRegistry
       ),
     }),
+    imageRouter: createImageExecutionRouter({
+      registry: providerRuntimeRegistry,
+    }),
+    audioRouter: createAudioExecutionRouter({
+      registry: providerRuntimeRegistry,
+    }),
+    textRouter: createTextExecutionRouter({
+      registry: providerRuntimeRegistry,
+    }),
+    nativeStreamDispatchers: (() => {
+      try {
+        const mod = require("../../intelligence/providers/streaming/composition/compose-native-streaming-dispatchers") as {
+          composeNativeStreamingDispatchers: () => ReadonlyMap<string, import("../../intelligence/providers/streaming/interfaces/native-streaming-dispatcher").INativeStreamingDispatcher>;
+        };
+        return mod.composeNativeStreamingDispatchers();
+      } catch {
+        return undefined;
+      }
+    })(),
     asyncCoordinator: durableStores.asyncMedia
       ? (() => {
           const media = durableStores.asyncMedia!;
@@ -386,7 +531,12 @@ export function createEnterpriseApiPlatform(
             allowFakeDispatcher: Boolean(fakeAsyncDispatcher),
             nowIso,
             createId,
-            onIntelligenceSnapshot: (snap) => executionIntelligence.attachSnapshot(snap),
+            integration: integrationEngine,
+            executionMode,
+            onIntelligenceSnapshot: (snap) => {
+              executionIntelligence.attachSnapshot(snap);
+              recordSnapshotCost(snap);
+            },
             asyncFailover,
           });
           return holder.coordinator;
@@ -452,6 +602,77 @@ export function createEnterpriseApiPlatform(
     clockMs,
   });
 
+  // BusinessPlatformEngine — all 26 SaaS domain modules, connected to the API gateway.
+  // Gateway must be constructed first (above), then passed here.
+  const businessPlatform = new BusinessPlatformEngine({
+    gateway,
+    nowIso,
+    clockMs,
+    createId,
+  });
+
+  // Shared telemetry store — cost records written here by ExecutionApiService callbacks.
+  const telemetryStore = new InMemoryTelemetryStore();
+
+  const recordSnapshotCost = (snap: import("../execution-intelligence/contracts/responses").ExecutionIntelligenceSnapshot): void => {
+    const amount = snap.costs?.totalCost ?? null;
+    telemetryStore.addCost({
+      recordId: snap.executionId ?? createId("cost"),
+      at: nowIso(),
+      context: {
+        correlationId: snap.executionId ?? "unknown",
+        traceId: snap.executionId ?? "unknown",
+        organizationId: snap.organizationId ?? "unknown",
+        workspaceId: snap.workspaceId ?? "default",
+        capabilityId: snap.capabilityId,
+        providerId: snap.providerId,
+        modelId: snap.modelId,
+      },
+      amount,
+      currency: snap.costs?.currency ?? "USD",
+      providerId: snap.providerId,
+      modelId: snap.modelId,
+      capabilityId: snap.capabilityId,
+    });
+  };
+
+  // OsProductionRuntime — async task + delivery queue workers.
+  const osRuntime = durableStores.os
+    ? createOsProductionRuntime({
+        queue: osQueue,
+        executor: executions.getTaskGraphExecutor(),
+        delivery: executions.getDeliveryService(),
+        resolvePlan: (executionId, organizationId) =>
+          executions.resolveExecutionPlanForWorker(executionId, organizationId),
+        nowIso,
+        clockMs,
+      })
+    : createOsProductionRuntime({
+        queue: new InMemoryOsWorkQueue(),
+        executor: {
+          processQueuedTask: async () => ({
+            claimed: false as const,
+            snapshot: undefined as unknown as import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot,
+            reason: "executor_not_wired",
+          }),
+        } as unknown as import("../../os/task-graph-executor/engine/task-graph-executor-engine").ITaskGraphExecutorEngine,
+        delivery: null as unknown as import("../../os/delivery/engine/delivery-service").OsDeliveryService,
+        resolvePlan: async () => undefined,
+        nowIso,
+        clockMs,
+      });
+  osRuntimeHolder.runtime = osRuntime;
+
+  let osProductionWorker: OsProductionWorker | undefined;
+  if (useQueuedOsWorkers) {
+    osProductionWorker = new OsProductionWorker({
+      runtime: osRuntime,
+      workerId: "enterprise-os-worker",
+      tickIntervalMs: 500,
+    });
+    osProductionWorker.start();
+  }
+
   return {
     gateway,
     auth,
@@ -464,10 +685,17 @@ export function createEnterpriseApiPlatform(
     rateLimits,
     catalog,
     distributed,
+    intelligenceGatewayHolder,
+    integrationEngine: integrationEngine ?? options.integration,
     durableStores,
     toolRuntime,
     asyncReconciler,
     providerRuntimeRegistry,
+    brandBrainEngine: brandBrainEngineForLearning,
+    telemetryStore,
+    osRuntime,
+    osProductionWorker,
+    businessPlatform,
     seed,
   };
 }

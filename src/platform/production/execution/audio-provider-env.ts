@@ -6,13 +6,7 @@ import {
   ALL_AUDIO_PROVIDER_SPECS,
   type VerifiedAudioProviderSpec,
 } from "../../intelligence/providers/audio/configs/verified-audio-provider-specs";
-
-function isEnabled(env: NodeJS.ProcessEnv, enableVar: string, hasCredential: boolean): boolean {
-  const flag = env[enableVar]?.trim().toLowerCase();
-  if (flag === "false" || flag === "0" || flag === "no") return false;
-  if (flag === "true" || flag === "1" || flag === "yes") return hasCredential;
-  return hasCredential;
-}
+import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export function resolveAudioApiKey(
   env: NodeJS.ProcessEnv,
@@ -26,7 +20,7 @@ export function isAudioProviderConfigured(
   spec: VerifiedAudioProviderSpec
 ): boolean {
   const credential = resolveAudioApiKey(env, spec.credentialEnvVar);
-  return isEnabled(env, spec.enableEnvVar, Boolean(credential));
+  return isProviderEnableFlagOn(env, spec.enableEnvVar, Boolean(credential));
 }
 
 export function isAudioProviderExecutable(
@@ -57,7 +51,7 @@ export function evaluateAudioProviderEnv(
 ): AudioProviderEnvStatus[] {
   return ALL_AUDIO_PROVIDER_SPECS.map((spec) => {
     const configured = Boolean(resolveAudioApiKey(env, spec.credentialEnvVar));
-    const enabled = isEnabled(env, spec.enableEnvVar, configured);
+    const enabled = isProviderEnableFlagOn(env, spec.enableEnvVar, configured);
     const verified = spec.vendorApiVerified;
     const executable = verified && enabled && configured;
     return {

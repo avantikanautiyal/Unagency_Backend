@@ -8,6 +8,7 @@ export async function sampleCompilationRequest(): Promise<PromptCompilationReque
   const contextEngine = createContextIntelligenceEngine();
   const knowledgeEngine = createKnowledgeIntelligenceEngine({
     enableCache: false,
+    usePlaceholders: true,
   });
 
   const context = await contextEngine.build(sampleContextBuildRequest());

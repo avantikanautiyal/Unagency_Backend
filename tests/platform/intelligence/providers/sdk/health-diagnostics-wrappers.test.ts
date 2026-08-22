@@ -18,7 +18,7 @@ describe("SDK diagnostics", () => {
   it("reports registration for all placeholder vendors", () => {
     const { diagnostics } = setupSdkPlatform();
     const reports = diagnostics.registrationReport();
-    expect(reports.length).toBe(11);
+    expect(reports.length).toBe(15);
     expect(reports.every((r) => r.registered)).toBe(true);
   });
 
@@ -44,11 +44,11 @@ describe("SDK diagnostics", () => {
 });
 
 describe("Placeholder SDK wrappers", () => {
-  it("creates all 11 vendor wrappers with distinct vendors", () => {
+  it("creates all 15 vendor wrappers with distinct vendors", () => {
     const wrappers = createAllPlaceholderWrappers();
-    expect(wrappers).toHaveLength(11);
+    expect(wrappers).toHaveLength(15);
     const vendors = new Set(wrappers.map((w) => w.vendor));
-    expect(vendors.size).toBe(11);
+    expect(vendors.size).toBe(15);
     for (const wrapper of wrappers) {
       expect(wrapper.describe().version.raw).toBe("0.0.0-placeholder");
     }

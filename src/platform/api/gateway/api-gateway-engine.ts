@@ -4,7 +4,7 @@
  */
 
 import { failure, success, type Result } from "../../intelligence/shared/result";
-import { AuthorizationError } from "../../intelligence/shared/errors";
+import { AuthorizationError, IntelligenceError } from "../../intelligence/shared/errors";
 import type {
   ApiRequest,
   ApiResponse,
@@ -26,6 +26,7 @@ import type {
 import type { IExecutionIntelligenceApiService } from "../execution-intelligence";
 import { matchRoute, API_ROUTE_MAP } from "../routes/route-map";
 import { isLiveSsePayload } from "../services/execution-streaming-service";
+import { isArtifactBinaryContent } from "../../media/delivery/media-delivery-service";
 import { validateApiRequest } from "../validation/validate-request";
 import { defaultHeaders, serializeError, serializeSuccess } from "../serialization/serialize";
 import { dispatchController, type ControllerDeps } from "../controllers/dispatch";
@@ -171,13 +172,19 @@ export class ApiGatewayEngine implements IApiGateway {
     );
 
     if (!result.ok) {
+      const details =
+        result.error instanceof IntelligenceError &&
+        Object.keys(result.error.metadata).length > 0
+          ? result.error.metadata
+          : undefined;
       return success(
         this.errorResponse(
           request,
           statusForError(result.error.code),
           result.error.code,
           result.error.message,
-          start
+          start,
+          details
         )
       );
     }
@@ -203,6 +210,28 @@ export class ApiGatewayEngine implements IApiGateway {
           frames: result.value.frames,
           frameIterable: result.value.frameIterable,
           cancel: result.value.cancel,
+        },
+        requestId: request.requestId,
+        version: request.version,
+        durationMs: this.clockMs() - start,
+      });
+    }
+
+    // Tokenized artifact bytes for Expo Image (no JSON envelope).
+    if (isArtifactBinaryContent(result.value)) {
+      return success({
+        status: 200,
+        headers: {
+          "Content-Type": result.value.contentType,
+          "Cache-Control": "private, max-age=60",
+          "x-request-id": request.requestId,
+          "x-correlation-id": request.correlationId ?? request.requestId,
+          "x-artifact-id": result.value.artifactId,
+        },
+        body: null,
+        binary: {
+          contentType: result.value.contentType,
+          bytes: result.value.bytes,
         },
         requestId: request.requestId,
         version: request.version,

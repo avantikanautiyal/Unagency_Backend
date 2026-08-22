@@ -35,6 +35,14 @@ export function buildIntegrationJobSummary(input: {
   const resultText = extractSafeResultText(response?.output);
   const structuredData = extractStructuredData(response?.output);
 
+  const evaluationIntegrity = report.artifacts.evaluation?.integrity;
+  const experienceIntel = report.artifacts.experienceIntelligence;
+  const repositoryUpdates = report.artifacts.repositoryUpdates;
+  const experienceIds =
+    experienceIntel?.experiences
+      ?.map((exp) => exp.experienceId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
+
   return {
     success: awaitingToolApproval ? false : report.success,
     awaitingToolApproval,
@@ -54,11 +62,25 @@ export function buildIntegrationJobSummary(input: {
     resultId: report.resultId,
     durationMs: report.durationMs || input.durationMs,
     stagesCompleted: report.stagesCompleted.length,
+    postProcessingComplete: report.stagesCompleted.includes("repository_updates"),
     errorMessage: report.success
       ? undefined
-      : report.trace.failedStage
-        ? `failed at ${report.trace.failedStage}`
-        : "integration failed",
+      : (() => {
+          const stage = report.trace.failedStage;
+          const stageMsg = report.trace.stages
+            ?.slice()
+            .reverse()
+            .find(
+              (s) =>
+                s.stage === stage &&
+                s.status === "failed" &&
+                typeof s.message === "string" &&
+                s.message.trim().length > 0
+            )?.message;
+          if (stage && stageMsg) return `failed at ${stage}: ${stageMsg}`;
+          if (stage) return `failed at ${stage}`;
+          return "integration failed";
+        })(),
     contextSnapshotId: report.artifacts.contextTrace?.contextSnapshotId,
     brandEnrichmentId: report.artifacts.contextTrace?.brandEnrichmentId,
     brandBrainVersion: report.artifacts.contextTrace?.brandBrainVersion,
@@ -85,6 +107,20 @@ export function buildIntegrationJobSummary(input: {
     providerRequestId: response?.providerRequestId,
     evaluationScore:
       report.artifacts.evaluation?.report?.summary?.overallScore,
+    evaluationPlaceholder:
+      evaluationIntegrity != null
+        ? evaluationIntegrity.feedbackEligible !== true
+        : !report.stagesCompleted.includes("evaluation"),
+    evaluationFeedbackEligible: evaluationIntegrity?.feedbackEligible === true,
+    evaluationStatus: evaluationIntegrity?.evaluationStatus,
+    learningSignals: report.artifacts.learning?.signals?.length ?? 0,
+    experiencesExtracted: experienceIntel?.experiences?.length ?? 0,
+    experiencesSaved: repositoryUpdates?.experiencesSaved ?? 0,
+    experienceIds,
+    experienceApplied:
+      (experienceIntel?.experiences?.length ?? 0) > 0 ||
+      (repositoryUpdates?.experiencesSaved ?? 0) > 0,
+    consensusWinner: report.artifacts.consensus?.consensus?.winningProviderId,
   };
 }
 
@@ -98,6 +134,23 @@ function extractSafeResultText(
     const value = output[key];
     if (typeof value === "string" && value.trim()) {
       return value.slice(0, MAX_RESULT_TEXT);
+    }
+  }
+  const outputs = output.outputs;
+  if (Array.isArray(outputs)) {
+    for (const item of outputs) {
+      if (typeof item === "string" && item.trim()) {
+        return item.slice(0, MAX_RESULT_TEXT);
+      }
+      if (item && typeof item === "object") {
+        const row = item as Record<string, unknown>;
+        for (const key of ["content", "text", "message"] as const) {
+          const value = row[key];
+          if (typeof value === "string" && value.trim()) {
+            return value.slice(0, MAX_RESULT_TEXT);
+          }
+        }
+      }
     }
   }
   return undefined;

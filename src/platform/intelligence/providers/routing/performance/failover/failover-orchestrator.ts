@@ -16,6 +16,7 @@ import {
   classifyExecutionFailure,
   shouldFailover,
 } from "./failure-classification";
+import { resolveExecutableModelId } from "./executable-model-id";
 import type {
   FailoverExecutionOutcome,
   ProviderAttemptRecord,
@@ -141,7 +142,34 @@ export class FailoverOrchestrator {
         }
       }
 
-      const ran = await this.runOne(baseRequest, candidate, exploratory);
+      const elapsed = this.nowMs() - startedBudget;
+      const remaining = Math.max(
+        0,
+        this.opts.failover.maxTotalLatencyMs - elapsed
+      );
+      const candidatesLeft = candidates.length - i;
+      const perAttemptMs = Math.min(
+        baseRequest.timeoutPolicy?.executionTimeoutMs ?? 120_000,
+        Math.max(
+          45_000,
+          Math.floor(remaining / Math.max(1, candidatesLeft))
+        )
+      );
+
+      const requestForAttempt: ProviderExecutionRequest = {
+        ...baseRequest,
+        timeoutPolicy: {
+          ...baseRequest.timeoutPolicy,
+          executionTimeoutMs: perAttemptMs,
+          streamingTimeoutMs: perAttemptMs,
+        },
+        retryPolicy: {
+          ...baseRequest.retryPolicy,
+          maxAttempts: 1,
+        },
+      };
+
+      const ran = await this.runOne(requestForAttempt, candidate, exploratory);
       attempts.push(ran.attempt);
       lastResult = ran.result;
       if (this.opts.onAttempt) {
@@ -149,6 +177,17 @@ export class FailoverOrchestrator {
       }
 
       if (ran.result.success) {
+        if (failoverCount > 0 || attempts.length > 1) {
+          console.log(
+            [
+              "⚙️  [AI OS] failover succeeded",
+              `provider=${candidate.providerId}`,
+              `model=${candidate.modelId}`,
+              `attempts=${attempts.length}`,
+              `failovers=${failoverCount}`,
+            ].join(" | ")
+          );
+        }
         return success(
           this.wrapOutcome(ran.result, attempts, failoverCount, false, exploratory)
         );
@@ -157,10 +196,27 @@ export class FailoverOrchestrator {
       const category = ran.attempt.failureCategory;
       const recoverable = shouldFailover(category);
       if (!recoverable) {
+        console.log(
+          [
+            "⚙️  [AI OS] provider failed (no failover)",
+            `provider=${candidate.providerId}`,
+            `category=${category}`,
+            `error=${ran.attempt.errorMessage ?? "n/a"}`,
+          ].join(" | ")
+        );
         return success(
           this.wrapOutcome(ran.result, attempts, failoverCount, false, exploratory)
         );
       }
+
+      console.log(
+        [
+          "⚙️  [AI OS] provider failed → failover",
+          `provider=${candidate.providerId}`,
+          `category=${category}`,
+          `error=${ran.attempt.errorMessage ?? "n/a"}`,
+        ].join(" | ")
+      );
 
       if (candidate.primaryOrFailover === "failover" || i > 0) {
         // Count failovers after primary failure path.
@@ -221,7 +277,10 @@ export class FailoverOrchestrator {
       modelId: string | undefined,
       role: "primary" | "failover"
     ) => {
-      const mid = modelId ?? baseRequest.modelId ?? "unknown";
+      const mid = resolveExecutableModelId(
+        providerId,
+        modelId ?? baseRequest.modelId
+      );
       const key = attemptKey(providerId, mid);
       if (seen.has(key)) return;
       seen.add(key);
@@ -278,12 +337,13 @@ export class FailoverOrchestrator {
     const startedAt = this.nowIso();
     const startedMs = this.nowMs();
     const providerId = asProviderId(candidate.providerId);
+    const modelId = resolveExecutableModelId(candidate.providerId, candidate.modelId);
 
     const request: ProviderExecutionRequest = {
       ...baseRequest,
       requestId: `${baseRequest.requestId}_${candidate.positionInRoute}`,
       providerId,
-      modelId: candidate.modelId,
+      modelId,
       context: {
         ...baseRequest.context,
         providerId,
@@ -317,7 +377,7 @@ export class FailoverOrchestrator {
       positionInRoute: candidate.positionInRoute,
       primaryOrFailover: candidate.primaryOrFailover,
       providerId: candidate.providerId,
-      modelId: candidate.modelId,
+      modelId,
       success: result.success,
       failureCategory,
       latencyMs,

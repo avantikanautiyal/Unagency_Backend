@@ -20,7 +20,7 @@ export function brandProfileFromBrandBrainDocument(
   return {
     brandId: doc.brandId ?? `brand_${doc.organizationId}`,
     organizationId: doc.organizationId,
-    name: doc.identity?.name ?? doc.organization?.legalName ?? "Brand",
+    name: doc.identity?.name?.trim() || doc.organization?.legalName?.trim() || "",
     toneOfVoice: tone,
     visualIdentity: doc.visual?.imageryNotes?.join("; ") ?? "clean",
     brandRules: rules.length > 0 ? rules : ["be clear"],

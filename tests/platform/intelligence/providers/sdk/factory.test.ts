@@ -4,7 +4,7 @@ describe("SDK platform factory", () => {
   it("wires engine, registry, diagnostics, health, streaming, and auth", () => {
     const platform = createSdkPlatform();
     expect(platform.engine).toBeDefined();
-    expect(platform.registry.list().length).toBe(11);
+    expect(platform.registry.list().length).toBe(15);
     expect(platform.diagnostics).toBeDefined();
     expect(platform.healthMonitor).toBeDefined();
     expect(platform.streamingEngine).toBeDefined();

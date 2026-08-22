@@ -128,6 +128,10 @@ export class MongoExecutionExtrasRepository implements IExecutionExtrasRepositor
       cost: ExecutionCostSummary;
       evaluation: ExecutionEvaluationSummary;
       experience: ExecutionExperienceSummary;
+      osLifecycle?: string;
+      governance?: unknown;
+      asyncLane?: unknown;
+      structuredBrief?: unknown;
     }
   ): Promise<void> {
     await EnterpriseExecutionExtras.updateOne(
@@ -153,6 +157,24 @@ export class MongoExecutionExtrasRepository implements IExecutionExtrasRepositor
       cost: doc.cost,
       evaluation: doc.evaluation,
       experience: doc.experience,
+      ...(doc.osLifecycle != null ? { osLifecycle: doc.osLifecycle } : {}),
+      ...(doc.governance != null ? { governance: doc.governance } : {}),
+      ...(doc.asyncLane != null ? { asyncLane: doc.asyncLane } : {}),
+      ...(doc.structuredBrief != null
+        ? { structuredBrief: doc.structuredBrief }
+        : {}),
+      ...(doc.structuredBrandContext != null
+        ? { structuredBrandContext: doc.structuredBrandContext }
+        : {}),
+      ...(doc.structuredKnowledgeContext != null
+        ? { structuredKnowledgeContext: doc.structuredKnowledgeContext }
+        : {}),
+      ...(doc.structuredExecutionPlan != null
+        ? { structuredExecutionPlan: doc.structuredExecutionPlan }
+        : {}),
+      ...(doc.structuredTaskGraphState != null
+        ? { structuredTaskGraphState: doc.structuredTaskGraphState }
+        : {}),
     };
   }
 }

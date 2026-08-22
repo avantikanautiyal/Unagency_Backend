@@ -22,6 +22,7 @@ import MediaFile from "../models/mediaFile.model";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 import { checkPlanLimit } from "../services/planLimit.service";
+import { creativeProjectService } from "../services/creative-project-service";
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
@@ -659,6 +660,72 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
   }
 });
 
+/**
+ * Customer AI Create Design — upsert a project so Home/Projects show status.
+ * POST /projects/creative
+ */
+const upsertCreativeProject = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user?.userId || "");
+  if (!userId) throw new ApiError("Unauthorized", 401);
+
+  // Legacy installs may still have unique title index — drop if present.
+  try {
+    await Projects.collection.dropIndex("title_1");
+  } catch {
+    // index may not exist
+  }
+
+  const data = await creativeProjectService.upsert({
+    userId,
+    orgId:
+      (req.body?.orgId as string | undefined) ||
+      (req.body?.organizationId as string | undefined) ||
+      (req.user as any)?.orgId,
+    title: req.body?.title,
+    description: req.body?.description,
+    status: req.body?.status,
+    service: req.body?.service,
+    categoryId: req.body?.categoryId,
+    categoryTitle: req.body?.categoryTitle,
+    executionId: req.body?.executionId,
+    refineFromExecutionId: req.body?.refineFromExecutionId,
+    projectId: req.body?.projectId,
+    preserveTitle: Boolean(req.body?.preserveTitle),
+    sourceRouteId: req.body?.sourceRouteId,
+    artifactId: req.body?.artifactId,
+    brandId: req.body?.brandId,
+    productPath: req.body?.productPath,
+    resumeStep: req.body?.resumeStep,
+    subtype: req.body?.subtype,
+    platform: req.body?.platform,
+    format: req.body?.format,
+    category: req.body?.category,
+    prompt: req.body?.prompt,
+  });
+  return new ApiResponse(200, data, "Creative project upserted");
+});
+
+/**
+ * Customer status update for own projects (Approve → Completed, etc.).
+ * PATCH /projects/:projectId/status
+ */
+const updateMyProjectStatus = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user?.userId || "");
+  if (!userId) throw new ApiError("Unauthorized", 401);
+  const data = await creativeProjectService.updateStatus({
+    userId,
+    projectId: String(req.params.projectId || ""),
+    status: String(req.body?.status || ""),
+    artifactId: req.body?.artifactId,
+    sourceRouteId: req.body?.sourceRouteId,
+    title: req.body?.title,
+    description: req.body?.description,
+    resumeStep: req.body?.resumeStep,
+    prompt: req.body?.prompt,
+  });
+  return new ApiResponse(200, data, "Project status updated");
+});
+
 export {
   createProject,
   fetchProjectListByClientId,
@@ -667,4 +734,6 @@ export {
   fetchProjectById,
   getProjectLogs,
   createProjectLogs,
+  upsertCreativeProject,
+  updateMyProjectStatus,
 };

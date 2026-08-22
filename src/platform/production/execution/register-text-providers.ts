@@ -126,10 +126,14 @@ export async function registerTextProviders(
 
     const providerId = asProviderId("provider.openai");
     const caps = collectProviderCapabilities(options.modelRegistry, providerId);
+    const withMediaCaps = new Set(caps);
+    withMediaCaps.add("image.generate");
+    withMediaCaps.add("audio.synthesize");
+    withMediaCaps.add("audio.transcribe");
     options.registry.registerExecutable({
       providerId,
       dispatcher: openai.value.dispatcher,
-      capabilities: caps,
+      capabilities: Array.from(withMediaCaps),
       status: "available",
       dispatcherSupportsStreamingProviderId: asProviderId(OPENAI_PROVIDER_ID),
     });

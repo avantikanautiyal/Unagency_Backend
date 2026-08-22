@@ -66,12 +66,10 @@ export function resolveEnterpriseApiExecutionMode(
 }
 
 export function integrationPipelineModeFor(
-  mode: EnterpriseApiExecutionMode
+  _mode: EnterpriseApiExecutionMode
 ): "full" | "planning_through_routing" {
-  // M10.5: SIMULATED must reach ControllableDispatcher (no network) so
-  // application clients receive presentation-safe results via POST /v1/executions.
-  // STUB remains planning-only when Integration OS is used; LIVE is full.
-  if (mode === "stub") return "planning_through_routing";
+  // Canonical AI OS spine: every integration execution runs the full pipeline
+  // (stages 1–11). Post-runtime stages 12–18 remain async in IntegrationPipeline.
   return "full";
 }
 

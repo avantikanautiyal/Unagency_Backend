@@ -34,7 +34,7 @@ export function toAdapterRequestFromExecution(input: {
     parameters: (input.request.options as Record<string, unknown>) ?? {},
     features,
     streaming: input.request.streaming,
-    timeoutMs: input.request.timeoutPolicy.executionTimeoutMs ?? 60_000,
+    timeoutMs: input.request.timeoutPolicy.executionTimeoutMs ?? 120_000,
     metadata: input.request.metadata ?? {},
     createdAt: input.nowIso,
   };

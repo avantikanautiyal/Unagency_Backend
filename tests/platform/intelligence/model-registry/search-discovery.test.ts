@@ -4,6 +4,7 @@ import {
   sampleSearchRequest,
 } from "../../../../src/platform/intelligence/model-registry/testing";
 import { providerIdForVendor } from "../../../../src/platform/intelligence/model-registry";
+import { SEED_PROVIDERS } from "../../../../src/platform/intelligence/model-registry/discovery/inventory-seed";
 
 describe("Model Registry discovery and search", () => {
   it("discovers all providers and capabilities", () => {
@@ -12,7 +13,7 @@ describe("Model Registry discovery and search", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.totalProviders).toBe(11);
+    expect(result.value.totalProviders).toBe(SEED_PROVIDERS.length);
     expect(result.value.capabilities).toContain("text.generate");
     expect(result.value.capabilities).toContain("embedding.generate");
   });

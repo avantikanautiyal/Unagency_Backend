@@ -8,7 +8,12 @@ export type ValidationScenarioId =
   | "landing_page"
   | "logo_generation"
   | "research_merge"
-  | "gateway_e2e";
+  | "gateway_e2e"
+  | "task_graph_execution"
+  | "evaluation_governance"
+  | "refinement_delivery"
+  | "phase8_production_runtime"
+  | "phase9_client_experience";
 
 export type ValidationStageId =
   | "organization"
@@ -39,7 +44,32 @@ export type ValidationStageId =
   | "image_routing"
   | "metadata"
   | "cost_tracking"
-  | "research_providers";
+  | "research_providers"
+  | "task_graph_dag"
+  | "task_graph_parallelism"
+  | "task_graph_recovery"
+  | "task_graph_cancellation"
+  | "spec_guard"
+  | "brand_guard"
+  | "governance_decision"
+  | "human_review"
+  | "execution_approval"
+  | "tenant_isolation"
+  | "structured_feedback"
+  | "adaptive_mcq"
+  | "refinement_specification"
+  | "refinement_execution"
+  | "artifact_versioning"
+  | "delivery_authorization"
+  | "delivery_idempotency"
+  | "durable_execution"
+  | "queue_idempotency"
+  | "worker_recovery"
+  | "async_execution"
+  | "multi_worker_safety"
+  | "gateway_authorization"
+  | "client_authentication"
+  | "client_execution_lifecycle";
 
 export type ValidationCheckStatus = "pass" | "fail" | "warn" | "skip";
 

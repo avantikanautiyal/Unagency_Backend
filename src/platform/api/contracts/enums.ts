@@ -100,4 +100,7 @@ export type ApiDomain =
   | "human_reviews"
   | "webhooks"
   | "search"
-  | "health";
+  | "health"
+  | "refinement"
+  | "delivery"
+  | "os_artifacts";

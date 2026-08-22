@@ -4,6 +4,7 @@ export {
   getEnterpriseApiRuntime,
   resetEnterpriseApiRuntimeForTests,
   logEnterpriseApiMount,
+  wireIntelligenceControlPlane,
   type EnterpriseApiRuntime,
 } from "./bootstrap-enterprise-api";
 export { composeEnterpriseExecution } from "./compose-enterprise-execution";

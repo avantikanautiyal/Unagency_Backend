@@ -20,6 +20,8 @@ describe("ContextIntelligenceEngine", () => {
     expect(result.value.scope.capabilityId).toBe("echo");
     expect(result.value.organization.name).toBe("Unagency");
     expect(result.value.brand.brandId).toBe("brand_1");
+    expect(result.value.brand.name).toBe("Acme Studio");
+    expect(result.value.brand.colors).toBe("#111111, #F5F5F5");
     expect(result.value.assets.assetIds).toContain("asset_1");
     expect(result.value.role.roles).toContain("member");
     expect(result.value.language.language).toBe("en");

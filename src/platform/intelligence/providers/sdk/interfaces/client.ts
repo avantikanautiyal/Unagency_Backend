@@ -46,3 +46,7 @@ export interface ITogetherSdk extends IProviderSdkClient {}
 export interface IFireworksSdk extends IProviderSdkClient {}
 export interface ICohereSdk extends IProviderSdkClient {}
 export interface IXaiSdk extends IProviderSdkClient {}
+export interface IAlibabaSdk extends IProviderSdkClient {}
+export interface IMoonshotSdk extends IProviderSdkClient {}
+export interface IMetaSdk extends IProviderSdkClient {}
+export interface IPerplexitySdk extends IProviderSdkClient {}

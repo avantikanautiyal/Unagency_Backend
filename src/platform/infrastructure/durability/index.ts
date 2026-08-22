@@ -19,6 +19,11 @@ export {
   resetSharedTestDurableStores,
   type DurableStores,
 } from "./create-durable-stores";
+export {
+  createInMemoryOsDurableBundle,
+  createMongoOsDurableBundle,
+  type OsDurableBundle,
+} from "./create-os-durable-bundle";
 export { InMemoryBrandBrainRepository } from "./repositories/in-memory-brand-brain-repository";
 export { MongoBrandBrainRepository } from "./repositories/mongo-brand-brain-repository";
 export { MongoJobStore } from "./repositories/mongo-job-store";

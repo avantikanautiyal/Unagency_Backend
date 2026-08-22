@@ -27,7 +27,10 @@ export async function sampleExecutionIntelligenceRequest(
   }>
 ): Promise<ExecutionIntelligenceRequest> {
   const contextEngine = createContextIntelligenceEngine();
-  const knowledgeEngine = createKnowledgeIntelligenceEngine({ enableCache: false });
+  const knowledgeEngine = createKnowledgeIntelligenceEngine({
+    enableCache: false,
+    usePlaceholders: true,
+  });
   const compiler = createPromptCompiler();
 
   const context = await contextEngine.build(sampleContextBuildRequest());

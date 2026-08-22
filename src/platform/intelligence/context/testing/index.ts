@@ -27,7 +27,10 @@ export function sampleContextBuildRequest(
     attributes: {
       organizationName: "Unagency",
       brandId: "brand_1",
+      brandName: "Acme Studio",
       brandVoice: "professional",
+      brandTone: "confident",
+      brandColors: ["#111111", "#F5F5F5"],
       assetIds: ["asset_1"],
       roles: ["member"],
       permissions: ["intelligence.invoke"],

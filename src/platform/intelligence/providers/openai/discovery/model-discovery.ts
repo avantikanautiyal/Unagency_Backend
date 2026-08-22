@@ -88,4 +88,14 @@ export class OpenAIModelDiscovery implements IOpenAIModelDiscovery {
   markSource(source: OpenAIModelDiscoveryResult["source"]): void {
     this.source = source;
   }
+
+  /** Factory fallback when live /models is unavailable. */
+  seedCache(
+    models: readonly DiscoveredOpenAIModel[],
+    source: OpenAIModelDiscoveryResult["source"] = "cache"
+  ): void {
+    this.cache = [...models];
+    this.cachedAtMs = this.clockMs();
+    this.source = source;
+  }
 }

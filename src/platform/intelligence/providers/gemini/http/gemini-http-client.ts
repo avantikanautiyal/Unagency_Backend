@@ -112,7 +112,7 @@ export class SimulatedGeminiHttpClient implements IGeminiHttpClient {
     if (injected) return failure(injected);
 
     const modelMatch = request.path.match(/models\/([^/:]+)/);
-    const model = modelMatch?.[1] ?? "gemini-2.0-flash";
+    const model = modelMatch?.[1] ?? "gemini-2.5-flash";
     const contents = request.body?.contents as Array<Record<string, unknown>> | undefined;
     const hasVision = contents?.some((c) =>
       Array.isArray(c.parts) &&

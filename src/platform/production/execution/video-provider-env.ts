@@ -7,13 +7,7 @@ import {
   ALL_VIDEO_PROVIDER_SPECS,
   type VerifiedVideoProviderSpec,
 } from "../../intelligence/providers/video/configs/verified-video-provider-specs";
-
-function isEnabled(env: NodeJS.ProcessEnv, enableVar: string, hasCredential: boolean): boolean {
-  const flag = env[enableVar]?.trim().toLowerCase();
-  if (flag === "false" || flag === "0" || flag === "no") return false;
-  if (flag === "true" || flag === "1" || flag === "yes") return hasCredential;
-  return hasCredential;
-}
+import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export function resolveVideoApiKey(
   env: NodeJS.ProcessEnv,
@@ -34,11 +28,12 @@ export function isVideoProviderConfigured(
 ): boolean {
   if (spec.secretEnvVar) {
     const ak = env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim();
-    const sk = env[spec.secretEnvVar]?.trim();
-    return Boolean(ak && sk) && isEnabled(env, spec.enableEnvVar, true);
+    // Single-key Kling dashboards issue one access token; reuse as JWT secret when SK is absent.
+    const sk = env[spec.secretEnvVar]?.trim() || ak;
+    return Boolean(ak && sk) && isProviderEnableFlagOn(env, spec.enableEnvVar, true);
   }
   const credential = resolveVideoApiKey(env, spec.credentialEnvVar);
-  return isEnabled(env, spec.enableEnvVar, Boolean(credential));
+  return isProviderEnableFlagOn(env, spec.enableEnvVar, Boolean(credential));
 }
 
 /** LIVE executable — requires verified adapter code + credentials + enable. */
@@ -69,14 +64,13 @@ export function evaluateVideoProviderEnv(
   return ALL_VIDEO_PROVIDER_SPECS.map((spec) => {
     const configured = (() => {
       if (spec.secretEnvVar) {
-        return Boolean(
-          env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim() &&
-            env[spec.secretEnvVar]?.trim()
-        );
+        const ak = env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim();
+        const sk = env[spec.secretEnvVar]?.trim() || ak;
+        return Boolean(ak && sk);
       }
       return Boolean(resolveVideoApiKey(env, spec.credentialEnvVar));
     })();
-    const enabled = isEnabled(env, spec.enableEnvVar, configured);
+    const enabled = isProviderEnableFlagOn(env, spec.enableEnvVar, configured);
     const verified = spec.vendorApiVerified;
     const executable = verified && enabled && configured;
     return {

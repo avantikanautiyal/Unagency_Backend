@@ -17,8 +17,10 @@ import { OpenAIModelResolver } from "../models/model-resolver";
 import { buildManifestFromDiscovery } from "../models/manifest-from-discovery";
 import { OpenAIProviderAdapter } from "../adapters/openai-adapter";
 import { OpenAIDispatcher } from "../dispatcher/openai-dispatcher";
+import { ensureOpenAIImageModels, enrichDiscoveredModel } from "../capabilities/capability-enricher";
 import type {
   DesiredCapabilityProfile,
+  DiscoveredOpenAIModel,
   OpenAIAuthenticationConfig,
   OpenAIModelDiscoveryResult,
   OpenAIModelResolution,
@@ -75,11 +77,28 @@ export async function createOpenAIProvider(
   if (mode === "simulated") discovery.markSource("simulated");
 
   const discovered = await discovery.discover(true);
-  if (!discovered.ok) return discovered;
-
   const resolver = new OpenAIModelResolver(nowIso);
+  let inventoryModels: DiscoveredOpenAIModel[];
+  if (!discovered.ok) {
+    // Transient vendor outages (e.g. Cloudflare 522) must not block API boot —
+    // seed chat + image models so LIVE dispatch can retry when the vendor recovers.
+    console.warn(
+      `⚠️  [AI OS] OpenAI discovery failed (${discovered.error.message}) — using seeded inventory`
+    );
+    inventoryModels = ensureOpenAIImageModels([
+      enrichDiscoveredModel({ id: "gpt-4o", owned_by: "openai" }),
+      enrichDiscoveredModel({ id: "gpt-4o-mini", owned_by: "openai" }),
+      enrichDiscoveredModel({ id: "gpt-4.1", owned_by: "openai" }),
+      enrichDiscoveredModel({ id: "gpt-4.1-mini", owned_by: "openai" }),
+    ]);
+    discovery.seedCache(inventoryModels, mode === "live" ? "cache" : "simulated");
+  } else {
+    inventoryModels = ensureOpenAIImageModels(discovered.value.models);
+    // Keep discovery cache aligned with seeded image models for translateRequest lookups.
+    discovery.seedCache(inventoryModels, discovered.value.source);
+  }
 
-  const provisionalManifest = buildManifestFromDiscovery(discovered.value.models, {
+  const provisionalManifest = buildManifestFromDiscovery(inventoryModels, {
     status: "registered",
     maturity: "experimental",
     nowIso: nowIso(),
@@ -123,7 +142,7 @@ export async function createOpenAIProvider(
     }
   }
 
-  const manifest = buildManifestFromDiscovery(discovered.value.models, {
+  const manifest = buildManifestFromDiscovery(inventoryModels, {
     status: lifecycleStatus,
     maturity,
     nowIso: nowIso(),

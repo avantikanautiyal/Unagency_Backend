@@ -77,9 +77,10 @@ function authFromEnv(
   spec: (typeof ALL_VIDEO_PROVIDER_SPECS)[number]
 ): VendorVideoAuthContext {
   if (spec.secretEnvVar) {
+    const accessKey = env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim();
     return {
-      accessKey: env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim(),
-      secretKey: env[spec.secretEnvVar]?.trim(),
+      accessKey,
+      secretKey: env[spec.secretEnvVar]?.trim() || accessKey,
     };
   }
   return { apiKey: resolveVideoApiKey(env, spec.credentialEnvVar) };

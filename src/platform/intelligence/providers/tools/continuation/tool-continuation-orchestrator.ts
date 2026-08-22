@@ -35,6 +35,7 @@ import {
   parseAndValidateJson,
   validateSchemaDocument,
 } from "../schema/json-schema-validator";
+import { coerceJsonText } from "../structured/structured-output-execution";
 import type { IToolInvocationStore } from "../idempotency/tool-invocation-store";
 
 export interface ToolContinuationRequest {
@@ -107,8 +108,8 @@ export class ToolContinuationOrchestrator {
         tools: openaiTools,
         tool_choice: round === 0 ? "auto" : "auto",
       };
-      if (input.structuredOutput && round === this.deps.config.maxRounds - 1) {
-        // Prefer structured on final-ish rounds; still validate server-side always.
+      if (input.structuredOutput && (openaiTools.length === 0 || round === this.deps.config.maxRounds - 1)) {
+        // Prefer structured immediately when no tools; otherwise on final-ish rounds.
         payload.response_format = {
           type: "json_schema",
           json_schema: {
@@ -175,15 +176,29 @@ export class ToolContinuationOrchestrator {
           structuredOutputValid = validated.ok;
           if (!validated.ok) {
             return success({
-              providerResult: {
-                ...lastResult,
-                success: false,
-                status: "failed",
-                error: {
-                  code: "STRUCTURED_OUTPUT_INVALID",
-                  message: validated.error.message,
+              providerResult: withToolMeta(
+                {
+                  ...lastResult,
+                  success: false,
+                  status: "failed",
+                  error: {
+                    code: "STRUCTURED_OUTPUT_INVALID",
+                    message: validated.error.message,
+                  },
                 },
-              },
+                {
+                  modelRounds,
+                  toolRounds,
+                  totalToolCallsRequested: totalRequested,
+                  totalToolCallsExecuted: totalExecuted,
+                  totalToolCallsDenied: totalDenied,
+                  totalToolFailures: totalFailures,
+                  structuredOutputValid: false,
+                  budgetExhausted,
+                  sideEffectExecuted,
+                  blockProviderFailover: sideEffectExecuted,
+                }
+              ),
               orchestration: {
                 modelRounds,
                 toolRounds,
@@ -886,15 +901,16 @@ function mergeFeatures(
     : [];
   const set = new Set([...fromOptions, "tool_calling", "tools"]);
   if (structured) {
+    // Canonical adapter features (capabilityFeatures) — not OpenAI-only aliases.
     set.add("json_mode");
-    set.add("structured_outputs");
+    set.add("response_format");
   }
   return [...set];
 }
 
 function extractContent(output: Record<string, unknown>): string {
-  if (typeof output.content === "string") return output.content;
-  if (output.content != null) return JSON.stringify(output.content);
+  if (typeof output.content === "string") return coerceJsonText(output.content);
+  if (output.content != null) return coerceJsonText(JSON.stringify(output.content));
   return "";
 }
 

@@ -4,6 +4,7 @@
 
 import { ExperienceIntelligenceEngine } from "../engine/experience-intelligence-engine";
 import { InMemoryExperienceRepository } from "../experience-repository/in-memory-experience-repository";
+import type { IExperienceRepository } from "../interfaces/experience-intelligence";
 import { DefaultExperienceExtractor } from "../extraction/experience-extractor";
 import { DefaultExperienceBuilder } from "../experience-builder/default-experience-builder";
 import { DefaultRootCauseAnalyzer } from "../root-cause/root-cause-analyzer";
@@ -16,13 +17,14 @@ import type { IExperienceIntelligenceEngine } from "../interfaces/experience-int
 
 export interface ExperienceIntelligencePlatform {
   readonly engine: IExperienceIntelligenceEngine;
-  readonly repository: InMemoryExperienceRepository;
+  readonly repository: IExperienceRepository;
 }
 
 export interface CreateExperienceIntelligenceOptions {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
+  readonly repository?: IExperienceRepository;
 }
 
 export function createExperienceIntelligencePlatform(
@@ -32,7 +34,7 @@ export function createExperienceIntelligencePlatform(
   const nowIso = options.nowIso ?? (() => new Date().toISOString());
   const clockMs = options.clockMs ?? (() => Date.now());
 
-  const repository = new InMemoryExperienceRepository(nowIso, createId);
+  const repository = options.repository ?? new InMemoryExperienceRepository(nowIso, createId);
   const builder = new DefaultExperienceBuilder(nowIso);
   const extractor = new DefaultExperienceExtractor(builder, createId);
 

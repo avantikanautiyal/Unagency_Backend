@@ -53,10 +53,33 @@ export const getStreamChatToken = asyncHandler(async (req: RequestUser) => {
 export const listCollaborationChannels = asyncHandler(
   async (req: RequestUser) => {
     const userId = String(req.user?.userId || "");
-    const channels = await collaborationChannelService.listChannelsForUser(userId);
+    const brandId = req.query.brandId ? String(req.query.brandId) : undefined;
+    const channels = await collaborationChannelService.listChannelsForUser(
+      userId,
+      { brandId }
+    );
     return new ApiResponse(200, channels, "channels fetched");
   }
 );
+
+export const ensureBrandChannel = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user?.userId || "");
+  const brandId = String(req.body?.brandId || "").trim();
+  if (!brandId) throw new ApiError("brandId is required", 400);
+  const channel = await collaborationChannelService.ensureForBrand({
+    userId,
+    brandId,
+  });
+  return new ApiResponse(200, channel, "brand channel ready");
+});
+
+export const listChannelMembers = asyncHandler(async (req: RequestUser) => {
+  const members = await collaborationChannelService.listMembers({
+    userId: String(req.user!.userId),
+    channelId: String(req.params.channelId || ""),
+  });
+  return new ApiResponse(200, members, "members fetched");
+});
 
 export const listChannelMessages = asyncHandler(async (req: RequestUser) => {
   const messages = await collaborationChannelService.listMessages({

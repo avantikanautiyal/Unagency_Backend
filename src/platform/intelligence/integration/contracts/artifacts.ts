@@ -31,6 +31,8 @@ export interface RepositoryUpdateSummary {
   readonly experiencesSaved: number;
   readonly repositoryCount: number;
   readonly snapshotId?: string;
+  readonly memoryRecordsStored?: number;
+  readonly knowledgeChunksIndexed?: number;
 }
 
 export interface IntegrationContextTrace {

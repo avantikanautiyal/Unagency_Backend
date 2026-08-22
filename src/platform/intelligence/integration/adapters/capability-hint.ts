@@ -25,6 +25,9 @@ export function resolveExplicitCapabilityHint(
 ): string | undefined {
   const meta = request.metadata ?? {};
   const candidates = [
+    typeof meta.briefPrimaryCapability === "string"
+      ? meta.briefPrimaryCapability
+      : undefined,
     typeof meta.capabilityHint === "string" ? meta.capabilityHint : undefined,
     typeof meta.capabilityId === "string" ? meta.capabilityId : undefined,
   ];
@@ -43,29 +46,60 @@ export function applyExplicitCapabilityHint(
   if (!hint) return task;
 
   const capabilityId = asCapabilityId(hint);
+  const fromBrief =
+    typeof request.metadata?.briefId === "string" && request.metadata.briefId
+      ? `StructuredBrief ${request.metadata.briefId}`
+      : "API/client";
   const primaryReq = {
     capabilityId,
     label: hint,
     priority: 1,
     confidence: 1,
-    rationale: `Authoritative capabilityHint from API/client: ${hint}`,
+    rationale: `Authoritative capabilityHint from ${fromBrief}: ${hint}`,
   };
+
+  const supportingFromBrief = Array.isArray(request.metadata?.briefRequiredCapabilities)
+    ? (request.metadata!.briefRequiredCapabilities as unknown[])
+        .map((x) => String(x))
+        .filter((id) => id !== hint && RUNTIME_INVENTORY_CAPABILITIES.has(id))
+        .map((id, i) => ({
+          capabilityId: asCapabilityId(id),
+          label: id,
+          priority: i + 2,
+          confidence: 0.9,
+          rationale: `Supporting capability from StructuredBrief`,
+        }))
+    : [];
 
   return {
     ...task,
     capabilityMap: {
       primary: capabilityId,
-      requirements: [primaryReq, ...task.capabilityMap.requirements.filter(
-        (r) => String(r.capabilityId) !== hint
-      )],
+      requirements: [
+        primaryReq,
+        ...supportingFromBrief,
+        ...task.capabilityMap.requirements.filter(
+          (r) =>
+            String(r.capabilityId) !== hint &&
+            !supportingFromBrief.some(
+              (s) => String(s.capabilityId) === String(r.capabilityId)
+            )
+        ),
+      ],
       confidence: 1,
       rationale: primaryReq.rationale,
     },
     structuredTask: {
       ...task.structuredTask,
       capabilityId,
-      title: `Capability ${hint}`,
-      description: `Explicit runtime capability: ${hint}`,
+      title:
+        typeof request.metadata?.briefIntent === "string"
+          ? `Brief:${request.metadata.briefIntent}`
+          : `Capability ${hint}`,
+      description:
+        typeof request.metadata?.briefIntent === "string"
+          ? `Structured brief intent=${request.metadata.briefIntent}; capability=${hint}`
+          : `Explicit runtime capability: ${hint}`,
     },
   };
 }

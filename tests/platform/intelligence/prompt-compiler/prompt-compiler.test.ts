@@ -25,6 +25,11 @@ describe("PromptCompiler", () => {
     expect(result.value.compiled.messages.some((m) => m.content.includes("org_1"))).toBe(
       true
     );
+    expect(
+      result.value.compiled.messages.some((m) =>
+        m.content.includes("name=Acme Studio")
+      )
+    ).toBe(true);
   });
 
   it("injects knowledge summary", async () => {

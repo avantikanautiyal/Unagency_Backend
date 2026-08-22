@@ -16,6 +16,9 @@ export const DEFAULT_FAILOVER_CATEGORIES: ReadonlySet<PerformanceFailureCategory
     "provider_internal",
     "unavailable",
     "circuit_open",
+    "unsupported_capability",
+    // Provider leaf errors that aren't classified more specifically still warrant trying the next leaf.
+    "unknown",
   ]);
 
 /** Categories that must NOT trigger failover by default. */
@@ -24,7 +27,6 @@ export const DEFAULT_NO_FAILOVER_CATEGORIES: ReadonlySet<PerformanceFailureCateg
     "invalid_request",
     "tenant_violation",
     "invalid_asset",
-    "unsupported_capability",
     "authentication",
     "configuration",
     "infrastructure",
@@ -69,10 +71,20 @@ export function classifyExecutionFailure(input: {
   if (msg.includes("circuit breaker") || msg.includes("circuit_open") || code === "CIRCUIT_OPEN") {
     return "circuit_open";
   }
-  if (code.includes("RATE") || msg.includes("rate limit") || msg.includes("rate_limit")) {
+  if (code.includes("RATE") || msg.includes("rate limit") || msg.includes("rate_limit") || /\bhttp\s*429\b/.test(msg) || msg.includes("too many requests")) {
     return "rate_limit";
   }
-  if (code.includes("QUOTA") || msg.includes("quota")) {
+  // DeepSeek/OpenAI-compat billing: HTTP 402 Payment Required, insufficient balance, etc.
+  if (
+    code.includes("QUOTA") ||
+    msg.includes("quota") ||
+    /\bhttp\s*402\b/.test(msg) ||
+    msg.includes("payment required") ||
+    msg.includes("insufficient balance") ||
+    msg.includes("insufficient_quota") ||
+    msg.includes("out of credit") ||
+    msg.includes("billing")
+  ) {
     return "quota";
   }
   if (
@@ -82,6 +94,16 @@ export function classifyExecutionFailure(input: {
     msg.includes("api key")
   ) {
     return "authentication";
+  }
+  // Leaf/model inventory mismatches — recoverable via another provider/model.
+  if (
+    msg.includes("not declared in the manifest") ||
+    msg.includes("not available in") ||
+    msg.includes("unsupported") ||
+    code.includes("UNSUPPORTED") ||
+    (msg.includes("capability") && !msg.includes("invalid"))
+  ) {
+    return "unsupported_capability";
   }
   if (
     code.includes("VALIDATION") ||
@@ -93,13 +115,6 @@ export function classifyExecutionFailure(input: {
   }
   if (msg.includes("content policy") || msg.includes("content_policy") || msg.includes("safety")) {
     return "content_policy";
-  }
-  if (
-    msg.includes("unsupported") ||
-    code.includes("UNSUPPORTED") ||
-    msg.includes("capability")
-  ) {
-    return "unsupported_capability";
   }
   if (
     msg.includes("mongo") ||

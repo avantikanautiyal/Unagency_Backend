@@ -101,10 +101,24 @@ function mapRequest(request: ProviderAdapterRequest, wireModelId: string): Provi
     ],
   }));
 
+  const wantJson =
+    request.features.includes("json_mode") ||
+    request.features.includes("response_format") ||
+    request.features.includes("structured_outputs");
+
   return Object.freeze({
     operation: "generateContent",
     path: `/models/${wireModelId}:generateContent`,
-    body: Object.freeze({ contents }),
+    body: Object.freeze({
+      contents,
+      ...(wantJson
+        ? {
+            generationConfig: Object.freeze({
+              responseMimeType: "application/json",
+            }),
+          }
+        : {}),
+    }),
   });
 }
 

@@ -85,6 +85,18 @@ export const HIGGSFIELD_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("higgsfi
   { label: "Higgsfield Video" },
 ]);
 
+export const HEYGEN_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("heygen", [
+  { label: "Heygen" },
+]);
+
+export const SEEDANCE_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("seedance", [
+  { label: "Seedance 2" },
+]);
+
+export const WAN_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("wan", [
+  { label: "Wan 2.5" },
+]);
+
 export const ALL_VIDEO_PROVIDER_CONFIGS: readonly VideoProviderConfig[] = [
   RUNWAY_VIDEO_CONFIG,
   KLING_VIDEO_CONFIG,
@@ -94,6 +106,9 @@ export const ALL_VIDEO_PROVIDER_CONFIGS: readonly VideoProviderConfig[] = [
   PIXVERSE_VIDEO_CONFIG,
   GOOGLE_VEO_VIDEO_CONFIG,
   HIGGSFIELD_VIDEO_CONFIG,
+  HEYGEN_VIDEO_CONFIG,
+  SEEDANCE_VIDEO_CONFIG,
+  WAN_VIDEO_CONFIG,
 ];
 
 export function videoConfigByProviderId(providerId: string): VideoProviderConfig | undefined {

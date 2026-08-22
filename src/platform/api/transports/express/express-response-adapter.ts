@@ -27,6 +27,16 @@ export function sendApiResponse(res: Response, apiResponse: ApiResponse): void {
     return;
   }
 
+  if (apiResponse.binary) {
+    if (!res.getHeader("Content-Type")) {
+      res.setHeader("Content-Type", apiResponse.binary.contentType);
+    }
+    res.setHeader("Content-Length", String(apiResponse.binary.bytes.byteLength));
+    res.setHeader("Cache-Control", "private, max-age=60");
+    res.end(apiResponse.binary.bytes);
+    return;
+  }
+
   if (apiResponse.body === undefined || apiResponse.body === null) {
     res.end();
     return;

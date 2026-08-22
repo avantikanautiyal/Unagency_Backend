@@ -24,6 +24,7 @@ import {
   VERIFIED_VIDEO_PROVIDER_SPECS,
   ALL_VIDEO_PROVIDER_SPECS,
 } from "../../../src/platform/intelligence/providers/video/configs/verified-video-provider-specs";
+import { BLOCKED_IMAGE_PROVIDER_SPECS } from "../../../src/platform/intelligence/providers/image/configs/verified-image-provider-specs";
 
 const RUNTIME_INVENTORY_CAPS = new Set([
   "text.generate",
@@ -35,6 +36,7 @@ const RUNTIME_INVENTORY_CAPS = new Set([
   "audio.transcribe",
   "audio.synthesize",
   "embedding.generate",
+  "research.web_search",
 ]);
 
 describe("M9.5J capability→runtime coverage guard", () => {
@@ -60,6 +62,7 @@ describe("M9.5J capability→runtime coverage guard", () => {
       if (c.startsWith("audio.")) expect(modality).toBe("audio");
       if (c === "vision.analyze") expect(modality).toBe("multimodal");
       if (c.includes("embedding")) expect(modality).toBe("embedding");
+      if (c.startsWith("research.")) expect(modality).toBe("text");
     }
   });
 
@@ -86,6 +89,13 @@ describe("M9.5J provider inventory→leaf coverage guard", () => {
 
   it("blocked audio specs are never vendorApiVerified", () => {
     for (const b of BLOCKED_AUDIO_PROVIDER_SPECS) {
+      expect(b.vendorApiVerified).toBe(false);
+      expect(b.blockedReason).toBeTruthy();
+    }
+  });
+
+  it("blocked image specs are never vendorApiVerified", () => {
+    for (const b of BLOCKED_IMAGE_PROVIDER_SPECS) {
       expect(b.vendorApiVerified).toBe(false);
       expect(b.blockedReason).toBeTruthy();
     }

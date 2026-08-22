@@ -39,6 +39,7 @@ import type { IIntelligenceGateway } from "../interfaces/intelligence-gateway";
 import { GatewayLoggingMiddleware } from "../middleware/gateway-middleware";
 import { registerMockPlatformArtifacts } from "../mocks/register-mock-platform";
 import { GatewayValidator } from "../validation/gateway-validator";
+import { seedProductionProvidersIntoRegistry } from "../../../os/composition/create-production-negotiation";
 
 export interface IntelligencePlatform {
   readonly gateway: IIntelligenceGateway;
@@ -59,6 +60,17 @@ export interface IntelligencePlatform {
 export interface PlatformCompositionOptions {
   readonly config?: IntelligencePlatformConfig;
   readonly registerMocks?: boolean;
+  /**
+   * Production integration engine (13-stage pipeline).
+   * When provided, the orchestrator routes through this instead of the
+   * placeholder runtime walker, and mock capabilities are NOT registered.
+   */
+  readonly integration?: import("../../integration/interfaces/integration").IIntelligenceOsIntegrationEngine;
+  /**
+   * Production capability registry — shared with the rest of the platform.
+   * When provided, the gateway uses it instead of creating an empty one.
+   */
+  readonly capabilityRegistry?: ICapabilityRegistry;
 }
 
 /**
@@ -72,11 +84,19 @@ export class PlatformCompositionRoot {
     const kernelRoot = new CompositionRoot();
     const container = kernelRoot.compose({ config });
     const kernel = container.resolve(Tokens.Kernel);
+    const authorizationPolicy = container.resolve(Tokens.AuthorizationPolicy);
+    const trustGate = container.resolve(Tokens.TrustGate);
+    const classifier = container.resolve(Tokens.DataClassifier);
+    const auditLogger = container.resolve(Tokens.AuditLogger);
     const eventBus = container.resolve(Tokens.EventBus);
     const eventFactory = container.resolve(Tokens.EventFactory) as EventFactory;
     const telemetry = container.resolve(Tokens.Telemetry) as ITelemetry;
 
-    const capabilityRegistry = new CapabilityRegistry();
+    // Use the injected production registry if available, otherwise create a
+    // local one (dev/testing). When the production registry is used, mocks
+    // are NOT registered — real capabilities come from the production platform.
+    const capabilityRegistry: ICapabilityRegistry =
+      options.capabilityRegistry ?? new CapabilityRegistry();
     const capabilityCatalog = new CapabilityCatalog(capabilityRegistry);
 
     const providerHealth = new InMemoryProviderHealthStore();
@@ -86,7 +106,18 @@ export class PlatformCompositionRoot {
       providerCapabilityMatrix
     );
 
-    if (options.registerMocks !== false) {
+    // Production path: seed metadata providers so gateway planning can select
+    // healthy leaves. (LIVE bytes still dispatch via providerRuntimeRegistry.)
+    if (options.integration) {
+      seedProductionProvidersIntoRegistry(
+        providerRegistry,
+        providerCapabilityMatrix,
+        providerHealth
+      );
+    }
+
+    // Only register mocks when no real integration engine is wired in
+    if (!options.integration && options.registerMocks !== false) {
       registerMockPlatformArtifacts({
         capabilityRegistry,
         providerRegistry,
@@ -104,9 +135,12 @@ export class PlatformCompositionRoot {
       eventFactory,
     });
 
+    // When a production integration engine is provided, the orchestrator routes
+    // through it (13 real stages). Otherwise it uses the placeholder walker.
     const orchestrator = createIntelligenceOrchestrator({
       runtime,
       logger: telemetry.logger,
+      integration: options.integration,
     });
 
     const healthAggregator = new GatewayHealthAggregator({
@@ -126,6 +160,10 @@ export class PlatformCompositionRoot {
       orchestrator,
       runtime,
       healthAggregator,
+      authorization: authorizationPolicy,
+      trustGate,
+      classifier,
+      auditLogger,
       middleware: [new GatewayLoggingMiddleware(telemetry.logger)],
     });
 

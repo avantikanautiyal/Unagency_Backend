@@ -13,7 +13,10 @@ import { sampleContextBuildRequest } from "../../../../src/platform/intelligence
 
 describe("KnowledgeIntelligenceEngine", () => {
   it("produces a knowledge snapshot", async () => {
-    const engine = createKnowledgeIntelligenceEngine({ enableCache: false });
+    const engine = createKnowledgeIntelligenceEngine({
+      enableCache: false,
+      usePlaceholders: true,
+    });
     const result = await engine.query(sampleKnowledgeRequest());
 
     expect(result.ok).toBe(true);
@@ -24,7 +27,10 @@ describe("KnowledgeIntelligenceEngine", () => {
   });
 
   it("filters deprecated and expired documents", async () => {
-    const engine = createKnowledgeIntelligenceEngine({ enableCache: false });
+    const engine = createKnowledgeIntelligenceEngine({
+      enableCache: false,
+      usePlaceholders: true,
+    });
     const result = await engine.snapshot(sampleKnowledgeRequest());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -34,7 +40,10 @@ describe("KnowledgeIntelligenceEngine", () => {
   });
 
   it("propagates identity into snapshot", async () => {
-    const engine = createKnowledgeIntelligenceEngine({ enableCache: false });
+    const engine = createKnowledgeIntelligenceEngine({
+      enableCache: false,
+      usePlaceholders: true,
+    });
     const result = await engine.snapshot(sampleKnowledgeRequest());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -53,13 +62,19 @@ describe("KnowledgeIntelligenceEngine", () => {
       "brand"
     ).build();
 
-    const engine = createKnowledgeIntelligenceEngine({ enableCache: false });
+    const engine = createKnowledgeIntelligenceEngine({
+      enableCache: false,
+      usePlaceholders: true,
+    });
     const result = await engine.query(request);
     expect(result.ok).toBe(true);
   });
 
   it("uses cache on second query", async () => {
-    const engine = createKnowledgeIntelligenceEngine({ enableCache: true });
+    const engine = createKnowledgeIntelligenceEngine({
+      enableCache: true,
+      usePlaceholders: true,
+    });
     const request = sampleKnowledgeRequest();
     const first = await engine.snapshot(request);
     const second = await engine.snapshot(request);
@@ -158,7 +173,10 @@ describe("Knowledge pipeline components", () => {
 
   it("caches snapshots", async () => {
     const cache = new InMemoryKnowledgeCache();
-    const engine = createKnowledgeIntelligenceEngine({ enableCache: false });
+    const engine = createKnowledgeIntelligenceEngine({
+      enableCache: false,
+      usePlaceholders: true,
+    });
     const snapshot = await engine.snapshot(sampleKnowledgeRequest());
     expect(snapshot.ok).toBe(true);
     if (!snapshot.ok) return;

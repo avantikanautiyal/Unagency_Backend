@@ -102,6 +102,12 @@ export class OpenAIDispatcher implements IProviderDispatcher {
         headers: {},
         metadata: {},
         createdAt: this.nowIso(),
+        timeoutPolicy: {
+          requestTimeoutMs:
+            request.timeoutPolicy?.executionTimeoutMs ??
+            adapterRequest.timeoutMs ??
+            120_000,
+        },
       },
       {
         executionId: asSdkExecutionId(String(request.context.executionId)),

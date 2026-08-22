@@ -22,6 +22,7 @@ import type { InMemoryTenantService } from "../tenants/in-memory-tenant-service"
 import type { IExecutionIntelligenceApiService } from "../execution-intelligence";
 import { evaluateReadiness } from "../runtime/readiness";
 import { resolveEnterpriseApiExecutionMode } from "../runtime/execution-mode";
+import { resolveProductMode } from "../../os/contracts/product-mode";
 import { getEnterpriseApiRuntime } from "../runtime/bootstrap-enterprise-api";
 
 export interface ControllerDeps {
@@ -125,6 +126,11 @@ export async function dispatchController(
     const metadata = (body.metadata ?? {}) as Record<string, unknown>;
     const toolNames = body.toolNames ?? metadata.toolNames;
     const structuredOutput = body.structuredOutput ?? metadata.structuredOutput;
+    const productMode = resolveProductMode({
+      ...metadata,
+      ...(body.productMode ? { productMode: body.productMode } : {}),
+      ...(body.creationMode ? { creationMode: body.creationMode } : {}),
+    });
     const createReq: CreateExecutionRequest = {
       prompt: String(body.prompt ?? ""),
       // Prefer body when present so spoof attempts fail AuthorizationError (403).
@@ -147,6 +153,8 @@ export async function dispatchController(
       structuredOutput: structuredOutput as CreateExecutionRequest["structuredOutput"],
       metadata: {
         ...metadata,
+        productMode,
+        creationMode: productMode,
         ...(toolNames !== undefined ? { toolNames } : {}),
         ...(structuredOutput !== undefined ? { structuredOutput } : {}),
       },
@@ -181,11 +189,26 @@ export async function dispatchController(
       includeDeleted: q.includeDeleted === "true",
     });
   }
+  if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_content")) {
+    const apiRuntime = getEnterpriseApiRuntime();
+    const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
+    const token = String(request.query?.token ?? "").trim();
+    if (!delivery) {
+      return failure(new ValidationError("Media delivery unavailable"));
+    }
+    if (!token) {
+      return failure(new ValidationError("token query parameter is required"));
+    }
+    return delivery.resolveArtifactBinaryByToken(params.artifactId, token);
+  }
+
   if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_media") && tenant) {
     const apiRuntime = getEnterpriseApiRuntime();
     const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
     if (delivery) {
-      return delivery.resolveArtifactMediaUrl(params.artifactId, tenant.organizationId);
+      return delivery.resolveArtifactMediaUrl(params.artifactId, tenant.organizationId, {
+        publicOrigin: publicOriginFromRequest(request),
+      });
     }
     return failure(new ValidationError("Media delivery unavailable"));
   }
@@ -255,6 +278,15 @@ export async function dispatchController(
     }
     if (routeId.includes("_evaluation")) return await deps.executions.evaluation(execId, tenant);
     if (routeId.includes("_experience")) return await deps.executions.experience(execId, tenant);
+    if (routeId.includes("_workflow-follow-up") && routeId.includes("_consume")) {
+      return deps.executions.consumeWorkflowFollowUp(execId, tenant);
+    }
+    if (routeId.includes("_workflow-follow-up")) {
+      return deps.executions.getWorkflowFollowUp(execId, tenant);
+    }
+    if (routeId.includes("_auto-delivery")) {
+      return deps.executions.getAutoDelivery(execId, tenant);
+    }
 
     if (deps.executionIntelligence && request.method === "GET") {
       if (routeId.includes("_model-decision")) {
@@ -306,10 +338,12 @@ export async function dispatchController(
     const mode =
       getEnterpriseApiRuntime()?.executionMode ??
       resolveEnterpriseApiExecutionMode({});
+    const durableStores = getEnterpriseApiRuntime()?.platform.durableStores;
     return success(
       await evaluateReadiness({
         executionMode: mode,
-        durableStores: getEnterpriseApiRuntime()?.platform.durableStores,
+        durableStores,
+        asyncMedia: durableStores?.asyncMedia,
       })
     );
   }
@@ -338,7 +372,118 @@ export async function dispatchController(
   if (routeId.includes("_files") && request.method === "GET") {
     return success({ fileId: params.fileId });
   }
-  if (routeId.includes("_reviews")) return success([]);
+  if (routeId.includes("_os_refinements") && tenant) {
+    const idem =
+      (request.headers["idempotency-key"] ??
+        request.headers["x-idempotency-key"]) as string | undefined;
+    if (request.method === "POST" && !params.refinementId) {
+      return deps.executions.requestOsRefinement(tenant, body, idem);
+    }
+    if (params.refinementId && routeId.includes("_question")) {
+      return deps.executions.getOsRefinementQuestion(params.refinementId, tenant);
+    }
+    if (params.refinementId && routeId.includes("_answers")) {
+      return deps.executions.submitOsRefinementAnswer(
+        params.refinementId,
+        tenant,
+        body,
+        idem
+      );
+    }
+    if (params.refinementId && routeId.includes("_complete")) {
+      return deps.executions.completeOsRefinement(params.refinementId, tenant, idem);
+    }
+    if (params.refinementId) {
+      return deps.executions.getOsRefinement(params.refinementId, tenant);
+    }
+  }
+
+  if (routeId.includes("_os_artifacts") && tenant && params.artifactId) {
+    if (routeId.includes("_versions")) {
+      return deps.executions.listOsArtifactVersions(params.artifactId, tenant);
+    }
+    const versionRaw = request.query?.version;
+    const version = versionRaw != null ? Number(versionRaw) : undefined;
+    return deps.executions.getOsArtifact(
+      params.artifactId,
+      tenant,
+      Number.isFinite(version) ? version : undefined
+    );
+  }
+
+  if (routeId.includes("_os_deliveries") && tenant) {
+    const idem =
+      (request.headers["idempotency-key"] ??
+        request.headers["x-idempotency-key"]) as string | undefined;
+    if (routeId.includes("_authorize")) {
+      return deps.executions.authorizeOsDelivery(tenant, body);
+    }
+    if (params.deliveryId && routeId.includes("_cancel")) {
+      return deps.executions.cancelOsDelivery(params.deliveryId, tenant);
+    }
+    if (params.deliveryId && request.method === "GET") {
+      return deps.executions.getOsDelivery(params.deliveryId, tenant);
+    }
+    if (request.method === "POST") {
+      return deps.executions.createOsDelivery(tenant, body, idem);
+    }
+  }
+
+  if (routeId.includes("_os_reviews") && tenant) {
+    const idem =
+      (request.headers["idempotency-key"] ??
+        request.headers["x-idempotency-key"]) as string | undefined;
+    if (params.reviewId && routeId.includes("_decision")) {
+      const executionId = String(body.executionId ?? "");
+      return deps.executions.submitHumanReviewDecision(executionId, tenant, {
+        reviewId: params.reviewId,
+        decision: body.decision as "APPROVED" | "REJECTED" | "REQUEST_CHANGES",
+        reviewer: String(body.reviewer ?? principal?.principalId ?? "reviewer"),
+        comments: body.comments ? String(body.comments) : undefined,
+      });
+    }
+    if (params.reviewId) {
+      return deps.executions.getOsReview(params.reviewId, tenant);
+    }
+    void idem;
+  }
+
+  if (routeId.includes("_os_executions") && params.executionId && tenant) {
+    if (routeId.includes("_manifest")) {
+      return deps.executions.getOsManifest(params.executionId, tenant);
+    }
+    if (routeId.includes("_review") && !routeId.includes("task-graph")) {
+      return deps.executions.getOsPendingReview(params.executionId, tenant);
+    }
+    if (
+      routeId.includes("_plan") &&
+      !routeId.includes("task-graph") &&
+      !routeId.includes("_planning")
+    ) {
+      return deps.executions.getExecutionPlan(params.executionId, tenant);
+    }
+    if (routeId.includes("task-graph") && routeId.includes("_resume")) {
+      return deps.executions.resumeTaskGraph(params.executionId, tenant);
+    }
+    if (routeId.includes("task-graph") && routeId.includes("_cancel")) {
+      return deps.executions.cancelTaskGraph(
+        params.executionId,
+        tenant,
+        body.reason ? String(body.reason) : undefined
+      );
+    }
+    if (routeId.includes("task-graph") && request.method === "POST") {
+      return deps.executions.executeTaskGraph(params.executionId, tenant, {
+        maxConcurrency: body.maxConcurrency != null ? Number(body.maxConcurrency) : undefined,
+        requestId: request.requestId,
+      });
+    }
+    if (routeId.includes("task-graph") && request.method === "GET") {
+      return deps.executions.getTaskGraphStatus(params.executionId, tenant);
+    }
+  }
+
+  if (routeId.includes("_reviews") && !routeId.includes("_os_")) return success([]);
   if (routeId.includes("_webhooks") && request.method === "POST") {
     return success({
       webhookId: `wh_${Date.now()}`,
@@ -348,8 +493,84 @@ export async function dispatchController(
       active: true,
     });
   }
-  if (routeId.includes("_brand-profiles")) return success([]);
-  if (routeId.includes("_knowledge-bases")) return success([]);
+  if (routeId.includes("_brand-profiles")) {
+    try {
+      const mongooseNs = await import("mongoose");
+      const mongoose = (mongooseNs as { default?: typeof mongooseNs }).default ?? mongooseNs;
+      if (mongoose.connection?.readyState !== 1) return success([]);
+      const organizationId = tenant?.organizationId ?? principal?.organizationId;
+      if (!organizationId || !mongoose.isValidObjectId(organizationId)) return success([]);
+      const Brands = (await import("../../../models/brand.model")).default;
+      const { toBrandDto } = await import("../../../services/brand-service");
+      const docs = await Brands.find({ organizationId: new mongoose.Types.ObjectId(organizationId) }).lean();
+      const profiles = docs.map((doc: typeof docs[0]) => {
+        const dto = toBrandDto(doc as Parameters<typeof toBrandDto>[0]);
+        const gp = (dto.guidelinesProfile ?? {}) as Record<string, unknown>;
+        return {
+          id: dto.id,
+          organizationId: dto.organizationId,
+          name: dto.name,
+          industry: dto.industry ?? null,
+          voice: dto.voice ?? null,
+          positioning: dto.positioning ?? null,
+          guidelines: dto.guidelines ?? null,
+          targetAudience: dto.targetAudience ?? null,
+          website: dto.website ?? null,
+          colors: dto.colors ?? [],
+          logoAssetId: dto.logoAssetId ?? null,
+          tone: gp.tone ?? null,
+          personality: gp.brandPersonality ?? null,
+          writingStyle: gp.writingStyle ?? null,
+          completeness: computeBrandCompleteness(dto),
+          createdAt: dto.createdAt ?? null,
+          updatedAt: dto.updatedAt ?? null,
+        };
+      });
+      return success(profiles);
+    } catch {
+      return success([]);
+    }
+  }
+
+  if (routeId.includes("_knowledge-bases")) {
+    try {
+      const mongooseNs = await import("mongoose");
+      const mongoose = (mongooseNs as { default?: typeof mongooseNs }).default ?? mongooseNs;
+      if (mongoose.connection?.readyState !== 1) return success([]);
+      const organizationId = tenant?.organizationId ?? principal?.organizationId;
+      if (!organizationId || !mongoose.isValidObjectId(organizationId)) return success([]);
+      const q = request.query ?? {};
+      const brandId = typeof q.brandId === "string" ? q.brandId : undefined;
+      const { searchKnowledgeChunksDetailed } = await import(
+        "../../../services/knowledge-document-index-service"
+      );
+      const hits = await searchKnowledgeChunksDetailed({
+        organizationId,
+        brandId,
+        q: typeof q.q === "string" ? q.q : "",
+        limit: q.limit ? Number(q.limit) : 20,
+      });
+      // Group by documentId to produce document-level knowledge base records.
+      const byDoc = new Map<string, { documentId: string; brandId?: string; title: string; chunkCount: number; organizationId: string }>();
+      for (const hit of hits) {
+        const existing = byDoc.get(hit.documentId);
+        if (existing) {
+          existing.chunkCount += 1;
+        } else {
+          byDoc.set(hit.documentId, {
+            documentId: hit.documentId,
+            brandId: hit.brandId,
+            title: hit.title,
+            chunkCount: 1,
+            organizationId: hit.organizationId,
+          });
+        }
+      }
+      return success(Array.from(byDoc.values()));
+    } catch {
+      return success([]);
+    }
+  }
 
   // M10.17 — Enterprise /v1/search* thin adapter over the same
   // ProductSearchService used by the legacy /search routes (no second
@@ -407,4 +628,23 @@ export async function dispatchController(
   }
 
   return success({ ok: true, routeId });
+}
+
+function computeBrandCompleteness(dto: Record<string, unknown>): "COMPLETE" | "PARTIAL" | "EMPTY" {
+  const fields = [dto.name, dto.voice, dto.positioning, dto.guidelines, dto.targetAudience];
+  const filled = fields.filter((f) => typeof f === "string" && (f as string).trim().length > 0).length;
+  if (filled === 0) return "EMPTY";
+  if (filled >= 4) return "COMPLETE";
+  return "PARTIAL";
+}
+
+/** Prefer proxy/host headers so Expo Image can hit the same origin as the API client. */
+function publicOriginFromRequest(request: ApiRequest): string {
+  const forwardedHost = request.headers["x-forwarded-host"]?.trim();
+  const host = forwardedHost || request.headers.host?.trim();
+  const proto =
+    request.headers["x-forwarded-proto"]?.trim() ||
+    (host?.includes("localhost") || host?.startsWith("127.") ? "http" : "https");
+  if (host) return `${proto}://${host}`;
+  return process.env.ENTERPRISE_PUBLIC_API_ORIGIN?.trim() || "http://127.0.0.1:4000";
 }

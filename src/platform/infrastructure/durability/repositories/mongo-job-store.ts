@@ -98,12 +98,9 @@ export class MongoJobStore implements IJobStore {
           leaseExpiresAt: { $lte: nowIsoLease },
         },
         {
+          // Must not $set and $unset the same paths — Mongo rejects that conflict.
           $set: {
             status: "queued",
-            reservedBy: null,
-            reservationId: null,
-            leaseId: null,
-            leaseExpiresAt: null,
             updatedAt: nowIso,
           },
           $unset: {

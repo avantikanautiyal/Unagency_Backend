@@ -5,6 +5,11 @@
  * Responsibilities: Pipeline through validator → initializer → dispatcher → runtime → aggregator.
  * Usage: Constructed via createIntelligenceOrchestrator factory.
  * Future Extension: Parallel dispatch, real retry/fallback execution.
+ *
+ * PHASE 0 — NOT THE PRODUCTION HTTP ORCHESTRATOR.
+ * Production requests travel: Enterprise Gateway → ExecutionApiService → IntegrationPipeline.
+ * This class belongs to the Kernel / IntelligenceGateway control-plane stack and is not
+ * bootstrapped by app.ts. Do not treat it as a competing production authority.
  */
 
 import { randomUUID } from "crypto";

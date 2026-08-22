@@ -45,6 +45,8 @@ export interface ControllableDispatcherOptions {
 }
 
 export class ControllableDispatcher implements IProviderDispatcher {
+  /** Phase 0 marker — detectable by production composition assertions. */
+  readonly __unagencySimulatedDispatcher = true as const;
   mode: DispatcherMode;
   streamingSupported: boolean;
   failuresBeforeSuccess: number;

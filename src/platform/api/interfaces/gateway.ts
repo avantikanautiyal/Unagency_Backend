@@ -128,6 +128,134 @@ export interface IExecutionApiService {
   cost(executionId: string, tenant: TenantContext): Promise<Result<ExecutionCostSummary>>;
   evaluation(executionId: string, tenant: TenantContext): Promise<Result<ExecutionEvaluationSummary>>;
   experience(executionId: string, tenant: TenantContext): Promise<Result<ExecutionExperienceSummary>>;
+  getWorkflowFollowUp(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../services/workflow-follow-up").WorkflowFollowUpPayload | null>>;
+  consumeWorkflowFollowUp(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../services/workflow-follow-up").WorkflowFollowUpPayload | null>>;
+  getAutoDelivery(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<{ readonly deliveryId?: string; readonly error?: string } | null>>;
+  /** Phase 1 — tenant-isolated StructuredBrief retrieval. */
+  getBrief(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../../os/brief/contracts/structured-brief").StructuredBrief>>;
+  /** Phase 2 — tenant-isolated BrandContext retrieval. */
+  getBrandContext(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../../os/brand/contracts/brand-context").BrandContext>>;
+  /** Phase 3 — tenant-isolated KnowledgeContext retrieval. */
+  getKnowledgeContext(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../../os/knowledge/contracts/knowledge-context").KnowledgeContext>>;
+  /** Phase 4 — tenant-isolated ExecutionPlan retrieval (planning only; no task dispatch). */
+  getExecutionPlan(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../../os/execution-intelligence/contracts/execution-plan").ExecutionPlan>>;
+  /** Phase 5 — execute/resume/cancel/status for Task Graph. */
+  executeTaskGraph(
+    executionId: string,
+    tenant: TenantContext,
+    options?: { readonly maxConcurrency?: number; readonly requestId?: string }
+  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
+  resumeTaskGraph(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
+  cancelTaskGraph(
+    executionId: string,
+    tenant: TenantContext,
+    reason?: string
+  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
+  getTaskGraphStatus(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
+  submitHumanReviewDecision(
+    executionId: string,
+    tenant: TenantContext,
+    input: {
+      readonly reviewId: string;
+      readonly decision: "APPROVED" | "REJECTED" | "REQUEST_CHANGES";
+      readonly reviewer: string;
+      readonly comments?: string;
+    }
+  ): Promise<
+    Result<
+      | import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot
+      | { readonly review: unknown; readonly singleCapability: true }
+    >
+  >;
+  requestOsRefinement(
+    tenant: TenantContext,
+    body: Record<string, unknown>,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>>;
+  getOsRefinement(
+    refinementId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  getOsRefinementQuestion(
+    refinementId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  submitOsRefinementAnswer(
+    refinementId: string,
+    tenant: TenantContext,
+    body: Record<string, unknown>,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>>;
+  completeOsRefinement(
+    refinementId: string,
+    tenant: TenantContext,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>>;
+  getOsArtifact(
+    artifactId: string,
+    tenant: TenantContext,
+    version?: number
+  ): Promise<Result<unknown>>;
+  listOsArtifactVersions(
+    artifactId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  getOsManifest(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  authorizeOsDelivery(
+    tenant: TenantContext,
+    body: Record<string, unknown>
+  ): Promise<Result<unknown>>;
+  createOsDelivery(
+    tenant: TenantContext,
+    body: Record<string, unknown>,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>>;
+  getOsDelivery(
+    deliveryId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  cancelOsDelivery(
+    deliveryId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  getOsReview(
+    reviewId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  getOsPendingReview(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>>;
 }
 
 export interface IStreamingService {

@@ -10,6 +10,7 @@ import { MinimaxVideoProtocol } from "../minimax/minimax-video-protocol";
 import { PixverseVideoProtocol } from "../pixverse/pixverse-video-protocol";
 import { KlingVideoProtocol } from "../kling/kling-video-protocol";
 import { GoogleVeoVideoProtocol } from "../google-veo/google-veo-video-protocol";
+import { SeedanceVideoProtocol } from "../seedance/seedance-video-protocol";
 
 export interface VerifiedVideoProviderSpec {
   readonly canonicalProviderId: string;
@@ -171,6 +172,61 @@ export const HIGGSFIELD_VIDEO_SPEC: VerifiedVideoProviderSpec = {
   },
 };
 
+export const HEYGEN_VIDEO_SPEC: VerifiedVideoProviderSpec = {
+  canonicalProviderId: "provider.heygen",
+  vendor: "heygen",
+  displayName: "Heygen",
+  baseUrl: "https://api.heygen.com",
+  credentialEnvVar: "HEYGEN_API_KEY",
+  enableEnvVar: "HEYGEN_ENABLED",
+  liveSmokeEnvVar: "RUN_LIVE_HEYGEN_VIDEO_SMOKE",
+  vendorApiVerified: false,
+  blockedReason: "API_CONTRACT_UNVERIFIED — avatar/video wire contract not certified in-repo",
+  inventoryModelId: "heygen",
+  wireModelId: "unverified",
+  supportsTextToVideo: false,
+  supportsImageToVideo: false,
+  createProtocol: () => {
+    throw new Error("Heygen has no verified vendor protocol");
+  },
+};
+
+export const SEEDANCE_VIDEO_SPEC: VerifiedVideoProviderSpec = {
+  canonicalProviderId: "provider.seedance",
+  vendor: "seedance",
+  displayName: "Seedance",
+  // WaveSpeed hosts Seedance 2.0; keys are wsk_live_…
+  baseUrl: "https://api.wavespeed.ai",
+  credentialEnvVar: "SEEDANCE_API_KEY",
+  enableEnvVar: "SEEDANCE_ENABLED",
+  liveSmokeEnvVar: "RUN_LIVE_SEEDANCE_VIDEO_SMOKE",
+  vendorApiVerified: true,
+  inventoryModelId: "seedance-2",
+  wireModelId: "bytedance/seedance-2.0/text-to-video",
+  supportsTextToVideo: true,
+  supportsImageToVideo: true,
+  createProtocol: () => new SeedanceVideoProtocol(),
+};
+
+export const WAN_VIDEO_SPEC: VerifiedVideoProviderSpec = {
+  canonicalProviderId: "provider.wan",
+  vendor: "wan",
+  displayName: "Wan",
+  baseUrl: "https://api.wan.ai",
+  credentialEnvVar: "WAN_API_KEY",
+  enableEnvVar: "WAN_ENABLED",
+  liveSmokeEnvVar: "RUN_LIVE_WAN_VIDEO_SMOKE",
+  vendorApiVerified: false,
+  blockedReason: "API_CONTRACT_UNVERIFIED",
+  inventoryModelId: "wan-2-5",
+  wireModelId: "unverified",
+  supportsTextToVideo: false,
+  supportsImageToVideo: false,
+  createProtocol: () => {
+    throw new Error("Wan has no verified vendor protocol");
+  },
+};
+
 export const ALL_VIDEO_PROVIDER_SPECS: readonly VerifiedVideoProviderSpec[] = [
   RUNWAY_VIDEO_SPEC,
   KLING_VIDEO_SPEC,
@@ -180,6 +236,9 @@ export const ALL_VIDEO_PROVIDER_SPECS: readonly VerifiedVideoProviderSpec[] = [
   PIXVERSE_VIDEO_SPEC,
   GOOGLE_VEO_VIDEO_SPEC,
   HIGGSFIELD_VIDEO_SPEC,
+  HEYGEN_VIDEO_SPEC,
+  SEEDANCE_VIDEO_SPEC,
+  WAN_VIDEO_SPEC,
 ];
 
 export const VERIFIED_VIDEO_PROVIDER_SPECS: readonly VerifiedVideoProviderSpec[] =

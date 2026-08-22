@@ -21,7 +21,19 @@ function clamp(n: number): number {
 function outputText(candidate: ConsensusCandidate): string {
   const output = candidate.execution.response?.output ?? {};
   if (typeof output.content === "string") return output.content;
-  return JSON.stringify(output);
+  // Never JSON.stringify full image payloads (multi-MB base64) for scoring heuristics.
+  if (Array.isArray(output.outputs) && output.outputs.length > 0) {
+    return `[${output.outputs.length} media output(s)]`;
+  }
+  if (Array.isArray(output.content)) {
+    return `[array:${output.content.length}]`;
+  }
+  try {
+    const json = JSON.stringify(output);
+    return json.length > 4_000 ? `${json.slice(0, 4_000)}…` : json;
+  } catch {
+    return "[unserializable output]";
+  }
 }
 
 export class DefaultComparisonEngine implements IComparisonEngine {

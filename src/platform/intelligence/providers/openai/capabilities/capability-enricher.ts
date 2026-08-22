@@ -5,6 +5,13 @@
 
 import type { DiscoveredOpenAIModel } from "../contracts/openai-contracts";
 
+/** Always keep these image models in the leaf manifest (LIVE /v1/models may omit them). */
+export const OPENAI_SEEDED_IMAGE_MODELS = [
+  "gpt-image-1",
+  "gpt-image-1.5",
+  "gpt-image-2",
+] as const;
+
 export function enrichDiscoveredModel(
   raw: Readonly<Record<string, unknown>>
 ): DiscoveredOpenAIModel {
@@ -12,7 +19,11 @@ export function enrichDiscoveredModel(
   const lower = id.toLowerCase();
 
   const isEmbedding = lower.includes("embedding");
-  const isImage = lower.includes("dall-e") || lower.includes("image");
+  const isImage =
+    lower.includes("dall-e") ||
+    lower.includes("gpt-image") ||
+    lower === "chatgpt-image-latest" ||
+    (lower.includes("image") && !lower.includes("vision"));
   const isAudio =
     lower.includes("whisper") ||
     lower.includes("tts") ||
@@ -30,7 +41,7 @@ export function enrichDiscoveredModel(
   const lifecycle =
     lower.includes("preview") || lower.includes("alpha")
       ? "preview"
-      : lower.includes("instruct") || lower.endsWith("-0314")
+      : lower.includes("instruct") || lower.endsWith("-0314") || lower.includes("dall-e")
         ? "legacy"
         : "active";
 
@@ -67,6 +78,28 @@ export function enrichDiscoveredModel(
         : undefined,
     raw,
   });
+}
+
+/** Merge discovered inventory with known image models required for image.generate. */
+export function ensureOpenAIImageModels(
+  models: readonly DiscoveredOpenAIModel[]
+): DiscoveredOpenAIModel[] {
+  const byId = new Map(models.map((m) => [m.id, m]));
+  for (const id of OPENAI_SEEDED_IMAGE_MODELS) {
+    if (byId.has(id)) continue;
+    byId.set(
+      id,
+      enrichDiscoveredModel({
+        id,
+        owned_by: "openai",
+        created: Math.floor(Date.now() / 1000),
+      })
+    );
+  }
+  // Drop retired DALL·E ids that OpenAI no longer serves.
+  byId.delete("dall-e-3");
+  byId.delete("dall-e-2");
+  return Array.from(byId.values());
 }
 
 function estimateContextWindow(id: string): number {

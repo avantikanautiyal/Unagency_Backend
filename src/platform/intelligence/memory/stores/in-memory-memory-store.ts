@@ -10,6 +10,7 @@ import type {
 } from "../contracts/memory-models";
 import { MemoryNotFoundError } from "../errors";
 import type { IMemoryStore } from "../interfaces/memory-ports";
+import { matchesMemoryRequest } from "./memory-store-filters";
 
 export class InMemoryMemoryStore implements IMemoryStore {
   private readonly records = new Map<string, MemoryRecord>();
@@ -31,7 +32,7 @@ export class InMemoryMemoryStore implements IMemoryStore {
     let items = [...this.records.values()];
 
     if (request) {
-      items = items.filter((record) => matchesRequest(record, request));
+      items = items.filter((record) => matchesMemoryRequest(record, request));
     }
 
     if (request?.limit !== undefined) {
@@ -52,46 +53,6 @@ export class InMemoryMemoryStore implements IMemoryStore {
   async clear(): Promise<void> {
     this.records.clear();
   }
-}
-
-function matchesRequest(record: MemoryRecord, request: MemoryRequest): boolean {
-  if (
-    String(record.identity.organizationId) !==
-    String(request.identity.organizationId)
-  ) {
-    return false;
-  }
-  if (
-    String(record.identity.workspaceId) !== String(request.identity.workspaceId)
-  ) {
-    return false;
-  }
-  if (request.scope && record.scope.kind !== request.scope.kind) {
-    return false;
-  }
-  if (request.scope && record.scope.scopeId !== request.scope.scopeId) {
-    return false;
-  }
-  if (
-    request.classifications?.length &&
-    !request.classifications.includes(record.classification)
-  ) {
-    return false;
-  }
-  if (!request.includeDeleted && record.lifecycleState === "deleted") {
-    return false;
-  }
-  if (request.from) {
-    const from = Date.parse(request.from);
-    const created = Date.parse(record.metadata.createdAt);
-    if (Number.isFinite(from) && created < from) return false;
-  }
-  if (request.to) {
-    const to = Date.parse(request.to);
-    const created = Date.parse(record.metadata.createdAt);
-    if (Number.isFinite(to) && created > to) return false;
-  }
-  return true;
 }
 
 /** Future store ports — interfaces only, not implemented. */

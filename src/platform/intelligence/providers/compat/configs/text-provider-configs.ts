@@ -50,7 +50,7 @@ export const MISTRAL_CONFIG: TextProviderConfig = {
   baseUrl: "https://api.mistral.ai/v1",
   credentialEnvVar: "MISTRAL_API_KEY",
   enableEnvVar: "MISTRAL_ENABLED",
-  seedWireModels: ["mistral-large", "mistral-small", "mistral-embed"],
+  seedWireModels: ["mistral-large", "mistral-small", "magistral-medium", "mistral-embed"],
   protocol: "openai_compatible",
   streamingCapable: true,
   toolsCapable: true,
@@ -118,11 +118,82 @@ export const XAI_CONFIG: TextProviderConfig = {
   baseUrl: "https://api.x.ai/v1",
   credentialEnvVar: "XAI_API_KEY",
   enableEnvVar: "XAI_ENABLED",
-  seedWireModels: ["grok-2", "grok-2-mini"],
+  seedWireModels: ["grok-4", "grok-2", "grok-2-mini"],
   protocol: "openai_compatible",
   streamingCapable: true,
   toolsCapable: true,
   structuredOutputCapable: true,
+};
+
+export const ALIBABA_CONFIG: TextProviderConfig = {
+  vendor: "alibaba",
+  canonicalProviderId: "provider.alibaba",
+  wireProviderId: "alibaba",
+  adapterId: "adapter.alibaba.text",
+  sdkClientId: "sdk.alibaba.text",
+  version: V,
+  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  credentialEnvVar: "ALIBABA_API_KEY",
+  enableEnvVar: "ALIBABA_ENABLED",
+  seedWireModels: ["qwen3-235b-a22b", "qwen-plus"],
+  protocol: "openai_compatible",
+  streamingCapable: true,
+  toolsCapable: true,
+  structuredOutputCapable: true,
+};
+
+export const MOONSHOT_CONFIG: TextProviderConfig = {
+  vendor: "moonshot",
+  canonicalProviderId: "provider.moonshot",
+  wireProviderId: "moonshot",
+  adapterId: "adapter.moonshot.text",
+  sdkClientId: "sdk.moonshot.text",
+  version: V,
+  baseUrl: "https://api.moonshot.cn/v1",
+  credentialEnvVar: "MOONSHOT_API_KEY",
+  enableEnvVar: "MOONSHOT_ENABLED",
+  seedWireModels: ["kimi-k2", "moonshot-v1-128k"],
+  protocol: "openai_compatible",
+  streamingCapable: true,
+  toolsCapable: true,
+  structuredOutputCapable: true,
+};
+
+export const META_CONFIG: TextProviderConfig = {
+  vendor: "meta",
+  canonicalProviderId: "provider.meta",
+  wireProviderId: "meta",
+  adapterId: "adapter.meta.text",
+  sdkClientId: "sdk.meta.text",
+  version: V,
+  baseUrl: "https://api.llama.meta.com/compat/v1",
+  credentialEnvVar: "META_API_KEY",
+  enableEnvVar: "META_ENABLED",
+  seedWireModels: [
+    "Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "Llama-4-Scout-17B-16E-Instruct",
+  ],
+  protocol: "openai_compatible",
+  streamingCapable: true,
+  toolsCapable: true,
+  structuredOutputCapable: true,
+};
+
+export const PERPLEXITY_CONFIG: TextProviderConfig = {
+  vendor: "perplexity",
+  canonicalProviderId: "provider.perplexity",
+  wireProviderId: "perplexity",
+  adapterId: "adapter.perplexity.text",
+  sdkClientId: "sdk.perplexity.text",
+  version: V,
+  baseUrl: "https://api.perplexity.ai",
+  credentialEnvVar: "PERPLEXITY_API_KEY",
+  enableEnvVar: "PERPLEXITY_ENABLED",
+  seedWireModels: ["sonar", "sonar-pro", "sonar-deep-research"],
+  protocol: "openai_compatible",
+  streamingCapable: true,
+  toolsCapable: false,
+  structuredOutputCapable: false,
 };
 
 export const COMPAT_TEXT_PROVIDER_CONFIGS: readonly TextProviderConfig[] = [
@@ -133,6 +204,10 @@ export const COMPAT_TEXT_PROVIDER_CONFIGS: readonly TextProviderConfig[] = [
   FIREWORKS_CONFIG,
   OPENROUTER_CONFIG,
   XAI_CONFIG,
+  ALIBABA_CONFIG,
+  MOONSHOT_CONFIG,
+  META_CONFIG,
+  PERPLEXITY_CONFIG,
 ];
 
 export function compatConfigByVendor(vendor: string): TextProviderConfig | undefined {

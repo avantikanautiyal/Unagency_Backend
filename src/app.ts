@@ -49,7 +49,9 @@ import {
   logEnterpriseApiMount,
   parseEnterpriseApiExecutionModeFromEnv,
   validateEnterpriseApiExecutionConfig,
+  wireIntelligenceControlPlane,
 } from "./platform/api/runtime";
+import { savedRouteService } from "./services/saved-route-service";
 import { createExpressPlatformAdapter } from "./platform/api/transports/express";
 import type { EnterpriseApiRuntime } from "./platform/api/runtime";
 import { closeSharedRedisClient } from "./platform/infrastructure/durability";
@@ -59,154 +61,7 @@ const app = express();
 //Use of CORS
 app.use(cors());
 
-// const StripeWebhook = asyncHandler(async (req, res) => {
-//   const sigHeader = req.headers["stripe-signature"] as string;
-//   const stripe = new Stripe(`${process.env.stripe_secret_key}`, {
-//     apiVersion: "2024-06-20", // Ensure you specify the latest API version
-//   });
-//   let event;
-//   event = await stripe.webhooks.constructEventAsync(
-//     req.body,
-//     sigHeader,
-//     process.env.stripe_webhook_endpoint_secret
-//   );
-
-//   let invoice;
-//   let status;
-//   switch (event.type) {
-//     case "checkout.session.completed":
-//       const session = event.data.object;
-//       await CheckoutSession.create({
-//         sessionId: session.id,
-//         customerId: session.customer,
-//         paymentStatus: session.payment_status,
-//         amountTotal: session.amount_total,
-//         currency: session.currency,
-//       });
-//       console.log("Checkout session completed");
-//       break;
-//     case "customer.subscription.created":
-//       await Subscriptions.create({
-//         subscriptionId: event.data.object?.id,
-//         customerId: event.data.object?.customer,
-//         planId: event.data.object?.items.data[0].plan.id,
-//         status: event.data.object?.status,
-//         currentPeriodStart: new Date(
-//           event.data.object?.current_period_start * 1000
-//         ),
-//         currentPeriodEnd: new Date(
-//           event.data.object?.current_period_end * 1000
-//         ),
-//       });
-//       status = event.data.object.status;
-//       const customer = await StripeCustomers.findOne({
-//         stripeCustomerId: event.data.object?.customer,
-//       });
-//       const email = customer?.email;
-//       const name = customer?.name;
-//       const planName = event.data.object?.items?.data[0]?.plan?.nickname;
-//       const amount = event.data.object?.items?.data[0]?.plan?.amount;
-//       const currency = event.data.object?.items?.data[0]?.plan?.currency;
-//       const interval = event.data.object?.items?.data[0]?.plan?.interval;
-//       const current_period_start = event.data.object?.current_period_start;
-//       const current_period_end = event.data.object?.current_period_end;
-
-//       // await EmailQueue.add("membership taken", {
-//       //   action: "SUBSCRIPTION",
-//       //   data: {
-//       //     email: email,
-//       //     customerName: name,
-//       //     planName: planName,
-//       //     startDate: current_period_start,
-//       //     nextRenualDate: current_period_end,
-//       //     BillingCycle: interval,
-//       //     price: `${currency} ${amount}`
-//       //   },
-//       //   notification: new Notification(planName as string, "", "COMMON") as any,
-//       // })
-//       console.log("Customer subscription initiated");
-//       break;
-//     case "customer.subscription.updated":
-//       await Subscriptions.findOneAndUpdate(
-//         { subscriptionId: event.data.object.id },
-//         {
-//           status: event.data.object.status,
-//           planId: event.data.object.items.data[0].plan.id, // Updated Plan ID
-//           currentPeriodStart: new Date(
-//             event.data.object.current_period_start * 1000
-//           ),
-//           currentPeriodEnd: new Date(
-//             event.data.object.current_period_end * 1000
-//           ),
-//         },
-//         { new: true }
-//       );
-//       status = event.data.object.status;
-
-//       console.log("Customer subscription updated");
-//       break;
-//     case "customer.subscription.deleted":
-//       await Subscriptions.findOneAndUpdate(
-//         { subscriptionId: event.data.object.id },
-//         { status: "canceled" }
-//       );
-//       status = event.data.object.status;
-//       console.log("Customer subscription canceled");
-//       break;
-//     case "invoice.paid":
-//       invoice = event.data.object;
-//       const customerId = invoice.customer || null; // Get the customer ID
-//       const paymentIntentId = invoice.payment_intent; // Get the payment method used
-
-//       //Making Payment Default Method by Payment Intent Id
-//       if (paymentIntentId !== null) {
-//         const paymentIntent = await stripe.paymentIntents.retrieve(
-//           paymentIntentId as string
-//         );
-//         const paymentMethodId: string = paymentIntent?.payment_method as string; // Get payment method ID from payment intent
-//         await stripe.customers.update(customerId as string, {
-//           invoice_settings: {
-//             default_payment_method: paymentMethodId,
-//           },
-//         });
-//       }
-
-//       await Invoices.create({
-//         invoiceId: invoice.id,
-//         subscriptionId: invoice.subscription,
-//         customerId: invoice.customer,
-//         amountDue: invoice.amount_due,
-//         amountPaid: invoice.amount_paid,
-//         currency: invoice.currency,
-//         status: "paid",
-//         paymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
-//       });
-//       console.log(invoice.default_payment_method, "invoice paid");
-//       break;
-//     case "invoice.payment_failed":
-//       invoice = event.data.object;
-//       if (invoice.charge !== null) {
-//         await Invoices.create({
-//           invoiceId: invoice.id,
-//           subscriptionId: invoice.subscription,
-//           customerId: invoice.customer,
-//           amountDue: invoice.amount_due,
-//           currency: invoice.currency,
-//           status: "failed",
-//           failureMessage: "Payment failed without a specific message",
-//           failedPaymentDate: new Date(invoice.created * 1000), // Convert timestamp to JS Date
-//         });
-//       }
-//       console.log(invoice, "invoice payment failed");
-//       break;
-//     default:
-//       null;
-//   }
-//   res.sendStatus(200);
-// });
-
 //Use of Express JSON CONFIG
-// app.use("/webhook", express.raw({ type: "application/json" }), StripeWebhook);
 app.use("/razorpay/webhook", express.raw({ type: "application/json" }), razorpayWebhook)
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -220,6 +75,7 @@ if (enterpriseExecutionMode !== "live") {
   enterpriseApiRuntime = bootstrapEnterpriseApiRuntime({
     executionMode: enterpriseExecutionMode,
   });
+  savedRouteService.setBrandBrainEngine(enterpriseApiRuntime.platform.brandBrainEngine);
   app.use(
     createExpressPlatformAdapter({ gateway: enterpriseApiRuntime.platform.gateway })
   );
@@ -259,19 +115,67 @@ app.use("/razorpay", razorpayRouter);
 
 app.use("/", helloWorldRouter);
 
-// Invalid Path Error Handler
-app.use(RouteErrorHandler);
-// Error handler MiddleWare
-app.use(ErrorHandler);
+// Business Platform analytics endpoint — returns campaign/execution/credit analytics.
+// Protected by VerifyUserHandler in production; accessible now for wiring verification.
+app.get("/intelligence/business/analytics/:organizationId", VerifyUserHandler, (req, res) => {
+  const bp = enterpriseApiRuntime?.platform?.businessPlatform;
+  if (!bp) {
+    return res.status(503).json({ status: "unavailable" });
+  }
+  const result = bp.analytics(req.params.organizationId, req.query.workspaceId as string | undefined);
+  if (!result.ok) {
+    return res.status(400).json({ error: result.error.message });
+  }
+  return res.json(result.value);
+});
+
+// Intelligence costs endpoint — returns aggregated cost data from the telemetry store.
+// Public (no auth) for ops/infra visibility; use VerifyUserHandler if exposing to users.
+app.get("/intelligence/costs", (_req, res) => {
+  const store = enterpriseApiRuntime?.platform?.telemetryStore;
+  if (!store) {
+    return res.status(503).json({ status: "unavailable", message: "Telemetry store not yet ready" });
+  }
+  const { aggregateCosts } = require("./platform/infrastructure/observability/costs/cost-intelligence");
+  const snapshot = aggregateCosts(store.listCosts());
+  return res.json(snapshot);
+});
+
+// Intelligence Platform health endpoint — reports the status of every
+// subsystem in the kernel (capability registry, provider registry,
+// planning engine, orchestrator, runtime).
+// Public: no auth required (ops/infra visibility only).
+app.get("/intelligence/health", async (_req, res) => {
+  const gateway = enterpriseApiRuntime?.platform?.intelligencePlatform?.gateway;
+  if (!gateway) {
+    return res.status(503).json({ status: "unavailable", message: "Intelligence Gateway not yet bootstrapped" });
+  }
+  const result = await gateway.health();
+  if (!result.ok) {
+    return res.status(500).json({ status: "error", message: result.error.message });
+  }
+  const httpStatus = result.value.status === "healthy" ? 200 : result.value.status === "degraded" ? 207 : 503;
+  return res.status(httpStatus).json(result.value);
+});
 
 (app as CustomExpress).run = async () => {
   try {
+    // LIVE boots async (provider registry). Mount BEFORE 404/error handlers so
+    // /v1|/v2 executions are reachable — previously live mounted after ErrorHandler
+    // and product generate/enhance calls never hit the Enterprise gateway.
     if (enterpriseExecutionMode === "live") {
       enterpriseApiRuntime = await bootstrapEnterpriseApiRuntimeAsync();
+      savedRouteService.setBrandBrainEngine(enterpriseApiRuntime.platform.brandBrainEngine);
       app.use(
         createExpressPlatformAdapter({ gateway: enterpriseApiRuntime.platform.gateway })
       );
+    } else {
+      await wireIntelligenceControlPlane(enterpriseApiRuntime.platform);
     }
+
+    // Invalid Path Error Handler + Error handler (after all routes, including live /v1)
+    app.use(RouteErrorHandler);
+    app.use(ErrorHandler);
 
     logEnterpriseApiMount(
       enterpriseApiRuntime.executionMode,
@@ -287,6 +191,42 @@ app.use(ErrorHandler);
     if (process.env.ENTERPRISE_API_START_LEGACY_WORKERS !== "false") {
       await import("./background/queue/taskDeadline.queue");
       await import("./background/queue/notificationCron.queue");
+    }
+
+    // Intelligence Orchestrator — control-plane lifecycle coordinator.
+    // Bootstrapped as a singleton after providers are ready so it can observe
+    // execution lifecycle events without blocking the HTTP path.
+    try {
+      const { createIntelligenceOrchestrator } = await import(
+        "./platform/intelligence/orchestrator/factories/create-orchestrator"
+      );
+      const { createExecutionRuntime } = await import(
+        "./platform/intelligence/execution-runtime/factories/create-execution-runtime"
+      );
+      const { InMemoryEventBus } = await import(
+        "./platform/intelligence/events/implementations/in-memory-event-bus"
+      );
+      const { EventFactory } = await import(
+        "./platform/intelligence/events/implementations/event-factory"
+      );
+      const eventBus = new InMemoryEventBus();
+      const eventFactory = new EventFactory(
+        { generate: (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2)}` },
+        { now: () => new Date(), nowIso: () => new Date().toISOString() }
+      );
+      const orchestratorRuntime = createExecutionRuntime({ eventBus, eventFactory });
+      const orchestrator = createIntelligenceOrchestrator({
+        runtime: orchestratorRuntime,
+        includeDefaultMiddleware: true,
+      });
+      // Attach to global so the enterprise gateway can optionally emit lifecycle events.
+      (globalThis as Record<string, unknown>).__intelligenceOrchestrator = orchestrator;
+      console.log("🧠 [AI OS] IntelligenceOrchestrator bootstrapped — control-plane ready");
+    } catch (err) {
+      console.warn(
+        "[AI OS] IntelligenceOrchestrator failed to bootstrap (non-fatal):",
+        err instanceof Error ? err.message : err
+      );
     }
 
     // M10.18 — media processing worker (claimable Mongo jobs; not BullMQ)

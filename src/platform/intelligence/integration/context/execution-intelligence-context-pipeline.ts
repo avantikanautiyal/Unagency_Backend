@@ -52,7 +52,13 @@ export async function buildExecutionIntelligenceContext(input: {
 
   const bundle = resolved.value;
   const contextEngine = createContextIntelligenceEngine();
-  const knowledgeEngine = createKnowledgeIntelligenceEngine({ enableCache: false });
+  const useProductChunks =
+    process.env.ENTERPRISE_API_EXECUTION_MODE === "live" ||
+    process.env.INTELLIGENCE_KNOWLEDGE_PRODUCT_CHUNKS === "true";
+  const knowledgeEngine = createKnowledgeIntelligenceEngine({
+    enableCache: false,
+    useProductChunks,
+  });
   const compiler = createPromptCompiler();
 
   const context = await contextEngine.build({
@@ -67,7 +73,7 @@ export async function buildExecutionIntelligenceContext(input: {
 
   const knowledgeRequest = KnowledgeRequestBuilder.fromIntelligenceContext(
     context.value,
-    "brand"
+    taskReport.request.rawPrompt
   ).build();
   const knowledgeBase = await knowledgeEngine.snapshot(knowledgeRequest);
   if (!knowledgeBase.ok) throw knowledgeBase.error;

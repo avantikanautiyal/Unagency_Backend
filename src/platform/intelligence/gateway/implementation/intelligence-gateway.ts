@@ -13,8 +13,12 @@ import type { IExecutionPlanningEngine } from "../../execution-planning/interfac
 import type { ExecutionSnapshot } from "../../execution-runtime/contracts/execution-snapshot";
 import type { IExecutionRuntime } from "../../execution-runtime/interfaces/execution-runtime";
 import type { IIntelligenceOrchestrator } from "../../orchestrator/interfaces/intelligence-orchestrator";
-import { asExecutionId } from "../../shared/identifiers";
-import type { ExecutionId } from "../../shared/identifiers";
+import {
+  asExecutionId,
+  asOrganizationId,
+  asWorkspaceId,
+  type ExecutionId,
+} from "../../shared/identifiers";
 import { failure, success } from "../../shared/result";
 import type { Result } from "../../shared/result";
 import type {
@@ -28,8 +32,14 @@ import { GatewayError } from "../errors";
 import type { IGatewayHealthAggregator } from "../health/gateway-health";
 import type { IIntelligenceGateway } from "../interfaces/intelligence-gateway";
 import type { IGatewayMiddleware } from "../middleware/gateway-middleware";
-import { applyMockCapabilityOutput } from "../mocks/mock-capability-handlers";
 import type { IGatewayValidator } from "../validation/gateway-validator";
+import type { IAuthorizationPolicy } from "../../security";
+import type {
+  IAuditLogger,
+  IDataClassifier,
+  ITrustGate,
+} from "../../security/interfaces/security";
+import { AuthorizationError } from "../../shared/errors";
 
 export interface IntelligenceGatewayDependencies {
   readonly validator: IGatewayValidator;
@@ -38,6 +48,10 @@ export interface IntelligenceGatewayDependencies {
   readonly orchestrator: IIntelligenceOrchestrator;
   readonly runtime: IExecutionRuntime;
   readonly healthAggregator: IGatewayHealthAggregator;
+  readonly authorization: IAuthorizationPolicy;
+  readonly trustGate?: ITrustGate;
+  readonly classifier?: IDataClassifier;
+  readonly auditLogger?: IAuditLogger;
   readonly middleware?: readonly IGatewayMiddleware[];
   readonly nowIso?: () => string;
   readonly createExecutionId?: () => ExecutionId;
@@ -72,6 +86,45 @@ export class IntelligenceGateway implements IIntelligenceGateway {
       return validated;
     }
 
+    const securityContext = {
+      organizationId: asOrganizationId(String(validated.value.organizationId)),
+      workspaceId: asWorkspaceId(String(validated.value.workspaceId)),
+      actorType: "integration" as const,
+      correlationId: validated.value.correlationId,
+    };
+
+    if (this.deps.trustGate) {
+      const trusted = await this.deps.trustGate.assertTrusted(
+        securityContext,
+        "capability.invoke"
+      );
+      if (!trusted.ok) {
+        await this.afterInvoke(request, false);
+        return trusted;
+      }
+    }
+
+    // Basic tenant-scoped authorization (deny-by-default until principal/roles
+    // plumbing is fully wired).
+    const auth = await this.deps.authorization.authorize({
+      context: securityContext,
+      action: "capability.invoke",
+      resourceType: "capability",
+      resourceId: String(validated.value.capabilityId),
+    });
+    if (!auth.ok) {
+      await this.afterInvoke(request, false);
+      return failure(new AuthorizationError("Authorization policy failed", { cause: auth.error }));
+    }
+    if (!auth.value.allowed) {
+      await this.afterInvoke(request, false);
+      return failure(
+        new AuthorizationError("Authorization denied", {
+          reason: auth.value.reason,
+        })
+      );
+    }
+
     const capabilityCheck = this.deps.validator.validateCapability(
       this.deps.capabilityRegistry,
       {
@@ -95,11 +148,55 @@ export class IntelligenceGateway implements IIntelligenceGateway {
     });
 
     if (!planResult.ok) {
+      console.warn(
+        `🧠 [AI OS] gateway planning failed | ${planResult.error.message} | capability=${String(validated.value.capabilityId)}`
+      );
       await this.afterInvoke(request, false);
       return planResult;
     }
 
-    const executionId = this.createExecutionId();
+    const input = validated.value.input;
+    const rawPrompt =
+      typeof input.rawPrompt === "string"
+        ? input.rawPrompt
+        : typeof input.prompt === "string"
+          ? input.prompt
+          : "";
+
+    let ingressAttributes: Record<string, unknown> = { ...input, rawPrompt };
+    if (this.deps.classifier && rawPrompt.trim()) {
+      const dataClassification = this.deps.classifier.classify(rawPrompt);
+      ingressAttributes = {
+        ...ingressAttributes,
+        dataClassification,
+        rawPrompt:
+          dataClassification === "pii" || dataClassification === "restricted"
+            ? this.deps.classifier.redact(rawPrompt, dataClassification)
+            : rawPrompt,
+      };
+      if (this.deps.auditLogger) {
+        await this.deps.auditLogger.log({
+          action: "gateway.data_classified",
+          context: securityContext,
+          resourceType: "capability",
+          resourceId: String(validated.value.capabilityId),
+          outcome: "success",
+          occurredAt: this.nowIso(),
+          details: { dataClassification },
+        });
+      }
+    }
+
+    const apiExecutionId =
+      typeof input.apiExecutionId === "string"
+        ? input.apiExecutionId
+        : typeof input.executionId === "string"
+          ? input.executionId
+          : undefined;
+    const executionId = apiExecutionId
+      ? asExecutionId(apiExecutionId)
+      : this.createExecutionId();
+
     const orchestration = await this.deps.orchestrator.orchestrate({
       plan: planResult.value,
       runtimeContext: {
@@ -108,7 +205,11 @@ export class IntelligenceGateway implements IIntelligenceGateway {
         workspaceId: validated.value.workspaceId,
         correlationId: validated.value.correlationId,
         attributes: {
+          ...ingressAttributes,
           capabilityId: String(validated.value.capabilityId),
+          ...(apiExecutionId
+            ? { apiExecutionId, executionId: apiExecutionId }
+            : {}),
         },
       },
     });
@@ -132,16 +233,20 @@ export class IntelligenceGateway implements IIntelligenceGateway {
       );
     }
 
-    const output = applyMockCapabilityOutput(
-      String(validated.value.capabilityId),
-      validated.value.input,
-      orchestration.value.aggregated?.output
-    );
+    // Use the real aggregated output from the orchestrator/integration pipeline.
+    // Falls back to the raw input echo only when aggregated output is absent
+    // (e.g. planning-only runs that produce no provider output).
+    const output: Readonly<Record<string, unknown>> =
+      orchestration.value.aggregated?.output ??
+      { capabilityId: String(validated.value.capabilityId), echo: validated.value.input };
 
     const snapshot = await this.deps.runtime.getExecution(sessionId);
     const state = snapshot.ok ? snapshot.value.state : "completed";
+    const invokeOk =
+      orchestration.value.status === "completed" &&
+      orchestration.value.aggregated?.success !== false;
 
-    await this.afterInvoke(request, true);
+    await this.afterInvoke(request, invokeOk);
 
     return success({
       sessionId,
@@ -150,7 +255,7 @@ export class IntelligenceGateway implements IIntelligenceGateway {
       capabilityId: String(validated.value.capabilityId),
       state,
       output,
-      success: orchestration.value.status === "completed",
+      success: invokeOk,
       message: orchestration.value.message,
     });
   }

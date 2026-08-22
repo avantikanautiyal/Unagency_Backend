@@ -22,6 +22,10 @@ import { TogetherSdkWrapper } from "../together/together-sdk-wrapper";
 import { FireworksSdkWrapper } from "../fireworks/fireworks-sdk-wrapper";
 import { CohereSdkWrapper } from "../cohere/cohere-sdk-wrapper";
 import { XaiSdkWrapper } from "../xai/xai-sdk-wrapper";
+import { AlibabaSdkWrapper } from "../alibaba/alibaba-sdk-wrapper";
+import { MoonshotSdkWrapper } from "../moonshot/moonshot-sdk-wrapper";
+import { MetaSdkWrapper } from "../meta/meta-sdk-wrapper";
+import { PerplexitySdkWrapper } from "../perplexity/perplexity-sdk-wrapper";
 
 export const PLACEHOLDER_SDK_VERSION: SdkVersion = {
   major: 0,
@@ -117,6 +121,30 @@ export function createXaiSdkWrapper(
   return new XaiSdkWrapper(baseOptions("xai", options));
 }
 
+export function createAlibabaSdkWrapper(
+  options?: CreateWrapperOptions
+): AlibabaSdkWrapper {
+  return new AlibabaSdkWrapper(baseOptions("alibaba", options));
+}
+
+export function createMoonshotSdkWrapper(
+  options?: CreateWrapperOptions
+): MoonshotSdkWrapper {
+  return new MoonshotSdkWrapper(baseOptions("moonshot", options));
+}
+
+export function createMetaSdkWrapper(
+  options?: CreateWrapperOptions
+): MetaSdkWrapper {
+  return new MetaSdkWrapper(baseOptions("meta", options));
+}
+
+export function createPerplexitySdkWrapper(
+  options?: CreateWrapperOptions
+): PerplexitySdkWrapper {
+  return new PerplexitySdkWrapper(baseOptions("perplexity", options));
+}
+
 export function createAllPlaceholderWrappers(
   options?: CreateWrapperOptions
 ): readonly IProviderSdkClient[] {
@@ -132,5 +160,9 @@ export function createAllPlaceholderWrappers(
     createFireworksSdkWrapper(options),
     createCohereSdkWrapper(options),
     createXaiSdkWrapper(options),
+    createAlibabaSdkWrapper(options),
+    createMoonshotSdkWrapper(options),
+    createMetaSdkWrapper(options),
+    createPerplexitySdkWrapper(options),
   ];
 }

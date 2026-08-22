@@ -37,6 +37,36 @@ export const VALIDATION_SUITES: readonly ValidationSuiteDefinition[] = [
     scenarioIds: ["research_merge", "gateway_e2e"],
     tags: ["research", "gateway"],
   },
+  {
+    suiteId: "phase5_task_graph",
+    name: "Phase 5 Task Graph Executor",
+    scenarioIds: ["task_graph_execution"],
+    tags: ["phase5", "orchestration"],
+  },
+  {
+    suiteId: "phase6_evaluation_governance",
+    name: "Phase 6 Evaluation & Governance",
+    scenarioIds: ["evaluation_governance"],
+    tags: ["phase6", "governance", "evaluation"],
+  },
+  {
+    suiteId: "phase7_refinement_delivery",
+    name: "Phase 7 Structured Refinement & Delivery",
+    scenarioIds: ["refinement_delivery"],
+    tags: ["phase7", "refinement", "delivery"],
+  },
+  {
+    suiteId: "phase8_production_runtime",
+    name: "Phase 8 Production Runtime & Gateway",
+    scenarioIds: ["phase8_production_runtime"],
+    tags: ["phase8", "runtime", "queue", "gateway"],
+  },
+  {
+    suiteId: "phase9_client_experience",
+    name: "Phase 9 OS Client Experience",
+    scenarioIds: ["phase9_client_experience"],
+    tags: ["phase9", "client", "gateway"],
+  },
 ];
 
 export function getValidationSuite(suiteId: string): ValidationSuiteDefinition | undefined {

@@ -11,6 +11,20 @@ function contentOf(c: ConsensusCandidate): unknown {
   return c.execution.response?.output?.content ?? c.execution.response?.output ?? {};
 }
 
+/** Keep sync image/audio media refs through consensus — merge used to drop `outputs`. */
+function preserveMediaFields(
+  primary: ConsensusCandidate
+): Readonly<Record<string, unknown>> {
+  const output = primary.execution.response?.output;
+  if (!output || typeof output !== "object") return {};
+  const extras: Record<string, unknown> = {};
+  if (Array.isArray(output.outputs)) extras.outputs = output.outputs;
+  if (typeof output.base64 === "string") extras.base64 = output.base64;
+  if (typeof output.url === "string") extras.url = output.url;
+  if (typeof output.mimeType === "string") extras.mimeType = output.mimeType;
+  return extras;
+}
+
 export class DefaultMergeEngine implements IMergeEngine {
   merge(
     primary: ConsensusCandidate,
@@ -19,6 +33,7 @@ export class DefaultMergeEngine implements IMergeEngine {
   ): Result<Readonly<Record<string, unknown>>> {
     const primaryContent = contentOf(primary);
     const supportContents = supporting.map(contentOf);
+    const media = preserveMediaFields(primary);
 
     switch (mode) {
       case "none":
@@ -27,6 +42,7 @@ export class DefaultMergeEngine implements IMergeEngine {
             content: primaryContent,
             source: primary.providerId,
             mergeMode: mode,
+            ...media,
           })
         );
 

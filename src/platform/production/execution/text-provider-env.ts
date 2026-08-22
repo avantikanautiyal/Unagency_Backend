@@ -20,6 +20,7 @@ import {
   COHERE_PROVIDER_ID,
 } from "../../intelligence/providers/cohere/constants";
 import { OPENAI_PROVIDER_ID } from "../../intelligence/providers/openai/constants";
+import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export interface NativeTextProviderEnvSpec {
   readonly canonicalProviderId: string;
@@ -62,19 +63,20 @@ export const ALL_TEXT_PROVIDER_ENV_SPECS: readonly (
   ...COMPAT_TEXT_PROVIDER_CONFIGS,
 ];
 
-function isEnabled(env: NodeJS.ProcessEnv, enableVar: string, hasCredential: boolean): boolean {
-  const flag = env[enableVar]?.trim().toLowerCase();
-  if (flag === "false" || flag === "0" || flag === "no") return false;
-  if (flag === "true" || flag === "1" || flag === "yes") return hasCredential;
-  return hasCredential;
-}
-
 export function resolveTextProviderCredential(
   env: NodeJS.ProcessEnv,
   credentialEnvVar: string
 ): string | undefined {
   const value = env[credentialEnvVar]?.trim();
-  return value || undefined;
+  if (value) return value;
+  // Google / Gemini share the same Generative Language API key in product .env.
+  if (credentialEnvVar === "GEMINI_API_KEY") {
+    return env.GOOGLE_API_KEY?.trim() || undefined;
+  }
+  if (credentialEnvVar === "GOOGLE_API_KEY") {
+    return env.GEMINI_API_KEY?.trim() || undefined;
+  }
+  return undefined;
 }
 
 export function isTextProviderConfigured(
@@ -82,7 +84,7 @@ export function isTextProviderConfigured(
   spec: { credentialEnvVar: string; enableEnvVar: string }
 ): boolean {
   const credential = resolveTextProviderCredential(env, spec.credentialEnvVar);
-  return isEnabled(env, spec.enableEnvVar, Boolean(credential));
+  return isProviderEnableFlagOn(env, spec.enableEnvVar, Boolean(credential));
 }
 
 export interface TextProviderEnvStatus {
@@ -99,7 +101,7 @@ export function evaluateTextProviderEnv(env: NodeJS.ProcessEnv = process.env): T
     const credentialEnvVar = spec.credentialEnvVar;
     const enableEnvVar = spec.enableEnvVar;
     const credential = resolveTextProviderCredential(env, credentialEnvVar);
-    const enabled = isEnabled(env, enableEnvVar, Boolean(credential));
+    const enabled = isProviderEnableFlagOn(env, enableEnvVar, Boolean(credential));
     return {
       providerId,
       configured: Boolean(credential),

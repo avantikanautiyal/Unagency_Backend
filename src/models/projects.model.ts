@@ -14,6 +14,21 @@ export interface IProject {
   deadline: Date;
   status: string;
   idleNotificationSent?: boolean;
+  /** AI Create Design origin metadata */
+  origin?: string;
+  executionId?: string;
+  sourceRouteId?: string;
+  artifactId?: string;
+  brandId?: mongoose.Types.ObjectId;
+  productPath?: string;
+  /** Last incomplete Create Design step — describePrompt | generating | routeSelection | assetReady | document | chat */
+  resumeStep?: string;
+  productService?: string;
+  productSubtype?: string;
+  productPlatform?: string;
+  productFormat?: string;
+  productCategory?: string;
+  creativePrompt?: string;
 }
 
 const ProjectSchema = new Schema<IProject>(
@@ -21,7 +36,7 @@ const ProjectSchema = new Schema<IProject>(
     _id: { type: Schema.Types.ObjectId, auto: true },
     userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
     orgId: { type: Schema.Types.ObjectId, ref: "Organisations" },
-    title: { type: String, required: true, unique: true },
+    title: { type: String, required: true },
     category: {
       type: Schema.Types.ObjectId,
       ref: "Categories",
@@ -43,7 +58,7 @@ const ProjectSchema = new Schema<IProject>(
     files: {
       type: [Schema.Types.ObjectId],
       ref: "MediaFile",
-      default: []
+      default: [],
     },
     status: {
       type: String,
@@ -59,8 +74,32 @@ const ProjectSchema = new Schema<IProject>(
       ],
     },
     idleNotificationSent: { type: Boolean, default: false },
+    origin: { type: String, default: "studio" },
+    executionId: { type: String, index: true },
+    sourceRouteId: { type: String, index: true },
+    artifactId: { type: String },
+    brandId: { type: Schema.Types.ObjectId, ref: "Brands" },
+    productPath: { type: String },
+    resumeStep: { type: String },
+    productService: { type: String },
+    productSubtype: { type: String },
+    productPlatform: { type: String },
+    productFormat: { type: String },
+    productCategory: { type: String },
+    creativePrompt: { type: String },
   },
   { collection: "projects", timestamps: true }
+);
+
+ProjectSchema.index({ userId: 1, createdAt: -1 });
+ProjectSchema.index(
+  { userId: 1, executionId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      executionId: { $type: "string", $gt: "" },
+    },
+  }
 );
 
 const Projects = mongoose.model<IProject>("Projects", ProjectSchema);

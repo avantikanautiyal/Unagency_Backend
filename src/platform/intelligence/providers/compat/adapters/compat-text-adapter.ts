@@ -109,8 +109,23 @@ export class CompatTextAdapter extends AbstractTextProviderAdapter {
     }
 
     const wire = mapCanonicalToOpenAIRequest(request, wireModelId);
+    const body = { ...(wire.body as Record<string, unknown>) };
+    // Groq/Mistral/xAI often reject OpenAI json_schema; keep json_object and
+    // rely on server-side schema validation in Integration OS.
+    const rf = body.response_format;
+    if (
+      rf &&
+      typeof rf === "object" &&
+      (rf as { type?: string }).type === "json_schema"
+    ) {
+      body.response_format = { type: "json_object" };
+    }
     return success({
-      value: { ...wire, resolvedModelId: wireModelId },
+      value: {
+        ...wire,
+        body: Object.freeze(body),
+        resolvedModelId: wireModelId,
+      },
       warnings: [],
       droppedFields: [],
     });

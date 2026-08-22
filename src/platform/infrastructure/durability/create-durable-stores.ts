@@ -32,7 +32,7 @@ import {
   type AsyncMediaPlatform,
 } from "./create-async-media-platform";
 import { InMemoryClaimableJobStore } from "./repositories/in-memory-claimable-job-store";
-import { getSharedRedisClient } from "./redis/redis-client-factory";
+import { getSharedRedisClient, pingSharedRedis } from "./redis/redis-client-factory";
 import {
   RedisIdempotencyStore,
   UnavailableIdempotencyStore,
@@ -53,6 +53,11 @@ import type { IModelPerformanceStore } from "../../intelligence/providers/routin
 import { InMemoryModelPerformanceStore } from "../../intelligence/providers/routing/performance/stores/in-memory-model-performance-store";
 import { MongoModelPerformanceStore } from "../../intelligence/providers/routing/performance/stores/mongo-model-performance-store";
 import type { IToolInvocationStore } from "../../intelligence/providers/tools/idempotency/tool-invocation-store";
+import type { OsDurableBundle } from "./create-os-durable-bundle";
+import {
+  createInMemoryOsDurableBundle,
+  createMongoOsDurableBundle,
+} from "./create-os-durable-bundle";
 import { InMemoryToolInvocationStore } from "../../intelligence/providers/tools/idempotency/in-memory-tool-invocation-store";
 import { MongoToolInvocationStore } from "../../intelligence/providers/tools/idempotency/mongo-tool-invocation-store";
 
@@ -70,6 +75,7 @@ export interface DurableStores {
   readonly asyncMedia?: AsyncMediaPlatform;
   /** M9.5H — durable provider/model performance evidence. */
   readonly modelPerformance: IModelPerformanceStore;
+  readonly os?: OsDurableBundle;
   readonly isDurable: boolean;
   readonly composition?: {
     brandBrain: string;
@@ -98,6 +104,7 @@ let testSharedJobStore: InMemoryClaimableJobStore | undefined;
 let testSharedRateLimits: DistributedRateLimitService | undefined;
 let testSharedModelPerformance: InMemoryModelPerformanceStore | undefined;
 let testSharedToolInvocations: InMemoryToolInvocationStore | undefined;
+let testSharedOs: OsDurableBundle | undefined;
 
 /** Test harness — one shared in-memory durable layer simulating Mongo+Redis. */
 export function getSharedTestDurableStores(options?: {
@@ -115,6 +122,7 @@ export function getSharedTestDurableStores(options?: {
     testSharedModelPerformance = new InMemoryModelPerformanceStore();
   }
   if (!testSharedToolInvocations) testSharedToolInvocations = new InMemoryToolInvocationStore();
+  if (!testSharedOs) testSharedOs = createInMemoryOsDurableBundle();
 
   const kv = asKvClient({
     get: (k) => testSharedKv!.get(k),
@@ -144,6 +152,7 @@ export function getSharedTestDurableStores(options?: {
     rateLimits: testSharedRateLimits,
     kv,
     modelPerformance: testSharedModelPerformance!,
+    os: testSharedOs,
     isDurable: true,
     composition: {
       brandBrain: "InMemoryBrandBrainRepository",
@@ -182,6 +191,7 @@ export function resetSharedTestDurableStores(): void {
   testSharedModelPerformance = undefined;
   testSharedToolInvocations?.clear();
   testSharedToolInvocations = undefined;
+  testSharedOs = undefined;
 }
 
 export function createDurableStores(
@@ -215,6 +225,7 @@ export function createDurableStores(
       toolInvocations: new InMemoryToolInvocationStore(),
       asyncMedia,
       modelPerformance: new InMemoryModelPerformanceStore(),
+      os: createInMemoryOsDurableBundle(),
       isDurable: false,
     };
   }
@@ -222,6 +233,9 @@ export function createDurableStores(
   const redis = getSharedRedisClient(env);
   const kv = redis ? asKvClient(redis) : undefined;
   void redisConnectionFromEnv(env);
+  if (redis) {
+    void pingSharedRedis(env);
+  }
 
   const idempotency = kv
     ? new RedisIdempotencyStore(kv)
@@ -263,6 +277,7 @@ export function createDurableStores(
     kv,
     asyncMedia,
     modelPerformance: new MongoModelPerformanceStore(),
+    os: createMongoOsDurableBundle(),
     isDurable: true,
     composition: {
       brandBrain: "MongoBrandBrainRepository",

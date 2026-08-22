@@ -3,10 +3,11 @@
  * Never exposes Runtime/Routing/Providers to clients.
  */
 
-import mongoose from "mongoose";
 import { failure, success, type Result } from "../../intelligence/shared/result";
 import { ValidationError, NotFoundError, AuthorizationError } from "../../intelligence/shared/errors";
+import { runIntegrationViaControlPlane, resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
 import type { IDistributedExecutionEngine } from "../../infrastructure/execution/interfaces/execution";
+import { asJobId } from "../../infrastructure/execution/contracts/job";
 import type { IIntelligenceOsIntegrationEngine } from "../../intelligence/integration/interfaces/integration";
 import {
   asOrganizationId,
@@ -25,11 +26,42 @@ import type {
   TenantContext,
 } from "../contracts";
 import type { IExecutionApiService, IStreamingService } from "../interfaces";
-import { buildExecutionIntelligenceSnapshot } from "../execution-intelligence/projection/build-snapshot";
 import type { ExecutionIntelligenceSnapshot } from "../execution-intelligence";
 import type { EnterpriseApiExecutionMode } from "../runtime/execution-mode";
-import { integrationPipelineModeFor } from "../runtime/execution-mode";
-import { isFirebaseAuthenticatedPrincipal } from "../auth/firebase/firebase-authentication-adapter";
+import {
+  defaultAsyncExecutionBoundary,
+  osLifecycleFromApiStatus,
+  createBriefIntelligenceEngine,
+  createBrandIntelligenceEngine,
+  createKnowledgeIntelligenceOsEngine,
+  createExecutionIntelligenceOsEngine,
+  createProductionNegotiationPlatform,
+  createTaskGraphExecutorEngine,
+  IntegrationTaskCapabilityRunner,
+  InMemoryTaskGraphRunStore,
+  TaskGraphExecutorError,
+  createGovernanceFinalizeService,
+  createRefinementEngine,
+  createOsDeliveryService,
+  type GovernanceDecision,
+  type OsLifecycleState,
+  type StructuredBrief,
+  type BrandContext,
+  type KnowledgeContext,
+  type ExecutionPlan,
+  type TaskGraphRunSnapshot,
+  type IBrandRecordSource,
+  type IKnowledgeHitSource,
+  type ITaskCapabilityRunner,
+  type ITaskGraphRunStore,
+  type GovernanceFinalizeService,
+  type RefinementEngine,
+  type OsDeliveryService,
+} from "../../os";
+import { RefinementError } from "../../os/refinement/contracts/errors";
+import { DeliveryError } from "../../os/delivery/contracts/errors";
+import type { IBrandBrainEngine } from "../../business/brand-brain/interfaces";
+import type { OsDurableBundle } from "../../infrastructure/durability/create-os-durable-bundle";
 import type {
   IArtifactRepository,
   IExecutionExtrasRepository,
@@ -41,118 +73,28 @@ import type {
 } from "../../infrastructure/durability/interfaces/execution-store-ports";
 import { applyExecutionHistoryQuery } from "../../infrastructure/durability/repositories/execution-history-list";
 import type { AsyncExecutionCoordinator } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
-import { isAsyncExecutionRequest } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
-import { isAudioTranscribeCapability } from "../../intelligence/providers/common/resolve-execution-modality";
-import { enrichExecutionMetadataWithProductAssets } from "../../../services/product-asset-intelligence-bridge";
-import { ApiError } from "../../../utils/apiError";
-import {
-  isImageGenerationCapability,
-  isVideoGenerationCapability,
-} from "../../intelligence/providers/common/resolve-execution-modality";
-import {
-  fakeAsyncProviderId,
-} from "../../intelligence/providers/async/fake/fake-async-provider";
+import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
 import { buildExecutionResultPayload } from "./execution-result-payload";
-import {
-  buildPendingApprovals,
-  type PendingToolApprovalPresentation,
-} from "./tool-approval-presentation";
-import { mapProviderOperationToExecutionStatus } from "../../intelligence/providers/async/coordination/map-operation-status";
+import { buildPendingApprovals } from "./tool-approval-presentation";
 import {
   approveToolInvocation,
   type ToolRuntimePlatform,
 } from "../../intelligence/providers/tools/composition/tool-runtime-platform";
+import type { LiveSseExecutionPayload } from "./execution-streaming-service";
 import {
-  startEnterpriseSimulatedStream,
-  type LiveSseExecutionPayload,
-} from "./execution-streaming-service";
+  CANONICAL_INTEGRATION_MODE,
+  type CanonicalStreamHandoff,
+} from "./canonical-execution-spine";
+import { executeCanonicalStream } from "./execution-canonical-stream";
+import { runCreateExecution } from "./execution-create-pipeline";
+import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
+import { mapJobStatus } from "./execution-summary-helpers";
+import { defaultOutputContractRegistry } from "../../os/contracts/output-contract-registry";
+import type { WorkflowFollowUpPayload } from "./workflow-follow-up";
 
-function diagnosticsFromJobSummary(
-  executionId: string,
-  errorMessage: string | undefined,
-  jobSummary: Readonly<Record<string, unknown>>,
-  nowIso: string,
-  jobId?: string,
-  status?: ExecutionResource["status"]
-): ExecutionDiagnostics {
-  return {
-    executionId,
-    rootCause: errorMessage,
-    stages: [
-      { stage: "api_gateway", status: "ok", durationMs: 1 },
-      { stage: "distributed_execution", status: jobId ? "ok" : "skipped" },
-      {
-        stage: "integration_layer",
-        status: status === "failed" ? "error" : "ok",
-      },
-    ],
-    generatedAt: nowIso,
-    executionMode:
-      typeof jobSummary.executionMode === "string"
-        ? jobSummary.executionMode
-        : undefined,
-    providerMode:
-      typeof jobSummary.providerMode === "string"
-        ? jobSummary.providerMode
-        : undefined,
-    provider:
-      typeof jobSummary.provider === "string" ? jobSummary.provider : undefined,
-    model: typeof jobSummary.model === "string" ? jobSummary.model : undefined,
-    routingDecisionId:
-      typeof jobSummary.routingDecisionId === "string"
-        ? jobSummary.routingDecisionId
-        : undefined,
-    contextSnapshotId:
-      typeof jobSummary.contextSnapshotId === "string"
-        ? jobSummary.contextSnapshotId
-        : undefined,
-    promptCompilationId:
-      typeof jobSummary.promptCompilationId === "string"
-        ? jobSummary.promptCompilationId
-        : undefined,
-    brandEnrichmentId:
-      typeof jobSummary.brandEnrichmentId === "string"
-        ? jobSummary.brandEnrichmentId
-        : undefined,
-    brandBrainVersion:
-      typeof jobSummary.brandBrainVersion === "number"
-        ? jobSummary.brandBrainVersion
-        : undefined,
-    knowledgeSnapshotId:
-      typeof jobSummary.knowledgeSnapshotId === "string"
-        ? jobSummary.knowledgeSnapshotId
-        : undefined,
-    inputTokens:
-      typeof jobSummary.inputTokens === "number"
-        ? jobSummary.inputTokens
-        : undefined,
-    outputTokens:
-      typeof jobSummary.outputTokens === "number"
-        ? jobSummary.outputTokens
-        : undefined,
-    totalTokens:
-      typeof jobSummary.totalTokens === "number"
-        ? jobSummary.totalTokens
-        : undefined,
-    providerLatencyMs:
-      typeof jobSummary.providerLatencyMs === "number"
-        ? jobSummary.providerLatencyMs
-        : undefined,
-    artifactId:
-      typeof jobSummary.artifactId === "string"
-        ? jobSummary.artifactId
-        : undefined,
-    evaluationScore:
-      typeof jobSummary.evaluationScore === "number"
-        ? jobSummary.evaluationScore
-        : undefined,
-  };
-}
+
 
 export class ExecutionApiService implements IExecutionApiService {
-  private static readonly MAX_PROMPT_CHARS = 100_000;
-  private static readonly MAX_METADATA_BYTES = 65_536;
-
   private readonly executionStore = new Map<string, ExecutionResource>();
   private readonly artifactStore = new Map<string, ExecutionArtifactRef[]>();
   private readonly idempotencyIndex = new Map<
@@ -168,8 +110,54 @@ export class ExecutionApiService implements IExecutionApiService {
       cost: ExecutionCostSummary;
       evaluation: ExecutionEvaluationSummary;
       experience: ExecutionExperienceSummary;
+      osLifecycle?: OsLifecycleState;
+      governance?: GovernanceDecision;
+      asyncLane?: ReturnType<typeof defaultAsyncExecutionBoundary.attachAsyncExecution>;
+      structuredBrief?: StructuredBrief;
+      structuredBrandContext?: BrandContext;
+      structuredKnowledgeContext?: KnowledgeContext;
+      structuredExecutionPlan?: ExecutionPlan;
+      structuredTaskGraphState?: TaskGraphRunSnapshot;
+      workflowFollowUp?: WorkflowFollowUpPayload;
+      pendingHumanReview?: {
+        readonly reviewId: string;
+        readonly reason: string;
+        readonly requestedAt: string;
+      };
+      autoDelivery?: {
+        readonly deliveryId?: string;
+        readonly error?: string;
+      };
     }
   >();
+
+  private readonly briefIntelligence = createBriefIntelligenceEngine();
+  /** Per-execution brief cache for idempotent same-execution regeneration avoidance. */
+  private readonly briefByExecutionId = new Map<string, StructuredBrief>();
+  private readonly brandByExecutionId = new Map<string, BrandContext>();
+  private readonly knowledgeByExecutionId = new Map<string, KnowledgeContext>();
+  private readonly planByExecutionId = new Map<string, ExecutionPlan>();
+  private readonly taskGraphByExecutionId = new Map<string, TaskGraphRunSnapshot>();
+  /** Stream handoff after canonical OS ingress (brief → plan) before provider streaming. */
+  private readonly streamHandoffByExecutionId = new Map<string, CanonicalStreamHandoff>();
+  private readonly brandIntelligence: ReturnType<typeof createBrandIntelligenceEngine>;
+  private readonly knowledgeIntelligence: ReturnType<
+    typeof createKnowledgeIntelligenceOsEngine
+  >;
+  private readonly executionIntelligence: ReturnType<
+    typeof createExecutionIntelligenceOsEngine
+  >;
+  private readonly taskGraphExecutor: ReturnType<typeof createTaskGraphExecutorEngine>;
+  private readonly taskGraphStore: ITaskGraphRunStore;
+  private readonly governanceFinalize: GovernanceFinalizeService;
+  private readonly refinementEngine: RefinementEngine;
+  private readonly deliveryService: OsDeliveryService;
+  private readonly brandBrainEngine?: IBrandBrainEngine;
+  /** Structured gateway path — used by new callers (BusinessPlatformEngine, SDK, etc). */
+  private intelligenceGateway?: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway;
+  private readonly taskCapabilityRunner: ITaskCapabilityRunner;
+  private readonly productionCapabilityRegistry: import("../../intelligence/capability-registry/interfaces/capability-registry").ICapabilityRegistry;
+  private readonly osIdempotency = new Map<string, unknown>();
 
   constructor(
     private readonly deps: {
@@ -184,6 +172,28 @@ export class ExecutionApiService implements IExecutionApiService {
       /** Optional explainability sink — never receives prompts/secrets. */
       onIntelligenceSnapshot?: (snapshot: ExecutionIntelligenceSnapshot) => void;
       executionMode?: EnterpriseApiExecutionMode;
+      /** Phase 2 — injectable brand SoT (tests / simulated). Defaults to product Mongo source. */
+      brandSource?: IBrandRecordSource;
+      /** Phase 3 — injectable knowledge hit source (tests / simulated). */
+      knowledgeSource?: IKnowledgeHitSource;
+      /** Phase 4 — real CapabilityRegistry (never FakeCapabilityRegistry). */
+      capabilityRegistry?: import("../../intelligence/capability-registry/interfaces/capability-registry").ICapabilityRegistry;
+      /** Phase 5 — injectable task runner (tests). Defaults to Integration runner when integration present. */
+      taskCapabilityRunner?: ITaskCapabilityRunner;
+      /** Phase 5 — optional shared task graph store. */
+      taskGraphStore?: ITaskGraphRunStore;
+      /** Phase 8 — durable OS ledgers / queue ports. */
+      osBundle?: OsDurableBundle;
+      /** Phase 8 — pre-wired delivery service (queued mode + worker enqueue). */
+      deliveryService?: OsDeliveryService;
+      /** Brand Brain engine — enables writing learned signals from refinement/selections back to brand memory. */
+      brandBrainEngine?: IBrandBrainEngine;
+      /**
+       * Intelligence Gateway — kernel/control-plane entry point.
+       * When provided, `invokeViaGateway()` can be used as a structured,
+       * auditable alternative to `create()` for new callers.
+       */
+      intelligenceGateway?: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway;
       /** M9.4 durable persistence — when set, replaces process-local Maps for production. */
       persistence?: {
         executions: IExecutionRepository;
@@ -193,11 +203,85 @@ export class ExecutionApiService implements IExecutionApiService {
         tenantUsage: ITenantUsageStore;
       };
       asyncCoordinator?: AsyncExecutionCoordinator;
+      /** Required for LIVE sync image.generate → durable media artifacts / getMedia. */
+      asyncMedia?: AsyncMediaPlatform;
       /** Cap → Model → Routing for video.generate (executable registry only). */
       videoRouter?: import("../../intelligence/providers/video/routing/video-execution-router").VideoExecutionRouter;
+      /** Cap → use-case preference for image.generate (sync LIVE leaves). */
+      imageRouter?: import("../../intelligence/providers/image/routing/image-execution-router").ImageExecutionRouter;
+      /** Cap → use-case preference for audio.synthesize. */
+      audioRouter?: import("../../intelligence/providers/audio/routing/audio-execution-router").AudioExecutionRouter;
+      /** Cap → use-case preference for text / research / coding. */
+      textRouter?: import("../../intelligence/providers/routing/text/text-execution-router").TextExecutionRouter;
       toolRuntime?: ToolRuntimePlatform;
+      /** LIVE native streaming dispatchers (OpenAI / Anthropic). When set, createStream uses real tokens. */
+      nativeStreamDispatchers?: ReadonlyMap<string, import("../../intelligence/providers/streaming/interfaces/native-streaming-dispatcher").INativeStreamingDispatcher>;
     }
-  ) {}
+  ) {
+    this.brandIntelligence = createBrandIntelligenceEngine({
+      source: deps.brandSource,
+    });
+    this.knowledgeIntelligence = createKnowledgeIntelligenceOsEngine({
+      source: deps.knowledgeSource,
+    });
+    this.productionCapabilityRegistry =
+      deps.capabilityRegistry ??
+      createProductionNegotiationPlatform({
+        nowIso: deps.nowIso,
+        createId: deps.createId,
+      }).capabilityRegistry;
+    this.executionIntelligence = createExecutionIntelligenceOsEngine({
+      capabilityRegistry: this.productionCapabilityRegistry,
+    });
+    this.taskGraphStore =
+      deps.taskGraphStore ?? deps.osBundle?.taskGraph ?? new InMemoryTaskGraphRunStore();
+    this.governanceFinalize = createGovernanceFinalizeService({
+      humanReviews: deps.osBundle?.humanReviews,
+      evaluationLedger: deps.osBundle?.evaluations,
+      governanceDecisions: deps.osBundle?.governance,
+    });
+    this.refinementEngine = createRefinementEngine({
+      store: deps.osBundle?.refinements,
+      feedbackStore: deps.osBundle?.feedbackSessions,
+      brandBrainEngine: deps.brandBrainEngine,
+    });
+    this.brandBrainEngine = deps.brandBrainEngine;
+    this.intelligenceGateway = deps.intelligenceGateway;
+    this.deliveryService =
+      deps.deliveryService ??
+      createOsDeliveryService({
+        artifacts: deps.osBundle?.artifacts,
+        receipts: deps.osBundle?.deliveries,
+      });
+    const runner: ITaskCapabilityRunner =
+      deps.taskCapabilityRunner ??
+      (deps.integration
+        ? new IntegrationTaskCapabilityRunner({
+            integration: deps.integration,
+            capabilityRegistry: this.productionCapabilityRegistry,
+            outputContractRegistry: defaultOutputContractRegistry,
+            intelligenceGateway: deps.intelligenceGateway,
+          })
+        : {
+            async run() {
+              return {
+                ok: false,
+                retryable: false,
+                failureClass: "fatal" as const,
+                errorCode: "TASK_EXECUTION_FAILED",
+                errorMessage: "No integration or taskCapabilityRunner configured",
+              };
+            },
+          });
+    this.taskCapabilityRunner = runner;
+    this.taskGraphExecutor = createTaskGraphExecutorEngine({
+      runner,
+      capabilityRegistry: this.productionCapabilityRegistry,
+      store: this.taskGraphStore,
+      governanceFinalize: this.governanceFinalize,
+      enableGovernance: true,
+    });
+  }
 
   async createStream(
     req: CreateExecutionRequest,
@@ -205,787 +289,55 @@ export class ExecutionApiService implements IExecutionApiService {
     tenant: TenantContext,
     abortSignal?: AbortSignal
   ): Promise<Result<LiveSseExecutionPayload>> {
-    return startEnterpriseSimulatedStream({
-      req,
-      principal,
-      tenant,
-      abortSignal,
-      deps: {
-        nowIso: this.deps.nowIso,
-        createId: this.deps.createId,
-        sleep: async () => undefined,
-        saveExecution: async (resource) => {
-          this.executionStore.set(resource.executionId, resource);
-          if (this.deps.persistence) {
-            const existing = await this.deps.persistence.executions.get(
-              resource.executionId
-            );
-            if (existing) {
-              await this.deps.persistence.executions.update(resource);
-            } else {
-              await this.deps.persistence.executions.save(resource);
-            }
-          }
-          // Seed durable approval rows so M10.7 decide/resume works after stream handoff.
-          if (
-            resource.status === "awaiting_approval" &&
-            this.deps.toolRuntime &&
-            resource.pendingApprovals?.length
-          ) {
-            for (const pending of resource.pendingApprovals) {
-              await this.deps.toolRuntime.invocationStore.upsertAwaitingApproval({
-                invocationKey: pending.invocationId,
-                organizationId: resource.organizationId,
-                executionId: resource.executionId,
-                round: 1,
-                toolCallId: pending.invocationId,
-                toolName: pending.toolName,
-                riskClass: "write",
-                status: "awaiting_approval",
-                authorizationDecision: "requires_approval",
-                createdAt: this.deps.nowIso(),
-                updatedAt: this.deps.nowIso(),
-                checkpoint: {
-                  messages: [],
-                  providerId: "provider.stream_sim",
-                  modelId: "model.stream_sim",
-                  capabilityId: resource.capabilityId ?? "text.generate",
-                  prompt: resource.promptPreview,
-                  toolNames: [pending.toolName],
-                  phase: "awaiting_approval",
-                },
-              });
-            }
-          }
-        },
+    // Canonical spine: streaming reuses the same OS ingress as POST /v1/executions
+    // (brief → brand → knowledge → plan) before pipeline planning + provider stream.
+    const handoffReq: CreateExecutionRequest = {
+      ...req,
+      metadata: {
+        ...(req.metadata ?? {}),
+        canonicalStreamHandoff: true,
       },
-    });
+    };
+    const prep = await this.create(handoffReq, principal);
+    if (!prep.ok) return failure(prep.error);
+    const handoff = this.streamHandoffByExecutionId.get(prep.value.executionId);
+    if (!handoff) {
+      return failure(
+        new ValidationError("canonical stream handoff missing after OS ingress")
+      );
+    }
+    this.streamHandoffByExecutionId.delete(prep.value.executionId);
+    return this.executeCanonicalStream(handoff, abortSignal);
   }
+
+  /**
+   * Canonical streaming — OS ingress already applied via handoff; run pipeline
+   * stages 1–10 (planning) then hand off to live or simulated provider stream.
+   */
+  private async executeCanonicalStream(
+    handoff: CanonicalStreamHandoff,
+    abortSignal?: AbortSignal
+  ): Promise<Result<LiveSseExecutionPayload>> {
+    return executeCanonicalStream(this.asCreateHost(), handoff, abortSignal);
+  }
+
 
   async create(
     req: CreateExecutionRequest,
     principal: AuthPrincipal
   ): Promise<Result<ExecutionResource>> {
-    const capabilityIdRaw = String(req.capabilityId ?? "");
-    const isStt = isAudioTranscribeCapability(capabilityIdRaw);
-    let prompt = req.prompt?.trim() ?? "";
-    if (!prompt && isStt) {
-      prompt = "Transcribe the attached audio.";
-    }
-    if (!prompt) {
-      return failure(new ValidationError("prompt is required"));
-    }
-    if (!req.organizationId) {
-      return failure(new ValidationError("organizationId is required"));
-    }
-    if (prompt.length > ExecutionApiService.MAX_PROMPT_CHARS) {
-      return failure(new ValidationError("prompt exceeds maximum length"));
-    }
-    if (req.metadata) {
-      const metaSize = JSON.stringify(req.metadata).length;
-      if (metaSize > ExecutionApiService.MAX_METADATA_BYTES) {
-        return failure(new ValidationError("metadata exceeds maximum size"));
-      }
-    }
-    if (
-      req.tokenBudgetLimit != null &&
-      (req.tokenBudgetLimit <= 0 || !Number.isFinite(req.tokenBudgetLimit))
-    ) {
-      return failure(new ValidationError("tokenBudgetLimit must be a positive number"));
-    }
-
-    if (isFirebaseAuthenticatedPrincipal(principal)) {
-      if (!principal.organizationId) {
-        return failure(
-          new AuthorizationError("organization not resolved for authenticated user")
-        );
-      }
-      if (principal.organizationId !== req.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-    } else if (
-      principal.organizationId &&
-      principal.organizationId !== req.organizationId
-    ) {
-      return failure(new AuthorizationError("tenant isolation violation"));
-    }
-
-    // Trusted tenant for downstream intelligence (never use untrusted client override).
-    const trustedOrganizationId =
-      isFirebaseAuthenticatedPrincipal(principal) && principal.organizationId
-        ? principal.organizationId
-        : req.organizationId;
-
-    // M10.15 — ProductAsset ids → Intelligence audio/assets payload
-    let workingMetadata: Record<string, unknown> | undefined = req.metadata
-      ? { ...req.metadata }
-      : undefined;
-    const rawAssetIds = workingMetadata?.assetIds;
-    const hasAssetIds =
-      (Array.isArray(rawAssetIds) && rawAssetIds.length > 0) ||
-      (typeof rawAssetIds === "string" && rawAssetIds.trim().length > 0);
-    if (hasAssetIds && principal.userId) {
-      try {
-        workingMetadata = await enrichExecutionMetadataWithProductAssets({
-          userId: principal.userId,
-          organizationId: trustedOrganizationId,
-          metadata: workingMetadata,
-        });
-      } catch (err) {
-        const message =
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : "Failed to resolve product assets for intelligence";
-        return failure(new ValidationError(message));
-      }
-    }
-
-    // M10.17 — Brand Guidelines + Knowledge Intelligence enrichment.
-    // Internal/system executions (e.g. embedding generation used by the
-    // document indexer) opt out via metadata.skipBrandKnowledge to avoid
-    // recursive enrichment overhead. Never fails execution creation.
-    // Skip entirely when Mongo isn't connected (e.g. simulated/in-memory
-    // test harnesses) — otherwise every buffered Mongoose query would hang
-    // until its internal timeout on every single execution create call.
-    const mongoConnected = mongoose.connection.readyState === 1;
-    if (workingMetadata?.skipBrandKnowledge !== true && mongoConnected) {
-      try {
-        const { assembleExecutionKnowledge } = await import(
-          "../../../services/brand-knowledge-context-service"
-        );
-        let brandId =
-          typeof workingMetadata?.brandId === "string" && workingMetadata.brandId
-            ? workingMetadata.brandId
-            : undefined;
-        if (!brandId && principal.userId) {
-          try {
-            const { brandService } = await import(
-              "../../../services/brand-service"
-            );
-            const brands = await brandService.list({
-              userId: principal.userId,
-              organizationId: trustedOrganizationId,
-              status: "active",
-            });
-            brandId = brands[0]?.id;
-          } catch {
-            // No organisation/brands yet — proceed without a default brand.
-          }
-        }
-
-        const knowledge = await assembleExecutionKnowledge({
-          organizationId: trustedOrganizationId,
-          brandId,
-          userId: principal.userId,
-          prompt,
-          service: req.capabilityId,
-        });
-
-        const enrichedPromptParts = [
-          knowledge.styleInstructions
-            ? `[Brand context]\n${knowledge.styleInstructions}`
-            : "",
-          Object.keys(knowledge.brandGuidelines).length
-            ? `[Guidelines]\n${JSON.stringify(knowledge.brandGuidelines)}`
-            : "",
-          knowledge.negativeInstructions.length
-            ? `[Avoid]\n${knowledge.negativeInstructions.join("; ")}`
-            : "",
-          `[User prompt]\n${prompt}`,
-        ].filter((part) => part.length > 0);
-        const enrichedPrompt = enrichedPromptParts.join("\n");
-
-        workingMetadata = {
-          ...workingMetadata,
-          ...(brandId ? { brandId } : {}),
-          brandKnowledge: knowledge,
-          styleInstructions: knowledge.styleInstructions,
-          negativeInstructions: knowledge.negativeInstructions,
-          // Internal-only — provider payload uses this, never surfaced to FE UI.
-          enrichedPrompt,
-        };
-      } catch (err) {
-        console.warn(
-          "[execution-api-service] brand knowledge assembly failed (non-fatal):",
-          err instanceof Error ? err.message : err
-        );
-      }
-    }
-
-    req = {
-      ...req,
-      prompt,
-      metadata: workingMetadata,
-    };
-
-    // M10.17 — provider-facing prompt carries brand/knowledge enrichment;
-    // promptPreview (client-facing) always stays the user's raw prompt.
-    const providerPrompt =
-      typeof workingMetadata?.enrichedPrompt === "string" &&
-      workingMetadata.enrichedPrompt
-        ? workingMetadata.enrichedPrompt
-        : req.prompt;
-
-    const requestFingerprint = JSON.stringify({
-      prompt: req.prompt,
-      projectId: req.projectId,
-      brandId:
-        typeof req.metadata?.brandId === "string" ? req.metadata.brandId : undefined,
-      capabilityId: req.capabilityId,
-    });
-
-    if (req.idempotencyKey?.trim()) {
-      const idemStoreKey = `${trustedOrganizationId}:${req.idempotencyKey.trim()}`;
-      if (this.deps.persistence) {
-        if (!this.deps.persistence.idempotency.isAvailable()) {
-          return failure(
-            new ValidationError(
-              "idempotency store unavailable — refusing duplicate-unsafe request (fail-closed)"
-            )
-          );
-        }
-      }
-      const prior = this.deps.persistence
-        ? await this.deps.persistence.idempotency.get(idemStoreKey)
-        : this.idempotencyIndex.get(idemStoreKey);
-      if (prior) {
-        if (prior.fingerprint !== requestFingerprint) {
-          return failure(
-            new ValidationError("idempotency key reused with different payload")
-          );
-        }
-        const existing = await this.loadExecution(prior.executionId);
-        if (existing) {
-          return success(existing);
-        }
-      }
-    }
-
-    const tenantTokenCeiling = Number(
-      process.env.ENTERPRISE_API_TENANT_TOKEN_CEILING ?? 0
-    );
-    if (tenantTokenCeiling > 0) {
-      if (this.deps.persistence && !this.deps.persistence.tenantUsage.isAvailable()) {
-        return failure(
-          new ValidationError(
-            "tenant usage store unavailable — refusing unbounded LIVE traffic (fail-closed)"
-          )
-        );
-      }
-      const used = this.deps.persistence
-        ? await this.deps.persistence.tenantUsage.getTokensUsed(trustedOrganizationId)
-        : this.tenantTokenUsage.get(trustedOrganizationId) ?? 0;
-      if (used >= tenantTokenCeiling) {
-        return failure(new ValidationError("tenant token budget exceeded"));
-      }
-    }
-
-    const executionId = this.deps.createId("exec");
-    const correlationId = this.deps.createId("corr");
-    const now = this.deps.nowIso();
-
-    if (
-      this.deps.asyncCoordinator &&
-      isAsyncExecutionRequest({
-        capabilityId: req.capabilityId,
-        metadata: req.metadata,
-        hasAsyncCoordinator: true,
-        executionMode: this.deps.executionMode,
-      })
-    ) {
-      const capabilityId = req.capabilityId ?? "video.generate";
-      const preferredProviderId =
-        req.providerId?.trim() ||
-        (typeof req.metadata?.providerId === "string" ? req.metadata.providerId : undefined);
-      const preferredModelId =
-        req.modelId?.trim() ||
-        (typeof req.metadata?.modelId === "string" ? req.metadata.modelId : undefined);
-
-      let providerId = preferredProviderId ?? "";
-      let modelId = preferredModelId ?? "";
-      let routingDecisionId: string | undefined;
-      let failoverChain: { providerId: string; modelId: string }[] = [];
-
-      const useSimulatedFakeLeaf =
-        (this.deps.executionMode === "simulated" || this.deps.executionMode === "stub") &&
-        (isVideoGenerationCapability(capabilityId) ||
-          isImageGenerationCapability(capabilityId));
-
-      if (useSimulatedFakeLeaf && !preferredProviderId) {
-        // Credential-free M10.6 path — Model/Routing authority still owns LIVE video.
-        providerId = String(fakeAsyncProviderId());
-        modelId = "fake-async-model";
-      } else if (isVideoGenerationCapability(capabilityId) && this.deps.videoRouter) {
-        const routed = await this.deps.videoRouter.resolve({
-          prompt: req.prompt,
-          capabilityId,
-          preferredProviderId,
-          preferredModelId,
-        });
-        if (!routed.ok) {
-          // Fall back to simulated fake leaf when LIVE video leaf unavailable.
-          if (this.deps.executionMode !== "live") {
-            providerId = String(fakeAsyncProviderId());
-            modelId = "fake-async-model";
-          } else {
-            return routed;
-          }
-        } else {
-          providerId = routed.value.providerId;
-          modelId = routed.value.modelId;
-          routingDecisionId = routed.value.routingDecisionId;
-          failoverChain = [...(routed.value.failoverChain ?? [])];
-        }
-      } else if (isImageGenerationCapability(capabilityId)) {
-        providerId = preferredProviderId || String(fakeAsyncProviderId());
-        modelId = preferredModelId || "fake-async-model";
-      } else if (!providerId || !modelId) {
-        return failure(
-          new ValidationError(
-            "async media execution requires routing or simulated fake async provider"
-          )
-        );
-      }
-
-      const resource: ExecutionResource = {
-        executionId,
-        status: "waiting_provider",
-        organizationId: trustedOrganizationId,
-        workspaceId: req.workspaceId,
-        capabilityId,
-        correlationId,
-        createdAt: now,
-        updatedAt: now,
-        promptPreview: req.prompt.slice(0, 120),
-        result: { kind: "pending" },
-      };
-      if (this.deps.persistence) {
-        await this.deps.persistence.executions.save(resource);
-      } else {
-        this.executionStore.set(executionId, resource);
-      }
-
-      const submit = await this.deps.asyncCoordinator.submitExecution({
-        executionId,
-        organizationId: trustedOrganizationId,
-        workspaceId: req.workspaceId,
-        prompt: providerPrompt,
-        correlationId,
-        providerId,
-        modelId,
-        capabilityId,
-        payload: {
-          prompt: providerPrompt,
-          ...(req.metadata?.payload as Record<string, unknown> | undefined),
-          ...(Array.isArray(req.metadata?.assets) ? { assets: req.metadata.assets } : {}),
-          ...(req.metadata?.audio ? { audio: req.metadata.audio } : {}),
-          ...(req.metadata?.image ? { image: req.metadata.image } : {}),
-          ...(req.metadata?.duration != null ? { duration: req.metadata.duration } : {}),
-          ...(req.metadata?.aspectRatio != null
-            ? { aspectRatio: req.metadata.aspectRatio }
-            : {}),
-          ...(req.metadata?.resolution != null ? { resolution: req.metadata.resolution } : {}),
-          ...(routingDecisionId ? { routingDecisionId } : {}),
-          ...(failoverChain.length ? { failoverChain } : {}),
-        },
-      });
-      if (!submit.ok) {
-        const failed: ExecutionResource = { ...resource, status: "failed", errorMessage: submit.error.message };
-        if (this.deps.persistence) await this.deps.persistence.executions.update(failed);
-        else this.executionStore.set(executionId, failed);
-        return submit;
-      }
-
-      if (req.idempotencyKey?.trim() && this.deps.persistence) {
-        const idemRecord = { fingerprint: requestFingerprint, executionId };
-        await this.deps.persistence.idempotency.set(
-          `${trustedOrganizationId}:${req.idempotencyKey.trim()}`,
-          idemRecord
-        );
-      }
-
-      return success(resource);
-    }
-
-    let jobId: string | undefined;
-    let status: ExecutionResource["status"] = "queued";
-    let cost: number | undefined;
-    let evaluationScore: number | undefined;
-    let errorMessage: string | undefined;
-    let completedAt: string | undefined;
-    let approvalRequired = false;
-    let toolInvocationKey: string | undefined;
-    let jobSummary: Readonly<Record<string, unknown>> = {};
-    const apiExecutionMode = this.deps.executionMode ?? "stub";
-    const baseIntegrationMode = integrationPipelineModeFor(apiExecutionMode);
-    const needsProviderRuntime = Boolean(
-      req.toolNames?.length ||
-        req.structuredOutput ||
-        (Array.isArray(req.metadata?.toolNames) && req.metadata.toolNames.length > 0) ||
-        req.metadata?.structuredOutput
-    );
-    // Tool / structured-output executions require provider_runtime (not planning-only).
-    const integrationMode = needsProviderRuntime ? "full" : baseIntegrationMode;
-
-    if (this.deps.distributed) {
-      const enq = await this.deps.distributed.enqueue({
-        payload: {
-          rawPrompt: providerPrompt,
-          organizationId: trustedOrganizationId,
-          workspaceId: req.workspaceId,
-          budgetLimit: req.budgetLimit,
-          tokenBudgetLimit: req.tokenBudgetLimit,
-          correlationId,
-          capabilityHint: req.capabilityId,
-          metadata: {
-            ...(req.metadata ?? {}),
-            ...(req.toolNames ? { toolNames: req.toolNames } : {}),
-            ...(req.structuredOutput ? { structuredOutput: req.structuredOutput } : {}),
-            apiExecutionId: executionId,
-            executionId,
-            userId: principal.userId,
-            roles: principal.roles,
-            projectId: req.projectId,
-            integrationMode,
-            enterpriseExecutionMode: apiExecutionMode,
-            brandId:
-              typeof req.metadata?.brandId === "string"
-                ? req.metadata.brandId
-                : undefined,
-            campaignId:
-              typeof req.metadata?.campaignId === "string"
-                ? req.metadata.campaignId
-                : undefined,
-          },
-        },
-        queueKind: "immediate",
-      });
-      if (!enq.ok) return enq;
-      jobId = String(enq.value.jobId);
-      if (this.deps.autoTick !== false) {
-        this.deps.distributed.registerWorker("execution", 2);
-        const tick = await this.deps.distributed.tick(1);
-        if (tick.ok) {
-          const job = this.deps.distributed.getJob(enq.value.jobId);
-          if (job.ok && job.value) {
-            status = mapJobStatus(job.value.status);
-            completedAt = job.value.completedAt;
-            errorMessage = job.value.lastError;
-            const summary = job.value.resultSummary ?? {};
-            jobSummary = summary;
-            cost = Number(summary.cost ?? 0.01) || 0.01;
-            evaluationScore =
-              typeof summary.evaluationScore === "number" &&
-              Number.isFinite(summary.evaluationScore)
-                ? Number(summary.evaluationScore)
-                : typeof summary.qualityScore === "number" &&
-                    Number.isFinite(summary.qualityScore)
-                  ? Number(summary.qualityScore)
-                  : undefined;
-            if (summary.awaitingToolApproval === true) {
-              status = "awaiting_approval";
-              approvalRequired = true;
-              toolInvocationKey =
-                typeof summary.toolInvocationKey === "string"
-                  ? summary.toolInvocationKey
-                  : undefined;
-              completedAt = undefined;
-              errorMessage =
-                typeof summary.errorMessage === "string"
-                  ? summary.errorMessage
-                  : "tool approval required";
-            } else if (summary.success === false) {
-              status = "failed";
-              errorMessage =
-                typeof summary.errorMessage === "string"
-                  ? summary.errorMessage
-                  : "integration context resolution failed";
-            }
-          }
-        }
-      }
-    } else if (this.deps.integration) {
-      status = "running";
-      const run = await this.deps.integration.run({
-        requestId: executionId,
-        rawPrompt: providerPrompt,
-        organizationId: asOrganizationId(trustedOrganizationId),
-        workspaceId: req.workspaceId
-          ? asWorkspaceId(req.workspaceId)
-          : undefined,
-        budgetLimit: req.budgetLimit,
-        tokenBudgetLimit: req.tokenBudgetLimit,
-        correlationId,
-        mode: "full",
-        metadata: {
-          ...(req.metadata ?? {}),
-          ...(req.toolNames ? { toolNames: req.toolNames } : {}),
-          ...(req.structuredOutput ? { structuredOutput: req.structuredOutput } : {}),
-          ...(req.capabilityId
-            ? { capabilityHint: req.capabilityId, capabilityId: req.capabilityId }
-            : {}),
-          apiExecutionId: executionId,
-          executionId,
-          userId: principal.userId,
-          roles: principal.roles,
-          projectId: req.projectId,
-          brandId:
-            typeof req.metadata?.brandId === "string"
-              ? req.metadata.brandId
-              : undefined,
-          campaignId:
-            typeof req.metadata?.campaignId === "string"
-              ? req.metadata.campaignId
-              : undefined,
-        },
-      });
-      if (!run.ok) return run;
-      const runtime = run.value.artifacts.runtime;
-      const awaitingToolApproval =
-        runtime?.error?.code === "TOOL_APPROVAL_REQUIRED";
-      approvalRequired = awaitingToolApproval;
-      const toolApproval = runtime?.response?.output?.toolApproval as
-        | { invocationKeys?: unknown }
-        | undefined;
-      toolInvocationKey = Array.isArray(toolApproval?.invocationKeys)
-        ? toolApproval.invocationKeys.find(
-            (key): key is string => typeof key === "string"
-          )
-        : undefined;
-      status = awaitingToolApproval
-        ? "awaiting_approval"
-        : run.value.success
-          ? "succeeded"
-          : "failed";
-      completedAt = awaitingToolApproval ? undefined : this.deps.nowIso();
-      cost = undefined;
-      evaluationScore =
-        run.value.artifacts.evaluation?.integrity?.qualityScore ??
-        (run.value.artifacts.evaluation?.integrity?.feedbackEligible
-          ? run.value.artifacts.evaluation?.report?.summary?.overallScore
-          : undefined);
-      // Never invent quality when integrity says quality is unknown.
-      if (
-        run.value.artifacts.evaluation?.integrity &&
-        run.value.artifacts.evaluation.integrity.qualityScore == null
-      ) {
-        evaluationScore = undefined;
-      }
-      errorMessage = awaitingToolApproval
-        ? runtime?.error?.message
-        : run.value.success
-          ? undefined
-          : "integration failed";
-      const eiAttrs = (
-        run.value.artifacts.contextTrace ?? {}
-      ) as Readonly<Record<string, unknown>>;
-      const runtimeOutput = (runtime?.response?.output ?? {}) as Readonly<
-        Record<string, unknown>
-      >;
-      jobSummary = {
-        contextSnapshotId: eiAttrs.contextSnapshotId,
-        brandEnrichmentId: eiAttrs.brandEnrichmentId,
-        brandBrainVersion: eiAttrs.brandBrainVersion,
-        knowledgeSnapshotId: eiAttrs.knowledgeSnapshotId,
-        promptCompilationId: eiAttrs.promptCompilationId,
-        executionMode: "simulated",
-        providerMode: "simulated",
-        awaitingToolApproval,
-        ...(typeof runtimeOutput.content === "string"
-          ? { resultText: runtimeOutput.content }
-          : typeof runtimeOutput.text === "string"
-            ? { resultText: runtimeOutput.text }
-            : typeof runtimeOutput.message === "string"
-              ? { resultText: runtimeOutput.message }
-              : {}),
-      };
-    } else {
-      // Platform-local completion (tests / degraded mode) — still API-mediated.
-      status = "succeeded";
-      completedAt = now;
-      cost = undefined;
-      evaluationScore = undefined;
-    }
-
-    const result = buildExecutionResultPayload({
-      status,
-      jobSummary,
-    });
-
-    let pendingApprovals: readonly PendingToolApprovalPresentation[] | undefined;
-    if (status === "awaiting_approval" && this.deps.toolRuntime) {
-      const records = await this.deps.toolRuntime.invocationStore.listByExecution(
-        executionId
-      );
-      pendingApprovals = buildPendingApprovals(records);
-      if (!toolInvocationKey && pendingApprovals[0]) {
-        toolInvocationKey = pendingApprovals[0].invocationId;
-      }
-    }
-
-    const resource: ExecutionResource = {
-      executionId,
-      status,
-      organizationId: trustedOrganizationId,
-      workspaceId: req.workspaceId,
-      capabilityId: req.capabilityId,
-      correlationId,
-      jobId,
-      createdAt: now,
-      updatedAt: this.deps.nowIso(),
-      completedAt,
-      promptPreview: req.prompt.slice(0, 120),
-      cost,
-      evaluationScore,
-      errorMessage,
-      approvalRequired: approvalRequired || undefined,
-      toolInvocationKey,
-      pendingApprovals,
-      result:
-        status === "awaiting_approval"
-          ? {
-              kind: "tool_approval_required",
-              data: pendingApprovals?.length
-                ? { pendingApprovals }
-                : undefined,
-            }
-          : result,
-    };
-    this.executionStore.set(executionId, resource);
-    if (this.deps.persistence) {
-      await this.deps.persistence.executions.save(resource);
-    }
-    if (req.idempotencyKey?.trim()) {
-      const idemRecord = { fingerprint: requestFingerprint, executionId };
-      const idemStoreKey = `${trustedOrganizationId}:${req.idempotencyKey.trim()}`;
-      if (this.deps.persistence) {
-        await this.deps.persistence.idempotency.set(idemStoreKey, idemRecord);
-      } else {
-        this.idempotencyIndex.set(idemStoreKey, idemRecord);
-      }
-    }
-    const tokensUsed = Number(jobSummary.totalTokens ?? 0);
-    if (tokensUsed > 0) {
-      if (this.deps.persistence) {
-        await this.deps.persistence.tenantUsage.addTokens(trustedOrganizationId, tokensUsed);
-      } else {
-        const prev = this.tenantTokenUsage.get(trustedOrganizationId) ?? 0;
-        this.tenantTokenUsage.set(trustedOrganizationId, prev + tokensUsed);
-      }
-    }
-    const artifactRefs: ExecutionArtifactRef[] = [
-      {
-        artifactId: this.deps.createId("art"),
-        kind: "response",
-        label: "primary_output",
-      },
-    ];
-    this.artifactStore.set(executionId, artifactRefs);
-    if (this.deps.persistence) {
-      await this.deps.persistence.artifacts.save(
-        executionId,
-        trustedOrganizationId,
-        artifactRefs
-      );
-    }
-    const extras = {
-      diagnostics: diagnosticsFromJobSummary(
-        executionId,
-        errorMessage,
-        {
-          ...jobSummary,
-          executionMode:
-            jobSummary.executionMode ?? apiExecutionMode,
-          providerMode:
-            jobSummary.providerMode ??
-            (apiExecutionMode === "stub" ? "stub" : "simulated"),
-        },
-        this.deps.nowIso(),
-        jobId,
-        status
-      ),
-      trace: {
-        executionId,
-        correlationId,
-        stages: ["gateway", "queue", "worker", "integration"],
-        durationMs: this.deps.clockMs() % 1000,
-      },
-      cost: {
-        executionId,
-        amount: cost ?? null,
-        currency: cost != null ? "USD" : null,
-        status: (cost != null ? "calculated" : "unknown") as
-          | "calculated"
-          | "unknown",
-      },
-      evaluation: {
-        executionId,
-        score: evaluationScore ?? null,
-        humanReviewRequired:
-          evaluationScore != null ? evaluationScore < 0.7 : false,
-      },
-      experience: {
-        executionId,
-        experienceIds: [],
-        applied: false,
-      },
-    };
-    this.extrasStore.set(executionId, extras);
-    if (this.deps.persistence) {
-      await this.deps.persistence.extras.save(executionId, trustedOrganizationId, extras);
-    }
-
-    if (this.deps.onIntelligenceSnapshot) {
-      this.deps.onIntelligenceSnapshot(
-        buildExecutionIntelligenceSnapshot({
-          execution: resource,
-          metadata: {
-            ...(req.metadata ?? {}),
-            budgetLimit: req.budgetLimit,
-            tokenBudgetLimit: req.tokenBudgetLimit,
-          },
-          nowIso: this.deps.nowIso,
-        })
-      );
-    }
-
-    if (req.stream && this.deps.streaming) {
-      const sub = this.deps.streaming.subscribe(executionId, "sse");
-      if (sub.ok) {
-        this.deps.streaming.push({
-          subscriptionId: sub.value.subscriptionId,
-          executionId,
-          kind: "status",
-          payload: { status },
-        });
-        this.deps.streaming.push({
-          subscriptionId: sub.value.subscriptionId,
-          executionId,
-          kind: "progress",
-          payload: { percent: status === "succeeded" ? 100 : 10 },
-        });
-        if (status === "succeeded" || status === "failed") {
-          this.deps.streaming.push({
-            subscriptionId: sub.value.subscriptionId,
-            executionId,
-            kind: "done",
-            payload: { status },
-          });
-        }
-      }
-    }
-
-    return success(resource);
+    return runCreateExecution(this.asCreateHost(), req, principal);
   }
+
 
   async get(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>> {
     if (this.deps.asyncCoordinator) {
       await this.deps.asyncCoordinator.reconcileExecution(executionId);
     }
     const got = await this.scoped(executionId, tenant);
-    if (!got.ok || !this.deps.toolRuntime) return got;
+    if (!got.ok) return got;
+    const resource = await this.hydrateFromDistributedJob(got.value);
+    if (!this.deps.toolRuntime) return success(resource);
     const records = await this.deps.toolRuntime.invocationStore.listByExecution(executionId);
     const awaiting = records.filter((record) => record.status === "awaiting_approval");
     const fromStore = buildPendingApprovals(awaiting);
@@ -993,14 +345,14 @@ export class ExecutionApiService implements IExecutionApiService {
     const pendingApprovals =
       fromStore.length > 0
         ? fromStore
-        : got.value.pendingApprovals ?? [];
+        : resource.pendingApprovals ?? [];
     const approvalRequired =
-      got.value.status === "awaiting_approval" || pendingApprovals.length > 0;
+      resource.status === "awaiting_approval" || pendingApprovals.length > 0;
     return success({
-      ...got.value,
+      ...resource,
       approvalRequired: approvalRequired || undefined,
       toolInvocationKey: pendingApprovals[0]?.invocationId ?? (
-        approvalRequired ? got.value.toolInvocationKey : undefined
+        approvalRequired ? resource.toolInvocationKey : undefined
       ),
       pendingApprovals: pendingApprovals.length ? pendingApprovals : undefined,
       result: approvalRequired
@@ -1008,7 +360,7 @@ export class ExecutionApiService implements IExecutionApiService {
             kind: "tool_approval_required",
             data: { pendingApprovals },
           }
-        : got.value.result,
+        : resource.result,
     });
   }
 
@@ -1349,11 +701,1177 @@ export class ExecutionApiService implements IExecutionApiService {
     return success(this.extrasStore.get(executionId)!.experience);
   }
 
+  async getWorkflowFollowUp(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<WorkflowFollowUpPayload | null>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const extras = this.deps.persistence
+      ? await this.deps.persistence.extras.get(executionId)
+      : this.extrasStore.get(executionId);
+    const followUp = extras?.workflowFollowUp as WorkflowFollowUpPayload | undefined;
+    if (!followUp || followUp.consumed) return success(null);
+    return success(followUp);
+  }
+
+  async consumeWorkflowFollowUp(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<WorkflowFollowUpPayload | null>> {
+    const got = await this.getWorkflowFollowUp(executionId, tenant);
+    if (!got.ok) return got;
+    if (!got.value) return success(null);
+    const consumed: WorkflowFollowUpPayload = {
+      ...got.value,
+      consumed: true,
+    };
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      if (extras) {
+        await this.deps.persistence.extras.save(executionId, tenant.organizationId, {
+          ...extras,
+          workflowFollowUp: consumed,
+        });
+      }
+    } else {
+      const existing = this.extrasStore.get(executionId);
+      if (existing) {
+        this.extrasStore.set(executionId, {
+          ...existing,
+          workflowFollowUp: consumed,
+        });
+      }
+    }
+    return success(got.value);
+  }
+
+  /**
+   * Phase 1 — retrieve StructuredBrief for an execution (tenant-isolated).
+   */
+  async getBrief(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<StructuredBrief>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+
+    const fromMemory = this.briefByExecutionId.get(executionId);
+    if (fromMemory) {
+      if (fromMemory.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(fromMemory);
+    }
+
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      const brief = extras?.structuredBrief as StructuredBrief | undefined;
+      if (!brief) return failure(new NotFoundError("brief not found"));
+      if (brief.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(brief);
+    }
+
+    const local = this.extrasStore.get(executionId)?.structuredBrief;
+    if (!local) return failure(new NotFoundError("brief not found"));
+    if (local.organizationId !== tenant.organizationId) {
+      return failure(new AuthorizationError("tenant isolation violation"));
+    }
+    return success(local);
+  }
+
+  /**
+   * Phase 2 — retrieve BrandContext for an execution (tenant-isolated).
+   */
+  async getBrandContext(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<BrandContext>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+
+    const fromMemory = this.brandByExecutionId.get(executionId);
+    if (fromMemory) {
+      if (fromMemory.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(fromMemory);
+    }
+
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      const brand = extras?.structuredBrandContext as BrandContext | undefined;
+      if (!brand) return failure(new NotFoundError("brand context not found"));
+      if (brand.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(brand);
+    }
+
+    const local = this.extrasStore.get(executionId)?.structuredBrandContext;
+    if (!local) return failure(new NotFoundError("brand context not found"));
+    if (local.organizationId !== tenant.organizationId) {
+      return failure(new AuthorizationError("tenant isolation violation"));
+    }
+    return success(local);
+  }
+
+  /**
+   * Phase 3 — retrieve KnowledgeContext for an execution (tenant-isolated).
+   */
+  async getKnowledgeContext(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<KnowledgeContext>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+
+    const fromMemory = this.knowledgeByExecutionId.get(executionId);
+    if (fromMemory) {
+      if (fromMemory.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(fromMemory);
+    }
+
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      const knowledge = extras?.structuredKnowledgeContext as
+        | KnowledgeContext
+        | undefined;
+      if (!knowledge) return failure(new NotFoundError("knowledge context not found"));
+      if (knowledge.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(knowledge);
+    }
+
+    const local = this.extrasStore.get(executionId)?.structuredKnowledgeContext;
+    if (!local) return failure(new NotFoundError("knowledge context not found"));
+    if (local.organizationId !== tenant.organizationId) {
+      return failure(new AuthorizationError("tenant isolation violation"));
+    }
+    return success(local);
+  }
+
+  /**
+   * Phase 4 — retrieve ExecutionPlan for an execution (tenant-isolated).
+   * Does not execute the plan.
+   */
+  async getExecutionPlan(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<ExecutionPlan>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+
+    const fromMemory = this.planByExecutionId.get(executionId);
+    if (fromMemory) {
+      if (fromMemory.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(fromMemory);
+    }
+
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      const plan = extras?.structuredExecutionPlan as ExecutionPlan | undefined;
+      if (!plan) return failure(new NotFoundError("execution plan not found"));
+      if (plan.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(plan);
+    }
+
+    const local = this.extrasStore.get(executionId)?.structuredExecutionPlan;
+    if (!local) return failure(new NotFoundError("execution plan not found"));
+    if (local.organizationId !== tenant.organizationId) {
+      return failure(new AuthorizationError("tenant isolation violation"));
+    }
+    return success(local);
+  }
+
+  /**
+   * Phase 5 — execute APPROVED_FOR_EXECUTION plan as a task DAG (internal/domain).
+   */
+  async executeTaskGraph(
+    executionId: string,
+    tenant: TenantContext,
+    options?: { readonly maxConcurrency?: number; readonly requestId?: string }
+  ): Promise<Result<TaskGraphRunSnapshot>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+
+    const planResult = await this.getExecutionPlan(executionId, tenant);
+    if (!planResult.ok) return planResult;
+    const plan = planResult.value;
+
+    try {
+      const brief = this.briefByExecutionId.get(executionId);
+      const brand = this.brandByExecutionId.get(executionId);
+      const knowledge = this.knowledgeByExecutionId.get(executionId);
+      const snap = await this.taskGraphExecutor.execute({
+        organizationId: tenant.organizationId,
+        executionId,
+        requestId: options?.requestId ?? executionId,
+        plan,
+        briefObjective: brief?.objective,
+        brandTone: brand?.tone?.tone,
+        brandVoice: brand?.voice?.voice,
+        brandAvoidTerms: brand?.vocabulary?.avoid,
+        prohibitedPatterns: brand?.prohibitedPatterns,
+        knowledgeFactSummary: knowledge?.facts
+          ?.slice(0, 8)
+          .map((f) => `${f.key}=${f.value}`)
+          .join("; "),
+        brandId: got.value.brandId,
+        maxConcurrency: options?.maxConcurrency,
+        nowIso: this.deps.nowIso,
+        createId: this.deps.createId,
+      });
+      this.taskGraphByExecutionId.set(executionId, snap);
+      await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
+      return success(snap);
+    } catch (err) {
+      if (err instanceof TaskGraphExecutorError) {
+        if (err.code === "TENANT_VIOLATION") {
+          return failure(new AuthorizationError(err.message));
+        }
+        return failure(new ValidationError(err.message));
+      }
+      return failure(
+        new ValidationError(
+          err instanceof Error ? err.message : "task graph execution failed"
+        )
+      );
+    }
+  }
+
+  async resumeTaskGraph(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<TaskGraphRunSnapshot>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const planResult = await this.getExecutionPlan(executionId, tenant);
+    if (!planResult.ok) return planResult;
+    try {
+      const snap = await this.taskGraphExecutor.resume({
+        organizationId: tenant.organizationId,
+        executionId,
+        requestId: executionId,
+        plan: planResult.value,
+        nowIso: this.deps.nowIso,
+      });
+      this.taskGraphByExecutionId.set(executionId, snap);
+      await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
+      return success(snap);
+    } catch (err) {
+      if (err instanceof TaskGraphExecutorError) {
+        if (err.code === "TENANT_VIOLATION") {
+          return failure(new AuthorizationError(err.message));
+        }
+        return failure(new ValidationError(err.message));
+      }
+      return failure(
+        new ValidationError(err instanceof Error ? err.message : "resume failed")
+      );
+    }
+  }
+
+  async cancelTaskGraph(
+    executionId: string,
+    tenant: TenantContext,
+    reason?: string
+  ): Promise<Result<TaskGraphRunSnapshot>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    try {
+      const snap = await this.taskGraphExecutor.cancel({
+        organizationId: tenant.organizationId,
+        executionId,
+        reason,
+        nowIso: this.deps.nowIso,
+      });
+      this.taskGraphByExecutionId.set(executionId, snap);
+      await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
+      return success(snap);
+    } catch (err) {
+      if (err instanceof TaskGraphExecutorError) {
+        if (err.code === "TENANT_VIOLATION") {
+          return failure(new AuthorizationError("tenant isolation violation"));
+        }
+        return failure(new ValidationError(err.message));
+      }
+      return failure(
+        new ValidationError(err instanceof Error ? err.message : "cancel failed")
+      );
+    }
+  }
+
+  async getTaskGraphStatus(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<TaskGraphRunSnapshot>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+
+    const mem = this.taskGraphByExecutionId.get(executionId);
+    if (mem) {
+      if (mem.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(mem);
+    }
+
+    const fromStore = await this.taskGraphStore.get(
+      executionId,
+      tenant.organizationId
+    );
+    if (fromStore) return success(fromStore);
+
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      const snap = extras?.structuredTaskGraphState as
+        | TaskGraphRunSnapshot
+        | undefined;
+      if (!snap) return failure(new NotFoundError("task graph run not found"));
+      if (snap.organizationId !== tenant.organizationId) {
+        return failure(new AuthorizationError("tenant isolation violation"));
+      }
+      return success(snap);
+    }
+
+    const local = this.extrasStore.get(executionId)?.structuredTaskGraphState;
+    if (!local) return failure(new NotFoundError("task graph run not found"));
+    if (local.organizationId !== tenant.organizationId) {
+      return failure(new AuthorizationError("tenant isolation violation"));
+    }
+    return success(local);
+  }
+
+  /**
+   * Phase 6 — submit human review decision (never auto-approves).
+   */
+  async submitHumanReviewDecision(
+    executionId: string,
+    tenant: TenantContext,
+    input: {
+      readonly reviewId: string;
+      readonly decision: "APPROVED" | "REJECTED" | "REQUEST_CHANGES";
+      readonly reviewer: string;
+      readonly comments?: string;
+    }
+  ): Promise<Result<TaskGraphRunSnapshot | { readonly review: unknown; readonly singleCapability: true }>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const planResult = await this.getExecutionPlan(executionId, tenant);
+    if (planResult.ok) {
+      try {
+        const snap = await this.taskGraphExecutor.applyHumanReviewDecision({
+          organizationId: tenant.organizationId,
+          executionId,
+          reviewId: input.reviewId,
+          decision: input.decision,
+          reviewer: input.reviewer,
+          comments: input.comments,
+          plan: planResult.value,
+          requestId: executionId,
+          nowIso: this.deps.nowIso,
+        });
+        this.taskGraphByExecutionId.set(executionId, snap);
+        await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
+        return success(snap);
+      } catch (err) {
+        if (err instanceof TaskGraphExecutorError) {
+          if (err.code === "TENANT_VIOLATION") {
+            return failure(new AuthorizationError(err.message));
+          }
+          return failure(new ValidationError(err.message));
+        }
+        return failure(
+          new ValidationError(
+            err instanceof Error ? err.message : "human review decision failed"
+          )
+        );
+      }
+    }
+
+    if (!(planResult.error instanceof NotFoundError)) {
+      return failure(planResult.error);
+    }
+
+    try {
+      const review = await this.governanceFinalize.getHumanReviewStore().decide({
+        reviewId: input.reviewId,
+        organizationId: tenant.organizationId,
+        decision: input.decision,
+        reviewer: input.reviewer,
+        comments: input.comments,
+        nowIso: this.deps.nowIso,
+      });
+      const resource = got.value;
+      const nextStatus =
+        input.decision === "APPROVED"
+          ? "succeeded"
+          : input.decision === "REJECTED"
+            ? "failed"
+            : resource.status;
+      const updated: ExecutionResource = {
+        ...resource,
+        status: nextStatus,
+        updatedAt: this.deps.nowIso(),
+        completedAt:
+          input.decision === "REQUEST_CHANGES" ? undefined : this.deps.nowIso(),
+        errorMessage:
+          input.decision === "REJECTED"
+            ? input.comments ?? "Rejected in human review"
+            : resource.errorMessage,
+      };
+      this.executionStore.set(executionId, updated);
+      if (this.deps.persistence) {
+        await this.deps.persistence.executions.update(updated);
+        const extras = await this.deps.persistence.extras.get(executionId);
+        if (extras) {
+          await this.deps.persistence.extras.save(executionId, tenant.organizationId, {
+            ...extras,
+            pendingHumanReview: undefined,
+            osLifecycle: osLifecycleFromApiStatus(updated.status),
+          });
+        }
+      } else {
+        const local = this.extrasStore.get(executionId);
+        if (local) {
+          this.extrasStore.set(executionId, {
+            ...local,
+            pendingHumanReview: undefined,
+            osLifecycle: osLifecycleFromApiStatus(updated.status),
+          });
+        }
+      }
+      return success({ review, singleCapability: true as const });
+    } catch (err) {
+      return failure(
+        new ValidationError(
+          err instanceof Error ? err.message : "human review decision failed"
+        )
+      );
+    }
+  }
+
+  /** Phase 7 — domain access to structured refinement engine */
+  getRefinementEngine(): RefinementEngine {
+    return this.refinementEngine;
+  }
+
+  /** Phase 7 — domain access to approval-gated delivery */
+  getDeliveryService(): OsDeliveryService {
+    return this.deliveryService;
+  }
+
+  /** Phase 8 — production runtime task graph executor */
+  getTaskGraphExecutor(): ReturnType<typeof createTaskGraphExecutorEngine> {
+    return this.taskGraphExecutor;
+  }
+
+  /** Phase 8 — resolve plan for queue workers (org-scoped). */
+  async resolveExecutionPlanForWorker(
+    executionId: string,
+    organizationId: string
+  ): Promise<ExecutionPlan | undefined> {
+    const fromMemory = this.planByExecutionId.get(executionId);
+    if (fromMemory?.organizationId === organizationId) return fromMemory;
+
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      const plan = extras?.structuredExecutionPlan as ExecutionPlan | undefined;
+      if (plan?.organizationId === organizationId) return plan;
+    }
+
+    const local = this.extrasStore.get(executionId)?.structuredExecutionPlan;
+    if (local?.organizationId === organizationId) return local;
+    return undefined;
+  }
+
+  async getAutoDelivery(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<{ readonly deliveryId?: string; readonly error?: string } | null>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const extras = this.deps.persistence
+      ? await this.deps.persistence.extras.get(executionId)
+      : this.extrasStore.get(executionId);
+    const autoDelivery = extras?.autoDelivery as
+      | { deliveryId?: string; error?: string }
+      | undefined;
+    if (!autoDelivery) return success(null);
+    return success(autoDelivery);
+  }
+
+  /**
+   * Structured gateway invocation path — for new callers (BusinessPlatformEngine, SDK).
+   * Routes through IntelligenceGateway → IntelligenceOrchestrator → IntegrationDispatcher
+   * → real 13-stage pipeline. Returns a simplified result with sessionId and output.
+   *
+   * Falls back to null when no gateway is wired (non-live environments).
+   */
+  async invokeViaGateway(input: {
+    readonly capabilityId: string;
+    readonly organizationId: string;
+    readonly workspaceId?: string;
+    readonly rawPrompt: string;
+    readonly correlationId?: string;
+    readonly attributes?: Readonly<Record<string, unknown>>;
+    readonly apiExecutionId?: string;
+  }): Promise<import("../../intelligence/shared/result").Result<{
+    readonly sessionId: string;
+    readonly output: Readonly<Record<string, unknown>>;
+    readonly success: boolean;
+    readonly capabilityId: string;
+  }> | null> {
+    if (!this.intelligenceGateway || !this.deps.integration) return null;
+
+    const workspaceId = resolveControlPlaneWorkspaceId(input.workspaceId);
+
+    const run = await runIntegrationViaControlPlane({
+      gateway: this.intelligenceGateway,
+      integration: this.deps.integration,
+      capabilityId: input.capabilityId,
+      organizationId: input.organizationId,
+      workspaceId,
+      apiExecutionId: input.apiExecutionId,
+      request: {
+        requestId: input.apiExecutionId ?? input.correlationId ?? `gw_${Date.now()}`,
+        rawPrompt: input.rawPrompt,
+        organizationId: asOrganizationId(input.organizationId),
+        workspaceId: asWorkspaceId(workspaceId),
+        correlationId: input.correlationId,
+        mode: CANONICAL_INTEGRATION_MODE,
+        metadata: {
+          ...(input.attributes ?? {}),
+          rawPrompt: input.rawPrompt,
+          capabilityId: input.capabilityId,
+          ...(input.apiExecutionId
+            ? { apiExecutionId: input.apiExecutionId, executionId: input.apiExecutionId }
+            : {}),
+        },
+      },
+    });
+
+    if (!run.ok) {
+      return failure(run.error);
+    }
+
+    const report = run.value;
+    return success({
+      sessionId: input.apiExecutionId ?? report.requestId,
+      output: {
+        ...(report.artifacts?.runtime?.response?.output ?? {}),
+        integrationReport: report,
+      },
+      success: report.success,
+      capabilityId: input.capabilityId,
+    });
+  }
+
+  /**
+   * Post-construction injection of the Intelligence Gateway.
+   * Called by bootstrap-enterprise-api.ts after the gateway is bootstrapped.
+   */
+  setIntelligenceGateway(
+    gateway: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway
+  ): void {
+    // Safe cast — field is readonly in the type, but we own the object and this
+    // is the intended post-construction wiring point.
+    (this as unknown as { intelligenceGateway?: unknown }).intelligenceGateway = gateway;
+    if (this.taskCapabilityRunner instanceof IntegrationTaskCapabilityRunner) {
+      this.taskCapabilityRunner.setIntelligenceGateway(gateway);
+    }
+  }
+
+  /** Expose the capability registry for the Intelligence Gateway composition root. */
+  getCapabilityRegistry(): import("../../intelligence/capability-registry/interfaces/capability-registry").ICapabilityRegistry {
+    return this.productionCapabilityRegistry;
+  }
+
+
+  private asCreateHost(): ExecutionCreateHost {
+    return {
+      deps: this.deps,
+      executionStore: this.executionStore,
+      artifactStore: this.artifactStore,
+      idempotencyIndex: this.idempotencyIndex,
+      tenantTokenUsage: this.tenantTokenUsage,
+      extrasStore: this.extrasStore as Map<string, ExecutionExtrasRecord>,
+      briefIntelligence: this.briefIntelligence,
+      brandIntelligence: this.brandIntelligence,
+      knowledgeIntelligence: this.knowledgeIntelligence,
+      executionIntelligence: this.executionIntelligence,
+      briefByExecutionId: this.briefByExecutionId,
+      brandByExecutionId: this.brandByExecutionId,
+      knowledgeByExecutionId: this.knowledgeByExecutionId,
+      planByExecutionId: this.planByExecutionId,
+      streamHandoffByExecutionId: this.streamHandoffByExecutionId,
+      brandBrainEngine: this.brandBrainEngine,
+      governanceFinalize: this.governanceFinalize,
+      deliveryService: this.deliveryService,
+      intelligenceGateway: this.intelligenceGateway,
+      loadExecution: (executionId) => this.loadExecution(executionId),
+    };
+  }
+
+  private async rememberOsIdempotent<T>(
+    organizationId: string,
+    key: string | undefined,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    if (!key?.trim()) return fn();
+    const k = `${organizationId}|${key.trim()}`;
+    if (this.osIdempotency.has(k)) return this.osIdempotency.get(k) as T;
+    if (this.deps.persistence?.idempotency.isAvailable()) {
+      const hit = await this.deps.persistence.idempotency.get(k);
+      if (hit) {
+        try {
+          return JSON.parse(String((hit as { executionId?: string }).executionId ?? "")) as T;
+        } catch {
+          /* fall through */
+        }
+      }
+    }
+    const value = await fn();
+    this.osIdempotency.set(k, value);
+    return value;
+  }
+
+  async requestOsRefinement(
+    tenant: TenantContext,
+    body: Record<string, unknown>,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>> {
+    return this.rememberOsIdempotent(tenant.organizationId, idempotencyKey, async () => {
+      try {
+        const executionId = String(body.executionId ?? "");
+        let brandId =
+          typeof body.brandId === "string" && body.brandId.trim()
+            ? body.brandId.trim()
+            : undefined;
+        // Fall back to brandId from the source execution metadata when FE omits it.
+        if (!brandId && executionId) {
+          try {
+            const got = await this.get(executionId, tenant);
+            if (
+              got.ok &&
+              typeof got.value.brandId === "string" &&
+              got.value.brandId.trim()
+            ) {
+              brandId = got.value.brandId.trim();
+            }
+          } catch {
+            // best-effort
+          }
+        }
+
+        const result = await this.refinementEngine.requestRefinement({
+          organizationId: tenant.organizationId,
+          executionId,
+          sourceOutputId: String(body.sourceOutputId ?? body.artifactId ?? ""),
+          sourceVersion: Number(body.sourceVersion ?? 1),
+          sourcePreview: body.sourcePreview ? String(body.sourcePreview) : undefined,
+          mode: (body.mode as "AI" | "HYBRID") ?? "AI",
+          outputType: body.outputType as never,
+          outputContractId: body.outputContractId
+            ? String(body.outputContractId)
+            : undefined,
+          productService: body.productService ? String(body.productService) : undefined,
+          taskType: body.taskType ? String(body.taskType) : undefined,
+          taskKey: body.taskKey ? String(body.taskKey) : undefined,
+          planId: body.planId ? String(body.planId) : undefined,
+          planVersion: body.planVersion != null ? Number(body.planVersion) : undefined,
+          sourceApprovalStatus: body.sourceApprovalStatus
+            ? String(body.sourceApprovalStatus)
+            : "APPROVED",
+          ...(brandId ? { brandId } : {}),
+          nowIso: this.deps.nowIso,
+          createId: this.deps.createId,
+        });
+        return success({
+          refinementId: result.request.refinementId,
+          status: result.request.status,
+          organizationId: result.request.organizationId,
+          executionId: result.request.executionId,
+          question: result.presented,
+          refinementVersion: result.request.refinementVersion,
+          sourcePreview: result.request.sourcePreview,
+        });
+      } catch (err) {
+        return this.mapOsError(err);
+      }
+    });
+  }
+
+  async getOsRefinement(
+    refinementId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const req = await this.refinementEngine.getStore().get(
+      refinementId,
+      tenant.organizationId
+    );
+    if (!req) return failure(new NotFoundError("refinement not found"));
+    return success({
+      refinementId: req.refinementId,
+      status: req.status,
+      organizationId: req.organizationId,
+      executionId: req.executionId,
+      refinementVersion: req.refinementVersion,
+      feedbackSessionId: req.feedbackSessionId,
+      sourcePreview: req.sourcePreview,
+    });
+  }
+
+  async getOsRefinementQuestion(
+    refinementId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    try {
+      const q = await this.refinementEngine.getNextQuestion({
+        refinementId,
+        organizationId: tenant.organizationId,
+      });
+      if (!q) return success({ question: null, complete: true });
+      return success({ question: q, complete: false });
+    } catch (err) {
+      return this.mapOsError(err);
+    }
+  }
+
+  async submitOsRefinementAnswer(
+    refinementId: string,
+    tenant: TenantContext,
+    body: Record<string, unknown>,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>> {
+    return this.rememberOsIdempotent(tenant.organizationId, idempotencyKey, async () => {
+      try {
+        const result = await this.refinementEngine.submitAnswer({
+          refinementId,
+          organizationId: tenant.organizationId,
+          questionId: String(body.questionId ?? ""),
+          optionIds: Array.isArray(body.optionIds)
+            ? body.optionIds.map((x) => String(x))
+            : [],
+          otherText: body.otherText ? String(body.otherText) : undefined,
+          nowIso: this.deps.nowIso,
+        });
+        return success({
+          refinementId: result.request.refinementId,
+          status: result.request.status,
+          completed: result.completed,
+          question: result.next ?? null,
+          specificationId: result.specification?.specificationId,
+        });
+      } catch (err) {
+        return this.mapOsError(err);
+      }
+    });
+  }
+
+  async completeOsRefinement(
+    refinementId: string,
+    tenant: TenantContext,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>> {
+    return this.rememberOsIdempotent(tenant.organizationId, idempotencyKey, async () => {
+      try {
+        const result = await this.refinementEngine.completeFeedback({
+          refinementId,
+          organizationId: tenant.organizationId,
+          nowIso: this.deps.nowIso,
+        });
+        return success({
+          refinementId: result.request.refinementId,
+          status: result.request.status,
+          specificationId: result.specification.specificationId,
+          refinementVersion: result.request.refinementVersion,
+          sourcePreview: result.request.sourcePreview,
+        });
+      } catch (err) {
+        return this.mapOsError(err);
+      }
+    });
+  }
+
+  async getOsArtifact(
+    artifactId: string,
+    tenant: TenantContext,
+    version?: number
+  ): Promise<Result<unknown>> {
+    const store = this.deliveryService.getArtifactStore();
+    if (version != null) {
+      const art = await store.getVersion(artifactId, version, tenant.organizationId);
+      if (!art) return failure(new NotFoundError("artifact not found"));
+      return success(this.toArtifactDto(art));
+    }
+    const list = await store.listVersions(artifactId, tenant.organizationId);
+    const latest = list[list.length - 1];
+    if (!latest) return failure(new NotFoundError("artifact not found"));
+    return success(this.toArtifactDto(latest));
+  }
+
+  async listOsArtifactVersions(
+    artifactId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const list = await this.deliveryService
+      .getArtifactStore()
+      .listVersions(artifactId, tenant.organizationId);
+    return success(list.map((a) => this.toArtifactDto(a)));
+  }
+
+  async getOsManifest(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const manifest = await this.deliveryService
+      .getArtifactStore()
+      .getLatestManifest(executionId, tenant.organizationId);
+    if (!manifest) return failure(new NotFoundError("manifest not found"));
+    return success({
+      manifestId: manifest.manifestId,
+      organizationId: manifest.organizationId,
+      executionId: manifest.executionId,
+      version: manifest.version,
+      entries: manifest.entries,
+      planVersion: manifest.planVersion,
+      createdAt: manifest.createdAt,
+    });
+  }
+
+  async authorizeOsDelivery(
+    tenant: TenantContext,
+    body: Record<string, unknown>
+  ): Promise<Result<unknown>> {
+    try {
+      const auth = await this.deliveryService.authorize({
+        organizationId: tenant.organizationId,
+        artifactId: String(body.artifactId ?? ""),
+        artifactVersion: Number(body.artifactVersion ?? 0),
+        executionId: String(body.executionId ?? ""),
+        planVersion: body.planVersion != null ? Number(body.planVersion) : undefined,
+        destination: (body.destination as never) ?? "export",
+      });
+      return success(auth);
+    } catch (err) {
+      return this.mapOsError(err);
+    }
+  }
+
+  async createOsDelivery(
+    tenant: TenantContext,
+    body: Record<string, unknown>,
+    idempotencyKey?: string
+  ): Promise<Result<unknown>> {
+    return this.rememberOsIdempotent(tenant.organizationId, idempotencyKey, async () => {
+      try {
+        const receipt = await this.deliveryService.createDelivery({
+          organizationId: tenant.organizationId,
+          artifactId: String(body.artifactId ?? ""),
+          artifactVersion: Number(body.artifactVersion ?? 0),
+          executionId: String(body.executionId ?? ""),
+          planVersion: body.planVersion != null ? Number(body.planVersion) : undefined,
+          destination: (body.destination as never) ?? "export",
+          deliveryIntent: body.deliveryIntent ? String(body.deliveryIntent) : undefined,
+          nowIso: this.deps.nowIso,
+          createId: this.deps.createId,
+        });
+        return success(this.toDeliveryDto(receipt));
+      } catch (err) {
+        return this.mapOsError(err);
+      }
+    });
+  }
+
+  async getOsDelivery(
+    deliveryId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const r = await this.deliveryService.getDelivery(deliveryId, tenant.organizationId);
+    if (!r) return failure(new NotFoundError("delivery not found"));
+    return success(this.toDeliveryDto(r));
+  }
+
+  async cancelOsDelivery(
+    deliveryId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const r = await this.deliveryService.cancelDelivery(
+      deliveryId,
+      tenant.organizationId,
+      this.deps.nowIso
+    );
+    if (!r) return failure(new NotFoundError("delivery not found"));
+    return success(this.toDeliveryDto(r));
+  }
+
+  async getOsReview(
+    reviewId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const rec = await this.governanceFinalize
+      .getHumanReviewStore()
+      .get(reviewId, tenant.organizationId);
+    if (!rec) return failure(new NotFoundError("review not found"));
+    return success(this.toReviewDto(rec));
+  }
+
+  async getOsPendingReview(
+    executionId: string,
+    tenant: TenantContext
+  ): Promise<Result<unknown>> {
+    const got = await this.scoped(executionId, tenant);
+    if (!got.ok) return got;
+    const rec = await this.governanceFinalize
+      .getHumanReviewStore()
+      .getPendingForExecution(executionId, tenant.organizationId);
+    if (!rec) return success(null);
+    return success(this.toReviewDto(rec));
+  }
+
+  private toArtifactDto(art: {
+    artifactId: string;
+    version: number;
+    organizationId: string;
+    executionId: string;
+    checksum: string;
+    approvalState: string;
+    approvalReference?: string;
+    preview?: string;
+    planVersion?: number;
+    createdAt: string;
+  }) {
+    return {
+      artifactId: art.artifactId,
+      version: art.version,
+      organizationId: art.organizationId,
+      executionId: art.executionId,
+      checksum: art.checksum,
+      approvalState: art.approvalState,
+      approvalReference: art.approvalReference,
+      planVersion: art.planVersion,
+      createdAt: art.createdAt,
+    };
+  }
+
+  private toDeliveryDto(r: {
+    deliveryId: string;
+    organizationId: string;
+    artifactId: string;
+    artifactVersion: number;
+    executionId: string;
+    destination: string;
+    status: string;
+    timestamp: string;
+    idempotencyKey: string;
+    externalReference?: string;
+    failureReason?: string;
+    approvalReference?: string;
+  }) {
+    return {
+      deliveryId: r.deliveryId,
+      organizationId: r.organizationId,
+      artifactId: r.artifactId,
+      artifactVersion: r.artifactVersion,
+      executionId: r.executionId,
+      destination: r.destination,
+      status: r.status,
+      timestamp: r.timestamp,
+      idempotencyKey: r.idempotencyKey,
+      externalReference: r.externalReference,
+      failureReason: r.failureReason,
+      approvalReference: r.approvalReference,
+    };
+  }
+
+  private toReviewDto(r: {
+    reviewId: string;
+    organizationId: string;
+    executionId: string;
+    status: string;
+    reason: string;
+    requestedAt: string;
+    reviewer?: string;
+    comments?: string;
+    decidedAt?: string;
+    policyVersion: string;
+  }) {
+    return {
+      reviewId: r.reviewId,
+      organizationId: r.organizationId,
+      executionId: r.executionId,
+      status: r.status,
+      reason: r.reason,
+      requestedAt: r.requestedAt,
+      reviewer: r.reviewer,
+      comments: r.comments,
+      decidedAt: r.decidedAt,
+      policyVersion: r.policyVersion,
+    };
+  }
+
+  private mapOsError(err: unknown): Result<unknown> {
+    if (err instanceof RefinementError || err instanceof DeliveryError) {
+      if (String(err.code).includes("TENANT")) {
+        return failure(new AuthorizationError(err.message));
+      }
+      if (String(err.code).includes("NOT_FOUND")) {
+        return failure(new NotFoundError(err.message));
+      }
+      return failure(new ValidationError(err.message));
+    }
+    return failure(
+      new ValidationError(err instanceof Error ? err.message : "os operation failed")
+    );
+  }
+
+  private async persistTaskGraphState(
+    executionId: string,
+    organizationId: string,
+    snap: TaskGraphRunSnapshot
+  ): Promise<void> {
+    const existing = this.extrasStore.get(executionId);
+    if (existing) {
+      this.extrasStore.set(executionId, {
+        ...existing,
+        structuredTaskGraphState: snap,
+      });
+    }
+    if (this.deps.persistence) {
+      const extras = await this.deps.persistence.extras.get(executionId);
+      if (extras) {
+        await this.deps.persistence.extras.save(executionId, organizationId, {
+          ...extras,
+          structuredTaskGraphState: snap,
+        });
+      }
+    }
+  }
+
   private async persistExecution(resource: ExecutionResource): Promise<void> {
     this.executionStore.set(resource.executionId, resource);
     if (this.deps.persistence) {
       await this.deps.persistence.executions.update(resource);
     }
+  }
+
+  /**
+   * Create() may return while a sibling tick() still owns this job.
+   * Polls must copy terminal job state (and artifact ids) onto the execution record.
+   */
+  private async hydrateFromDistributedJob(
+    resource: ExecutionResource
+  ): Promise<ExecutionResource> {
+    const needsHydrate =
+      resource.status === "queued" ||
+      resource.status === "running" ||
+      resource.status === "retrying" ||
+      (resource.status === "succeeded" &&
+        (resource.result?.kind === "pending" ||
+          resource.result?.kind === "empty" ||
+          resource.result == null));
+    if (!needsHydrate) return resource;
+
+    if (this.deps.distributed && resource.jobId) {
+      const readJob = () =>
+        this.deps.distributed!.getJob(asJobId(resource.jobId!));
+      let job = readJob();
+      if (
+        (!job.ok || !job.value || !isTerminalJobStatus(job.value.status)) &&
+        this.deps.autoTick !== false
+      ) {
+        this.deps.distributed.registerWorker("execution", 4);
+        void this.deps.distributed.tick(1).catch(() => undefined);
+        job = readJob();
+      }
+      if (job.ok && job.value) {
+        const status = mapJobStatus(job.value.status);
+        const summary = job.value.resultSummary ?? {};
+        const mediaArtifactIds = jobMediaArtifactIds(summary);
+        const nextResult =
+          status === "succeeded" && mediaArtifactIds.length > 0
+            ? ({
+                kind: "artifact" as const,
+                data: { artifactIds: mediaArtifactIds },
+              } as ExecutionResource["result"])
+            : buildExecutionResultPayload({
+                status,
+                jobSummary: summary,
+              });
+        const unchanged =
+          status === resource.status &&
+          mediaArtifactIds.length === 0 &&
+          job.value.lastError === resource.errorMessage &&
+          nextResult != null &&
+          resource.result?.kind === nextResult.kind &&
+          (nextResult.kind !== "text" ||
+            resource.result?.text === nextResult.text);
+        if (!unchanged) {
+          return this.persistHydratedExecution({
+            ...resource,
+            status,
+            completedAt: job.value.completedAt ?? resource.completedAt,
+            errorMessage:
+              (typeof summary.errorMessage === "string"
+                ? summary.errorMessage
+                : undefined) ??
+              job.value.lastError ??
+              resource.errorMessage,
+            artifactIds:
+              mediaArtifactIds.length > 0
+                ? mediaArtifactIds
+                : resource.artifactIds,
+            result: nextResult,
+            cost: Number(summary.cost ?? resource.cost ?? 0) || resource.cost,
+            evaluationScore:
+              typeof summary.evaluationScore === "number"
+                ? summary.evaluationScore
+                : resource.evaluationScore,
+            updatedAt: this.deps.nowIso(),
+          });
+        }
+      }
+    }
+
+    const listed = this.deps.persistence
+      ? await this.deps.persistence.artifacts.list(resource.executionId)
+      : this.artifactStore.get(resource.executionId) ?? [];
+    const media = listed.filter(
+      (row) => row.kind === "media" || row.label?.startsWith("blob:")
+    );
+    if (media.length === 0) return resource;
+    const artifactIds = media.map((row) => row.artifactId);
+    return this.persistHydratedExecution({
+      ...resource,
+      status: "succeeded",
+      completedAt: resource.completedAt ?? this.deps.nowIso(),
+      artifactIds,
+      result: { kind: "artifact", data: { artifactIds } },
+      updatedAt: this.deps.nowIso(),
+    });
+  }
+
+  private async persistHydratedExecution(
+    resource: ExecutionResource
+  ): Promise<ExecutionResource> {
+    this.executionStore.set(resource.executionId, resource);
+    if (this.deps.persistence) {
+      await this.deps.persistence.executions.update(resource);
+    }
+    return resource;
   }
 
   private async loadExecution(executionId: string): Promise<ExecutionResource | undefined> {
@@ -1382,23 +1900,21 @@ export class ExecutionApiService implements IExecutionApiService {
   }
 }
 
-function mapJobStatus(status: string): ExecutionResource["status"] {
-  switch (status) {
-    case "queued":
-    case "scheduled":
-      return "queued";
-    case "running":
-    case "reserved":
-      return "running";
-    case "completed":
-      return "succeeded";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
-    case "retrying":
-      return "retrying";
-    default:
-      return "running";
-  }
+function isTerminalJobStatus(status: string): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "dead_letter"
+  );
+}
+
+function jobMediaArtifactIds(
+  summary: Readonly<Record<string, unknown>>
+): string[] {
+  return Array.isArray(summary.mediaArtifactIds)
+    ? summary.mediaArtifactIds.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0
+      )
+    : [];
 }

@@ -35,6 +35,14 @@ export interface ApiResponse<T = unknown> {
     /** Abort in-flight stream when the HTTP client disconnects. */
     readonly cancel?: (reason?: string) => void;
   };
+  /**
+   * When set, Express transport writes raw bytes instead of JSON
+   * (artifact image/video delivery for clients that cannot send Authorization).
+   */
+  readonly binary?: {
+    readonly contentType: string;
+    readonly bytes: Buffer;
+  };
 }
 
 export interface ApiErrorBody {

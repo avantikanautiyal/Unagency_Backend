@@ -229,8 +229,21 @@ export class BrandContextBuilder implements IBrandContextBuilder {
     const facts = resolved.ok ? resolved.value.facts : {};
     return success({
       brandId: typeof facts.brandId === "string" ? facts.brandId : undefined,
+      name:
+        typeof facts.name === "string"
+          ? facts.name
+          : typeof request.attributes?.brandName === "string"
+            ? request.attributes.brandName
+            : undefined,
       voice: typeof facts.voice === "string" ? facts.voice : undefined,
       tone: typeof facts.tone === "string" ? facts.tone : undefined,
+      colors: typeof facts.colors === "string" ? facts.colors : undefined,
+      visualIdentity:
+        typeof facts.visualIdentity === "string"
+          ? facts.visualIdentity
+          : typeof request.attributes?.brandVisualIdentity === "string"
+            ? request.attributes.brandVisualIdentity
+            : undefined,
       guidelines: Array.isArray(request.attributes?.brandGuidelines)
         ? (request.attributes.brandGuidelines as string[])
         : undefined,

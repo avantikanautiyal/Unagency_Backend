@@ -8,6 +8,8 @@ import { ValidationError } from "../../../intelligence/shared/errors";
 import type { RateLimitDecision, RateLimitDimension, RateLimitPolicy } from "../../../api/contracts";
 import type { IRateLimitService } from "../../../api/interfaces";
 import type { KvClient } from "./shared-memory-kv";
+import { ensureRedisClientReady } from "./redis-client-factory";
+import type Redis from "ioredis";
 
 const DEFAULT_POLICIES: readonly RateLimitPolicy[] = [
   { dimension: "organization", limit: 1000, windowMs: 60_000 },
@@ -51,7 +53,15 @@ export class DistributedRateLimitService implements IRateLimitService {
     capabilityId?: string;
     providerId?: string;
   }): Promise<Result<RateLimitDecision>> {
-    if (!this.isAvailable() || !this.redis) {
+    if (!this.redis) {
+      return failure(
+        new ValidationError("rate limit store unavailable — refusing traffic (fail-closed)")
+      );
+    }
+
+    try {
+      await ensureKvClientReady(this.redis);
+    } catch {
       return failure(
         new ValidationError("rate limit store unavailable — refusing traffic (fail-closed)")
       );
@@ -91,7 +101,6 @@ export class DistributedRateLimitService implements IRateLimitService {
         if (!tightest || decision.remaining < tightest.remaining) tightest = decision;
       }
     } catch {
-      this.available = false;
       return failure(
         new ValidationError("rate limit store unavailable — refusing traffic (fail-closed)")
       );
@@ -122,4 +131,15 @@ export class UnavailableRateLimitService implements IRateLimitService {
       new ValidationError("rate limit store unavailable — refusing traffic (fail-closed)")
     );
   }
+}
+
+async function ensureKvClientReady(kv: KvClient): Promise<void> {
+  const client = kv as KvClient & {
+    status?: string;
+    connect?: () => Promise<unknown>;
+  };
+  if (typeof client.status !== "string" || typeof client.connect !== "function") {
+    return;
+  }
+  await ensureRedisClientReady(client as Redis);
 }

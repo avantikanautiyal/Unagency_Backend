@@ -66,8 +66,11 @@ export interface ExecutionContextSection {
 
 export interface BrandContextSection {
   readonly brandId?: string;
+  readonly name?: string;
   readonly voice?: string;
   readonly tone?: string;
+  readonly colors?: string;
+  readonly visualIdentity?: string;
   readonly guidelines?: readonly string[];
   readonly attributes?: Readonly<Record<string, unknown>>;
 }

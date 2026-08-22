@@ -25,12 +25,23 @@ import {
   ANTHROPIC_VENDOR,
   ANTHROPIC_SEED_MODELS,
   ANTHROPIC_VISION_MODELS,
+  ANTHROPIC_WIRE_MODEL_MAP,
 } from "../constants";
 import {
   canonicalToWireModelId,
   mapCanonicalToAnthropicRequest,
 } from "../requests/request-mapper";
 import { isVisionCapability } from "../../common/resolve-execution-modality";
+
+function resolveAnthropicWireModel(canonicalOrWire: string): string {
+  const canonical = canonicalToWireModelId(canonicalOrWire);
+  // Map both inventory aliases and raw/dated wire ids to a live Anthropic model.
+  return (
+    ANTHROPIC_WIRE_MODEL_MAP[canonical] ??
+    ANTHROPIC_WIRE_MODEL_MAP[canonicalOrWire] ??
+    canonical
+  );
+}
 
 export class AnthropicProviderAdapter extends AbstractTextProviderAdapter {
   constructor(manifest: ProviderManifest, deps: AbstractAdapterDeps = {}) {
@@ -55,7 +66,10 @@ export class AnthropicProviderAdapter extends AbstractTextProviderAdapter {
     }
 
     const wireModelId = canonicalToWireModelId(requestedModelId);
-    if (!ANTHROPIC_SEED_MODELS.includes(wireModelId as (typeof ANTHROPIC_SEED_MODELS)[number])) {
+    const knownInventory =
+      (ANTHROPIC_SEED_MODELS as readonly string[]).includes(wireModelId) ||
+      Object.prototype.hasOwnProperty.call(ANTHROPIC_WIRE_MODEL_MAP, wireModelId);
+    if (!knownInventory) {
       return failure(
         new ValidationError(
           `Model '${requestedModelId}' (wire '${wireModelId}') is not available for Anthropic`
@@ -63,16 +77,23 @@ export class AnthropicProviderAdapter extends AbstractTextProviderAdapter {
       );
     }
 
+    const inventoryForVision =
+      (ANTHROPIC_SEED_MODELS as readonly string[]).includes(wireModelId)
+        ? wireModelId
+        : "claude-sonnet-4-5";
     if (
       isVisionCapability(String(request.capabilityId)) &&
-      !ANTHROPIC_VISION_MODELS.includes(wireModelId as (typeof ANTHROPIC_VISION_MODELS)[number])
+      !ANTHROPIC_VISION_MODELS.includes(
+        inventoryForVision as (typeof ANTHROPIC_VISION_MODELS)[number]
+      )
     ) {
       return failure(
         new ValidationError(`Model '${requestedModelId}' does not support vision.analyze`)
       );
     }
 
-    const wire = mapCanonicalToAnthropicRequest(request, wireModelId);
+    const apiModelId = resolveAnthropicWireModel(wireModelId);
+    const wire = mapCanonicalToAnthropicRequest(request, apiModelId);
     return success({
       value: { ...wire, resolvedModelId: wireModelId },
       warnings: [],
@@ -82,7 +103,10 @@ export class AnthropicProviderAdapter extends AbstractTextProviderAdapter {
 
   validate(request: ProviderAdapterRequest): Result<ProviderValidationResult> {
     const wireModelId = canonicalToWireModelId(request.modelId);
-    if (!ANTHROPIC_SEED_MODELS.includes(wireModelId as (typeof ANTHROPIC_SEED_MODELS)[number])) {
+    const knownInventory =
+      (ANTHROPIC_SEED_MODELS as readonly string[]).includes(wireModelId) ||
+      Object.prototype.hasOwnProperty.call(ANTHROPIC_WIRE_MODEL_MAP, wireModelId);
+    if (!knownInventory) {
       return success({
         valid: false,
         issues: [

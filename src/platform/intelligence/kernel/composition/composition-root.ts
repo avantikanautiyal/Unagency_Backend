@@ -13,11 +13,11 @@ import {
 } from "../../config";
 import { EventFactory, InMemoryEventBus } from "../../events";
 import {
-  AllowAllAuthorizationPolicy,
   ConsoleAuditLogger,
   DefaultDataClassifier,
   DefaultTrustGate,
 } from "../../security";
+import { TenantWorkspaceAuthorizationPolicy } from "../../security/implementations/tenant-workspace-authorization-policy";
 import { SystemClock, UuidGenerator } from "../../shared/utils";
 import { ConsoleTelemetry } from "../../telemetry";
 import { ServiceContainer } from "../di/service-container";
@@ -49,7 +49,8 @@ export class CompositionRoot {
     const moduleRegistry = new ModuleRegistry();
     const registries = new PlatformRegistries(moduleRegistry);
     const telemetry = new ConsoleTelemetry(config.telemetry);
-    const authorization = new AllowAllAuthorizationPolicy();
+    // Replace M0 allow-all with a tenant-scoped deny-by-default policy.
+    const authorization = new TenantWorkspaceAuthorizationPolicy();
     const audit = new ConsoleAuditLogger(telemetry.logger);
     const classifier = new DefaultDataClassifier(
       config.security.defaultClassification

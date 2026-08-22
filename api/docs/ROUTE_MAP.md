@@ -199,12 +199,6 @@ Canonical path inventory. **Do not duplicate routes.** Source files cited.
 | POST | `/razorpay/webhook` |
 | GET | `/` |
 
-### Defined but not mounted
-
-| File | Notes |
-|------|-------|
-| `src/routes/stripe.route.ts` | Not `app.use`'d |
-
 ### Future / disabled
 
 | Path | Status |

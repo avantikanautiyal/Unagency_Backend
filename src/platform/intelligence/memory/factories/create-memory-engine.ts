@@ -8,6 +8,7 @@ import type { IMemoryIntelligenceEngine } from "../interfaces/memory-ports";
 import { MemoryRetentionEngine } from "../retention/retention-engine";
 import { MemoryRetriever } from "../retrieval/memory-retriever";
 import { MemoryScopeResolver } from "../scopes/scope-resolver";
+import type { IMemoryStore } from "../interfaces/memory-ports";
 import { InMemoryMemoryStore } from "../stores/in-memory-memory-store";
 
 export interface CreateMemoryEngineOptions {
@@ -16,12 +17,13 @@ export interface CreateMemoryEngineOptions {
     | "deduplicate"
     | "summarize"
     | "importance_ranking";
+  readonly store?: IMemoryStore;
 }
 
 export function createMemoryIntelligenceEngine(
   options: CreateMemoryEngineOptions = {}
 ): IMemoryIntelligenceEngine {
-  const store = new InMemoryMemoryStore();
+  const store = options.store ?? new InMemoryMemoryStore();
   return new MemoryIntelligenceEngine({
     store,
     scopeResolver: new MemoryScopeResolver(),

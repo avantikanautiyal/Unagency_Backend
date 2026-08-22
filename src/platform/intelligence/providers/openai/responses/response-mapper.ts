@@ -9,6 +9,7 @@ import type {
   ProviderTokenUsage,
 } from "../../adapters/contracts/adapter-io";
 import type { CanonicalFinishReason } from "../../adapters/contracts/enums";
+import { ValidationError } from "../../../shared/errors";
 import {
   attachMediaOutputs,
   mapBinaryAudioToOutput,
@@ -132,6 +133,48 @@ export function mapOpenAIResponseToCanonical(
     });
   }
 
+  const isImageOperation =
+    operation === "images.generations" ||
+    request.modality === "image" ||
+    String(request.capabilityId ?? "").toLowerCase() === "image.generate";
+
+  if (isImageOperation) {
+    const mediaOutputs = mapOpenAIImageDataToOutputs(raw);
+    if (mediaOutputs.length === 0) {
+      const dataLen = Array.isArray(raw.data) ? raw.data.length : 0;
+      const firstKeys =
+        Array.isArray(raw.data) &&
+        raw.data[0] &&
+        typeof raw.data[0] === "object"
+          ? Object.keys(raw.data[0] as Record<string, unknown>).join(",")
+          : "n/a";
+      throw new ValidationError(
+        `OpenAI image response contained no usable media (dataLen=${dataLen}, firstKeys=${firstKeys})`
+      );
+    }
+    const output = attachMediaOutputs({ content: `[${mediaOutputs.length} image(s)]` }, mediaOutputs);
+    const usage = (raw.usage as Record<string, unknown>) ?? {};
+    return Object.freeze({
+      requestId: request.requestId,
+      providerId: request.providerId,
+      adapterId: request.adapterId,
+      modelId: request.modelId || String(raw.model ?? request.modelId),
+      output,
+      finishReason: "stop" as const,
+      usage: Object.freeze({
+        promptTokens: numberOrUndef(usage.input_tokens ?? usage.prompt_tokens),
+        completionTokens: numberOrUndef(usage.output_tokens ?? usage.completion_tokens),
+        totalTokens: numberOrUndef(usage.total_tokens),
+        ...(normalizeImageUsage(raw) ?? {}),
+      }) as ProviderTokenUsage,
+      latencyMs,
+      warnings: [],
+      safety: [],
+      streamed: false,
+      createdAt: nowIso,
+    });
+  }
+
   const choices = raw.choices as Array<Record<string, unknown>> | undefined;
   const choice = choices?.[0];
   const message = (choice?.message as Record<string, unknown>) ?? {};
@@ -156,7 +199,12 @@ export function mapOpenAIResponseToCanonical(
         throw mapped.error;
       }
       Object.assign(output, attachEmbeddingOutputs({}, mapped.value));
-    } else if ("url" in first || "b64_json" in first) {
+    } else if (
+      "url" in first ||
+      "b64_json" in first ||
+      "b64" in first ||
+      "base64" in first
+    ) {
       const mediaOutputs = mapOpenAIImageDataToOutputs(raw);
       Object.assign(output, attachMediaOutputs(output, mediaOutputs));
     }

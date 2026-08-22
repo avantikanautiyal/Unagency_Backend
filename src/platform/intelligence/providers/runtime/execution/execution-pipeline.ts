@@ -137,7 +137,18 @@ export class ExecutionPipeline {
 
       const dispatchResult = outcome.value;
       if (!dispatchResult.ok) {
-        breaker.recordFailure();
+        // Don't trip the circuit on permanent model/config mistakes (e.g. Anthropic 404
+        // for a retired model id) — those won't recover by waiting.
+        const msg = String(dispatchResult.error.message ?? "").toLowerCase();
+        const permanentMisconfig =
+          msg.includes("not registered") ||
+          msg.includes("not available") ||
+          msg.includes("not_found") ||
+          /\bmodel:/.test(msg) ||
+          msg.includes("http 404");
+        if (!permanentMisconfig) {
+          breaker.recordFailure();
+        }
         if (this.deps.retry.shouldRetry(request.retryPolicy, attempt)) {
           await this.retryDelay(session, attempt);
           continue;

@@ -33,6 +33,16 @@ export interface IExecutionContextStores {
     email?: string;
     displayName?: string;
   }): Promise<void>;
+  /**
+   * Optional — provision a stub brand row for a known brandId (e.g. Mongo product
+   * brand referenced while Execution Context stores are still in-memory).
+   */
+  ensureBrand?(input: {
+    organizationId: string;
+    brandId: string;
+    userId?: string;
+    name?: string;
+  }): Promise<void>;
 }
 
 export class InMemoryExecutionContextStores implements IExecutionContextStores {
@@ -85,6 +95,46 @@ export class InMemoryExecutionContextStores implements IExecutionContextStores {
         brandId,
         organizationId: input.organizationId,
         name: "Default Brand",
+        toneOfVoice: "professional",
+        visualIdentity: "clean modern",
+        brandRules: ["be concise"],
+        colorPalette: ["#111111"],
+        typography: ["Inter"],
+        logoAssetIds: [],
+        brandAssetIds: [],
+        brandMemoryRefs: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  async ensureBrand(input: {
+    organizationId: string;
+    brandId: string;
+    userId?: string;
+    name?: string;
+  }): Promise<void> {
+    const now = new Date().toISOString();
+    if (input.userId) {
+      await this.ensurePrincipal({
+        organizationId: input.organizationId,
+        userId: input.userId,
+      });
+    } else if (!this.data.organizations!.has(input.organizationId)) {
+      this.data.organizations!.set(input.organizationId, {
+        organizationId: input.organizationId,
+        name: "Organisation",
+        ownerUserId: "system",
+        createdAt: now,
+        status: "active",
+      });
+    }
+    if (!this.data.brands!.has(input.brandId)) {
+      this.data.brands!.set(input.brandId, {
+        brandId: input.brandId,
+        organizationId: input.organizationId,
+        name: input.name ?? "Brand",
         toneOfVoice: "professional",
         visualIdentity: "clean modern",
         brandRules: ["be concise"],

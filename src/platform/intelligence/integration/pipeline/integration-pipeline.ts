@@ -19,6 +19,13 @@ import type { IntegrationBridgeSet } from "../interfaces/integration";
 import type { RawRequestTaskBridge } from "../bridges/stage-bridges";
 import { INTELLIGENCE_OS_INTEGRATION_VERSION } from "../constants";
 import { applyExplicitCapabilityHint } from "../adapters/capability-hint";
+import { logAiOsLayer, logAiOsLine } from "../observability/ai-os-layer-log";
+import {
+  bridgeContextFromRequest,
+  createPostProcessingPush,
+  runIntegrationPostProcessingStages,
+} from "./integration-post-processing-runner";
+import type { IntegrationPostProcessingOptions } from "../interfaces/integration";
 
 export interface IntegrationPipelineDeps {
   readonly bridges: IntegrationBridgeSet & { readonly rawTask: RawRequestTaskBridge };
@@ -59,6 +66,15 @@ export class IntegrationPipeline implements IIntegrationPipeline {
 
     const stopAfterRouting = mode === "planning_through_routing";
 
+    logAiOsLine(
+      [
+        "pipeline start",
+        `requestId=${request.requestId}`,
+        `mode=${mode}`,
+        `prompt=${request.rawPrompt.replace(/\s+/g, " ").trim().slice(0, 160)}`,
+      ].join(" | ")
+    );
+
     const push = (
       stage: IntegrationStageKind,
       status: StageTraceRecord["status"],
@@ -91,6 +107,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       push("task_intelligence", "succeeded", "Task plan produced", r.value.observability.durationMs, [
         String(bag.task.resultId),
       ]);
+      logAiOsLayer({
+        stage: "task_intelligence",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 2. Capability
@@ -108,6 +130,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
         "Capability execution plan produced",
         r.value.observability.durationMs
       );
+      logAiOsLayer({
+        stage: "capability_intelligence",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 3. Agent
@@ -120,6 +148,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.agentPlanning = r.value.value;
       push("agent_planning", "succeeded", "Team plan produced", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "agent_planning",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 4. Workflow
@@ -132,6 +166,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.workflow = r.value.value;
       push("workflow_intelligence", "succeeded", "Workflow plan produced", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "workflow_intelligence",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 5. Governance
@@ -144,6 +184,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.governance = r.value.value;
       push("execution_governance", "succeeded", "Governance plan produced", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "execution_governance",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 6. Experience Injection
@@ -156,6 +202,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.experienceInjection = r.value.value;
       push("experience_injection", "succeeded", "Experience package injected", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "experience_injection",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 7. Execution Intelligence (via capability execution bridge; governance bridge available)
@@ -168,6 +220,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.executionIntelligence = r.value.value;
       push("execution_intelligence", "succeeded", "Execution strategy produced", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "execution_intelligence",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 8. Model Intelligence
@@ -180,6 +238,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.modelIntelligence = r.value.value;
       push("model_intelligence", "succeeded", "Model recommendations produced", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "model_intelligence",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 9. Negotiation
@@ -192,6 +256,12 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.negotiation = r.value.value;
       push("negotiation", "succeeded", "Negotiation completed", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "negotiation",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     // 10. Routing
@@ -204,13 +274,19 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       bridges.push(r.value.observability);
       bag.routing = r.value.value;
       push("routing", "succeeded", "Routing decision produced", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "routing",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
     if (stopAfterRouting) {
       return this.okReport(request, bag, stages, bridges, completed, start, true);
     }
 
-    // 11. Runtime
+    // 11. Runtime — actual AI model call.
     {
       const r = await this.deps.bridges.routingRuntime.transfer(ctx, bag);
       if (!r.ok) {
@@ -219,99 +295,120 @@ export class IntegrationPipeline implements IIntegrationPipeline {
       }
       bridges.push(r.value.observability);
       bag.runtime = r.value.value;
+      if (bag.runtime.success === false) {
+        const msg =
+          bag.runtime.error?.message?.trim() ||
+          "Provider execution failed";
+        push("provider_runtime", "failed", msg, r.value.observability.durationMs);
+        return this.failReport(
+          request,
+          bag,
+          stages,
+          bridges,
+          completed,
+          start,
+          "provider_runtime"
+        );
+      }
       push("provider_runtime", "succeeded", "Provider execution completed", r.value.observability.durationMs);
+      logAiOsLayer({
+        stage: "provider_runtime",
+        status: "succeeded",
+        durationMs: r.value.observability.durationMs,
+        bag,
+      });
     }
 
-    // 12. Consensus
-    {
-      const r = await this.deps.bridges.runtimeConsensus.transfer(ctx, bag);
-      if (!r.ok) {
-        push("consensus", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "consensus");
-      }
-      bridges.push(r.value.observability);
-      bag.consensus = r.value.value;
-      push("consensus", "succeeded", "Consensus produced", r.value.observability.durationMs);
-    }
-
-    // 13. Evaluation
-    {
-      const r = await this.deps.bridges.consensusEvaluation.transfer(ctx, bag);
-      if (!r.ok) {
-        push("evaluation", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "evaluation");
-      }
-      bridges.push(r.value.observability);
-      bag.evaluation = r.value.value;
-      push("evaluation", "succeeded", "Evaluation completed", r.value.observability.durationMs);
-    }
-
-    // 14. Evaluation Intelligence
-    {
-      const r = await this.deps.bridges.evaluationIntelligence.transfer(ctx, bag.evaluation!);
-      if (!r.ok) {
-        push("evaluation_intelligence", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "evaluation_intelligence");
-      }
-      bridges.push(r.value.observability);
-      bag.evaluationIntelligence = r.value.value;
-      push(
-        "evaluation_intelligence",
-        "succeeded",
-        "Evaluation intelligence packaged",
-        r.value.observability.durationMs
+    // 12–18: consensus → evaluation → learning → optimization → experience → repository.
+    // Synchronous — callers receive the full artifact bag and stage trace in one report.
+    const postProcessingFailed = await this.runPostProcessingStages(
+      ctx,
+      bag,
+      stages,
+      bridges,
+      completed,
+      start,
+      push
+    );
+    if (postProcessingFailed) {
+      return this.failReport(
+        request,
+        bag,
+        stages,
+        bridges,
+        completed,
+        start,
+        postProcessingFailed
       );
     }
 
-    // 15. Learning
-    {
-      const r = await this.deps.bridges.evaluationLearning.transfer(ctx, bag);
-      if (!r.ok) {
-        push("learning", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "learning");
-      }
-      bridges.push(r.value.observability);
-      bag.learning = r.value.value;
-      push("learning", "succeeded", "Learning completed", r.value.observability.durationMs);
-    }
+    return this.okReport(request, bag, stages, bridges, completed, start, true);
+  }
 
-    // 16. Optimization
-    {
-      const r = await this.deps.bridges.learningOptimization.transfer(ctx, bag);
-      if (!r.ok) {
-        push("execution_optimization", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "execution_optimization");
-      }
-      bridges.push(r.value.observability);
-      bag.optimization = r.value.value;
-      push("execution_optimization", "succeeded", "Optimization completed", r.value.observability.durationMs);
-    }
+  async executePostProcessing(
+    request: IntelligenceOsIntegrationRequest,
+    bag: IntegrationArtifactBag,
+    options?: IntegrationPostProcessingOptions
+  ): Promise<Result<IntelligenceOsIntegrationReport>> {
+    const start = this.clockMs();
+    const ctx = bridgeContextFromRequest(request);
+    const stages: StageTraceRecord[] = [...(options?.priorStages ?? [])];
+    const bridges: BridgeObservabilityRecord[] = [...(options?.priorBridges ?? [])];
+    const completed: IntegrationStageKind[] = [...(options?.priorStagesCompleted ?? [])];
+    const push = createPostProcessingPush(stages, completed, () => this.nowIso());
 
-    // 17. Experience Intelligence
-    {
-      const r = await this.deps.bridges.optimizationExperience.transfer(ctx, bag);
-      if (!r.ok) {
-        push("experience_intelligence", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "experience_intelligence");
-      }
-      bridges.push(r.value.observability);
-      bag.experienceIntelligence = r.value.value;
-      push("experience_intelligence", "succeeded", "Experiences extracted", r.value.observability.durationMs);
-    }
+    const postProcessingFailed = await runIntegrationPostProcessingStages({
+      bridges: this.deps.bridges,
+      ctx,
+      bag,
+      stages,
+      bridgesObs: bridges,
+      completed,
+      push,
+    });
 
-    // 18. Repository Updates
-    {
-      const r = await this.deps.bridges.experienceRepository.transfer(ctx, bag);
-      if (!r.ok) {
-        push("repository_updates", "failed", String(r.error.message), 0);
-        return this.failReport(request, bag, stages, bridges, completed, start, "repository_updates");
-      }
-      bridges.push(r.value.observability);
-      bag.repositoryUpdates = r.value.value;
-      push("repository_updates", "succeeded", "Repository updated", r.value.observability.durationMs);
+    if (postProcessingFailed) {
+      return this.failReport(
+        request,
+        bag,
+        stages,
+        bridges,
+        completed,
+        start,
+        postProcessingFailed
+      );
     }
 
     return this.okReport(request, bag, stages, bridges, completed, start, true);
+  }
+
+  /** Stages 12–18 — returns failed stage kind when a bridge fails. */
+  private async runPostProcessingStages(
+    ctxInput: { correlationId: string; requestId: string; request: IntelligenceOsIntegrationRequest },
+    bag: IntegrationArtifactBag,
+    stages: StageTraceRecord[],
+    bridges: BridgeObservabilityRecord[],
+    completed: IntegrationStageKind[],
+    _start: number,
+    push: (
+      stage: IntegrationStageKind,
+      status: StageTraceRecord["status"],
+      message: string,
+      durationMs: number,
+      artifactRefs?: readonly string[]
+    ) => void
+  ): Promise<IntegrationStageKind | undefined> {
+    void _start;
+    const ctx = bridgeContextFromRequest(ctxInput.request);
+    return runIntegrationPostProcessingStages({
+      bridges: this.deps.bridges,
+      ctx,
+      bag,
+      stages,
+      bridgesObs: bridges,
+      completed,
+      push,
+    });
   }
 
   private okReport(
@@ -323,6 +420,10 @@ export class IntegrationPipeline implements IIntegrationPipeline {
     start: number,
     successFlag: boolean
   ): Result<IntelligenceOsIntegrationReport> {
+    const durationMs = Math.max(0, this.clockMs() - start);
+    logAiOsLine(
+      `pipeline ${successFlag ? "complete" : "stopped"} · ${completed.length} layers · ${durationMs}ms · requestId=${request.requestId}`
+    );
     const correlationId = request.correlationId ?? request.requestId;
     return success({
       resultId: asIntegrationResultId(this.createId("ios")),
@@ -355,6 +456,14 @@ export class IntegrationPipeline implements IIntegrationPipeline {
     start: number,
     failedStage: IntegrationStageKind
   ): Result<IntelligenceOsIntegrationReport> {
+    const last = stages[stages.length - 1];
+    logAiOsLayer({
+      stage: failedStage,
+      status: "failed",
+      durationMs: last?.durationMs ?? 0,
+      bag,
+      error: last?.message,
+    });
     const correlationId = request.correlationId ?? request.requestId;
     return success({
       resultId: asIntegrationResultId(this.createId("ios")),

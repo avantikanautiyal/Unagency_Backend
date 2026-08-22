@@ -8,6 +8,8 @@ import {
   getProjectLogs,
   createProjectLogs,
   FetchMyProjects,
+  upsertCreativeProject,
+  updateMyProjectStatus,
 } from "../controllers/project.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 import { fileUpload } from "../middlewares/multers3.middleware";
@@ -25,6 +27,15 @@ router.get(
   "/client/:userId",
   VerifyRole(["superadmin", "admin", "resource", "servicing", "customer"]),
   fetchProjectListByClientId
+);
+
+// Customer AI Create Design → project card on Home/Projects
+// Must be registered before "/:projectId" so "creative" is not captured as an id.
+router.post("/creative", VerifyRole(["customer"]), upsertCreativeProject);
+router.patch(
+  "/:projectId/status",
+  VerifyRole(["customer"]),
+  updateMyProjectStatus
 );
 
 //Desc: It allows to fetch a project using Project id

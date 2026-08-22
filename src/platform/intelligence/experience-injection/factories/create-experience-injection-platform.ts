@@ -5,7 +5,7 @@
 import type { IExperienceRepository } from "../../experience-intelligence/interfaces/experience-intelligence";
 import { ExperienceInjectionEngine } from "../engine/experience-injection-engine";
 import { DefaultContextExtractor } from "../retrieval/context-extractor";
-import { DefaultExperienceRetriever } from "../retrieval/experience-retriever";
+import { MemoryAugmentedExperienceRetriever } from "../retrieval/memory-augmented-experience-retriever";
 import { DefaultApplicabilityMatcher } from "../applicability/applicability-matcher";
 import { DefaultSimilarityEngine } from "../relevance/similarity-engine";
 import { PlaceholderSemanticSimilarityEngine } from "../relevance/semantic-similarity";
@@ -36,10 +36,12 @@ export function createExperienceInjectionPlatform(
   const nowIso = options.nowIso ?? (() => new Date().toISOString());
   const clockMs = options.clockMs ?? (() => Date.now());
 
+  const retriever = new MemoryAugmentedExperienceRetriever();
+
   const engine = new ExperienceInjectionEngine({
     repository: options.repository,
     contextExtractor: new DefaultContextExtractor(),
-    retriever: new DefaultExperienceRetriever(),
+    retriever,
     applicabilityMatcher: new DefaultApplicabilityMatcher(),
     similarityEngine: new DefaultSimilarityEngine(
       new PlaceholderSemanticSimilarityEngine(),

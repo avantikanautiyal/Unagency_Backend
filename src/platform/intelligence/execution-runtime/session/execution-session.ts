@@ -183,7 +183,11 @@ export class ExecutionSession implements IExecutionSession {
     });
   }
 
-  async fail(message: string, errorCode?: string): Promise<void> {
+  async fail(
+    message: string,
+    errorCode?: string,
+    output?: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
     if (isTerminalExecutionState(this.state)) {
       return;
     }
@@ -197,6 +201,7 @@ export class ExecutionSession implements IExecutionSession {
       success: false,
       message,
       errorCode,
+      ...(output ? { output } : {}),
       completedAt: this.nowIso(),
     };
     this.persist();

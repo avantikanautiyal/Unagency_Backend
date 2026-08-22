@@ -30,6 +30,7 @@ import type {
   IMemoryScopeResolver,
   IMemoryStore,
 } from "../interfaces/memory-ports";
+import { indexMemoryRecord } from "../../experience-injection/retrieval/sync-memory-experience-index";
 
 export interface MemoryIntelligenceEngineDependencies {
   readonly store: IMemoryStore;
@@ -79,7 +80,11 @@ export class MemoryIntelligenceEngine implements IMemoryIntelligenceEngine {
     }
     record = retained.value;
 
-    return this.deps.store.save(record);
+    const saved = await this.deps.store.save(record);
+    if (saved.ok) {
+      indexMemoryRecord(saved.value);
+    }
+    return saved;
   }
 
   async ingest(input: MemoryIngestInput): Promise<Result<MemoryResult>> {

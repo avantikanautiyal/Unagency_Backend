@@ -8,13 +8,7 @@ import {
   type VerifiedEmbeddingProviderSpec,
 } from "../../intelligence/providers/embedding/configs/verified-embedding-provider-specs";
 import { SEED_MODELS } from "../../intelligence/model-registry/discovery/inventory-seed";
-
-function isEnabled(env: NodeJS.ProcessEnv, enableVar: string, hasCredential: boolean): boolean {
-  const flag = env[enableVar]?.trim().toLowerCase();
-  if (flag === "false" || flag === "0" || flag === "no") return false;
-  if (flag === "true" || flag === "1" || flag === "yes") return hasCredential;
-  return hasCredential;
-}
+import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export interface EmbeddingProviderEnvStatus {
   readonly providerId: string;
@@ -34,7 +28,7 @@ export function evaluateEmbeddingProviderEnv(
 ): EmbeddingProviderEnvStatus[] {
   return ALL_EMBEDDING_PROVIDER_SPECS.map((spec) => {
     const configured = Boolean(env[spec.credentialEnvVar]?.trim());
-    const enabled = isEnabled(env, spec.enableEnvVar, configured);
+    const enabled = isProviderEnableFlagOn(env, spec.enableEnvVar, configured);
     const verified = spec.vendorApiVerified;
     return {
       providerId: spec.canonicalProviderId,

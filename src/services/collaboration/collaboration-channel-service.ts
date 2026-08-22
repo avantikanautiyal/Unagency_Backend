@@ -7,6 +7,7 @@ import { collaborationOsService } from "../../platform/collaboration/collaborati
 import {
   mapLegacyRoleToCollaborationRole,
   type CollaborationChannelDto,
+  type CollaborationMemberDto,
   type CollaborationMemberRole,
   type CollaborationMessageDto,
   type CollaborationMessageType,
@@ -175,9 +176,12 @@ export class CollaborationChannelService {
     await collaborationOsService.assertMembership(userId, channelId);
   }
 
-  async listChannelsForUser(userId: string): Promise<CollaborationChannelDto[]> {
+  async listChannelsForUser(
+    userId: string,
+    options?: { brandId?: string }
+  ): Promise<CollaborationChannelDto[]> {
     const rows = await collaborationOsService.listConversationsForUser(userId);
-    return rows.map((r) => ({
+    const mapped = rows.map((r) => ({
       channelId: r.channelId,
       cid: r.cid,
       name: r.name,
@@ -191,6 +195,65 @@ export class CollaborationChannelService {
       unreadCount: r.unreadCount,
       lastMessagePreview: r.lastMessagePreview,
       memberRole: r.memberRole as CollaborationMemberRole | undefined,
+    }));
+    const brandId = options?.brandId?.trim();
+    if (!brandId) return mapped;
+    return mapped.filter(
+      (c) =>
+        c.brandId === brandId ||
+        (c.entityKind === "brand" && c.entityId === brandId)
+    );
+  }
+
+  /**
+   * Open (or create) the collaboration channel for a product brand the
+   * caller already owns. Used when chat opens after Choose Brand so we
+   * never fall back to a different brand's room.
+   */
+  async ensureForBrand(input: {
+    userId: string;
+    brandId: string;
+  }): Promise<CollaborationChannelDto> {
+    const { brandService } = await import("../brand-service");
+    const brand = await brandService.get({
+      userId: input.userId,
+      brandId: input.brandId,
+    });
+    const provisioned = await this.provisionForBrand({
+      brandId: brand.id,
+      name: brand.name,
+      organizationId: brand.organizationId,
+      memberUserIds:
+        brand.memberUserIds.length > 0 ? brand.memberUserIds : [input.userId],
+      createdByUserId: input.userId,
+    });
+    const channels = await this.listChannelsForUser(input.userId, {
+      brandId: brand.id,
+    });
+    const found = channels.find((c) => c.channelId === provisioned.channelId);
+    if (found) return found;
+    return {
+      channelId: provisioned.channelId,
+      cid: provisioned.cid,
+      name: `${brand.name} Brand`,
+      entityKind: "brand",
+      entityId: brand.id,
+      organizationId: brand.organizationId,
+      brandId: brand.id,
+    };
+  }
+
+  async listMembers(input: {
+    userId: string;
+    channelId: string;
+  }): Promise<CollaborationMemberDto[]> {
+    const rows = await collaborationOsService.listMembers(input);
+    return rows.map((r) => ({
+      userId: r.userId,
+      role: r.role as CollaborationMemberRole,
+      name: r.name,
+      email: r.email,
+      image: r.image,
     }));
   }
 

@@ -259,11 +259,21 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
 
     // M9.4A: reclaim stale leases before claiming new work
     if (typeof this.store.reclaimExpired === "function") {
-      const recovered = await this.store.reclaimExpired(this.nowIso(), this.clockMs());
-      for (const job of recovered) {
-        if (!this.queues.get("immediate").list().includes(job.jobId)) {
-          this.queues.get("immediate").enqueue(job.jobId);
+      try {
+        const recovered = await this.store.reclaimExpired(
+          this.nowIso(),
+          this.clockMs()
+        );
+        for (const job of recovered) {
+          if (!this.queues.get("immediate").list().includes(job.jobId)) {
+            this.queues.get("immediate").enqueue(job.jobId);
+          }
         }
+      } catch (err) {
+        // Reclaim must not abort the tick — new jobs still need to run.
+        console.warn(
+          `⚙️  [AI OS] lease reclaim failed | ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
 

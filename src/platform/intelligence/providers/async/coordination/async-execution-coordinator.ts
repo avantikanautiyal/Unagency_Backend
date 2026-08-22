@@ -34,9 +34,24 @@ import {
   asWorkspaceId,
 } from "../../../shared/identifiers";
 import type { IProviderRuntimeRegistry } from "../../runtime/registry/in-memory-provider-runtime-registry";
-import { isVideoGenerationCapability, isAsyncMediaCapability } from "../../common/resolve-execution-modality";
+import {
+  isVideoGenerationCapability,
+  isImageGenerationCapability,
+} from "../../common/resolve-execution-modality";
 import type { AsyncFailoverOrchestrator } from "../../routing/performance/failover/async-failover-orchestrator";
 import { parseFailoverChainFromPayload } from "../../routing/performance/failover/async-failover-orchestrator";
+import type { IIntelligenceOsIntegrationEngine } from "../../../integration/interfaces/integration";
+import {
+  buildProviderRuntimeFromAsyncTerminal,
+  readIntegrationPlanningSnapshot,
+  runDeferredIntegrationPostProcessing,
+} from "../../../integration/adapters/deferred-post-processing";
+import { mergePostProcessingIntoExtras } from "../../../../api/services/integration-post-processing-extras";
+import type { EnterpriseApiExecutionMode } from "../../../../api/runtime/execution-mode";
+import {
+  createGovernanceFinalizeService,
+  type GovernanceFinalizeService,
+} from "../../../../os/governance/finalize";
 
 export interface AsyncExecutionCoordinatorOptions {
   readonly runtime: AsyncProviderRuntime;
@@ -58,10 +73,20 @@ export interface AsyncExecutionCoordinatorOptions {
   readonly onIntelligenceSnapshot?: (snap: ExecutionIntelligenceSnapshot) => void;
   /** M9.5H — optional async failover after terminal provider failure. */
   readonly asyncFailover?: AsyncFailoverOrchestrator;
+  /** Runs integration stages 12–18 after async provider terminal completion. */
+  readonly integration?: IIntelligenceOsIntegrationEngine;
+  readonly executionMode?: EnterpriseApiExecutionMode;
+  /** Phase 6 governance for deferred post-processing finalize. */
+  readonly governanceFinalize?: GovernanceFinalizeService;
 }
 
 export class AsyncExecutionCoordinator {
-  constructor(private readonly deps: AsyncExecutionCoordinatorOptions) {}
+  private readonly governanceFinalize: GovernanceFinalizeService;
+
+  constructor(private readonly deps: AsyncExecutionCoordinatorOptions) {
+    this.governanceFinalize =
+      deps.governanceFinalize ?? createGovernanceFinalizeService();
+  }
 
   async submitExecution(input: {
     executionId: string;
@@ -159,8 +184,11 @@ export class AsyncExecutionCoordinator {
     await this.deps.executions.update(updated);
 
     const diagnostics = this.buildDiagnostics(refreshed);
-    const existingExtras = await this.deps.extras.get(executionId);
-    await this.deps.extras.save(executionId, execution.organizationId, {
+    const existingExtras = (await this.deps.extras.get(executionId)) as
+      | Readonly<Record<string, unknown>>
+      | undefined;
+    let mergedExtras: Readonly<Record<string, unknown>> = {
+      ...(existingExtras ?? {}),
       diagnostics,
       trace: existingExtras?.trace ?? {
         executionId,
@@ -186,7 +214,18 @@ export class AsyncExecutionCoordinator {
         experienceIds: [],
         applied: false,
       },
-    });
+    };
+
+    if (status === "succeeded" || status === "failed") {
+      mergedExtras = await this.applyDeferredPostProcessing({
+        execution,
+        refreshed,
+        status,
+        existingExtras: mergedExtras,
+      });
+    }
+
+    await this.deps.extras.save(executionId, execution.organizationId, mergedExtras);
 
     if (status === "succeeded" || status === "failed") {
       const snap = buildExecutionIntelligenceSnapshot({
@@ -248,6 +287,54 @@ export class AsyncExecutionCoordinator {
     }
 
     return success(updated);
+  }
+
+  private async applyDeferredPostProcessing(input: {
+    readonly execution: ExecutionResource;
+    readonly refreshed: {
+      readonly providerId: string;
+      readonly modelId: string;
+      readonly artifactIds?: readonly string[];
+      readonly errorMessage?: string;
+      readonly usage?: Readonly<Record<string, unknown>>;
+    };
+    readonly status: ExecutionResource["status"];
+    readonly existingExtras: Readonly<Record<string, unknown>>;
+  }): Promise<Readonly<Record<string, unknown>>> {
+    if (!this.deps.integration) return input.existingExtras;
+    const snapshot = readIntegrationPlanningSnapshot(input.existingExtras);
+    if (!snapshot) return input.existingExtras;
+
+    const runtime = buildProviderRuntimeFromAsyncTerminal({
+      executionId: input.execution.executionId,
+      providerId: input.refreshed.providerId,
+      modelId: input.refreshed.modelId,
+      success: input.status === "succeeded",
+      artifactIds: input.refreshed.artifactIds ?? [],
+      errorMessage: input.refreshed.errorMessage,
+      usage: input.refreshed.usage,
+      nowIso: this.deps.nowIso(),
+    });
+
+    const postProcessed = await runDeferredIntegrationPostProcessing({
+      integration: this.deps.integration,
+      snapshot,
+      runtime,
+    });
+    if (!postProcessed.ok) return input.existingExtras;
+
+    return mergePostProcessingIntoExtras({
+      executionId: input.execution.executionId,
+      correlationId: input.execution.correlationId,
+      report: postProcessed.value,
+      executionMode: this.deps.executionMode ?? "stub",
+      status: input.status,
+      existingExtras: input.existingExtras,
+      nowIso: this.deps.nowIso,
+      governanceFinalize: this.governanceFinalize,
+      organizationId: input.execution.organizationId,
+      createId: this.deps.createId,
+    });
   }
 
   private resolveDispatcher(providerId: string): IAsyncProviderDispatcher | undefined {
@@ -347,7 +434,15 @@ export function isAsyncExecutionRequest(input: {
   if (!input.hasAsyncCoordinator) return false;
 
   const cap = input.capabilityId ?? "";
-  if (isAsyncMediaCapability(cap)) return true;
+  if (isVideoGenerationCapability(cap)) return true;
+  // Dedicated image vendors (BFL / OpenAI GPT Image / Imagen / Recraft / Ideogram)
+  // are sync leaves with internal polling. Forcing async here selected the fake
+  // async leaf and skipped real image providers in LIVE.
+  if (isImageGenerationCapability(cap)) {
+    if (input.executionMode === "live") return false;
+    // Simulated/stub keep async for M10.6 fake-leaf artifact tests.
+    return true;
+  }
 
   // Non-production test/dev escape hatch only
   if (process.env.NODE_ENV === "production") return false;

@@ -6,7 +6,6 @@ import { failure, success, type Result } from "../../intelligence/shared/result"
 import { NotFoundError, AuthorizationError } from "../../intelligence/shared/errors";
 import type { IBrandBrainEngine } from "../brand-brain/interfaces/brand-brain";
 import type { IKnowledgeIntelligenceEngine } from "../knowledge-intelligence/interfaces/knowledge-intelligence";
-import { sampleBrandBrain } from "../brand-brain/builders/sample-brand-brain";
 import { buildContextBuildRequest } from "./build-context-build-request";
 import type {
   ExecutionBusinessContext,
@@ -93,15 +92,38 @@ export class ExecutionContextResolver {
     const brandStart = Date.now();
     if (input.scope?.brandId) {
       const brandResult = await this.resolveBrand(input);
-      if (!brandResult.ok) return brandResult;
-      brandContext = brandResult.value;
-    } else {
-      const brandResult = await this.resolveBrand(input);
       if (brandResult.ok) {
         brandContext = brandResult.value;
-      } else if (this.deps.requireBrand) {
-        return brandResult;
+      } else {
+        // Explicit brandId + tenant violation must fail closed (Phase 2 security).
+        if (brandResult.error instanceof AuthorizationError) {
+          return brandResult;
+        }
+        // Soft-provision when stores support it (simulated in-memory + Mongo brand ids).
+        // Product generate/enhance must not fail solely because Brand Brain fixtures
+        // don't yet contain a Mongo-backed brandId.
+        if (this.deps.stores.ensureBrand) {
+          await this.deps.stores.ensureBrand({
+            organizationId: input.identity.organizationId,
+            brandId: input.scope.brandId,
+            userId: input.identity.userId,
+          });
+          const retried = await this.resolveBrand(input);
+          if (retried.ok) {
+            brandContext = retried.value;
+          } else if (retried.error instanceof AuthorizationError) {
+            return retried;
+          } else if (this.deps.requireBrand) {
+            return retried;
+          }
+        } else if (this.deps.requireBrand) {
+          return brandResult;
+        }
+        // else continue without brand — Brand Intelligence / enrichedPrompt may still apply
       }
+    } else {
+      // Phase 2: do NOT guess brandId from listed[0] — missing brandId means unbranded.
+      brandContext = undefined;
     }
     timings.brand = Date.now() - brandStart;
 
@@ -253,13 +275,9 @@ export class ExecutionContextResolver {
   private async resolveBrand(
     input: ExecutionContextResolveInput
   ): Promise<Result<NonNullable<ExecutionBusinessContext["brand"]>>> {
-    const listed = await this.deps.stores.listBrandsForOrganization(
-      input.identity.organizationId
-    );
-    const brandId = input.scope?.brandId ?? listed[0]?.brandId;
-
+    const brandId = input.scope?.brandId;
     if (!brandId) {
-      return failure(new NotFoundError("brand not found for organization"));
+      return failure(new NotFoundError("brandId required — Brand Intelligence does not guess"));
     }
 
     const brand = await this.deps.stores.getBrand(brandId);
@@ -281,6 +299,7 @@ export class ExecutionContextResolver {
       toneOfVoice: brand.toneOfVoice,
       visualIdentity: brand.visualIdentity,
       brandRules: brand.brandRules,
+      colorPalette: brand.colorPalette,
     });
   }
 
@@ -339,24 +358,46 @@ export class ExecutionContextResolver {
   ): Promise<void> {
     const current = await this.deps.brandBrain.getCurrent(input.identity.organizationId);
     if (current.ok && current.value) {
-      return;
+      const doc = current.value.document;
+      const matchesBrand = doc.brandId === brand.brandId;
+      const hasIdentityName = Boolean(
+        doc.identity?.name?.trim() || doc.organization?.legalName?.trim()
+      );
+      // Only skip when this brand is already synced with a real name.
+      // Empty leftover documents (no brandId / no identity) must be overwritten.
+      if (matchesBrand && hasIdentityName) return;
     }
-
-    const org = await this.deps.stores.getOrganization(input.identity.organizationId);
-    await this.deps.brandBrain.upsert({
-      organizationId: input.identity.organizationId,
-      document: sampleBrandBrain({
-        organizationId: input.identity.organizationId,
-        brandName: brand.name,
-        industry: org?.name ?? "general",
-        tone: brand.toneOfVoice ? [brand.toneOfVoice] : ["professional"],
-        region: input.hints?.region ?? "global",
-        competitor: "generic competitor",
-      }),
-      changelog: "seeded from brand profile for execution context",
-      label: "execution-context-seed",
-      createdBy: input.identity.userId,
-    });
+    try {
+      const { syncProductBrandToBrain } = await import(
+        "../../../services/brand-brain-sync-service"
+      );
+      const mongooseNs = await import("mongoose");
+      const mongoose =
+        (mongooseNs as { default?: typeof mongooseNs }).default ?? mongooseNs;
+      if (mongoose.connection?.readyState !== 1) {
+        console.warn(
+          `[UNAGENCY OS] brand.context.missing org=${input.identity.organizationId} brand=${brand.brandId} — mongo not connected`
+        );
+        return;
+      }
+      const Brands = (await import("../../../models/brand.model")).default;
+      const { toBrandDto } = await import("../../../services/brand-service");
+      const doc = await Brands.findById(brand.brandId);
+      if (!doc) {
+        console.warn(
+          `[UNAGENCY OS] brand.context.missing org=${input.identity.organizationId} brand=${brand.brandId} — product brand not found`
+        );
+        return;
+      }
+      const dto = toBrandDto(doc);
+      await syncProductBrandToBrain(dto, this.deps.brandBrain);
+    } catch (err) {
+      console.warn(
+        `[UNAGENCY OS] brand.brain.sync.failed org=${input.identity.organizationId} brand=${brand.brandId} — ${
+          err instanceof Error ? err.message : "unknown"
+        }`
+      );
+    }
   }
 }
 

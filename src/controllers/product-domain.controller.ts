@@ -61,6 +61,10 @@ export const listSavedRoutes = asyncHandler(async (req: RequestUser) => {
     organizationId:
       (req.query.organizationId as string | undefined) || orgIdFromUser(req),
     favoritesOnly: req.query.favorites === "1",
+    executionId:
+      typeof req.query.executionId === "string"
+        ? req.query.executionId
+        : undefined,
   });
   return new ApiResponse(200, data, "Saved routes");
 });
@@ -72,10 +76,16 @@ export const createSavedRoute = asyncHandler(async (req: RequestUser) => {
       (req.body?.organizationId as string | undefined) || orgIdFromUser(req),
     title: req.body?.title,
     prompt: req.body?.prompt,
+    subtitle: req.body?.subtitle,
     intent: req.body?.intent,
     capabilityId: req.body?.capabilityId,
+    artifactId: req.body?.artifactId,
+    executionId: req.body?.executionId,
+    sourceRouteId: req.body?.sourceRouteId,
+    mediaKind: req.body?.mediaKind,
     pinned: req.body?.pinned,
     favorite: req.body?.favorite,
+    brandId: req.body?.brandId,
   });
   return new ApiResponse(201, data, "Saved route created");
 });

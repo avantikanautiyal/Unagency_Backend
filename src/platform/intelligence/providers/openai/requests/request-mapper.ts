@@ -23,7 +23,11 @@ export function mapCanonicalToOpenAIRequest(
       ? [{ role: "user", content: request.input.prompt }]
       : [{ role: "user", content: JSON.stringify(request.input) }]);
 
-  const params = request.parameters;
+  const params = { ...(request.parameters ?? {}) } as Record<string, unknown>;
+  // Internal adapter options — never forward to vendor HTTP bodies.
+  delete params.features;
+  delete params.feature;
+  delete params.toolRuntime;
   const body: Record<string, unknown> = {
     model: resolvedModelId,
     ...params,
@@ -52,7 +56,21 @@ export function mapCanonicalToOpenAIRequest(
       (request.input.response_format as Record<string, unknown>).type === "json_schema"
     ) {
       body.response_format = request.input.response_format;
+    } else if (
+      request.input.response_format &&
+      typeof request.input.response_format === "object"
+    ) {
+      body.response_format = request.input.response_format;
     }
+
+    // OpenAI rejects json_object unless the word "json" appears in messages.
+    const rf = body.response_format as { type?: string } | undefined;
+    if (rf?.type === "json_object" || rf?.type === "json_schema") {
+      body.messages = ensureJsonHintInMessages(
+        body.messages as Array<Record<string, unknown>>,
+      );
+    }
+
     if (request.input.tools) body.tools = request.input.tools;
     if (request.input.tool_choice) body.tool_choice = request.input.tool_choice;
   } else if (operation === "embeddings") {
@@ -64,7 +82,29 @@ export function mapCanonicalToOpenAIRequest(
       "";
     body.input = text;
   } else if (operation === "images.generations") {
-    body.prompt = request.input.prompt ?? request.input.text ?? JSON.stringify(request.input);
+    // gpt-image-* rejects DALL·E-era fields like response_format; only forward known keys.
+    const allowed = new Set([
+      "model",
+      "prompt",
+      "n",
+      "size",
+      "quality",
+      "background",
+      "moderation",
+      "output_format",
+      "output_compression",
+      "partial_images",
+      "stream",
+      "user",
+    ]);
+    for (const key of Object.keys(body)) {
+      if (!allowed.has(key)) delete body[key];
+    }
+    body.prompt =
+      request.input.prompt ?? request.input.text ?? JSON.stringify(request.input);
+    // Prefer compact defaults so sync materialization stays within memory/time budgets.
+    if (body.size == null) body.size = "1024x1024";
+    if (body.quality == null) body.quality = "low";
   } else if (operation === "moderations") {
     body.input = request.input.input ?? request.input.text ?? "";
   } else if (operation === "audio.speech") {
@@ -124,4 +164,32 @@ function pathForOperation(operation: string): string {
     default:
       return "/chat/completions";
   }
+}
+
+/** OpenAI json_object mode requires the word "json" somewhere in messages. */
+function ensureJsonHintInMessages(
+  messages: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const hasJson = messages.some((m) => {
+    const content = m.content;
+    if (typeof content === "string") return /\bjson\b/i.test(content);
+    if (Array.isArray(content)) {
+      return content.some(
+        (part) =>
+          part &&
+          typeof part === "object" &&
+          typeof (part as { text?: string }).text === "string" &&
+          /\bjson\b/i.test((part as { text: string }).text),
+      );
+    }
+    return false;
+  });
+  if (hasJson) return messages;
+  return [
+    {
+      role: "system",
+      content: "Respond with valid JSON only. Do not include markdown fences.",
+    },
+    ...messages,
+  ];
 }

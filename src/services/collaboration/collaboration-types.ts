@@ -96,6 +96,14 @@ export type CollaborationChannelDto = {
   memberRole?: CollaborationMemberRole;
 };
 
+export type CollaborationMemberDto = {
+  userId: string;
+  role: CollaborationMemberRole;
+  name?: string;
+  email?: string;
+  image?: string;
+};
+
 export type CollaborationMessageDto = {
   id: string;
   channelId: string;

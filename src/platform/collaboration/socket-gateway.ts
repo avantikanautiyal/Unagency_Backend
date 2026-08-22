@@ -7,11 +7,9 @@
 import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
-import Redis from "ioredis";
 import { verifyFirebaseIdToken } from "../../libs/firebase/verify-id-token";
 import Users from "../../models/users.model";
 import { getSharedRedisClient } from "../infrastructure/durability/redis/redis-client-factory";
-import { redisConnectionFromEnv } from "../infrastructure/durability/durable-mode";
 import { collaborationOsService } from "./collaboration-os-service";
 import type { PresenceStatus } from "./models";
 
@@ -83,31 +81,23 @@ export async function attachCollaborationSocketGateway(
 
   // Redis adapter for horizontal scaling (optional — falls back to in-process)
   try {
-    const cfg = redisConnectionFromEnv(process.env);
-    if (cfg) {
-      const pub = new Redis({
-        host: cfg.host,
-        port: cfg.port,
-        password: cfg.password,
-        lazyConnect: true,
-        maxRetriesPerRequest: null,
+    const shared = getSharedRedisClient(process.env);
+    if (shared) {
+      const pub = shared.duplicate();
+      const sub = shared.duplicate();
+      pub.on("error", (err) => {
+        console.warn("[Collaboration OS] redis pub error:", err.message);
       });
-      const sub = pub.duplicate();
+      sub.on("error", (err) => {
+        console.warn("[Collaboration OS] redis sub error:", err.message);
+      });
       await Promise.all([pub.connect(), sub.connect()]);
       io.adapter(createAdapter(pub, sub));
       console.log("[Collaboration OS] Socket.IO Redis adapter attached");
     } else {
-      // Prefer shared client presence when REDIS_* unset — single instance OK
-      const shared = getSharedRedisClient();
-      if (shared) {
-        console.log(
-          "[Collaboration OS] Redis configured but adapter skipped (use REDIS_HOST for multi-instance)"
-        );
-      } else {
-        console.log(
-          "[Collaboration OS] Socket.IO in-process mode (set REDIS_HOST for scale-out)"
-        );
-      }
+      console.log(
+        "[Collaboration OS] Socket.IO in-process mode (set REDIS_HOST for scale-out)"
+      );
     }
   } catch (err) {
     console.warn(

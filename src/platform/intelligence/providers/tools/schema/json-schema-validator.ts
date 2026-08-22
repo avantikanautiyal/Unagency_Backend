@@ -140,6 +140,14 @@ function walk(
       errors.push(`${path}: array exceeds max items`);
       return;
     }
+    const minItems = schema.minItems;
+    if (typeof minItems === "number" && value.length < minItems) {
+      errors.push(`${path}: expected at least ${minItems} items, got ${value.length}`);
+    }
+    const maxItems = schema.maxItems;
+    if (typeof maxItems === "number" && value.length > maxItems) {
+      errors.push(`${path}: expected at most ${maxItems} items, got ${value.length}`);
+    }
     const items = schema.items as JsonSchemaLike | undefined;
     if (items) {
       value.forEach((item, i) =>

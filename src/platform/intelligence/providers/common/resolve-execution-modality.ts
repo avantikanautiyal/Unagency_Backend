@@ -33,6 +33,7 @@ export function resolveExecutionModality(capabilityId: string): ProviderModality
     return "multimodal";
   }
   if (cap.includes("embedding")) return "embedding";
+  if (cap.startsWith("research.")) return "text";
   return "text";
 }
 
@@ -42,10 +43,6 @@ export function resolveExecutionFeatures(capabilityId: string): readonly string[
   if (cap.startsWith("image.")) return [];
   if (cap === "embedding.generate" || cap.includes("embedding")) return ["embeddings"];
   return [];
-}
-
-export function isImageGenerationCapability(capabilityId: string): boolean {
-  return capabilityId.toLowerCase() === "image.generate";
 }
 
 export function isVisionCapability(capabilityId: string): boolean {
@@ -70,6 +67,11 @@ export function isImageGenerationCapability(capabilityId: string): boolean {
     cap === "image.edit" ||
     (cap.startsWith("image.") && !cap.includes("vision"))
   );
+}
+
+export function isResearchCapability(capabilityId: string): boolean {
+  const cap = capabilityId.toLowerCase();
+  return cap === "research.web_search" || cap.startsWith("research.");
 }
 
 /** Media capabilities that use durable async orchestration when asyncMedia is enabled. */

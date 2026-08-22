@@ -16,6 +16,8 @@ import { composeEnterpriseExecution } from "../../../api/runtime/compose-enterpr
 export interface DistributedExecutionPlatform {
   readonly engine: IDistributedExecutionEngine;
   readonly rawEngine: DistributedExecutionEngine;
+  readonly intelligenceGatewayHolder?: import("../workers/job-executors").IntelligenceGatewayHolder;
+  readonly integration?: IIntelligenceOsIntegrationEngine;
 }
 
 export interface CreateDistributedExecutionOptions
@@ -31,6 +33,7 @@ export interface CreateDistributedExecutionOptions
   readonly brandBrainRepository?: import("../../durability/interfaces/brand-brain-repository").IBrandBrainRepository;
   readonly jobStore?: import("../interfaces/execution").IJobStore;
   readonly toolRuntime?: import("../../../intelligence/providers/tools/composition/tool-runtime-platform").ToolRuntimePlatform;
+  readonly asyncMedia?: import("../../durability/create-async-media-platform").AsyncMediaPlatform;
 }
 
 export function createDistributedExecutionPlatform(
@@ -43,12 +46,16 @@ export function createDistributedExecutionPlatform(
     options.createId ?? ((p: string) => `${p}_${++seq}_${clockMs()}`);
 
   let executor = options.executor;
+  let intelligenceGatewayHolder:
+    | import("../workers/job-executors").IntelligenceGatewayHolder
+    | undefined;
+  let integration = options.integration;
   if (!executor) {
     const mode: EnterpriseApiExecutionMode =
       options.executionMode ??
       (options.useIntegrationLayer ? "simulated" : "stub");
 
-    executor = composeEnterpriseExecution({
+    const composed = composeEnterpriseExecution({
       executionMode: mode,
       nowIso,
       clockMs,
@@ -59,7 +66,11 @@ export function createDistributedExecutionPlatform(
       useLiveBusinessContext: options.useLiveBusinessContext,
       brandBrainRepository: options.brandBrainRepository,
       toolRuntime: options.toolRuntime,
-    }).executor;
+      asyncMedia: options.asyncMedia,
+    });
+    executor = composed.executor;
+    intelligenceGatewayHolder = composed.intelligenceGatewayHolder;
+    integration = composed.integration ?? integration;
   }
 
   const rawEngine = new DistributedExecutionEngine({
@@ -71,5 +82,5 @@ export function createDistributedExecutionPlatform(
     createId,
   });
 
-  return { engine: rawEngine, rawEngine };
+  return { engine: rawEngine, rawEngine, intelligenceGatewayHolder, integration };
 }

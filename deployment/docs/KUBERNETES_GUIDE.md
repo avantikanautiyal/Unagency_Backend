@@ -2,7 +2,7 @@
 
 Base manifests: `deployment/kubernetes/base/`
 
-- Deployments (api, business, intelligence, worker, background)
+- Deployments (api, business, direct, worker, background)
 - StatefulSets (postgres, mongodb, redis)
 - Services, Ingress, Secrets, ConfigMaps
 - PVC via volumeClaimTemplates

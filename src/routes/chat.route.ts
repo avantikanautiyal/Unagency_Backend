@@ -8,9 +8,12 @@ import {
   sendAutomateMessageToUser,
   listCollaborationChannels,
   ensureBrandChannel,
+  ensureServiceChannel,
+  ensureProjectChannel,
   listChannelMembers,
   listChannelMessages,
   sendChannelMessage,
+  uploadAttachmentInChannel,
   shareAssetInChannel,
   shareArtifactInChannel,
   invokeAiInChannel,
@@ -20,8 +23,17 @@ import {
   markChannelRead,
   addCollaborationMembers,
   removeCollaborationMembers,
+  getServiceAiState,
+  patchServiceAiState,
+  listServiceAiMessages,
+  upsertServiceAiMessage,
+  buildServiceExecutionContext,
+  resolveServiceConversationalTurn,
+  linkServiceExecution,
+  clearServiceAiHistory,
 } from "../controllers/chat.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
+import { fileUpload } from "../middlewares/multers3.middleware";
 
 const router = Router();
 const roles = ["customer", "admin", "servicing", "resource", "superadmin"] as const;
@@ -34,6 +46,16 @@ router.post(
   "/ensure-brand-channel",
   VerifyRole([...roles]),
   ensureBrandChannel
+);
+router.post(
+  "/ensure-service-channel",
+  VerifyRole([...roles]),
+  ensureServiceChannel
+);
+router.post(
+  "/ensure-project-channel",
+  VerifyRole([...roles]),
+  ensureProjectChannel
 );
 router.get(
   "/channels/:channelId/members",
@@ -49,6 +71,12 @@ router.post(
   "/channels/:channelId/messages",
   VerifyRole([...roles]),
   sendChannelMessage
+);
+router.post(
+  "/channels/:channelId/attachments",
+  VerifyRole([...roles]),
+  fileUpload.single("file"),
+  uploadAttachmentInChannel
 );
 router.post(
   "/channels/:channelId/share-asset",
@@ -84,6 +112,47 @@ router.post(
   "/channels/:channelId/read",
   VerifyRole([...roles]),
   markChannelRead
+);
+/** Service AI conversation — persistent context-aware service chat */
+router.get(
+  "/channels/:channelId/ai-state",
+  VerifyRole([...roles]),
+  getServiceAiState
+);
+router.patch(
+  "/channels/:channelId/ai-state",
+  VerifyRole([...roles]),
+  patchServiceAiState
+);
+router.get(
+  "/channels/:channelId/ai-messages",
+  VerifyRole([...roles]),
+  listServiceAiMessages
+);
+router.post(
+  "/channels/:channelId/ai-messages",
+  VerifyRole([...roles]),
+  upsertServiceAiMessage
+);
+router.post(
+  "/channels/:channelId/execution-context",
+  VerifyRole([...roles]),
+  buildServiceExecutionContext
+);
+router.post(
+  "/channels/:channelId/resolve-turn",
+  VerifyRole([...roles]),
+  resolveServiceConversationalTurn
+);
+router.post(
+  "/channels/:channelId/link-execution",
+  VerifyRole([...roles]),
+  linkServiceExecution
+);
+router.delete(
+  "/channels/:channelId/ai-history",
+  VerifyRole([...roles]),
+  clearServiceAiHistory
 );
 router.post(
   "/channels/:channelId/members",

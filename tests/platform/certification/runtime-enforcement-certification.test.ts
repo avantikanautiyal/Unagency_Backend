@@ -17,7 +17,7 @@ import { loginDemo } from "../../../src/platform/api/testing";
 import { createDistributedExecutionPlatform } from "../../../src/platform/infrastructure/execution/factories/create-distributed-execution-platform";
 import { StubJobExecutor } from "../../../src/platform/infrastructure/execution/workers/job-executors";
 import { asJobId, asWorkerId } from "../../../src/platform/infrastructure/execution/contracts/job";
-import { ControllableDispatcher } from "../../../src/platform/intelligence/providers/runtime/testing";
+import { ControllableDispatcher } from "../../../src/platform/providers/runtime/testing";
 
 describe("M9.4A Runtime Enforcement", () => {
   afterEach(() => {
@@ -365,18 +365,6 @@ describe("M9.4A Runtime Enforcement", () => {
           ENTERPRISE_API_EXECUTION_MODE: "live",
         })
       ).not.toThrow();
-    });
-
-    it("rejects in-memory brand brain in production LIVE durable", () => {
-      const stores = getSharedTestDurableStores();
-      expect(stores.composition?.brandBrain).toBe("InMemoryBrandBrainRepository");
-      expect(() =>
-        assertProductionDurableComposition(stores, {
-          NODE_ENV: "production",
-          ENTERPRISE_API_DURABLE_MODE: "true",
-          ENTERPRISE_API_EXECUTION_MODE: "live",
-        })
-      ).toThrow(/composition violation|MongoBrandBrainRepository/);
     });
   });
 

@@ -10,6 +10,7 @@ import {
   DEFAULT_GOVERNANCE_POLICY_VERSION,
   type GovernancePolicy,
 } from "./policy";
+import { CREATIVE_SCORE_RELEASE_GATE } from "../evaluation/creative-score/creative-score-dimensions";
 
 export function createGovernancePolicyForProductMode(input: {
   readonly organizationId: string;
@@ -27,9 +28,10 @@ export function createGovernancePolicyForProductMode(input: {
         policyVersion: DEFAULT_GOVERNANCE_POLICY_VERSION,
         rules: {
           ...base.rules,
-          /** AI mode — auto-continue unless risk is very high */
+          /** AI mode — auto-continue unless creative score or risk fails */
           humanReviewRiskThreshold: 0.92,
-          approveMinOverallScore: 0.45,
+          approveMinOverallScore: CREATIVE_SCORE_RELEASE_GATE / 100,
+          approveMinCreativeScore: CREATIVE_SCORE_RELEASE_GATE,
           retryOnSpecFailure: true,
           blockOnBrandCritical: true,
         },
@@ -41,7 +43,8 @@ export function createGovernancePolicyForProductMode(input: {
         rules: {
           ...base.rules,
           humanReviewRiskThreshold: 0.6,
-          approveMinOverallScore: 0.55,
+          approveMinOverallScore: CREATIVE_SCORE_RELEASE_GATE / 100,
+          approveMinCreativeScore: CREATIVE_SCORE_RELEASE_GATE,
         },
       };
     case "human":
@@ -50,9 +53,9 @@ export function createGovernancePolicyForProductMode(input: {
         policyId: `${DEFAULT_GOVERNANCE_POLICY_ID}_human`,
         rules: {
           ...base.rules,
-          /** Human mode — prefer review gates when quality is uncertain */
           humanReviewRiskThreshold: 0.35,
-          approveMinOverallScore: 0.75,
+          approveMinOverallScore: CREATIVE_SCORE_RELEASE_GATE / 100,
+          approveMinCreativeScore: CREATIVE_SCORE_RELEASE_GATE,
           retryOnSpecFailure: false,
           blockOnBrandCritical: true,
         },

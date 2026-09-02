@@ -1,20 +1,18 @@
 /**
- * Canonical ingress: IntelligenceGateway → Orchestrator → IntegrationDispatcher → pipeline.
- * Falls back to direct integration.run only when the gateway is not wired.
+ * Direct provider control-plane runner — prompt → DirectExecutionEngine → provider.
+ * Name retains "integration" for call-site compatibility; there is no IntegrationPipeline.
  */
 
-import type { IIntelligenceGateway } from "../../intelligence/gateway/interfaces/intelligence-gateway";
-import type { IIntelligenceOsIntegrationEngine } from "../../intelligence/integration/interfaces/integration";
-import type { IntelligenceOsIntegrationRequest } from "../../intelligence/integration/contracts/request";
-import type { IntelligenceOsIntegrationReport } from "../../intelligence/integration/contracts/result";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
-import { asOrganizationId, asWorkspaceId } from "../../intelligence/shared/identifiers";
-import { INTEGRATION_REPORT_SESSION_KEY } from "../../intelligence/orchestrator/dispatcher/integration-dispatcher";
+import type { IDirectExecutionEngine } from "../../direct/contracts";
+import type {
+  DirectExecutionRequest,
+  DirectExecutionReport,
+} from "../../direct/contracts";
+import type { Result } from "../../core/result";
 
-export const INTEGRATION_REPORT_OUTPUT_KEY = INTEGRATION_REPORT_SESSION_KEY;
+/** @deprecated Report key name; value is a DirectExecutionReport. */
+export const INTEGRATION_REPORT_OUTPUT_KEY = "integrationReport";
 
-/** Platform default when callers omit workspaceId — matches async coordinator + tool runtime. */
 export const DEFAULT_CONTROL_PLANE_WORKSPACE_ID = "ws_default";
 
 export function resolveControlPlaneWorkspaceId(workspaceId?: string): string {
@@ -23,9 +21,9 @@ export function resolveControlPlaneWorkspaceId(workspaceId?: string): string {
 }
 
 export type IntegrationControlPlaneRunInput = {
-  readonly gateway?: IIntelligenceGateway;
-  readonly integration: IIntelligenceOsIntegrationEngine;
-  readonly request: IntelligenceOsIntegrationRequest;
+  /** DirectExecutionEngine (legacy field name: integration). */
+  readonly integration: IDirectExecutionEngine;
+  readonly request: DirectExecutionRequest;
   readonly capabilityId: string;
   readonly organizationId: string;
   readonly workspaceId?: string;
@@ -34,59 +32,27 @@ export type IntegrationControlPlaneRunInput = {
 
 export function extractIntegrationReportFromGatewayOutput(
   output: Readonly<Record<string, unknown>> | undefined
-): IntelligenceOsIntegrationReport | undefined {
+): DirectExecutionReport | undefined {
   if (!output) return undefined;
   const embedded = output[INTEGRATION_REPORT_OUTPUT_KEY];
   if (!embedded || typeof embedded !== "object") return undefined;
-  const candidate = embedded as IntelligenceOsIntegrationReport;
+  const candidate = embedded as DirectExecutionReport;
   if (!candidate.artifacts || typeof candidate.success !== "boolean") {
     return undefined;
   }
   return candidate;
 }
 
-/**
- * Run the 13-stage pipeline through the intelligence control plane when possible.
- */
+/** Run DirectExecutionEngine for a sync create / distributed job. */
+export async function runDirectProviderExecution(
+  input: IntegrationControlPlaneRunInput
+): Promise<Result<DirectExecutionReport>> {
+  return input.integration.run(input.request);
+}
+
+/** @deprecated Use runDirectProviderExecution — same behavior. */
 export async function runIntegrationViaControlPlane(
   input: IntegrationControlPlaneRunInput
-): Promise<Result<IntelligenceOsIntegrationReport>> {
-  if (input.gateway) {
-    const workspaceId = resolveControlPlaneWorkspaceId(input.workspaceId);
-    const attributes: Record<string, unknown> = {
-      ...(input.request.metadata ?? {}),
-      rawPrompt: input.request.rawPrompt,
-      capabilityId: input.capabilityId,
-      capabilityHint: input.capabilityId,
-      correlationId: input.request.correlationId,
-      ...(input.apiExecutionId
-        ? { apiExecutionId: input.apiExecutionId, executionId: input.apiExecutionId }
-        : {}),
-    };
-
-    const gatewayResult = await input.gateway.invokeCapability({
-      capabilityId: input.capabilityId,
-      organizationId: asOrganizationId(input.organizationId),
-      workspaceId: asWorkspaceId(workspaceId),
-      input: attributes,
-      correlationId: input.request.correlationId,
-    });
-
-    if (!gatewayResult.ok) {
-      return failure(gatewayResult.error);
-    }
-
-    const report = extractIntegrationReportFromGatewayOutput(gatewayResult.value.output);
-    if (report) {
-      return success(report);
-    }
-
-    return failure(
-      new ValidationError(
-        "Intelligence Gateway completed without integration report — refusing silent fallback"
-      )
-    );
-  }
-
-  return input.integration.run(input.request);
+): Promise<Result<DirectExecutionReport>> {
+  return runDirectProviderExecution(input);
 }

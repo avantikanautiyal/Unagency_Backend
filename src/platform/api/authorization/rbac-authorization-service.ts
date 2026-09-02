@@ -2,8 +2,8 @@
  * Authorization service (RBAC).
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { AuthorizationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { AuthorizationError } from "../../core/errors";
 import type { AuthPrincipal, Permission } from "../contracts";
 import type { IAuthorizationService } from "../interfaces";
 import { hasPermission, permissionsForRoles } from "../authorization/rbac";

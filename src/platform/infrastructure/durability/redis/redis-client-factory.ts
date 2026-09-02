@@ -24,9 +24,20 @@ export function getSharedRedisClient(env: NodeJS.ProcessEnv = process.env): Redi
     maxRetriesPerRequest: 3,
     lazyConnect: true,
     enableOfflineQueue: false,
+    connectTimeout: 10_000,
+    retryStrategy(times) {
+      // Cap backoff so flaky networks don't spam forever, but do recover.
+      return Math.min(times * 500, 5_000);
+    },
   });
   sharedClient.on("error", (err) => {
     console.warn("[redis] client error:", err.message);
+  });
+  sharedClient.on("end", () => {
+    console.warn("[redis] connection ended");
+  });
+  sharedClient.on("reconnecting", () => {
+    console.warn("[redis] reconnecting…");
   });
   sharedClientKey = key;
   return sharedClient;

@@ -15,6 +15,20 @@ describe("execution-governance-extras", () => {
     );
   });
 
+  it("maps deliverable outputKind over text.generate → copy", () => {
+    expect(
+      resolveOutputContractId("text.generate", { outputKind: "presentation" })
+    ).toBe("output.presentation");
+    expect(
+      resolveOutputContractId("text.generate", { outputKind: "document" })
+    ).toBe("output.document");
+    expect(
+      resolveOutputContractId("text.generate", {
+        outputKind: "deferred_website",
+      })
+    ).toBe("output.website");
+  });
+
   it("extracts preview from job summary", () => {
     expect(
       previewFromJobSummary({ resultText: "Hello campaign copy" })

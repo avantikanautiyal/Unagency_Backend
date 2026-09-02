@@ -6,8 +6,6 @@ import mongoose from "mongoose";
 import SavedRoutes, { type ISavedRoute } from "../models/savedRoute.model";
 import { ApiError } from "../utils/apiError";
 import { resolveCustomerOrganizationId } from "./product-asset-service";
-import type { IBrandBrainEngine } from "../platform/business/brand-brain/interfaces";
-import { learnFromRouteSelection } from "../platform/business/brand-brain/learning/selection-signal-learner";
 
 export type SavedRouteDto = {
   id: string;
@@ -58,13 +56,6 @@ function optionalTrim(value: unknown): string | undefined {
 }
 
 export class SavedRouteService {
-  private brandBrainEngine?: IBrandBrainEngine;
-
-  /** Inject the brand brain engine so route selections are learned. */
-  setBrandBrainEngine(engine: IBrandBrainEngine): void {
-    this.brandBrainEngine = engine;
-  }
-
   async list(input: {
     userId: string;
     organizationId?: string;
@@ -158,26 +149,7 @@ export class SavedRouteService {
         existing.favorite = payload.favorite;
         existing.lastUsedAt = payload.lastUsedAt;
         await existing.save();
-        const upsertResult = toDto(existing);
-
-        // Brand learning on re-save too
-        if (this.brandBrainEngine) {
-          void learnFromRouteSelection(
-            {
-              organizationId,
-              brandId: optionalTrim(input.brandId),
-              title: upsertResult.title,
-              prompt: upsertResult.prompt,
-              intent: upsertResult.intent,
-              mediaKind: upsertResult.mediaKind,
-              capabilityId: upsertResult.capabilityId,
-              favorite: upsertResult.favorite,
-            },
-            { brandBrainEngine: this.brandBrainEngine },
-          );
-        }
-
-        return upsertResult;
+        return toDto(existing);
       }
     }
 
@@ -187,24 +159,6 @@ export class SavedRouteService {
       ...payload,
     });
     const result = toDto(doc);
-
-    // Brand learning — best-effort, fire-and-forget
-    if (this.brandBrainEngine) {
-      void learnFromRouteSelection(
-        {
-          organizationId,
-          brandId: optionalTrim(input.brandId),
-          title: result.title,
-          prompt: result.prompt,
-          intent: result.intent,
-          mediaKind: result.mediaKind,
-          capabilityId: result.capabilityId,
-          favorite: result.favorite,
-        },
-        { brandBrainEngine: this.brandBrainEngine },
-      );
-    }
-
     return result;
   }
 

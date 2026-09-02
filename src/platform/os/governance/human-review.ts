@@ -27,6 +27,12 @@ export interface HumanReviewRecord {
   readonly comments?: string;
 }
 
+export interface HumanReviewListOptions {
+  readonly organizationId?: string;
+  readonly status?: HumanReviewDecision;
+  readonly limit?: number;
+}
+
 export interface IHumanReviewStore {
   create(record: HumanReviewRecord): Promise<HumanReviewRecord>;
   get(
@@ -37,6 +43,7 @@ export interface IHumanReviewStore {
     executionId: string,
     organizationId: string
   ): Promise<HumanReviewRecord | undefined>;
+  list(options?: HumanReviewListOptions): Promise<readonly HumanReviewRecord[]>;
   decide(input: {
     readonly reviewId: string;
     readonly organizationId: string;
@@ -87,6 +94,22 @@ export class InMemoryHumanReviewStore implements IHumanReviewStore {
         r.organizationId === organizationId &&
         r.status === "PENDING"
     );
+  }
+
+  async list(
+    options: HumanReviewListOptions = {}
+  ): Promise<readonly HumanReviewRecord[]> {
+    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
+    let rows = [...this.byId.values()];
+    if (options.organizationId) {
+      rows = rows.filter((r) => r.organizationId === options.organizationId);
+    }
+    if (options.status) {
+      rows = rows.filter((r) => r.status === options.status);
+    }
+    return rows
+      .sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)))
+      .slice(0, limit);
   }
 
   async decide(input: {

@@ -12,6 +12,11 @@
 
 import mongoose from "mongoose";
 
+jest.mock("../../../src/services/knowledge-document-index-service", () => ({
+  ...jest.requireActual("../../../src/services/knowledge-document-index-service"),
+  searchKnowledgeChunks: jest.fn(async () => []),
+}));
+
 // ---------------------------------------------------------------------------
 // Model mocks (in-memory) — avoid requiring a live Mongo connection.
 // ---------------------------------------------------------------------------
@@ -122,18 +127,6 @@ jest.mock("../../../src/models/searchRecent.model", () => {
   };
 });
 
-// Keep the real pure mapper (mapBrandDtoToBrandBrainDocument) but stub the
-// network/runtime-touching sync so BrandService create/update tests never
-// depend on the Enterprise API runtime being bootstrapped.
-jest.mock("../../../src/services/brand-brain-sync-service", () => {
-  const actual = jest.requireActual("../../../src/services/brand-brain-sync-service");
-  return {
-    __esModule: true,
-    ...actual,
-    syncProductBrandToBrain: jest.fn(async () => undefined),
-  };
-});
-
 // ---------------------------------------------------------------------------
 // Imports under test (after mocks so they pick up the mocked models).
 // ---------------------------------------------------------------------------
@@ -149,18 +142,10 @@ import {
   brandService,
   type BrandDto,
 } from "../../../src/services/brand-service";
-import { mapBrandDtoToBrandBrainDocument } from "../../../src/services/brand-brain-sync-service";
-// syncProductBrandToBrain is mocked above (for BrandService create/update
-// isolation) — pull the real implementation directly for its own unit tests.
-const { syncProductBrandToBrain } = jest.requireActual(
-  "../../../src/services/brand-brain-sync-service"
-) as typeof import("../../../src/services/brand-brain-sync-service");
-import { assembleExecutionKnowledge } from "../../../src/services/brand-knowledge-context-service";
 import {
   productSearchService,
   type SearchHitKind,
 } from "../../../src/services/product-search-service";
-import type { IBrandBrainEngine } from "../../../src/platform/business/brand-brain/interfaces/brand-brain";
 
 function sampleBrand(overrides: Partial<BrandDto> = {}): BrandDto {
   const now = new Date().toISOString();
@@ -297,89 +282,6 @@ describe("M10.17 — BrandService guidelinesProfile create + update (mocked Mong
     expect(updated.guidelinesProfile.mission).toBe("Empower local makers");
     expect(updated.guidelinesProfile.tone).toBe("Bold");
     expect(updated.guidelinesProfile.brandStory).toBe("Started in a garage");
-  });
-});
-
-describe("M10.17 — Brand Brain sync mapping", () => {
-  it("maps a BrandDto (with guidelinesProfile) into a BrandBrainDocument", () => {
-    const brand = sampleBrand();
-    const doc = mapBrandDtoToBrandBrainDocument(brand);
-    expect(doc.organizationId).toBe(brand.organizationId);
-    expect(doc.brandId).toBe(brand.id);
-    expect(doc.identity.name).toBe(brand.name);
-    expect(doc.identity.mission).toBe("Help brands grow with clarity");
-    expect(doc.tone.dontList).toEqual(expect.arrayContaining(["cheap", "hype"]));
-    expect(doc.identity.values).toEqual(
-      expect.arrayContaining(["craft", "partnership"])
-    );
-    expect(doc.competitors.map((c) => c.name)).toEqual(["Rival Co"]);
-    expect(doc.policies.some((p) => p.kind === "approval")).toBe(true);
-  });
-
-  it("never fabricates fields absent from the product brand", () => {
-    const brand = sampleBrand({ guidelinesProfile: {} });
-    const doc = mapBrandDtoToBrandBrainDocument(brand);
-    expect(doc.identity.mission).toBe("");
-    expect(doc.competitors).toEqual([]);
-    expect(doc.policies).toEqual([]);
-  });
-
-  it("syncProductBrandToBrain calls engine.upsert with the mapped document (injected engine)", async () => {
-    const brand = sampleBrand();
-    const upsert = jest.fn(async (_input: unknown) => ({
-      ok: true as const,
-      value: { version: 1 } as any,
-    }));
-    const engine = { upsert } as unknown as IBrandBrainEngine;
-
-    await syncProductBrandToBrain(brand, engine);
-
-    expect(upsert).toHaveBeenCalledTimes(1);
-    const call = upsert.mock.calls[0]?.[0] as {
-      organizationId: string;
-      document: { brandId: string };
-      changelog: string;
-    };
-    expect(call.organizationId).toBe(brand.organizationId);
-    expect(call.document.brandId).toBe(brand.id);
-    expect(call.changelog).toContain(brand.name);
-  });
-
-  it("propagates engine failures (never silently drops sync errors)", async () => {
-    const brand = sampleBrand();
-    const engine = {
-      upsert: jest.fn(async () => ({
-        ok: false as const,
-        error: { message: "boom" } as any,
-      })),
-    } as unknown as IBrandBrainEngine;
-
-    await expect(syncProductBrandToBrain(brand, engine)).rejects.toThrow(/boom/);
-  });
-});
-
-describe("M10.17 — Knowledge Intelligence assembly for executions", () => {
-  it("returns empty knowledge (no fabricated data) when organizationId is missing", async () => {
-    const result = await assembleExecutionKnowledge({
-      organizationId: "",
-      prompt: "Write a launch post",
-    });
-    expect(result.brandGuidelines).toEqual({});
-    expect(result.knowledgeSnippets).toEqual([]);
-    expect(result.styleInstructions).toBe("");
-    expect(result.enrichmentMetadata.source).toBe("none");
-  });
-
-  it("falls back gracefully (no brand) when brandId is not a real Mongo id", async () => {
-    const organizationId = new mongoose.Types.ObjectId().toString();
-    const result = await assembleExecutionKnowledge({
-      organizationId,
-      brandId: "not-a-real-id",
-      prompt: "Describe our product",
-    });
-    expect(result.brandGuidelines).toEqual({});
-    expect(result.enrichmentMetadata.source).toBe("none");
-    expect(result.negativeInstructions).toEqual([]);
   });
 });
 

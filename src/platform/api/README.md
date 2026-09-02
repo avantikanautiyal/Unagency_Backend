@@ -1,8 +1,7 @@
 # Enterprise API Gateway & Platform Services
 
-Sole external entry point for UNAGENCY frontends and SDKs.
-
-**Not** part of the Intelligence Operating System.
+Sole external entry point for UNAGENCY frontends and SDKs. Execution flows through
+`DirectExecutionEngine` → provider runtime (see `src/platform/direct/`).
 
 ## Usage
 
@@ -28,19 +27,21 @@ const login = await gateway.handle({
 
 ## Docs
 
-1. [Architecture Review](./docs/ARCHITECTURE_REVIEW.md)
-2. [API Specification](./docs/API_SPECIFICATION.md)
-3. [OpenAPI Specification](./docs/OPENAPI_SPECIFICATION.md)
-4. [Route Map](./docs/ROUTE_MAP.md)
-5. [Authentication Model](./docs/AUTHENTICATION_MODEL.md)
-6. [Multi-Tenant Model](./docs/MULTI_TENANT_MODEL.md)
-7. [Streaming Model](./docs/STREAMING_MODEL.md)
-8. [SDK Generation Guide](./docs/SDK_GENERATION_GUIDE.md)
-9. [Dependency Graph](./docs/DEPENDENCY_GRAPH.md)
-10. [Unit Tests](./docs/UNIT_TESTS.md)
-11. [Integration Tests](./docs/INTEGRATION_TESTS.md)
-12. [ACP Report](./docs/ACP_REPORT.md)
+Canonical API documentation lives under `api/docs/` at the repository root:
 
-## Non-goals
+- `api/docs/MASTER_API_REFERENCE.md`
+- `api/docs/FRONTEND_INTEGRATION_GUIDE.md`
+- `api/docs/ROUTE_MAP.md`
 
-No Intelligence OS redesign. No React Native / Web app work in this milestone.
+Route source of truth: `src/platform/api/routes/route-map.ts`.
+
+## Key endpoints
+
+| Path | Purpose |
+|------|---------|
+| `POST /v1/executions` | Create execution (thin/direct provider path) |
+| `GET /v1/runtime/capabilities` | Executable capability availability |
+| `GET /v1/os/refinements…` | Structured refinement (live) |
+| `GET /v1/os/reviews…` | Human review (live) |
+
+Explainability / execution-intelligence HTTP surface was removed. Do not document or call `/model-decision`, `/intelligence/*`, or TaskGraph routes — they are gone.

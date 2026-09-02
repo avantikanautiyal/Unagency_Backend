@@ -30,7 +30,7 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   console.log("--- createProject Called ---");
   console.log("User:", req.user?.userId);
 
-  // Check Plan Limit
+  // Plan limits deferred — checkPlanLimit is currently a no-op.
   await checkPlanLimit(req.body.userId, req.body.orgId, "START_SERVICE");
 
   const body: IProject = req.body;
@@ -55,6 +55,25 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   }
   if (body.resource && typeof body.resource === "string") {
     body.resource = JSON.parse(body.resource as string);
+  }
+
+  // Accept User ids in resource[] and resolve to Staff ids (CS assign path).
+  if (Array.isArray(body.resource) && body.resource.length > 0) {
+    const resolved: mongoose.Types.ObjectId[] = [];
+    for (const raw of body.resource) {
+      const id = String(raw ?? "").trim();
+      if (!id || !mongoose.Types.ObjectId.isValid(id)) continue;
+      const asStaff = await Staff.findById(id).select("_id");
+      if (asStaff?._id) {
+        resolved.push(asStaff._id as mongoose.Types.ObjectId);
+        continue;
+      }
+      const byUser = await Staff.findOne({ userId: id }).select("_id");
+      if (byUser?._id) {
+        resolved.push(byUser._id as mongoose.Types.ObjectId);
+      }
+    }
+    body.resource = resolved;
   }
 
   if (body.orgId) {
@@ -158,45 +177,65 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
       membersId: [...membersList, req?.user?.userId!, body.userId + "", ...body?.resource as string[]],
       relationShipManagerId: req?.user?.userId!,
     })
-    const roomInfo = await createRoomForProject({
-      roomName: create.title,
-      roomId: `project_${String(create._id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 48)}`,
-      project_id: create._id + "",
-      membersId: [...membersList, req?.user?.userId!, body.userId + "", ...body?.resource as string[]],
-      org_id: body.orgId + "",
-      relationShipManagerId: req?.user?.userId!,
-    });
-    // Also mirror via collaboration authority (idempotent)
-    void import("../services/collaboration/collaboration-channel-service")
-      .then(({ collaborationChannelService }) => {
-        if (!collaborationChannelService.isConfigured()) return;
-        return collaborationChannelService.provisionForProject({
-          projectId: String(create._id),
-          name: String(create.title || "Project"),
-          organizationId: String(body.orgId || ""),
-          memberUserIds: [
-            ...membersList,
-            String(req?.user?.userId),
-            String(body.userId),
-            ...(Array.isArray(body?.resource) ? body.resource.map(String) : []),
-          ],
-          createdByUserId: String(req?.user?.userId),
+    // Keep project create resilient — chat room is best-effort.
+    let roomInfo: { roomId?: string; cid?: string } | null = null;
+    try {
+      const resourceUserIds: string[] = [];
+      if (Array.isArray(body.resource) && body.resource.length > 0) {
+        const staffRows = await Staff.find({ _id: { $in: body.resource } }).select(
+          "userId"
+        );
+        for (const row of staffRows) {
+          if (row.userId) resourceUserIds.push(String(row.userId));
+        }
+      }
+      const memberUserIds = [
+        ...membersList,
+        String(req?.user?.userId || ""),
+        String(body.userId || ""),
+        ...resourceUserIds,
+      ].filter(Boolean);
+      roomInfo = await createRoomForProject({
+        roomName: create.title,
+        roomId: `project_${String(create._id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 48)}`,
+        project_id: create._id + "",
+        membersId: memberUserIds,
+        org_id: body.orgId + "",
+        relationShipManagerId: req?.user?.userId!,
+      });
+      void import("../services/collaboration/collaboration-channel-service")
+        .then(({ collaborationChannelService }) => {
+          if (!collaborationChannelService.isConfigured()) return;
+          return collaborationChannelService.provisionForProject({
+            projectId: String(create._id),
+            name: String(create.title || "Project"),
+            organizationId: String(body.orgId || ""),
+            memberUserIds,
+            createdByUserId: String(req?.user?.userId),
+          });
+        })
+        .catch(() => undefined);
+      if (roomInfo?.cid || roomInfo?.roomId) {
+        await ChatRoom.create({
+          cid: roomInfo?.cid,
+          project_id: create._id + "",
+          room_type: "project",
+          entityKind: "project",
+          entityId: String(create._id),
+          organizationId: body.orgId
+            ? new mongoose.Types.ObjectId(String(body.orgId))
+            : undefined,
+          roomId: roomInfo?.roomId,
+          members: memberUserIds,
+          name: create.title,
         });
-      })
-      .catch(() => undefined);
-    ChatRoom.create({
-      cid: roomInfo?.cid,
-      project_id: create._id + "",
-      room_type: "project",
-      entityKind: "project",
-      entityId: String(create._id),
-      organizationId: body.orgId
-        ? new mongoose.Types.ObjectId(String(body.orgId))
-        : undefined,
-      roomId: roomInfo?.roomId,
-      members: [...membersList, req?.user?.userId!, body.userId + ""],
-      name: create.title,
-    });
+      }
+    } catch (err) {
+      console.warn(
+        "[createProject] project chat room failed (non-fatal):",
+        err instanceof Error ? err.message : err
+      );
+    }
     return new ApiResponse(
       200,
       { chatRoom: roomInfo, project: create },
@@ -371,6 +410,25 @@ const updateProject = asyncHandler(async (req: RequestUser, res) => {
 const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
   const projectId = req.params.projectId;
   const role = req.user?.role;
+  if (role === "admin" || role === "superadmin") {
+    const project = await Projects.findById(projectId)
+      .populate({ path: "userId", select: "firebaseId role name email" })
+      .populate({ path: "category", select: "title" })
+      .populate("files")
+      .lean();
+    if (!project) {
+      throw new ApiError(404, "Project not found");
+    }
+    const { resolveProjectAiProviders } = await import(
+      "../platform/api/services/admin-execution-providers-service"
+    );
+    const aiProviders = await resolveProjectAiProviders(project);
+    return new ApiResponse(
+      200,
+      { ...project, aiProviders },
+      "Project fetched successfully"
+    );
+  }
   if (role === "customer") {
     const project = await Projects.findOne({
       userId: req.user?.userId,
@@ -701,6 +759,7 @@ const upsertCreativeProject = asyncHandler(async (req: RequestUser) => {
     format: req.body?.format,
     category: req.body?.category,
     prompt: req.body?.prompt,
+    creationMode: req.body?.creationMode || req.body?.productMode,
   });
   return new ApiResponse(200, data, "Creative project upserted");
 });
@@ -726,6 +785,20 @@ const updateMyProjectStatus = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, data, "Project status updated");
 });
 
+/**
+ * Customer delete for own projects (Home / Projects list).
+ * DELETE /projects/:projectId
+ */
+const deleteMyProject = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user?.userId || "");
+  if (!userId) throw new ApiError("Unauthorized", 401);
+  const data = await creativeProjectService.remove({
+    userId,
+    projectId: String(req.params.projectId || ""),
+  });
+  return new ApiResponse(200, data, "Project deleted");
+});
+
 export {
   createProject,
   fetchProjectListByClientId,
@@ -736,4 +809,5 @@ export {
   createProjectLogs,
   upsertCreativeProject,
   updateMyProjectStatus,
+  deleteMyProject,
 };

@@ -3,6 +3,7 @@
  */
 
 import { randomBytes } from "crypto";
+import type { RasterDownloadFormat } from "./image-format-converter";
 
 export type EphemeralMediaTokenRecord = {
   readonly token: string;
@@ -11,6 +12,8 @@ export type EphemeralMediaTokenRecord = {
   readonly storageRef: string;
   readonly contentType: string;
   readonly expiresAtMs: number;
+  /** When set, content endpoint converts raster bytes to this format. */
+  readonly requestedFormat?: RasterDownloadFormat;
 };
 
 export class EphemeralMediaTokenStore {
@@ -22,6 +25,7 @@ export class EphemeralMediaTokenStore {
     storageRef: string;
     contentType: string;
     ttlSeconds: number;
+    requestedFormat?: RasterDownloadFormat;
   }): EphemeralMediaTokenRecord {
     this.prune();
     const token = randomBytes(24).toString("base64url");
@@ -32,6 +36,9 @@ export class EphemeralMediaTokenStore {
       storageRef: input.storageRef,
       contentType: input.contentType,
       expiresAtMs: Date.now() + Math.max(30, input.ttlSeconds) * 1000,
+      ...(input.requestedFormat
+        ? { requestedFormat: input.requestedFormat }
+        : {}),
     };
     this.tokens.set(token, record);
     return record;

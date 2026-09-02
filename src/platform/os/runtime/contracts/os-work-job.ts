@@ -1,12 +1,11 @@
 /**
- * Phase 8 — OS work queue contracts.
+ * Phase 8 — OS delivery work queue contracts.
  * Queue is transport. Durable OS state is authority.
  */
 
-export const OS_TASK_QUEUE = "os.task_graph" as const;
 export const OS_DELIVERY_QUEUE = "os.delivery" as const;
 
-export type OsWorkKind = "task_graph" | "delivery";
+export type OsWorkKind = "delivery";
 
 export type OsWorkJobStatus =
   | "queued"
@@ -20,9 +19,7 @@ export interface OsWorkJob {
   readonly kind: OsWorkKind;
   readonly organizationId: string;
   readonly executionId: string;
-  readonly planVersion?: number;
-  readonly taskId?: string;
-  readonly attempt: number;
+  readonly attempt?: number;
   readonly artifactId?: string;
   readonly artifactVersion?: number;
   readonly destination?: string;
@@ -55,23 +52,6 @@ export interface IOsWorkQueue {
   get(jobId: string): Promise<OsWorkJob | undefined>;
   listQueued(kind: OsWorkKind): Promise<readonly OsWorkJob[]>;
   reclaimExpired(nowIso: string, nowMs: number): Promise<readonly OsWorkJob[]>;
-}
-
-export function taskGraphJobId(input: {
-  readonly organizationId: string;
-  readonly executionId: string;
-  readonly planVersion: number;
-  readonly taskId: string;
-  readonly attempt: number;
-}): string {
-  return [
-    "tg",
-    input.organizationId,
-    input.executionId,
-    String(input.planVersion),
-    input.taskId,
-    String(input.attempt),
-  ].join(":");
 }
 
 export function deliveryJobId(input: {

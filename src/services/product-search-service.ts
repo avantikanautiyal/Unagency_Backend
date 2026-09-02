@@ -63,6 +63,8 @@ export type SearchQueryInput = {
   page?: number;
   limit?: number;
   cursor?: string;
+  /** When true, persist the query to recent searches (explicit submit only). */
+  recordRecent?: boolean;
 };
 
 const ALL_KINDS: readonly SearchHitKind[] = [
@@ -94,6 +96,44 @@ function scoreMatch(q: string, title: string, subtitle?: string): number {
 
 function wantsKind(types: SearchHitKind[] | undefined, kind: SearchHitKind): boolean {
   return !types || types.length === 0 || types.includes(kind);
+}
+
+function parseBrandLabelFromDescription(description?: string): string | undefined {
+  if (!description) return undefined;
+  const match = String(description).match(/Brand:\s*([^.\n]+)/i);
+  const name = match?.[1]?.trim();
+  return name ? `Brand: ${name}` : undefined;
+}
+
+function projectServiceSubtitle(serviceTitle: string): string {
+  return serviceTitle
+    .split("·")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function projectSearchDisplay(input: {
+  serviceTitle: string;
+  description?: string;
+  brandName?: string;
+}): { title: string; subtitle?: string } {
+  const serviceTitle = String(input.serviceTitle ?? "").trim();
+  const brandLabel = input.brandName
+    ? `Brand: ${input.brandName.trim()}`
+    : parseBrandLabelFromDescription(input.description);
+
+  if (brandLabel) {
+    return {
+      title: brandLabel,
+      subtitle: serviceTitle ? projectServiceSubtitle(serviceTitle) : undefined,
+    };
+  }
+
+  return {
+    title: serviceTitle,
+    subtitle: input.description?.slice(0, 80),
+  };
 }
 
 export class ProductSearchService {
@@ -139,11 +179,13 @@ export class ProductSearchService {
       resultCount: hits.length,
     }).catch(() => undefined);
 
-    void this.recordRecent({
-      userId: input.userId,
-      organizationId,
-      query: q,
-    }).catch(() => undefined);
+    if (input.recordRecent) {
+      void this.recordRecent({
+        userId: input.userId,
+        organizationId,
+        query: q,
+      }).catch(() => undefined);
+    }
 
     return { query: q, hits: page_, page, limit, hasMore };
   }
@@ -168,21 +210,52 @@ export class ProductSearchService {
 
     if (wantsKind(types, "project")) {
       tasks.push(
-        Projects.find({ orgId: orgOid, $or: [{ title: rx }, { description: rx }] })
-          .limit(perKindLimit)
-          .select("title description")
-          .then((rows) => {
-            for (const p of rows) {
-              hits.push({
-                kind: "project",
-                id: p._id.toString(),
-                title: p.title,
-                subtitle: p.description?.slice(0, 80),
-                score: scoreMatch(q, p.title, p.description),
-              });
-            }
+        (async () => {
+          const rows = await Projects.find({
+            orgId: orgOid,
+            $or: [{ title: rx }, { description: rx }],
           })
-          .catch(() => undefined)
+            .limit(perKindLimit)
+            .select("title description brandId")
+            .lean();
+
+          const brandIds = [
+            ...new Set(
+              rows
+                .map((p) => p.brandId?.toString())
+                .filter(
+                  (id): id is string => Boolean(id && mongoose.isValidObjectId(id))
+                )
+            ),
+          ];
+          const brandNames = new Map<string, string>();
+          if (brandIds.length) {
+            const brands = await Brands.find({ _id: { $in: brandIds } })
+              .select("name")
+              .lean();
+            for (const b of brands as Array<{ _id: mongoose.Types.ObjectId; name?: string }>) {
+              const name = String(b.name ?? "").trim();
+              if (name) brandNames.set(b._id.toString(), name);
+            }
+          }
+
+          for (const p of rows) {
+            const serviceTitle = String(p.title ?? "");
+            const brandId = p.brandId?.toString();
+            const display = projectSearchDisplay({
+              serviceTitle,
+              description: p.description,
+              brandName: brandId ? brandNames.get(brandId) : undefined,
+            });
+            hits.push({
+              kind: "project",
+              id: p._id.toString(),
+              title: display.title,
+              subtitle: display.subtitle,
+              score: scoreMatch(q, serviceTitle, p.description),
+            });
+          }
+        })().catch(() => undefined)
       );
     }
 

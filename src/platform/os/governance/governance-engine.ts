@@ -17,6 +17,7 @@ import {
 } from "./policy";
 import type { AggregateEvaluation } from "../evaluation/engine/evaluation-engine";
 import type { EvaluationOutcome } from "../evaluation/contracts/evaluation-result";
+import { CREATIVE_SCORE_EVALUATOR_ID } from "../evaluation/evaluators/creative-score-evaluator";
 
 export interface OsGovernanceDecision {
   readonly decisionId: string;
@@ -103,6 +104,22 @@ function mapOutcomeToAction(
   }
 
   if (scope === "execution") {
+    const creativeTotal =
+      typeof (scores as { creativeScoreTotal?: number }).creativeScoreTotal ===
+      "number"
+        ? (scores as { creativeScoreTotal: number }).creativeScoreTotal
+        : undefined;
+    if (
+      typeof creativeTotal === "number" &&
+      creativeTotal < policy.rules.approveMinCreativeScore
+    ) {
+      return {
+        action: "BLOCK",
+        blocking: true,
+        reason: `Creative score ${creativeTotal}/100 below release gate (${policy.rules.approveMinCreativeScore})`,
+      };
+    }
+
     const overall = scores.overallScore ?? 1;
     if (overall < policy.rules.approveMinOverallScore) {
       return {
@@ -245,13 +262,29 @@ export class OsGovernanceEngine implements IOsGovernanceEngine {
       input.aggregate.worstOutcome,
       policy,
       input.scope,
-      input.aggregate.aggregateScores
+      {
+        ...input.aggregate.aggregateScores,
+        creativeScoreTotal: input.aggregate.aggregateScores.creativeScoreTotal,
+      }
     );
     if (brandCritical && policy.rules.blockOnBrandCritical) {
       mapped = {
         action: "BLOCK",
         blocking: true,
         reason: "BrandGuard critical violation — policy blocks",
+      };
+    }
+
+    const creativeTotal = input.aggregate.aggregateScores.creativeScoreTotal;
+    const creativeBlocked = input.aggregate.results.some(
+      (r) =>
+        r.evaluatorId === CREATIVE_SCORE_EVALUATOR_ID && r.outcome === "BLOCKED"
+    );
+    if (creativeBlocked && typeof creativeTotal === "number") {
+      mapped = {
+        action: "BLOCK",
+        blocking: true,
+        reason: `Creative score ${creativeTotal}/100 below release gate (${policy.rules.approveMinCreativeScore})`,
       };
     }
 

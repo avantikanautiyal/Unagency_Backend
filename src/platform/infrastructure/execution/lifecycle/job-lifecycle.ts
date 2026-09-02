@@ -3,8 +3,8 @@
  */
 
 import type { JobStatus } from "../contracts/enums";
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 
 const ALLOWED: Record<JobStatus, readonly JobStatus[]> = {
   queued: ["reserved", "cancelled", "dead_letter"],

@@ -3,8 +3,8 @@
  */
 
 import { createHash } from "crypto";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { NotFoundError, ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { NotFoundError, ValidationError } from "../../core/errors";
 import type { IBlobStorage } from "../interfaces";
 import type {
   IMultipartBlobStorage,

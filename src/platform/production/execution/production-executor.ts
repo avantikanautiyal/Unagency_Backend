@@ -1,33 +1,33 @@
 /**
- * Production Execution — wires Integration Layer + real OpenAI provider leaf.
- * Never uses ControllableDispatcher; never modifies Runtime.
+ * Production Execution — wires Direct Execution Engine + real provider leaves.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
-import { createIntelligenceOsIntegrationPlatform } from "../../intelligence/integration/factories/create-intelligence-os-integration-platform";
-import { createPromptCompiler } from "../../intelligence/prompt-compiler/factories/create-prompt-compiler";
-import type { IIntelligenceOsIntegrationEngine } from "../../intelligence/integration/interfaces/integration";
-import type { IntelligenceOsIntegrationReport } from "../../intelligence/integration/contracts/result";
-import type { IntelligenceOsIntegrationRequest } from "../../intelligence/integration/contracts/request";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
+import { createDirectExecutionPlatform } from "../../direct/create-direct-execution-platform";
+import type { IDirectExecutionEngine } from "../../direct/contracts";
+import type {
+  DirectExecutionReport,
+  DirectExecutionRequest,
+} from "../../direct/contracts";
 import {
   createOpenAIProvider,
   type OpenAIProviderPlatform,
-} from "../../intelligence/providers/openai/factories/create-openai-provider";
-import { createIdentityPlatform } from "../../intelligence/providers/identity/factories/create-identity-platform";
-import { RegisterCredentialInputBuilder } from "../../intelligence/providers/identity/builders/register-credential-input-builder";
+} from "../../providers/openai/factories/create-openai-provider";
+import { createIdentityPlatform } from "../../providers/identity/factories/create-identity-platform";
+import { RegisterCredentialInputBuilder } from "../../providers/identity/builders/register-credential-input-builder";
 import {
   asOrganizationId,
   asProviderId,
   asWorkspaceId,
   asCapabilityId,
-} from "../../intelligence/shared/identifiers";
-import { createModelRegistryPlatform } from "../../intelligence/model-registry/factories/create-model-registry-platform";
-import { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import { MultiProviderDispatcher } from "../../intelligence/providers/runtime/dispatcher";
-import type { IProviderDispatcher } from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
-import { createToolRuntimePlatform } from "../../intelligence/providers/tools/composition/tool-runtime-platform";
-import { InMemoryToolInvocationStore } from "../../intelligence/providers/tools/idempotency/in-memory-tool-invocation-store";
+} from "../../core/identifiers";
+import { createModelRegistryPlatform } from "../../model-registry/factories/create-model-registry-platform";
+import { InMemoryProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import { MultiProviderDispatcher } from "../../providers/runtime/dispatcher";
+import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
+import { createToolRuntimePlatform } from "../../providers/tools/composition/tool-runtime-platform";
+import { InMemoryToolInvocationStore } from "../../providers/tools/idempotency/in-memory-tool-invocation-store";
 import { registerTextProviders } from "./register-text-providers";
 import { registerAudioProviders } from "./register-audio-providers";
 import { registerImageProviders } from "./register-image-providers";
@@ -35,24 +35,17 @@ import { registerVideoProviders } from "./register-video-providers";
 import { evaluateTextProviderEnv } from "./text-provider-env";
 import type { ProductionExecutionMode } from "../contracts/enums";
 import type { ProductionScenario } from "../contracts/scenario";
-import type { ToolRuntimePlatform } from "../../intelligence/providers/tools/composition/tool-runtime-platform";
+import type { ToolRuntimePlatform } from "../../providers/tools/composition/tool-runtime-platform";
 
 export interface ProductionExecutionContext {
   readonly openai: OpenAIProviderPlatform;
-  readonly integration: IIntelligenceOsIntegrationEngine;
+  readonly integration: IDirectExecutionEngine;
   readonly executionMode: ProductionExecutionMode;
   readonly providerMode: "live" | "simulated";
   readonly identitySessionId?: string;
-  /** Executable provider ids registered from env credentials. */
   readonly configuredProviders: readonly string[];
-  /** Required for structured output / tool continuation on LIVE create. */
   readonly toolRuntime: ToolRuntimePlatform;
-  /** Same MultiProviderDispatcher spine used by integration + tool runtime. */
   readonly runtimeDispatcher: IProviderDispatcher;
-  /**
-   * Shared LIVE registry (text + image + audio). Pass into
-   * createEnterpriseApiPlatform so video/research/image routers see the same leaves.
-   */
   readonly providerRuntimeRegistry: InMemoryProviderRuntimeRegistry;
 }
 
@@ -60,15 +53,11 @@ export interface ProductionExecutionDeps {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
-  /** Force mode; defaults to live when OPENAI_API_KEY present. */
   readonly mode?: ProductionExecutionMode;
   readonly apiKey?: string;
   readonly organizationId?: string;
   readonly workspaceId?: string;
-  /** Injected openai platform (tests). */
   readonly openai?: OpenAIProviderPlatform;
-  /** When set, avoids live Mongo business-context stores (offline certification). */
-  readonly executionContextStores?: import("../../business/execution-context").IExecutionContextStores;
   readonly organizationIdForFixtures?: string;
   readonly workspaceIdForFixtures?: string;
 }
@@ -79,10 +68,6 @@ function resolveMode(deps: ProductionExecutionDeps): ProductionExecutionMode {
   return key?.trim() ? "live" : "openai_simulated";
 }
 
-/**
- * Boot OpenAI leaf + Integration OS with OpenAI dispatcher (no bypass).
- * Credentials registered via Provider Identity Platform when live.
- */
 export async function bootProductionExecution(
   deps: ProductionExecutionDeps = {}
 ): Promise<Result<ProductionExecutionContext>> {
@@ -224,30 +209,21 @@ export async function bootProductionExecution(
     modelCapabilityResolver,
   });
 
-  // Structured output (LaunchPlan creative routes) and tool calling share this
-  // runtime — LIVE boot previously omitted it and provider_runtime failed with
-  // "Tool runtime is not configured".
   const toolRuntime = createToolRuntimePlatform({
     invocationStore: new InMemoryToolInvocationStore(),
     dispatcher: runtimeDispatcher,
     durable: false,
-    // Product LIVE path does not seed certification fakes unless explicitly asked.
     seedCertificationTools: false,
     nowIso,
     clockMs,
   });
 
-  const { engine } = createIntelligenceOsIntegrationPlatform({
+  const { engine } = createDirectExecutionPlatform({
     nowIso,
     clockMs,
     createId,
     runtimeDispatcher,
-    executionMode: executionMode === "live" ? "live" : "simulated",
-    executionContextStores: deps.executionContextStores,
-    useLiveBusinessContext: deps.executionContextStores ? false : undefined,
-    allowedModelProviderIds: executableProviders.listAvailableProviderIds(),
     toolRuntime,
-    promptCompiler: createPromptCompiler(),
   });
 
   return success({
@@ -274,8 +250,8 @@ export async function executeScenario(
     budgetLimit?: number;
     tokenBudgetLimit?: number;
   } = {}
-): Promise<Result<IntelligenceOsIntegrationReport>> {
-  const req: IntelligenceOsIntegrationRequest = {
+): Promise<Result<DirectExecutionReport>> {
+  const req: DirectExecutionRequest = {
     requestId,
     rawPrompt: scenario.businessPrompt,
     scenarioHint: scenario.domain,

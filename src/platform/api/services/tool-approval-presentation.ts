@@ -3,7 +3,7 @@
  * Never expose credentials, system prompts, or raw secret-bearing payloads.
  */
 
-import type { ToolInvocationRecord } from "../../intelligence/providers/tools/idempotency/tool-invocation-store";
+import type { ToolInvocationRecord } from "../../providers/tools/idempotency/tool-invocation-store";
 
 export interface PendingToolApprovalPresentation {
   readonly invocationId: string;

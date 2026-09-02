@@ -2,7 +2,7 @@
  * Case 2 compound workflow — server-side linked follow-up payload.
  */
 
-import type { ServiceContextWorkflow } from "../../os/brief/engine/service-context-classifier";
+import type { ServiceContextWorkflow } from "../../config/service-context-classifier";
 
 export interface WorkflowFollowUpPayload {
   readonly parentExecutionId: string;

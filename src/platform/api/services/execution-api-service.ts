@@ -1,18 +1,19 @@
 /**
- * Execution API service — bridges Distributed Execution + Integration Layer.
+ * Execution API service — bridges Distributed Execution + DirectExecutionEngine.
  * Never exposes Runtime/Routing/Providers to clients.
+ * Legacy "Integration Layer" naming means the direct provider spine.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError, NotFoundError, AuthorizationError } from "../../intelligence/shared/errors";
-import { runIntegrationViaControlPlane, resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError, NotFoundError, AuthorizationError } from "../../core/errors";
+import { resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
 import type { IDistributedExecutionEngine } from "../../infrastructure/execution/interfaces/execution";
 import { asJobId } from "../../infrastructure/execution/contracts/job";
-import type { IIntelligenceOsIntegrationEngine } from "../../intelligence/integration/interfaces/integration";
+import type { IDirectExecutionEngine } from "../../direct/contracts";
 import {
   asOrganizationId,
   asWorkspaceId,
-} from "../../intelligence/shared/identifiers";
+} from "../../core/identifiers";
 import type {
   AuthPrincipal,
   CreateExecutionRequest,
@@ -26,41 +27,22 @@ import type {
   TenantContext,
 } from "../contracts";
 import type { IExecutionApiService, IStreamingService } from "../interfaces";
-import type { ExecutionIntelligenceSnapshot } from "../execution-intelligence";
 import type { EnterpriseApiExecutionMode } from "../runtime/execution-mode";
 import {
   defaultAsyncExecutionBoundary,
   osLifecycleFromApiStatus,
-  createBriefIntelligenceEngine,
-  createBrandIntelligenceEngine,
-  createKnowledgeIntelligenceOsEngine,
-  createExecutionIntelligenceOsEngine,
   createProductionNegotiationPlatform,
-  createTaskGraphExecutorEngine,
-  IntegrationTaskCapabilityRunner,
-  InMemoryTaskGraphRunStore,
-  TaskGraphExecutorError,
   createGovernanceFinalizeService,
   createRefinementEngine,
   createOsDeliveryService,
   type GovernanceDecision,
   type OsLifecycleState,
-  type StructuredBrief,
-  type BrandContext,
-  type KnowledgeContext,
-  type ExecutionPlan,
-  type TaskGraphRunSnapshot,
-  type IBrandRecordSource,
-  type IKnowledgeHitSource,
-  type ITaskCapabilityRunner,
-  type ITaskGraphRunStore,
   type GovernanceFinalizeService,
   type RefinementEngine,
   type OsDeliveryService,
 } from "../../os";
 import { RefinementError } from "../../os/refinement/contracts/errors";
 import { DeliveryError } from "../../os/delivery/contracts/errors";
-import type { IBrandBrainEngine } from "../../business/brand-brain/interfaces";
 import type { OsDurableBundle } from "../../infrastructure/durability/create-os-durable-bundle";
 import type {
   IArtifactRepository,
@@ -72,14 +54,18 @@ import type {
   ExecutionHistoryQuery,
 } from "../../infrastructure/durability/interfaces/execution-store-ports";
 import { applyExecutionHistoryQuery } from "../../infrastructure/durability/repositories/execution-history-list";
-import type { AsyncExecutionCoordinator } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
+import type { AsyncExecutionCoordinator } from "../../providers/async/coordination/async-execution-coordinator";
 import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
-import { buildExecutionResultPayload } from "./execution-result-payload";
+import {
+  buildExecutionResultPayload,
+  mergeExportArtifactsIntoResult,
+} from "./execution-result-payload";
+import { applyWebsiteExportToExecution } from "./website-export-materializer";
 import { buildPendingApprovals } from "./tool-approval-presentation";
 import {
   approveToolInvocation,
   type ToolRuntimePlatform,
-} from "../../intelligence/providers/tools/composition/tool-runtime-platform";
+} from "../../providers/tools/composition/tool-runtime-platform";
 import type { LiveSseExecutionPayload } from "./execution-streaming-service";
 import {
   CANONICAL_INTEGRATION_MODE,
@@ -88,8 +74,12 @@ import {
 import { executeCanonicalStream } from "./execution-canonical-stream";
 import { runCreateExecution } from "./execution-create-pipeline";
 import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
+import {
+  buildRefineContinuityMetadata,
+  extractContinuitySnapshot,
+} from "../../os/creative/refine-packet-continuity";
+import { buildContinuityObservabilitySummary } from "../../os/creative/continuity-product-ux";
 import { mapJobStatus } from "./execution-summary-helpers";
-import { defaultOutputContractRegistry } from "../../os/contracts/output-contract-registry";
 import type { WorkflowFollowUpPayload } from "./workflow-follow-up";
 
 
@@ -113,11 +103,6 @@ export class ExecutionApiService implements IExecutionApiService {
       osLifecycle?: OsLifecycleState;
       governance?: GovernanceDecision;
       asyncLane?: ReturnType<typeof defaultAsyncExecutionBoundary.attachAsyncExecution>;
-      structuredBrief?: StructuredBrief;
-      structuredBrandContext?: BrandContext;
-      structuredKnowledgeContext?: KnowledgeContext;
-      structuredExecutionPlan?: ExecutionPlan;
-      structuredTaskGraphState?: TaskGraphRunSnapshot;
       workflowFollowUp?: WorkflowFollowUpPayload;
       pendingHumanReview?: {
         readonly reviewId: string;
@@ -131,32 +116,12 @@ export class ExecutionApiService implements IExecutionApiService {
     }
   >();
 
-  private readonly briefIntelligence = createBriefIntelligenceEngine();
-  /** Per-execution brief cache for idempotent same-execution regeneration avoidance. */
-  private readonly briefByExecutionId = new Map<string, StructuredBrief>();
-  private readonly brandByExecutionId = new Map<string, BrandContext>();
-  private readonly knowledgeByExecutionId = new Map<string, KnowledgeContext>();
-  private readonly planByExecutionId = new Map<string, ExecutionPlan>();
-  private readonly taskGraphByExecutionId = new Map<string, TaskGraphRunSnapshot>();
-  /** Stream handoff after canonical OS ingress (brief → plan) before provider streaming. */
+  /** Stream handoff before provider streaming. */
   private readonly streamHandoffByExecutionId = new Map<string, CanonicalStreamHandoff>();
-  private readonly brandIntelligence: ReturnType<typeof createBrandIntelligenceEngine>;
-  private readonly knowledgeIntelligence: ReturnType<
-    typeof createKnowledgeIntelligenceOsEngine
-  >;
-  private readonly executionIntelligence: ReturnType<
-    typeof createExecutionIntelligenceOsEngine
-  >;
-  private readonly taskGraphExecutor: ReturnType<typeof createTaskGraphExecutorEngine>;
-  private readonly taskGraphStore: ITaskGraphRunStore;
   private readonly governanceFinalize: GovernanceFinalizeService;
   private readonly refinementEngine: RefinementEngine;
   private readonly deliveryService: OsDeliveryService;
-  private readonly brandBrainEngine?: IBrandBrainEngine;
-  /** Structured gateway path — used by new callers (BusinessPlatformEngine, SDK, etc). */
-  private intelligenceGateway?: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway;
-  private readonly taskCapabilityRunner: ITaskCapabilityRunner;
-  private readonly productionCapabilityRegistry: import("../../intelligence/capability-registry/interfaces/capability-registry").ICapabilityRegistry;
+  private readonly productionCapabilityRegistry: import("../../capability-registry/interfaces/capability-registry").ICapabilityRegistry;
   private readonly osIdempotency = new Map<string, unknown>();
 
   constructor(
@@ -165,36 +130,13 @@ export class ExecutionApiService implements IExecutionApiService {
       createId: (prefix: string) => string;
       clockMs: () => number;
       distributed?: IDistributedExecutionEngine;
-      integration?: IIntelligenceOsIntegrationEngine;
+      integration?: IDirectExecutionEngine;
       streaming?: IStreamingService;
-      /** When true, tick distributed workers after enqueue. */
       autoTick?: boolean;
-      /** Optional explainability sink — never receives prompts/secrets. */
-      onIntelligenceSnapshot?: (snapshot: ExecutionIntelligenceSnapshot) => void;
       executionMode?: EnterpriseApiExecutionMode;
-      /** Phase 2 — injectable brand SoT (tests / simulated). Defaults to product Mongo source. */
-      brandSource?: IBrandRecordSource;
-      /** Phase 3 — injectable knowledge hit source (tests / simulated). */
-      knowledgeSource?: IKnowledgeHitSource;
-      /** Phase 4 — real CapabilityRegistry (never FakeCapabilityRegistry). */
-      capabilityRegistry?: import("../../intelligence/capability-registry/interfaces/capability-registry").ICapabilityRegistry;
-      /** Phase 5 — injectable task runner (tests). Defaults to Integration runner when integration present. */
-      taskCapabilityRunner?: ITaskCapabilityRunner;
-      /** Phase 5 — optional shared task graph store. */
-      taskGraphStore?: ITaskGraphRunStore;
-      /** Phase 8 — durable OS ledgers / queue ports. */
+      capabilityRegistry?: import("../../capability-registry/interfaces/capability-registry").ICapabilityRegistry;
       osBundle?: OsDurableBundle;
-      /** Phase 8 — pre-wired delivery service (queued mode + worker enqueue). */
       deliveryService?: OsDeliveryService;
-      /** Brand Brain engine — enables writing learned signals from refinement/selections back to brand memory. */
-      brandBrainEngine?: IBrandBrainEngine;
-      /**
-       * Intelligence Gateway — kernel/control-plane entry point.
-       * When provided, `invokeViaGateway()` can be used as a structured,
-       * auditable alternative to `create()` for new callers.
-       */
-      intelligenceGateway?: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway;
-      /** M9.4 durable persistence — when set, replaces process-local Maps for production. */
       persistence?: {
         executions: IExecutionRepository;
         artifacts: IArtifactRepository;
@@ -203,38 +145,22 @@ export class ExecutionApiService implements IExecutionApiService {
         tenantUsage: ITenantUsageStore;
       };
       asyncCoordinator?: AsyncExecutionCoordinator;
-      /** Required for LIVE sync image.generate → durable media artifacts / getMedia. */
       asyncMedia?: AsyncMediaPlatform;
-      /** Cap → Model → Routing for video.generate (executable registry only). */
-      videoRouter?: import("../../intelligence/providers/video/routing/video-execution-router").VideoExecutionRouter;
-      /** Cap → use-case preference for image.generate (sync LIVE leaves). */
-      imageRouter?: import("../../intelligence/providers/image/routing/image-execution-router").ImageExecutionRouter;
-      /** Cap → use-case preference for audio.synthesize. */
-      audioRouter?: import("../../intelligence/providers/audio/routing/audio-execution-router").AudioExecutionRouter;
-      /** Cap → use-case preference for text / research / coding. */
-      textRouter?: import("../../intelligence/providers/routing/text/text-execution-router").TextExecutionRouter;
+      videoRouter?: import("../../providers/video/routing/video-execution-router").VideoExecutionRouter;
+      imageRouter?: import("../../providers/image/routing/image-execution-router").ImageExecutionRouter;
+      audioRouter?: import("../../providers/audio/routing/audio-execution-router").AudioExecutionRouter;
+      textRouter?: import("../../providers/routing/text/text-execution-router").TextExecutionRouter;
       toolRuntime?: ToolRuntimePlatform;
-      /** LIVE native streaming dispatchers (OpenAI / Anthropic). When set, createStream uses real tokens. */
-      nativeStreamDispatchers?: ReadonlyMap<string, import("../../intelligence/providers/streaming/interfaces/native-streaming-dispatcher").INativeStreamingDispatcher>;
+      nativeStreamDispatchers?: ReadonlyMap<string, import("../../providers/streaming/interfaces/native-streaming-dispatcher").INativeStreamingDispatcher>;
+      adaptiveRouting?: import("../../providers/routing/performance/benchmark/adaptive/adaptive-routing-decision-service").AdaptiveRoutingDecisionServiceDeps;
     }
   ) {
-    this.brandIntelligence = createBrandIntelligenceEngine({
-      source: deps.brandSource,
-    });
-    this.knowledgeIntelligence = createKnowledgeIntelligenceOsEngine({
-      source: deps.knowledgeSource,
-    });
     this.productionCapabilityRegistry =
       deps.capabilityRegistry ??
       createProductionNegotiationPlatform({
         nowIso: deps.nowIso,
         createId: deps.createId,
       }).capabilityRegistry;
-    this.executionIntelligence = createExecutionIntelligenceOsEngine({
-      capabilityRegistry: this.productionCapabilityRegistry,
-    });
-    this.taskGraphStore =
-      deps.taskGraphStore ?? deps.osBundle?.taskGraph ?? new InMemoryTaskGraphRunStore();
     this.governanceFinalize = createGovernanceFinalizeService({
       humanReviews: deps.osBundle?.humanReviews,
       evaluationLedger: deps.osBundle?.evaluations,
@@ -243,44 +169,15 @@ export class ExecutionApiService implements IExecutionApiService {
     this.refinementEngine = createRefinementEngine({
       store: deps.osBundle?.refinements,
       feedbackStore: deps.osBundle?.feedbackSessions,
-      brandBrainEngine: deps.brandBrainEngine,
+      integration: deps.integration,
+      createId: deps.createId,
     });
-    this.brandBrainEngine = deps.brandBrainEngine;
-    this.intelligenceGateway = deps.intelligenceGateway;
     this.deliveryService =
       deps.deliveryService ??
       createOsDeliveryService({
         artifacts: deps.osBundle?.artifacts,
         receipts: deps.osBundle?.deliveries,
       });
-    const runner: ITaskCapabilityRunner =
-      deps.taskCapabilityRunner ??
-      (deps.integration
-        ? new IntegrationTaskCapabilityRunner({
-            integration: deps.integration,
-            capabilityRegistry: this.productionCapabilityRegistry,
-            outputContractRegistry: defaultOutputContractRegistry,
-            intelligenceGateway: deps.intelligenceGateway,
-          })
-        : {
-            async run() {
-              return {
-                ok: false,
-                retryable: false,
-                failureClass: "fatal" as const,
-                errorCode: "TASK_EXECUTION_FAILED",
-                errorMessage: "No integration or taskCapabilityRunner configured",
-              };
-            },
-          });
-    this.taskCapabilityRunner = runner;
-    this.taskGraphExecutor = createTaskGraphExecutorEngine({
-      runner,
-      capabilityRegistry: this.productionCapabilityRegistry,
-      store: this.taskGraphStore,
-      governanceFinalize: this.governanceFinalize,
-      enableGovernance: true,
-    });
   }
 
   async createStream(
@@ -289,8 +186,8 @@ export class ExecutionApiService implements IExecutionApiService {
     tenant: TenantContext,
     abortSignal?: AbortSignal
   ): Promise<Result<LiveSseExecutionPayload>> {
-    // Canonical spine: streaming reuses the same OS ingress as POST /v1/executions
-    // (brief → brand → knowledge → plan) before pipeline planning + provider stream.
+    // Canonical spine: streaming reuses the same direct execution ingress as POST /v1/executions
+    // (routing) before provider stream handoff.
     const handoffReq: CreateExecutionRequest = {
       ...req,
       metadata: {
@@ -303,7 +200,7 @@ export class ExecutionApiService implements IExecutionApiService {
     const handoff = this.streamHandoffByExecutionId.get(prep.value.executionId);
     if (!handoff) {
       return failure(
-        new ValidationError("canonical stream handoff missing after OS ingress")
+        new ValidationError("canonical stream handoff missing after direct execution ingress")
       );
     }
     this.streamHandoffByExecutionId.delete(prep.value.executionId);
@@ -311,8 +208,8 @@ export class ExecutionApiService implements IExecutionApiService {
   }
 
   /**
-   * Canonical streaming — OS ingress already applied via handoff; run pipeline
-   * stages 1–10 (planning) then hand off to live or simulated provider stream.
+   * Canonical streaming — direct execution ingress already applied via handoff;
+   * run routing then hand off to live or simulated provider stream.
    */
   private async executeCanonicalStream(
     handoff: CanonicalStreamHandoff,
@@ -637,12 +534,18 @@ export class ExecutionApiService implements IExecutionApiService {
   ): Promise<Result<ExecutionDiagnostics>> {
     const got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      if (!extras) return failure(new NotFoundError("diagnostics not found"));
-      return success(extras.diagnostics);
-    }
-    return success(this.extrasStore.get(executionId)!.diagnostics);
+    const extras = this.deps.persistence
+      ? await this.deps.persistence.extras.get(executionId)
+      : this.extrasStore.get(executionId);
+    if (!extras) return failure(new NotFoundError("diagnostics not found"));
+    const continuity =
+      extras.continuityObservability ??
+      buildContinuityObservabilitySummary({ extras: extras as Record<string, unknown> });
+    return success({
+      ...extras.diagnostics,
+      // A6 — admin/product observability (non-breaking additive field)
+      continuityObservability: continuity,
+    } as ExecutionDiagnostics);
   }
 
   async trace(
@@ -747,312 +650,6 @@ export class ExecutionApiService implements IExecutionApiService {
   }
 
   /**
-   * Phase 1 — retrieve StructuredBrief for an execution (tenant-isolated).
-   */
-  async getBrief(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<StructuredBrief>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-
-    const fromMemory = this.briefByExecutionId.get(executionId);
-    if (fromMemory) {
-      if (fromMemory.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(fromMemory);
-    }
-
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      const brief = extras?.structuredBrief as StructuredBrief | undefined;
-      if (!brief) return failure(new NotFoundError("brief not found"));
-      if (brief.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(brief);
-    }
-
-    const local = this.extrasStore.get(executionId)?.structuredBrief;
-    if (!local) return failure(new NotFoundError("brief not found"));
-    if (local.organizationId !== tenant.organizationId) {
-      return failure(new AuthorizationError("tenant isolation violation"));
-    }
-    return success(local);
-  }
-
-  /**
-   * Phase 2 — retrieve BrandContext for an execution (tenant-isolated).
-   */
-  async getBrandContext(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<BrandContext>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-
-    const fromMemory = this.brandByExecutionId.get(executionId);
-    if (fromMemory) {
-      if (fromMemory.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(fromMemory);
-    }
-
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      const brand = extras?.structuredBrandContext as BrandContext | undefined;
-      if (!brand) return failure(new NotFoundError("brand context not found"));
-      if (brand.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(brand);
-    }
-
-    const local = this.extrasStore.get(executionId)?.structuredBrandContext;
-    if (!local) return failure(new NotFoundError("brand context not found"));
-    if (local.organizationId !== tenant.organizationId) {
-      return failure(new AuthorizationError("tenant isolation violation"));
-    }
-    return success(local);
-  }
-
-  /**
-   * Phase 3 — retrieve KnowledgeContext for an execution (tenant-isolated).
-   */
-  async getKnowledgeContext(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<KnowledgeContext>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-
-    const fromMemory = this.knowledgeByExecutionId.get(executionId);
-    if (fromMemory) {
-      if (fromMemory.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(fromMemory);
-    }
-
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      const knowledge = extras?.structuredKnowledgeContext as
-        | KnowledgeContext
-        | undefined;
-      if (!knowledge) return failure(new NotFoundError("knowledge context not found"));
-      if (knowledge.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(knowledge);
-    }
-
-    const local = this.extrasStore.get(executionId)?.structuredKnowledgeContext;
-    if (!local) return failure(new NotFoundError("knowledge context not found"));
-    if (local.organizationId !== tenant.organizationId) {
-      return failure(new AuthorizationError("tenant isolation violation"));
-    }
-    return success(local);
-  }
-
-  /**
-   * Phase 4 — retrieve ExecutionPlan for an execution (tenant-isolated).
-   * Does not execute the plan.
-   */
-  async getExecutionPlan(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<ExecutionPlan>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-
-    const fromMemory = this.planByExecutionId.get(executionId);
-    if (fromMemory) {
-      if (fromMemory.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(fromMemory);
-    }
-
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      const plan = extras?.structuredExecutionPlan as ExecutionPlan | undefined;
-      if (!plan) return failure(new NotFoundError("execution plan not found"));
-      if (plan.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(plan);
-    }
-
-    const local = this.extrasStore.get(executionId)?.structuredExecutionPlan;
-    if (!local) return failure(new NotFoundError("execution plan not found"));
-    if (local.organizationId !== tenant.organizationId) {
-      return failure(new AuthorizationError("tenant isolation violation"));
-    }
-    return success(local);
-  }
-
-  /**
-   * Phase 5 — execute APPROVED_FOR_EXECUTION plan as a task DAG (internal/domain).
-   */
-  async executeTaskGraph(
-    executionId: string,
-    tenant: TenantContext,
-    options?: { readonly maxConcurrency?: number; readonly requestId?: string }
-  ): Promise<Result<TaskGraphRunSnapshot>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-
-    const planResult = await this.getExecutionPlan(executionId, tenant);
-    if (!planResult.ok) return planResult;
-    const plan = planResult.value;
-
-    try {
-      const brief = this.briefByExecutionId.get(executionId);
-      const brand = this.brandByExecutionId.get(executionId);
-      const knowledge = this.knowledgeByExecutionId.get(executionId);
-      const snap = await this.taskGraphExecutor.execute({
-        organizationId: tenant.organizationId,
-        executionId,
-        requestId: options?.requestId ?? executionId,
-        plan,
-        briefObjective: brief?.objective,
-        brandTone: brand?.tone?.tone,
-        brandVoice: brand?.voice?.voice,
-        brandAvoidTerms: brand?.vocabulary?.avoid,
-        prohibitedPatterns: brand?.prohibitedPatterns,
-        knowledgeFactSummary: knowledge?.facts
-          ?.slice(0, 8)
-          .map((f) => `${f.key}=${f.value}`)
-          .join("; "),
-        brandId: got.value.brandId,
-        maxConcurrency: options?.maxConcurrency,
-        nowIso: this.deps.nowIso,
-        createId: this.deps.createId,
-      });
-      this.taskGraphByExecutionId.set(executionId, snap);
-      await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
-      return success(snap);
-    } catch (err) {
-      if (err instanceof TaskGraphExecutorError) {
-        if (err.code === "TENANT_VIOLATION") {
-          return failure(new AuthorizationError(err.message));
-        }
-        return failure(new ValidationError(err.message));
-      }
-      return failure(
-        new ValidationError(
-          err instanceof Error ? err.message : "task graph execution failed"
-        )
-      );
-    }
-  }
-
-  async resumeTaskGraph(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<TaskGraphRunSnapshot>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-    const planResult = await this.getExecutionPlan(executionId, tenant);
-    if (!planResult.ok) return planResult;
-    try {
-      const snap = await this.taskGraphExecutor.resume({
-        organizationId: tenant.organizationId,
-        executionId,
-        requestId: executionId,
-        plan: planResult.value,
-        nowIso: this.deps.nowIso,
-      });
-      this.taskGraphByExecutionId.set(executionId, snap);
-      await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
-      return success(snap);
-    } catch (err) {
-      if (err instanceof TaskGraphExecutorError) {
-        if (err.code === "TENANT_VIOLATION") {
-          return failure(new AuthorizationError(err.message));
-        }
-        return failure(new ValidationError(err.message));
-      }
-      return failure(
-        new ValidationError(err instanceof Error ? err.message : "resume failed")
-      );
-    }
-  }
-
-  async cancelTaskGraph(
-    executionId: string,
-    tenant: TenantContext,
-    reason?: string
-  ): Promise<Result<TaskGraphRunSnapshot>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-    try {
-      const snap = await this.taskGraphExecutor.cancel({
-        organizationId: tenant.organizationId,
-        executionId,
-        reason,
-        nowIso: this.deps.nowIso,
-      });
-      this.taskGraphByExecutionId.set(executionId, snap);
-      await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
-      return success(snap);
-    } catch (err) {
-      if (err instanceof TaskGraphExecutorError) {
-        if (err.code === "TENANT_VIOLATION") {
-          return failure(new AuthorizationError("tenant isolation violation"));
-        }
-        return failure(new ValidationError(err.message));
-      }
-      return failure(
-        new ValidationError(err instanceof Error ? err.message : "cancel failed")
-      );
-    }
-  }
-
-  async getTaskGraphStatus(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<TaskGraphRunSnapshot>> {
-    const got = await this.scoped(executionId, tenant);
-    if (!got.ok) return got;
-
-    const mem = this.taskGraphByExecutionId.get(executionId);
-    if (mem) {
-      if (mem.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(mem);
-    }
-
-    const fromStore = await this.taskGraphStore.get(
-      executionId,
-      tenant.organizationId
-    );
-    if (fromStore) return success(fromStore);
-
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      const snap = extras?.structuredTaskGraphState as
-        | TaskGraphRunSnapshot
-        | undefined;
-      if (!snap) return failure(new NotFoundError("task graph run not found"));
-      if (snap.organizationId !== tenant.organizationId) {
-        return failure(new AuthorizationError("tenant isolation violation"));
-      }
-      return success(snap);
-    }
-
-    const local = this.extrasStore.get(executionId)?.structuredTaskGraphState;
-    if (!local) return failure(new NotFoundError("task graph run not found"));
-    if (local.organizationId !== tenant.organizationId) {
-      return failure(new AuthorizationError("tenant isolation violation"));
-    }
-    return success(local);
-  }
-
-  /**
    * Phase 6 — submit human review decision (never auto-approves).
    */
   async submitHumanReviewDecision(
@@ -1064,44 +661,9 @@ export class ExecutionApiService implements IExecutionApiService {
       readonly reviewer: string;
       readonly comments?: string;
     }
-  ): Promise<Result<TaskGraphRunSnapshot | { readonly review: unknown; readonly singleCapability: true }>> {
+  ): Promise<Result<{ readonly review: unknown; readonly singleCapability: true }>> {
     const got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
-    const planResult = await this.getExecutionPlan(executionId, tenant);
-    if (planResult.ok) {
-      try {
-        const snap = await this.taskGraphExecutor.applyHumanReviewDecision({
-          organizationId: tenant.organizationId,
-          executionId,
-          reviewId: input.reviewId,
-          decision: input.decision,
-          reviewer: input.reviewer,
-          comments: input.comments,
-          plan: planResult.value,
-          requestId: executionId,
-          nowIso: this.deps.nowIso,
-        });
-        this.taskGraphByExecutionId.set(executionId, snap);
-        await this.persistTaskGraphState(executionId, tenant.organizationId, snap);
-        return success(snap);
-      } catch (err) {
-        if (err instanceof TaskGraphExecutorError) {
-          if (err.code === "TENANT_VIOLATION") {
-            return failure(new AuthorizationError(err.message));
-          }
-          return failure(new ValidationError(err.message));
-        }
-        return failure(
-          new ValidationError(
-            err instanceof Error ? err.message : "human review decision failed"
-          )
-        );
-      }
-    }
-
-    if (!(planResult.error instanceof NotFoundError)) {
-      return failure(planResult.error);
-    }
 
     try {
       const review = await this.governanceFinalize.getHumanReviewStore().decide({
@@ -1171,30 +733,6 @@ export class ExecutionApiService implements IExecutionApiService {
     return this.deliveryService;
   }
 
-  /** Phase 8 — production runtime task graph executor */
-  getTaskGraphExecutor(): ReturnType<typeof createTaskGraphExecutorEngine> {
-    return this.taskGraphExecutor;
-  }
-
-  /** Phase 8 — resolve plan for queue workers (org-scoped). */
-  async resolveExecutionPlanForWorker(
-    executionId: string,
-    organizationId: string
-  ): Promise<ExecutionPlan | undefined> {
-    const fromMemory = this.planByExecutionId.get(executionId);
-    if (fromMemory?.organizationId === organizationId) return fromMemory;
-
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      const plan = extras?.structuredExecutionPlan as ExecutionPlan | undefined;
-      if (plan?.organizationId === organizationId) return plan;
-    }
-
-    const local = this.extrasStore.get(executionId)?.structuredExecutionPlan;
-    if (local?.organizationId === organizationId) return local;
-    return undefined;
-  }
-
   async getAutoDelivery(
     executionId: string,
     tenant: TenantContext
@@ -1211,89 +749,8 @@ export class ExecutionApiService implements IExecutionApiService {
     return success(autoDelivery);
   }
 
-  /**
-   * Structured gateway invocation path — for new callers (BusinessPlatformEngine, SDK).
-   * Routes through IntelligenceGateway → IntelligenceOrchestrator → IntegrationDispatcher
-   * → real 13-stage pipeline. Returns a simplified result with sessionId and output.
-   *
-   * Falls back to null when no gateway is wired (non-live environments).
-   */
-  async invokeViaGateway(input: {
-    readonly capabilityId: string;
-    readonly organizationId: string;
-    readonly workspaceId?: string;
-    readonly rawPrompt: string;
-    readonly correlationId?: string;
-    readonly attributes?: Readonly<Record<string, unknown>>;
-    readonly apiExecutionId?: string;
-  }): Promise<import("../../intelligence/shared/result").Result<{
-    readonly sessionId: string;
-    readonly output: Readonly<Record<string, unknown>>;
-    readonly success: boolean;
-    readonly capabilityId: string;
-  }> | null> {
-    if (!this.intelligenceGateway || !this.deps.integration) return null;
-
-    const workspaceId = resolveControlPlaneWorkspaceId(input.workspaceId);
-
-    const run = await runIntegrationViaControlPlane({
-      gateway: this.intelligenceGateway,
-      integration: this.deps.integration,
-      capabilityId: input.capabilityId,
-      organizationId: input.organizationId,
-      workspaceId,
-      apiExecutionId: input.apiExecutionId,
-      request: {
-        requestId: input.apiExecutionId ?? input.correlationId ?? `gw_${Date.now()}`,
-        rawPrompt: input.rawPrompt,
-        organizationId: asOrganizationId(input.organizationId),
-        workspaceId: asWorkspaceId(workspaceId),
-        correlationId: input.correlationId,
-        mode: CANONICAL_INTEGRATION_MODE,
-        metadata: {
-          ...(input.attributes ?? {}),
-          rawPrompt: input.rawPrompt,
-          capabilityId: input.capabilityId,
-          ...(input.apiExecutionId
-            ? { apiExecutionId: input.apiExecutionId, executionId: input.apiExecutionId }
-            : {}),
-        },
-      },
-    });
-
-    if (!run.ok) {
-      return failure(run.error);
-    }
-
-    const report = run.value;
-    return success({
-      sessionId: input.apiExecutionId ?? report.requestId,
-      output: {
-        ...(report.artifacts?.runtime?.response?.output ?? {}),
-        integrationReport: report,
-      },
-      success: report.success,
-      capabilityId: input.capabilityId,
-    });
-  }
-
-  /**
-   * Post-construction injection of the Intelligence Gateway.
-   * Called by bootstrap-enterprise-api.ts after the gateway is bootstrapped.
-   */
-  setIntelligenceGateway(
-    gateway: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway
-  ): void {
-    // Safe cast — field is readonly in the type, but we own the object and this
-    // is the intended post-construction wiring point.
-    (this as unknown as { intelligenceGateway?: unknown }).intelligenceGateway = gateway;
-    if (this.taskCapabilityRunner instanceof IntegrationTaskCapabilityRunner) {
-      this.taskCapabilityRunner.setIntelligenceGateway(gateway);
-    }
-  }
-
-  /** Expose the capability registry for the Intelligence Gateway composition root. */
-  getCapabilityRegistry(): import("../../intelligence/capability-registry/interfaces/capability-registry").ICapabilityRegistry {
+  /** Expose the capability registry for provider negotiation. */
+  getCapabilityRegistry(): import("../../capability-registry/interfaces/capability-registry").ICapabilityRegistry {
     return this.productionCapabilityRegistry;
   }
 
@@ -1306,19 +763,9 @@ export class ExecutionApiService implements IExecutionApiService {
       idempotencyIndex: this.idempotencyIndex,
       tenantTokenUsage: this.tenantTokenUsage,
       extrasStore: this.extrasStore as Map<string, ExecutionExtrasRecord>,
-      briefIntelligence: this.briefIntelligence,
-      brandIntelligence: this.brandIntelligence,
-      knowledgeIntelligence: this.knowledgeIntelligence,
-      executionIntelligence: this.executionIntelligence,
-      briefByExecutionId: this.briefByExecutionId,
-      brandByExecutionId: this.brandByExecutionId,
-      knowledgeByExecutionId: this.knowledgeByExecutionId,
-      planByExecutionId: this.planByExecutionId,
       streamHandoffByExecutionId: this.streamHandoffByExecutionId,
-      brandBrainEngine: this.brandBrainEngine,
       governanceFinalize: this.governanceFinalize,
       deliveryService: this.deliveryService,
-      intelligenceGateway: this.intelligenceGateway,
       loadExecution: (executionId) => this.loadExecution(executionId),
     };
   }
@@ -1491,17 +938,110 @@ export class ExecutionApiService implements IExecutionApiService {
           organizationId: tenant.organizationId,
           nowIso: this.deps.nowIso,
         });
+
+        // Track A Phase A4 — return same-packet metadata for the next thin create.
+        let continuityMetadata: Record<string, unknown> | undefined;
+        try {
+          const extras = this.deps.persistence
+            ? await this.deps.persistence.extras.get(result.request.executionId)
+            : this.extrasStore.get(result.request.executionId);
+          const snap =
+            extractContinuitySnapshot(
+              extras as Readonly<Record<string, unknown>> | undefined
+            ) ??
+            (result.request.brandId
+              ? {
+                  brandId: result.request.brandId,
+                  continuityBound: false as const,
+                }
+              : null);
+          if (snap) {
+            continuityMetadata = buildRefineContinuityMetadata({
+              snapshot: snap,
+              refinementId: result.request.refinementId,
+              sourceExecutionId: result.request.executionId,
+            });
+          }
+        } catch {
+          // best-effort
+        }
+
         return success({
           refinementId: result.request.refinementId,
           status: result.request.status,
           specificationId: result.specification.specificationId,
           refinementVersion: result.request.refinementVersion,
           sourcePreview: result.request.sourcePreview,
+          ...(continuityMetadata
+            ? {
+                continuityMetadata,
+                preserveBoundPacket: true,
+              }
+            : {}),
         });
       } catch (err) {
         return this.mapOsError(err);
       }
     });
+  }
+
+  async approveOsArtifactVersion(
+    artifactId: string,
+    version: number,
+    tenant: TenantContext,
+    body: Record<string, unknown>
+  ): Promise<Result<unknown>> {
+    try {
+      const store = this.deliveryService.getArtifactStore();
+      const brandMemoryRaw = body.brandMemory;
+      const brandMemory =
+        brandMemoryRaw &&
+        typeof brandMemoryRaw === "object" &&
+        !Array.isArray(brandMemoryRaw)
+          ? (brandMemoryRaw as {
+              brandId?: string;
+              slotKey?: string;
+              tier?: "canonical" | "working" | "archive";
+              assetId?: string;
+              facts?: Readonly<Record<string, string | readonly string[]>>;
+              campaignId?: string;
+              campaignTitle?: string;
+              recordSelection?: boolean;
+              service?: string;
+            })
+          : undefined;
+
+      const approved = await store.approveVersion({
+        artifactId,
+        version,
+        organizationId: tenant.organizationId,
+        approvalReference: String(
+          body.approvalReference ?? body.reference ?? `approve_${Date.now()}`
+        ),
+        nowIso: this.deps.nowIso,
+        ...(brandMemory?.brandId?.trim() && brandMemory.slotKey
+          ? {
+              brandMemory: {
+                brandId: brandMemory.brandId.trim(),
+                slotKey: brandMemory.slotKey,
+                tier: brandMemory.tier,
+                assetId: brandMemory.assetId,
+                facts: brandMemory.facts,
+                campaignId: brandMemory.campaignId,
+                campaignTitle: brandMemory.campaignTitle,
+                recordSelection: brandMemory.recordSelection,
+                service: brandMemory.service,
+              },
+            }
+          : {}),
+      });
+      return success({
+        ...this.toArtifactDto(approved),
+        brandMemoryAttached: Boolean(brandMemory?.brandId?.trim()),
+      });
+    } catch (err) {
+      return this.mapOsError(err);
+    }
   }
 
   async getOsArtifact(
@@ -1629,6 +1169,34 @@ export class ExecutionApiService implements IExecutionApiService {
     return success(this.toReviewDto(rec));
   }
 
+  async listOsReviews(
+    tenant: TenantContext | undefined,
+    query?: { readonly status?: string; readonly limit?: number },
+    options?: { readonly crossTenant?: boolean }
+  ): Promise<Result<unknown>> {
+    const statusRaw = String(query?.status ?? "PENDING").trim().toUpperCase();
+    const status =
+      statusRaw === "ALL" || statusRaw === "*"
+        ? undefined
+        : (statusRaw as
+            | "PENDING"
+            | "APPROVED"
+            | "REJECTED"
+            | "REQUEST_CHANGES");
+    const limit = Number(query?.limit ?? 100);
+    const organizationId =
+      options?.crossTenant === true ? undefined : tenant?.organizationId;
+    if (!options?.crossTenant && !organizationId) {
+      return success([]);
+    }
+    const rows = await this.governanceFinalize.getHumanReviewStore().list({
+      organizationId,
+      status,
+      limit: Number.isFinite(limit) ? limit : 100,
+    });
+    return success(rows.map((r) => this.toReviewDto(r)));
+  }
+
   async getOsPendingReview(
     executionId: string,
     tenant: TenantContext
@@ -1664,6 +1232,7 @@ export class ExecutionApiService implements IExecutionApiService {
       approvalReference: art.approvalReference,
       planVersion: art.planVersion,
       createdAt: art.createdAt,
+      preview: art.preview,
     };
   }
 
@@ -1720,6 +1289,10 @@ export class ExecutionApiService implements IExecutionApiService {
       comments: r.comments,
       decidedAt: r.decidedAt,
       policyVersion: r.policyVersion,
+      brand: r.reason?.slice(0, 80) || "Creative review",
+      service: "AI Create Design",
+      route: "AI",
+      submittedAt: r.requestedAt,
     };
   }
 
@@ -1736,29 +1309,6 @@ export class ExecutionApiService implements IExecutionApiService {
     return failure(
       new ValidationError(err instanceof Error ? err.message : "os operation failed")
     );
-  }
-
-  private async persistTaskGraphState(
-    executionId: string,
-    organizationId: string,
-    snap: TaskGraphRunSnapshot
-  ): Promise<void> {
-    const existing = this.extrasStore.get(executionId);
-    if (existing) {
-      this.extrasStore.set(executionId, {
-        ...existing,
-        structuredTaskGraphState: snap,
-      });
-    }
-    if (this.deps.persistence) {
-      const extras = await this.deps.persistence.extras.get(executionId);
-      if (extras) {
-        await this.deps.persistence.extras.save(executionId, organizationId, {
-          ...extras,
-          structuredTaskGraphState: snap,
-        });
-      }
-    }
   }
 
   private async persistExecution(resource: ExecutionResource): Promise<void> {
@@ -1782,7 +1332,8 @@ export class ExecutionApiService implements IExecutionApiService {
       (resource.status === "succeeded" &&
         (resource.result?.kind === "pending" ||
           resource.result?.kind === "empty" ||
-          resource.result == null));
+          resource.result == null ||
+          missingWebsitePreview(resource)));
     if (!needsHydrate) return resource;
 
     if (this.deps.distributed && resource.jobId) {
@@ -1794,46 +1345,86 @@ export class ExecutionApiService implements IExecutionApiService {
         this.deps.autoTick !== false
       ) {
         this.deps.distributed.registerWorker("execution", 4);
-        void this.deps.distributed.tick(1).catch(() => undefined);
+        await this.deps.distributed.tick(1).catch(() => undefined);
         job = readJob();
       }
       if (job.ok && job.value) {
-        const status = mapJobStatus(job.value.status);
         const summary = job.value.resultSummary ?? {};
+        const status = mapJobStatus(job.value.status, summary);
         const mediaArtifactIds = jobMediaArtifactIds(summary);
-        const nextResult =
-          status === "succeeded" && mediaArtifactIds.length > 0
-            ? ({
-                kind: "artifact" as const,
-                data: { artifactIds: mediaArtifactIds },
-              } as ExecutionResource["result"])
-            : buildExecutionResultPayload({
-                status,
-                jobSummary: summary,
-              });
+        let nextResult = mergeExportArtifactsIntoResult({
+          status,
+          result: buildExecutionResultPayload({
+            status,
+            jobSummary: summary,
+          }),
+          jobSummary: summary,
+          mediaArtifactIds,
+        });
+        const exported = await applyWebsiteExportToExecution({
+          asyncMedia: this.deps.asyncMedia,
+          executionId: resource.executionId,
+          organizationId: resource.organizationId,
+          status,
+          jobSummary: summary,
+          metadata: job.value.payload?.metadata,
+          createId: this.deps.createId,
+          currentResult: nextResult,
+          currentArtifactIds:
+            mediaArtifactIds.length > 0
+              ? mediaArtifactIds
+              : resource.artifactIds,
+        });
+        nextResult = exported.result;
+        const nextArtifactIds = exported.artifactIds ?? resource.artifactIds;
+        let nextStatus = status;
+        let nextError =
+          (typeof summary.errorMessage === "string"
+            ? summary.errorMessage
+            : undefined) ??
+          job.value.lastError ??
+          resource.errorMessage;
+        if (
+          exported.errorCode &&
+          !exported.exported &&
+          status === "succeeded"
+        ) {
+          const meta = job.value.payload?.metadata as
+            | Readonly<Record<string, unknown>>
+            | undefined;
+          const websiteRequired =
+            (typeof meta?.service === "string" &&
+              meta.service.toLowerCase() === "website") ||
+            (typeof meta?.outputKind === "string" &&
+              /^(deferred_)?website$/i.test(meta.outputKind)) ||
+            (meta?.structuredOutput &&
+              typeof meta.structuredOutput === "object" &&
+              /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
+                String(
+                  (meta.structuredOutput as { name?: unknown }).name ?? "",
+                ),
+              ));
+          if (websiteRequired) {
+            nextStatus = "failed";
+            nextError =
+              exported.errorCode ||
+              "Could not build the website deliverable from the model output.";
+          }
+        }
         const unchanged =
-          status === resource.status &&
-          mediaArtifactIds.length === 0 &&
-          job.value.lastError === resource.errorMessage &&
+          nextStatus === resource.status &&
+          nextError === resource.errorMessage &&
           nextResult != null &&
           resource.result?.kind === nextResult.kind &&
-          (nextResult.kind !== "text" ||
-            resource.result?.text === nextResult.text);
+          !exported.exported &&
+          !missingWebsitePreview({ ...resource, result: nextResult });
         if (!unchanged) {
           return this.persistHydratedExecution({
             ...resource,
-            status,
+            status: nextStatus,
             completedAt: job.value.completedAt ?? resource.completedAt,
-            errorMessage:
-              (typeof summary.errorMessage === "string"
-                ? summary.errorMessage
-                : undefined) ??
-              job.value.lastError ??
-              resource.errorMessage,
-            artifactIds:
-              mediaArtifactIds.length > 0
-                ? mediaArtifactIds
-                : resource.artifactIds,
+            errorMessage: nextError,
+            artifactIds: nextArtifactIds,
             result: nextResult,
             cost: Number(summary.cost ?? resource.cost ?? 0) || resource.cost,
             evaluationScore:
@@ -1843,6 +1434,7 @@ export class ExecutionApiService implements IExecutionApiService {
             updatedAt: this.deps.nowIso(),
           });
         }
+        if (nextResult.kind === "structured") return resource;
       }
     }
 
@@ -1853,7 +1445,33 @@ export class ExecutionApiService implements IExecutionApiService {
       (row) => row.kind === "media" || row.label?.startsWith("blob:")
     );
     if (media.length === 0) return resource;
+    if (resource.result?.kind === "structured") return resource;
     const artifactIds = media.map((row) => row.artifactId);
+    const jobId = resource.jobId;
+    if (jobId && this.deps.distributed) {
+      const job = this.deps.distributed.getJob(asJobId(jobId));
+      if (job.ok && job.value?.resultSummary) {
+        const merged = mergeExportArtifactsIntoResult({
+          status: "succeeded",
+          result: buildExecutionResultPayload({
+            status: "succeeded",
+            jobSummary: job.value.resultSummary,
+          }),
+          jobSummary: job.value.resultSummary,
+          mediaArtifactIds: artifactIds,
+        });
+        if (merged.kind === "structured") {
+          return this.persistHydratedExecution({
+            ...resource,
+            status: "succeeded",
+            completedAt: resource.completedAt ?? this.deps.nowIso(),
+            artifactIds,
+            result: merged,
+            updatedAt: this.deps.nowIso(),
+          });
+        }
+      }
+    }
     return this.persistHydratedExecution({
       ...resource,
       status: "succeeded",
@@ -1898,6 +1516,26 @@ export class ExecutionApiService implements IExecutionApiService {
     }
     return success(exec);
   }
+}
+
+function missingWebsitePreview(resource: ExecutionResource): boolean {
+  const data =
+    resource.result?.data && typeof resource.result.data === "object"
+      ? (resource.result.data as Record<string, unknown>)
+      : undefined;
+  const html = typeof data?.html === "string" ? data.html.trim() : "";
+  const htmlArtifactId =
+    typeof data?.htmlArtifactId === "string" ? data.htmlArtifactId.trim() : "";
+  const projectArtifactId =
+    typeof data?.projectArtifactId === "string"
+      ? data.projectArtifactId.trim()
+      : "";
+  const hasFiles = Array.isArray(data?.files) && data.files.length > 0;
+  if (html || htmlArtifactId || projectArtifactId || hasFiles) return false;
+  const text =
+    typeof resource.result?.text === "string" ? resource.result.text : "";
+  if (/<!DOCTYPE\s+html|<html[\s>]/i.test(text)) return true;
+  return data?.exportKind === "website";
 }
 
 function isTerminalJobStatus(status: string): boolean {

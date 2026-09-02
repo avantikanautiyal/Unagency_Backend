@@ -34,17 +34,6 @@ Canonical path inventory. **Do not duplicate routes.** Source files cited.
 | GET | `/{v}/executions/:executionId/cost-breakdown` | executions | yes | `execution:read` |
 | GET | `/{v}/executions/:executionId/evaluation` | executions | yes | `execution:read` |
 | GET | `/{v}/executions/:executionId/experience` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/model-decision` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/routing` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/planning` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/timeline` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/provider` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/metrics` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/tokens` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/quality` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/confidence` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/audit` | executions | yes | `execution:read` |
-| GET | `/{v}/executions/:executionId/decision-graph` | executions | yes | `execution:read` |
 | GET | `/{v}/benchmarks` | benchmarks | yes | `benchmark:read` |
 | GET | `/{v}/analytics/summary` | analytics | yes | `analytics:read` |
 | GET | `/{v}/billing/summary` | billing | yes | `billing:read` |
@@ -199,14 +188,14 @@ Canonical path inventory. **Do not duplicate routes.** Source files cited.
 | POST | `/razorpay/webhook` |
 | GET | `/` |
 
-### Future / disabled
+### Removed / deprecated
 
 | Path | Status |
 |------|--------|
-| `/intelligence/playground/*` | Manifest only, not mounted |
+| `/v1/intelligence/capabilities` | Deprecated alias — use `/v1/runtime/capabilities` |
 
 ---
 
 ## C. No HTTP (programmatic only)
 
-Brand Brain, Knowledge Intelligence (full graph APIs), Studio Engine, Persistence admin, Multi-Provider internals, full Business Platform domains — see [MISSING_API_REPORT.md](./MISSING_API_REPORT.md).
+Brand Brain, Business Platform domains, Persistence admin, Multi-Provider internals — see [MISSING_API_REPORT.md](./MISSING_API_REPORT.md).

@@ -3,8 +3,8 @@
  * streaming byte limits, timeouts. Used after provider returns temporary URLs.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type { MediaDownloadClient } from "./media-ingestion-service";
 import {
   validateIngestionUrlWithDns,

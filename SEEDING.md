@@ -45,7 +45,16 @@ Ensure Firebase Admin credentials match the Firebase project the mobile app uses
 | Email | Role | Purpose |
 |-------|------|---------|
 | `demo@unagency.test` | customer | **Primary mobile test account** |
-| `rm@unagency.test` | servicing (RM) | Relationship manager chat |
+| `rm@unagency.test` | servicing (RM) | CS portal + relationship manager chat |
+| `cs2@unagency.test` | servicing | Extra CS portal login |
+| `cs3@unagency.test` | servicing | Extra CS portal login |
+| `cs4@unagency.test` | servicing | Extra CS portal login |
+| `admin@unagency.test` | admin | Admin portal (`/admin`) |
+| `superadmin@unagency.test` | superadmin | Super Admin portal (`/super-admin`) |
+| `resource@unagency.test` | resource | Resource / designer portal (`/resource`) |
+| `resource2@unagency.test` | resource | Extra resource portal login |
+| `resource3@unagency.test` | resource | Extra resource portal login |
+| `resource4@unagency.test` | resource | Extra resource portal login |
 | `teammate@unagency.test` | customer | Accepted team member |
 | `invitee@unagency.test` | customer | Pending team invitation |
 
@@ -53,22 +62,32 @@ Ensure Firebase Admin credentials match the Firebase project the mobile app uses
 
 Log in on the Expo app with `demo@unagency.test` / `DemoPass123!`.
 
+Log in on UNagency-Admin with the matching portal account (e.g. Super Admin splash → `superadmin@unagency.test`).
+
+To attach existing production customers/projects to these staff logins (so CS/Resource see live orgs like The Cosmic Stack, not only seed fixtures):
+
+```bash
+npm run seed:link-real
+```
+
+
 ## What gets seeded
 
 | # | Entity | Count | Notes |
 |---|--------|-------|-------|
 | 1 | Categories | 10 | 2 popular, 2 bestseller, 6 standard |
 | 2 | Razorpay plans | 5 | trial, bronze, silver, gold, platinum |
-| 3 | Users | 4 | Firebase + MongoDB + Stream |
-| 4 | Staff | 1 | RM profile for `rm@unagency.test` |
+| 3 | Users | 7 | Firebase + MongoDB (customer, CS, admin, superadmin, resource) |
+| 4 | Staff | 2 | RM + resource designer profiles |
 | 5 | Subscription | 1 | Active gold plan for demo user |
 | 6 | Organization | 1 | Demo Creative Studio |
 | 7 | Team members | 3 | owner, accepted member, pending invite |
 | 8 | Requirements | 4 | Briefs for demo user |
 | 9 | Projects | 6 | All progress statuses (planning → closed) |
-| 10 | Notifications | 7 | PROJECT + COMMON types |
-| 11 | Stream channel | 1 | RM chat with 5 messages |
-| 12 | Payments | 3 | Captured history + PDF invoice support |
+| 10 | Tasks | 5 | Assigned resource ← CS across demo projects |
+| 11 | Notifications | 7 | PROJECT + COMMON types |
+| 12 | Chat channels | 2 | RM thread + project room (demo / CS / resource) with messages |
+| 13 | Payments | 3 | Captured history + PDF invoice support |
 
 All demo data is namespaced (`@unagency.test` emails, `[Demo]` titles, `plan_demo_*` / `sub_demo_*` / `pay_demo_*` IDs).
 

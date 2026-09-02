@@ -2,7 +2,7 @@ import { createGovernancePolicyForProductMode } from "../../../src/platform/os/g
 import {
   buildWorkflowFollowUpFromMetadata,
 } from "../../../src/platform/api/services/workflow-follow-up";
-import type { ServiceContextWorkflow } from "../../../src/platform/os/brief/engine/service-context-classifier";
+import type { ServiceContextWorkflow } from "../../../src/platform/config/service-context-classifier";
 
 describe("governance-policy-by-product-mode", () => {
   it("relaxes human review threshold in AI mode", () => {
@@ -19,9 +19,9 @@ describe("governance-policy-by-product-mode", () => {
     expect(ai.rules.humanReviewRiskThreshold).toBeGreaterThan(
       human.rules.humanReviewRiskThreshold
     );
-    expect(ai.rules.approveMinOverallScore).toBeLessThan(
-      human.rules.approveMinOverallScore
-    );
+    // Approval score gate is unified across product modes (creative score release gate).
+    expect(ai.rules.approveMinOverallScore).toBe(human.rules.approveMinOverallScore);
+    expect(ai.rules.approveMinCreativeScore).toBe(human.rules.approveMinCreativeScore);
   });
 });
 

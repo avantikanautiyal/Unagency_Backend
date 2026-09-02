@@ -6,6 +6,7 @@ import {
   getCustomerRequirement,
   getRequirement,
   getRequirmentById,
+  openServiceRequirement,
   updateCustomerRequirement,
 } from "../controllers/requirement.controller";
 
@@ -17,6 +18,12 @@ router.post(
   VerifyRole(["customer"]),
   fileUpload.array("attach"),
   createRequirement
+);
+// Human/Hybrid: open CS inbox row bound to brand + service (must be before /:userId)
+router.post(
+  "/open-service",
+  VerifyRole(["customer"]),
+  openServiceRequirement
 );
 //Desc: It allows customer to get their requirement list
 router.get("/", VerifyRole(["customer"]), getRequirement);

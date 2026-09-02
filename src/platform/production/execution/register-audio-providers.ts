@@ -2,17 +2,17 @@
  * Register verified sync audio providers into M9.5A runtime registry.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
-import { asProviderId, type ProviderId } from "../../intelligence/shared/identifiers";
-import type { IModelRegistry } from "../../intelligence/model-registry/interfaces/model-registry";
-import type { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import type { IProviderDispatcher } from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
+import { success, type Result } from "../../core/result";
+import { asProviderId, type ProviderId } from "../../core/identifiers";
+import type { IModelRegistry } from "../../model-registry/interfaces/model-registry";
+import type { InMemoryProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
 import {
   ALL_AUDIO_PROVIDER_SPECS,
   VERIFIED_AUDIO_PROVIDER_SPECS,
-} from "../../intelligence/providers/audio/configs/verified-audio-provider-specs";
-import { createVerifiedAudioProvider } from "../../intelligence/providers/audio/factories/create-verified-audio-provider";
-import type { IAudioHttpClient } from "../../intelligence/providers/audio/http/audio-http-client";
+} from "../../providers/audio/configs/verified-audio-provider-specs";
+import { createVerifiedAudioProvider } from "../../providers/audio/factories/create-verified-audio-provider";
+import type { IAudioHttpClient } from "../../providers/audio/http/audio-http-client";
 import {
   evaluateAudioProviderEnv,
   isAudioProviderExecutable,

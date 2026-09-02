@@ -2,8 +2,8 @@
  * Controllers — thin adapters from HTTP routes to services.
  */
 
-import { success, failure, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { success, failure, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type {
   ApiRequest,
   AuthPrincipal,
@@ -19,10 +19,9 @@ import type {
 } from "../interfaces";
 import { CatalogApiService } from "../services/catalog-api-service";
 import type { InMemoryTenantService } from "../tenants/in-memory-tenant-service";
-import type { IExecutionIntelligenceApiService } from "../execution-intelligence";
 import { evaluateReadiness } from "../runtime/readiness";
 import { resolveEnterpriseApiExecutionMode } from "../runtime/execution-mode";
-import { resolveProductMode } from "../../os/contracts/product-mode";
+import { parseProductMode } from "../../os/contracts/product-mode";
 import { getEnterpriseApiRuntime } from "../runtime/bootstrap-enterprise-api";
 
 export interface ControllerDeps {
@@ -31,7 +30,6 @@ export interface ControllerDeps {
   readonly executions: IExecutionApiService;
   readonly streaming: IStreamingService;
   readonly catalog: ICatalogApiService;
-  readonly executionIntelligence?: IExecutionIntelligenceApiService;
   readonly currentPrincipal?: {
     getMe: (
       principal: AuthPrincipal | undefined
@@ -75,6 +73,29 @@ export async function dispatchController(
   if (routeId.includes("_organizations") && request.method === "POST" && !params.organizationId) {
     return deps.tenants.createOrganization(String(body.name ?? ""));
   }
+  if (params.organizationId && request.method === "GET" && routeId.includes("_admin_organizations_")) {
+    const roles = principal?.roles ?? [];
+    const { buildAdminOrganizationDetail } = await import(
+      "../services/admin-organizations-service"
+    );
+    const { buildAdminBillingSummary, resolveAdminMetricsFilter } = await import(
+      "../services/admin-billing-analytics-service"
+    );
+    const filter = resolveAdminMetricsFilter({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      period: "mtd",
+    });
+    const billing = await buildAdminBillingSummary(filter);
+    const detail = await buildAdminOrganizationDetail({
+      lookupId: params.organizationId,
+      billingByOrganization: billing.byOrganization ?? [],
+    });
+    if (!detail) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Organization not found" } };
+    }
+    return success(detail);
+  }
   if (params.organizationId && request.method === "GET" && routeId.includes("organizations")) {
     return deps.tenants.getOrganization(params.organizationId);
   }
@@ -105,14 +126,14 @@ export async function dispatchController(
     });
   }
 
-  // Executable runtime truth (M10.5) — must run before catalogue /capabilities match.
-  if (routeId.includes("_intelligence_capabilities")) {
+  // Executable runtime truth — must run before catalogue /capabilities match.
+  if (routeId.includes("_runtime_capabilities")) {
     const runtime = getEnterpriseApiRuntime();
     const mode = runtime?.executionMode ?? resolveEnterpriseApiExecutionMode({});
-    const { listIntelligenceCapabilities } = await import(
-      "../services/intelligence-capabilities-service"
+    const { listRuntimeCapabilities } = await import(
+      "../services/runtime-capabilities-service"
     );
-    return success(listIntelligenceCapabilities(mode));
+    return success(listRuntimeCapabilities(mode));
   }
   if (routeId.includes("_capabilities")) return deps.catalog.listCapabilities();
   if (routeId.includes("_providers") && !routeId.includes("executions")) {
@@ -126,11 +147,12 @@ export async function dispatchController(
     const metadata = (body.metadata ?? {}) as Record<string, unknown>;
     const toolNames = body.toolNames ?? metadata.toolNames;
     const structuredOutput = body.structuredOutput ?? metadata.structuredOutput;
-    const productMode = resolveProductMode({
+    const modeSource = {
       ...metadata,
       ...(body.productMode ? { productMode: body.productMode } : {}),
       ...(body.creationMode ? { creationMode: body.creationMode } : {}),
-    });
+    };
+    const explicitProductMode = parseProductMode(modeSource);
     const createReq: CreateExecutionRequest = {
       prompt: String(body.prompt ?? ""),
       // Prefer body when present so spoof attempts fail AuthorizationError (403).
@@ -153,8 +175,9 @@ export async function dispatchController(
       structuredOutput: structuredOutput as CreateExecutionRequest["structuredOutput"],
       metadata: {
         ...metadata,
-        productMode,
-        creationMode: productMode,
+        ...(explicitProductMode
+          ? { productMode: explicitProductMode, creationMode: explicitProductMode }
+          : {}),
         ...(toolNames !== undefined ? { toolNames } : {}),
         ...(structuredOutput !== undefined ? { structuredOutput } : {}),
       },
@@ -193,21 +216,36 @@ export async function dispatchController(
     const apiRuntime = getEnterpriseApiRuntime();
     const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
     const token = String(request.query?.token ?? "").trim();
+    const formatRaw = request.query?.format;
+    const format =
+      typeof formatRaw === "string" && formatRaw.trim()
+        ? formatRaw.trim()
+        : undefined;
     if (!delivery) {
       return failure(new ValidationError("Media delivery unavailable"));
     }
     if (!token) {
       return failure(new ValidationError("token query parameter is required"));
     }
-    return delivery.resolveArtifactBinaryByToken(params.artifactId, token);
+    return delivery.resolveArtifactBinaryByToken(params.artifactId, token, {
+      ...(format ? { format } : {}),
+    });
   }
 
   if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_media") && tenant) {
     const apiRuntime = getEnterpriseApiRuntime();
     const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
     if (delivery) {
+      const formatRaw = request.query?.format;
+      const format =
+        typeof formatRaw === "string" && formatRaw.trim()
+          ? formatRaw.trim()
+          : undefined;
       return delivery.resolveArtifactMediaUrl(params.artifactId, tenant.organizationId, {
         publicOrigin: publicOriginFromRequest(request),
+        ...(format ? { format } : {}),
+        preferSameOrigin:
+          request.query?.proxy === '1' || request.query?.proxy === 'true',
       });
     }
     return failure(new ValidationError("Media delivery unavailable"));
@@ -270,10 +308,7 @@ export async function dispatchController(
     if (routeId.includes("_artifacts")) return await deps.executions.artifacts(execId, tenant);
     if (routeId.includes("_diagnostics")) return await deps.executions.diagnostics(execId, tenant);
     if (routeId.includes("_trace")) return await deps.executions.trace(execId, tenant);
-    if (routeId.includes("_cost-breakdown") && deps.executionIntelligence) {
-      return deps.executionIntelligence.costBreakdown(execId, tenant);
-    }
-    if (routeId.includes("_cost") && !routeId.includes("cost-breakdown")) {
+    if (routeId.includes("_cost")) {
       return await deps.executions.cost(execId, tenant);
     }
     if (routeId.includes("_evaluation")) return await deps.executions.evaluation(execId, tenant);
@@ -286,42 +321,6 @@ export async function dispatchController(
     }
     if (routeId.includes("_auto-delivery")) {
       return deps.executions.getAutoDelivery(execId, tenant);
-    }
-
-    if (deps.executionIntelligence && request.method === "GET") {
-      if (routeId.includes("_model-decision")) {
-        return deps.executionIntelligence.modelDecision(execId, tenant);
-      }
-      if (routeId.includes("_routing")) {
-        return deps.executionIntelligence.routing(execId, tenant);
-      }
-      if (routeId.includes("_planning")) {
-        return deps.executionIntelligence.planning(execId, tenant);
-      }
-      if (routeId.includes("_timeline")) {
-        return deps.executionIntelligence.timeline(execId, tenant);
-      }
-      if (routeId.includes("_provider") && !routeId.includes("_providers")) {
-        return deps.executionIntelligence.provider(execId, tenant);
-      }
-      if (routeId.includes("_metrics")) {
-        return deps.executionIntelligence.metrics(execId, tenant);
-      }
-      if (routeId.includes("_tokens")) {
-        return deps.executionIntelligence.tokens(execId, tenant);
-      }
-      if (routeId.includes("_quality")) {
-        return deps.executionIntelligence.quality(execId, tenant);
-      }
-      if (routeId.includes("_confidence")) {
-        return deps.executionIntelligence.confidence(execId, tenant);
-      }
-      if (routeId.includes("_audit") && routeId.includes("executions")) {
-        return deps.executionIntelligence.audit(execId, tenant);
-      }
-      if (routeId.includes("_decision-graph")) {
-        return deps.executionIntelligence.decisionGraph(execId, tenant);
-      }
     }
 
     if (request.method === "GET") return await deps.executions.get(execId, tenant);
@@ -347,18 +346,150 @@ export async function dispatchController(
       })
     );
   }
-  if (routeId.includes("_benchmarks")) return success([]);
-  if (routeId.includes("_analytics")) return success({ executions: 0, cost: 0 });
+  if (routeId.includes("_benchmarks")) {
+    const { benchmarksApiPayload } = await import(
+      "../../providers/routing/performance/benchmark/performance-query-service"
+    );
+    return success(benchmarksApiPayload());
+  }
+  if (routeId.includes("_analytics")) {
+    const roles = principal?.roles ?? [];
+    const crossTenant =
+      roles.includes("admin") ||
+      roles.includes("owner") ||
+      (roles.includes("owner") && !tenant?.organizationId);
+    const pending = await deps.executions.listOsReviews(
+      tenant,
+      { status: "PENDING", limit: 500 },
+      { crossTenant }
+    );
+    const pendingRows = pending.ok && Array.isArray(pending.value) ? pending.value : [];
+    const openEscalations = pendingRows.length;
+
+    const { buildAdminAnalyticsSummary, resolveAdminMetricsFilter } = await import(
+      "../services/admin-billing-analytics-service"
+    );
+    const q = request.query ?? {};
+    const filter = resolveAdminMetricsFilter({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId:
+        typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: typeof q.period === "string" ? q.period : undefined,
+    });
+    const summary = await buildAdminAnalyticsSummary(filter, openEscalations);
+    return success(summary);
+  }
+  if (routeId.includes("_admin_dashboard")) {
+    const roles = principal?.roles ?? [];
+    const crossTenant =
+      roles.includes("admin") ||
+      roles.includes("owner") ||
+      (roles.includes("owner") && !tenant?.organizationId);
+    const pending = await deps.executions.listOsReviews(
+      tenant,
+      { status: "PENDING", limit: 500 },
+      { crossTenant }
+    );
+    const pendingRows = pending.ok && Array.isArray(pending.value) ? pending.value : [];
+    const { buildAdminDashboard } = await import("../services/admin-dashboard-service");
+    const q = request.query ?? {};
+    const payload = await buildAdminDashboard({
+      roles,
+      period: typeof q.period === "string" ? q.period : undefined,
+      openEscalations: pendingRows.length,
+    });
+    return success(payload);
+  }
+  if (routeId.includes("_admin_organizations") && !params.organizationId) {
+    const roles = principal?.roles ?? [];
+    const { buildAdminOrganizationsList } = await import(
+      "../services/admin-organizations-service"
+    );
+    const { buildAdminBillingSummary, resolveAdminMetricsFilter } = await import(
+      "../services/admin-billing-analytics-service"
+    );
+    const q = request.query ?? {};
+    const filter = resolveAdminMetricsFilter({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId:
+        typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: "mtd",
+    });
+    const billing = await buildAdminBillingSummary(filter);
+    const rows = await buildAdminOrganizationsList({
+      roles,
+      billingByOrganization: billing.byOrganization,
+    });
+    return success(rows);
+  }
   if (routeId.includes("_billing")) {
+    const roles = principal?.roles ?? [];
+    const { buildAdminBillingSummary, resolveAdminMetricsFilter } = await import(
+      "../services/admin-billing-analytics-service"
+    );
+    const q = request.query ?? {};
+    const filter = resolveAdminMetricsFilter({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId:
+        typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: typeof q.period === "string" ? q.period : "mtd",
+    });
+    const summary = await buildAdminBillingSummary(filter);
     return success({
-      organizationId: tenant?.organizationId,
-      period: "current",
-      amount: 0,
-      currency: "USD",
+      organizationId: filter.organizationId ?? tenant?.organizationId,
+      period: summary.period,
+      amount: summary.revenue,
+      currency: summary.currency,
+      revenue: summary.revenue,
+      totalCost: summary.totalCost,
+      humanCost: summary.humanCost,
+      aiCost: summary.aiCost,
+      profit: summary.profit,
+      profitMargin: summary.profitMargin,
+      monthlyTrend: summary.monthlyTrend,
+      costByProvider: summary.costByProvider,
+      byOrganization: summary.byOrganization,
     });
   }
   if (routeId.includes("_notifications")) return success([]);
-  if (routeId.includes("_audit")) return success([]);
+  if (routeId.includes("_audit")) {
+    const roles = principal?.roles ?? [];
+    const crossTenant =
+      roles.includes("admin") ||
+      (roles.includes("owner") && !tenant?.organizationId);
+    const decided = await deps.executions.listOsReviews(
+      tenant,
+      { status: "ALL", limit: 200 },
+      { crossTenant }
+    );
+    const allRows = decided.ok && Array.isArray(decided.value) ? decided.value : [];
+    const audit = allRows
+      .filter((r) => (r as { status?: string }).status !== "PENDING")
+      .map((r) => {
+        const row = r as {
+          reviewId?: string;
+          reason?: string;
+          status?: string;
+          comments?: string;
+          decidedAt?: string;
+          requestedAt?: string;
+          brand?: string;
+        };
+        return {
+          auditId: row.reviewId,
+          brand: row.brand ?? row.reason?.slice(0, 60) ?? "Creative review",
+          note: row.comments ?? row.reason ?? "—",
+          decision: row.status,
+          status: row.status,
+          createdAt: row.decidedAt ?? row.requestedAt,
+          timestamp: row.decidedAt ?? row.requestedAt,
+        };
+      });
+    return success(audit);
+  }
   if (routeId.includes("_files") && request.method === "POST") {
     return success({
       fileId: `file_${Date.now()}`,
@@ -399,7 +530,23 @@ export async function dispatchController(
   }
 
   if (routeId.includes("_os_artifacts") && tenant && params.artifactId) {
-    if (routeId.includes("_versions")) {
+    if (
+      request.method === "POST" &&
+      routeId.includes("_approve") &&
+      params.version
+    ) {
+      const version = Number(params.version);
+      if (!Number.isFinite(version)) {
+        return failure(new ValidationError("version must be a number"));
+      }
+      return deps.executions.approveOsArtifactVersion(
+        params.artifactId,
+        version,
+        tenant,
+        body
+      );
+    }
+    if (routeId.includes("_versions") && request.method === "GET") {
       return deps.executions.listOsArtifactVersions(params.artifactId, tenant);
     }
     const versionRaw = request.query?.version;
@@ -452,38 +599,32 @@ export async function dispatchController(
     if (routeId.includes("_manifest")) {
       return deps.executions.getOsManifest(params.executionId, tenant);
     }
-    if (routeId.includes("_review") && !routeId.includes("task-graph")) {
+    if (routeId.includes("_review")) {
       return deps.executions.getOsPendingReview(params.executionId, tenant);
-    }
-    if (
-      routeId.includes("_plan") &&
-      !routeId.includes("task-graph") &&
-      !routeId.includes("_planning")
-    ) {
-      return deps.executions.getExecutionPlan(params.executionId, tenant);
-    }
-    if (routeId.includes("task-graph") && routeId.includes("_resume")) {
-      return deps.executions.resumeTaskGraph(params.executionId, tenant);
-    }
-    if (routeId.includes("task-graph") && routeId.includes("_cancel")) {
-      return deps.executions.cancelTaskGraph(
-        params.executionId,
-        tenant,
-        body.reason ? String(body.reason) : undefined
-      );
-    }
-    if (routeId.includes("task-graph") && request.method === "POST") {
-      return deps.executions.executeTaskGraph(params.executionId, tenant, {
-        maxConcurrency: body.maxConcurrency != null ? Number(body.maxConcurrency) : undefined,
-        requestId: request.requestId,
-      });
-    }
-    if (routeId.includes("task-graph") && request.method === "GET") {
-      return deps.executions.getTaskGraphStatus(params.executionId, tenant);
     }
   }
 
-  if (routeId.includes("_reviews") && !routeId.includes("_os_")) return success([]);
+  if (routeId.includes("_reviews") && !routeId.includes("_os_")) {
+    const roles = principal?.roles ?? [];
+    const crossTenant =
+      roles.includes("admin") ||
+      (roles.includes("owner") && !tenant?.organizationId);
+    const status =
+      typeof request.query?.status === "string"
+        ? request.query.status
+        : "PENDING";
+    const limitRaw = request.query?.limit;
+    const limit =
+      typeof limitRaw === "string" || typeof limitRaw === "number"
+        ? Number(limitRaw)
+        : undefined;
+    return deps.executions.listOsReviews(
+      tenant,
+      { status, limit },
+      { crossTenant }
+    );
+  }
+
   if (routeId.includes("_webhooks") && request.method === "POST") {
     return success({
       webhookId: `wh_${Date.now()}`,

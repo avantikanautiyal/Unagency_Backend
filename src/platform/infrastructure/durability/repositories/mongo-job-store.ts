@@ -43,6 +43,34 @@ export class MongoJobStore implements IJobStore {
     }
   }
 
+  /** Jobs persisted as runnable but lost from in-memory queues after restart. */
+  async listRunnableFromDatabase(): Promise<readonly ExecutionJob[]> {
+    const docs = await EnterpriseJob.collection
+      .find(
+        { status: { $in: ["queued", "retrying"] } },
+        {
+          projection: { jobId: 1, status: 1, queueKind: 1, createdAt: 1 },
+          sort: { createdAt: -1 },
+          limit: 64,
+        }
+      )
+      .maxTimeMS(15_000)
+      .toArray();
+    const jobs: ExecutionJob[] = [];
+    for (const doc of docs) {
+      const jobId = String(doc.jobId);
+      let job = this.cache.get(jobId);
+      if (!job?.payload) {
+        job = await this.hydrate(doc.jobId as JobId);
+      }
+      if (job && (job.status === "queued" || job.status === "retrying")) {
+        this.cache.set(jobId, job);
+        jobs.push(job);
+      }
+    }
+    return jobs;
+  }
+
   delete(jobId: JobId): void {
     this.cache.delete(String(jobId));
     void EnterpriseJob.deleteOne({ jobId: String(jobId) }).catch(() => undefined);
@@ -74,7 +102,7 @@ export class MongoJobStore implements IJobStore {
           attempt: nextAttempt,
         },
       },
-      { new: true }
+      { new: true, maxTimeMS: 15_000 }
     ).lean();
     if (!doc) return undefined;
     const job = doc as unknown as ExecutionJob;

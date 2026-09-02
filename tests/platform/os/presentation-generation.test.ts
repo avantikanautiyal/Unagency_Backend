@@ -2,6 +2,7 @@ import {
   buildPresentationConceptsInstructionBlock,
   buildPresentationExpansionInstructionBlock,
   buildPresentationRoutesInstructionBlock,
+  extractUserBriefFromMegaprompt,
   orderPresentationProviderPrompt,
   validatePresentationConceptsRelevance,
   validatePresentationRoutesRelevance,
@@ -191,5 +192,21 @@ describe("buildPresentationRoutesInstructionBlock", () => {
     expect(block).toContain("SAME client brief");
     expect(block).toContain("Corporate company profile");
     expect(block).not.toContain("JSON Schema");
+  });
+});
+
+describe("extractUserBriefFromMegaprompt", () => {
+  it("merges structured brief blocks instead of discarding them", () => {
+    const megaprompt = `[Structured Brief — authoritative]
+mustInclude=QR code on closing slide
+palette=#FF5733 peach beige
+
+[User brief]
+Create a corporate presentation for DiVastra growth strategy.`;
+
+    const brief = extractUserBriefFromMegaprompt(megaprompt);
+    expect(brief).toContain("DiVastra growth strategy");
+    expect(brief).toContain("mustInclude=QR code on closing slide");
+    expect(brief).toContain("#FF5733 peach beige");
   });
 });

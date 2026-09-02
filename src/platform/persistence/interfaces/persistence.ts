@@ -2,7 +2,7 @@
  * Persistence platform interfaces — sole contracts consumers depend on.
  */
 
-import type { Result } from "../../intelligence/shared/result";
+import type { Result } from "../../core/result";
 import type {
   BackupArtifact,
   DomainEventRecord,

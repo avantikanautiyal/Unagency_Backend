@@ -58,28 +58,14 @@ Key contracts already defined in the platform (inventory — not redesign).
 }
 ```
 
-## Execution intelligence (explainability)
+## Execution intelligence (explainability) — REMOVED
 
-Module: `src/platform/api/execution-intelligence`
+The `src/platform/api/execution-intelligence` module and its explainability routes
+(`/model-decision`, `/routing`, `/planning`, `/quality`, `/confidence`, `/decision-graph`, etc.)
+were deleted. Do not wire clients to them.
 
-| Response | Endpoint |
-|----------|----------|
-| `ModelDecisionResponse` | `GET …/model-decision` |
-| `RoutingResponse` | `GET …/routing` |
-| `PlanningResponse` | `GET …/planning` |
-| `TimelineResponse` | `GET …/timeline` |
-| `ProviderResponse` | `GET …/provider` |
-| `MetricsResponse` | `GET …/metrics` |
-| `TokensResponse` | `GET …/tokens` |
-| `CostBreakdownResponse` | `GET …/cost-breakdown` |
-| `QualityResponse` | `GET …/quality` |
-| `ConfidenceResponse` | `GET …/confidence` |
-| `AuditResponse` | `GET …/audit` |
-| `DecisionGraphResponse` | `GET …/decision-graph` |
-
-Guarantees: `containsPrompt: false`, `containsSecrets: false`. Never returns raw prompts or API keys.
-
-Contracts: `src/platform/api/execution-intelligence/contracts/responses.ts`
+Live post-create OS surfaces that remain: refinement, human review, delivery, and
+execution diagnostics embedded on the execution resource itself.
 ## Streaming
 
 | Model | Location |
@@ -94,14 +80,11 @@ Resolved via Gateway services:
 - Capabilities / providers / models — `src/platform/api/services/catalog-api-service.ts`
 - Organizations / workspaces / users / projects — `src/platform/api/tenants/*`
 
-## Internal enrichment (not HTTP resources today)
+## Brand / knowledge metadata (thin path)
 
-Attach as `metadata` on create execution when orchestration has run:
-
-| Package | Module |
-|---------|--------|
-| Brand Brain enrichment | `src/platform/business/brand-brain/contracts` |
-| Knowledge context | `src/platform/business/knowledge-intelligence/contracts` |
-| Studio gateway request | `src/platform/studio/contracts/commands.ts` → `StudioGatewayRequest` |
+Do **not** attach Brand Brain / Knowledge enrichment packages on create.
+Use structured brand binding metadata (`brandBindingMode`, `brandId`, `brandName`,
+`brandColors`) via `withThinDirectExecutionMetadata` / server thin passthrough.
+Prompt wrappers and enrichment novel IDs are gone.
 
 Full OpenAPI component schemas: [OPENAPI.yaml](./OPENAPI.yaml) `#/components/schemas`.

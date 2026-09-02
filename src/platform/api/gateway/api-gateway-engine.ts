@@ -3,8 +3,8 @@
  * Frontends never reach Runtime / Routing / Providers directly.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { AuthorizationError, IntelligenceError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { AuthorizationError, IntelligenceError } from "../../core/errors";
 import type {
   ApiRequest,
   ApiResponse,
@@ -23,7 +23,6 @@ import type {
   IStreamingService,
   ITenantService,
 } from "../interfaces";
-import type { IExecutionIntelligenceApiService } from "../execution-intelligence";
 import { matchRoute, API_ROUTE_MAP } from "../routes/route-map";
 import { isLiveSsePayload } from "../services/execution-streaming-service";
 import { isArtifactBinaryContent } from "../../media/delivery/media-delivery-service";
@@ -40,7 +39,6 @@ export interface ApiGatewayDeps {
   readonly streaming: IStreamingService;
   readonly rateLimits: IRateLimitService;
   readonly catalog: ICatalogApiService;
-  readonly executionIntelligence?: IExecutionIntelligenceApiService;
   readonly currentPrincipal?: ControllerDeps["currentPrincipal"];
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
@@ -60,7 +58,6 @@ export class ApiGatewayEngine implements IApiGateway {
       executions: deps.executions,
       streaming: deps.streaming,
       catalog: deps.catalog,
-      executionIntelligence: deps.executionIntelligence,
       currentPrincipal: deps.currentPrincipal,
     };
   }

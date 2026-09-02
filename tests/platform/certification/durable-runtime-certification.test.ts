@@ -2,68 +2,17 @@
  * M9.4 — Durable production runtime certification.
  */
 
-import { BrandBrainEngine } from "../../../src/platform/business/brand-brain/engine/brand-brain-engine";
-import { sampleBrandBrain } from "../../../src/platform/business/brand-brain/builders/sample-brand-brain";
 import {
   getSharedTestDurableStores,
   resetSharedTestDurableStores,
-  InMemoryBrandBrainRepository,
 } from "../../../src/platform/infrastructure/durability";
 import { createEnterpriseApiPlatform } from "../../../src/platform/api/factories/create-enterprise-api-platform";
 import { loginDemo } from "../../../src/platform/api/testing";
-import { ControllableDispatcher } from "../../../src/platform/intelligence/providers/runtime/testing";
+import { ControllableDispatcher } from "../../../src/platform/providers/runtime/testing";
 
 describe("M9.4 Durable Runtime Certification", () => {
   afterEach(() => {
     resetSharedTestDurableStores();
-  });
-
-  describe("brand durability", () => {
-    it("survives restart via shared repository", async () => {
-      const repo = new InMemoryBrandBrainRepository();
-      const engineA = new BrandBrainEngine({ repository: repo });
-      await engineA.upsert({
-        organizationId: "org_restart",
-        document: sampleBrandBrain({
-          organizationId: "org_restart",
-          brandName: "Restart Brand",
-          industry: "tech",
-          tone: ["bold"],
-          region: "us",
-          competitor: "none",
-        }),
-        changelog: "m94 restart test",
-      });
-
-      const engineB = new BrandBrainEngine({ repository: repo });
-      const current = await engineB.getCurrent("org_restart");
-      expect(current.ok).toBe(true);
-      expect(current.value?.document.identity.name).toBe("Restart Brand");
-      expect(current.value?.version).toBe(1);
-    });
-
-    it("shares brand across instances (multi-instance)", async () => {
-      const stores = getSharedTestDurableStores();
-      const engineA = new BrandBrainEngine({ repository: stores.brandBrain });
-      const engineB = new BrandBrainEngine({ repository: stores.brandBrain });
-
-      await engineA.upsert({
-        organizationId: "org_multi",
-        document: sampleBrandBrain({
-          organizationId: "org_multi",
-          brandName: "Shared Brand",
-          industry: "retail",
-          tone: ["warm"],
-          region: "eu",
-          competitor: "rival",
-        }),
-        changelog: "instance A write",
-      });
-
-      const onB = await engineB.getCurrent("org_multi");
-      expect(onB.ok).toBe(true);
-      expect(onB.value?.document.identity.name).toBe("Shared Brand");
-    });
   });
 
   describe("execution persistence", () => {

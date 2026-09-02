@@ -20,11 +20,12 @@ import Notifications from "../src/models/notification.model";
 import Payments from "../src/models/payment.model";
 import ProjectLogs from "../src/models/projectlogs.model";
 import ChatRoom from "../src/models/chatRoom.model";
+import Tasks from "../src/models/tasks.model";
 import {
   createDistincChatRoom,
   createUserUpster,
 } from "../src/services/Chatstream";
-import { streamServerClient } from "../src/config/getStreamIo.config";
+import { collaborationOsService } from "../src/platform/collaboration/collaboration-os-service";
 import {
   DEMO_PAYMENT_IDS,
   DEMO_PLAN_IDS,
@@ -45,9 +46,18 @@ const USER_SPECS: Record<
   { name: string; role: IUser["role"]; contact?: string }
 > = {
   demo: { name: "Demo User", role: "customer", contact: "9876543210" },
-  rm: { name: "Demo RM", role: "servicing" },
+  rm: { name: "CS Lead", role: "servicing" },
+  cs2: { name: "CS Associate", role: "servicing" },
+  cs3: { name: "CS Manager", role: "servicing" },
+  cs4: { name: "CS Coordinator", role: "servicing" },
   teammate: { name: "Demo Teammate", role: "customer" },
   invitee: { name: "Demo Invitee", role: "customer" },
+  admin: { name: "Admin", role: "admin" },
+  superadmin: { name: "Super Admin", role: "superadmin" },
+  resource: { name: "Designer", role: "resource" },
+  resource2: { name: "Designer — Brand", role: "resource" },
+  resource3: { name: "Designer — Motion", role: "resource" },
+  resource4: { name: "Designer — Web", role: "resource" },
 };
 
 const PLAN_SPECS = [
@@ -280,26 +290,122 @@ async function seedUsers() {
   return users;
 }
 
-async function seedStaff(rmUser: any) {
-  console.log("→ Seeding RM staff profile...");
-  const staff = await Staff.findOneAndUpdate(
-    { userId: rmUser._id },
+async function ensureStaffProfile(
+  user: { _id: mongoose.Types.ObjectId },
+  profile: {
+    experience: number;
+    specialization: string[];
+    minTaskCapacity: number;
+    maxTaskCapacity: number;
+    designation: string;
+  }
+) {
+  return Staff.findOneAndUpdate(
+    { userId: user._id },
     {
       $set: {
-        userId: rmUser._id,
-        experience: 8,
-        specialization: ["Branding", "UI/UX", "Project Management"],
-        minTaskCapacity: 2,
-        maxTaskCapacity: 15,
+        userId: user._id,
+        experience: profile.experience,
+        specialization: profile.specialization,
+        minTaskCapacity: profile.minTaskCapacity,
+        maxTaskCapacity: profile.maxTaskCapacity,
         availability: true,
-        designation: "Relationship Manager",
+        designation: profile.designation,
         status: true,
       },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
-  console.log(`  ✓ Staff ${staff._id}`);
-  return staff;
+}
+
+async function seedStaff(
+  rmUser: any,
+  resourceUser: any,
+  extraCsUsers: any[] = [],
+  extraResourceUsers: any[] = [],
+) {
+  console.log("→ Seeding staff profiles (RM + CS + resource)...");
+  const rmStaff = await ensureStaffProfile(rmUser, {
+    experience: 8,
+    specialization: ["Branding", "UI/UX", "Project Management"],
+    minTaskCapacity: 2,
+    maxTaskCapacity: 15,
+    designation: "Relationship Manager",
+  });
+  console.log(`  ✓ RM staff ${rmStaff._id}`);
+
+  const extraCsProfiles = [
+    {
+      experience: 4,
+      specialization: ["Branding", "Social Media"],
+      minTaskCapacity: 1,
+      maxTaskCapacity: 10,
+      designation: "CS Associate",
+    },
+    {
+      experience: 6,
+      specialization: ["UI/UX", "Project Management"],
+      minTaskCapacity: 2,
+      maxTaskCapacity: 12,
+      designation: "CS Manager",
+    },
+    {
+      experience: 3,
+      specialization: ["Presentations", "Branding"],
+      minTaskCapacity: 1,
+      maxTaskCapacity: 8,
+      designation: "CS Coordinator",
+    },
+  ];
+
+  for (let i = 0; i < extraCsUsers.length; i++) {
+    const user = extraCsUsers[i];
+    const profile = extraCsProfiles[i] ?? extraCsProfiles[0];
+    const staff = await ensureStaffProfile(user, profile);
+    console.log(`  ✓ CS staff ${user.email} ${staff._id}`);
+  }
+
+  const resourceStaff = await ensureStaffProfile(resourceUser, {
+    experience: 5,
+    specialization: ["UI/UX", "Branding", "Motion Graphics"],
+    minTaskCapacity: 1,
+    maxTaskCapacity: 8,
+    designation: "Designer",
+  });
+  console.log(`  ✓ Resource staff ${resourceStaff._id}`);
+
+  const extraResourceProfiles = [
+    {
+      experience: 4,
+      specialization: ["Branding", "Logo Design", "Print Design"],
+      minTaskCapacity: 1,
+      maxTaskCapacity: 8,
+      designation: "Brand Designer",
+    },
+    {
+      experience: 5,
+      specialization: ["Motion Graphics", "Social Media", "Video"],
+      minTaskCapacity: 1,
+      maxTaskCapacity: 7,
+      designation: "Motion Designer",
+    },
+    {
+      experience: 6,
+      specialization: ["UI/UX", "Website", "Web Tech"],
+      minTaskCapacity: 1,
+      maxTaskCapacity: 9,
+      designation: "Web Designer",
+    },
+  ];
+
+  for (let i = 0; i < extraResourceUsers.length; i++) {
+    const user = extraResourceUsers[i];
+    const profile = extraResourceProfiles[i] ?? extraResourceProfiles[0];
+    const staff = await ensureStaffProfile(user, profile);
+    console.log(`  ✓ Resource staff ${user.email} ${staff._id}`);
+  }
+
+  return { rmStaff, resourceStaff };
 }
 
 async function seedSubscription(demoUser: any) {
@@ -467,7 +573,7 @@ async function seedRequirements(demoUser: any, categoryMap: Map<string, mongoose
 async function seedProjects(
   demoUser: any,
   org: any,
-  staff: any,
+  resourceStaff: any,
   teammateTeam: any,
   categoryMap: Map<string, mongoose.Types.ObjectId>
 ) {
@@ -537,7 +643,7 @@ async function seedProjects(
           startDate: daysAgo(14),
           deadline: daysFromNow(21),
           status: spec.status,
-          resource: [staff._id],
+          resource: [resourceStaff._id],
           clientTeam: teammateTeam ? [teammateTeam._id] : [],
           updatedAt,
           createdAt: daysAgo(14),
@@ -568,6 +674,94 @@ async function seedProjects(
   }
 
   console.log(`  ✓ ${specs.length} projects`);
+  return projectIds;
+}
+
+async function seedTasks(
+  projectIds: mongoose.Types.ObjectId[],
+  resourceStaff: any,
+  rmStaff: any
+) {
+  console.log("→ Seeding tasks (resource ← CS)...");
+
+  const specs: Array<{
+    title: string;
+    description: string;
+    priority: "low" | "medium" | "high";
+    status: "todo" | "progress" | "submitted" | "feedback" | "revision" | "approved";
+    deadlineDays: number;
+    projectIndex: number;
+  }> = [
+    {
+      title: "[Demo] Website hero concepts",
+      description: "Produce 3 hero layout options for the website launch sprint.",
+      priority: "high",
+      status: "progress",
+      deadlineDays: 5,
+      projectIndex: 0,
+    },
+    {
+      title: "[Demo] Brand style guide pages",
+      description: "Draft color, type, and logo usage pages for brand review.",
+      priority: "medium",
+      status: "todo",
+      deadlineDays: 10,
+      projectIndex: 1,
+    },
+    {
+      title: "[Demo] Social kit carousel",
+      description: "Finalize Q2 social media kit carousel assets.",
+      priority: "medium",
+      status: "submitted",
+      deadlineDays: 2,
+      projectIndex: 2,
+    },
+    {
+      title: "[Demo] App UI revision pass",
+      description: "Address client feedback on the app UI prototype screens.",
+      priority: "high",
+      status: "revision",
+      deadlineDays: 3,
+      projectIndex: 3,
+    },
+    {
+      title: "[Demo] Motion reel export",
+      description: "Export approved motion graphics reel in delivery formats.",
+      priority: "low",
+      status: "approved",
+      deadlineDays: -2,
+      projectIndex: 4,
+    },
+  ];
+
+  let count = 0;
+  for (const spec of specs) {
+    const projectId = projectIds[spec.projectIndex];
+    if (!projectId) continue;
+
+    await Tasks.findOneAndUpdate(
+      { title: spec.title },
+      {
+        $set: {
+          project: projectId,
+          title: spec.title,
+          description: spec.description,
+          priority: spec.priority,
+          status: spec.status,
+          assignedTo: resourceStaff._id,
+          assignedBy: rmStaff._id,
+          deadline: daysFromNow(spec.deadlineDays),
+          completionDate:
+            spec.status === "approved" ? daysAgo(1) : undefined,
+          files: [],
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+  }
+
+  console.log(`  ✓ ${count} tasks`);
 }
 
 async function seedNotifications(demoUser: any) {
@@ -674,60 +868,126 @@ async function seedPayments(demoUser: any) {
   console.log(`  ✓ ${DEMO_PAYMENT_IDS.length} payments`);
 }
 
-async function seedChat(demoUser: any, rmUser: any, staff: any) {
-  console.log("→ Seeding Stream chat channel & messages...");
+async function seedChat(
+  demoUser: any,
+  rmUser: any,
+  resourceUser: any,
+  rmStaff: any,
+  projectIds: mongoose.Types.ObjectId[]
+) {
+  console.log("→ Seeding RM + project chat channels...");
 
   await Users.findByIdAndUpdate(demoUser._id, {
-    $set: { relationship_manager: staff._id },
+    $set: { relationship_manager: rmStaff._id },
   });
 
-  const room = await createDistincChatRoom({
-    roomName: `${rmUser.name}, ${demoUser.name}`,
-    members: [demoUser._id.toString(), rmUser._id.toString()],
-    room_type: "personal",
-    createdBy: demoUser._id.toString(),
-    isCustomer: true,
-  });
+  try {
+    const rmRoom = await createDistincChatRoom({
+      roomName: `${rmUser.name}, ${demoUser.name}`,
+      members: [
+        demoUser._id.toString(),
+        rmUser._id.toString(),
+        resourceUser._id.toString(),
+      ],
+      room_type: "personal",
+      createdBy: demoUser._id.toString(),
+      isCustomer: true,
+    });
 
-  if (room.error) {
-    console.warn(`  ⚠ Stream channel warning: ${room.error}`);
-    return;
-  }
-
-  await ChatRoom.findOneAndUpdate(
-    { roomId: room.roomId },
-    {
-      $setOnInsert: {
-        cid: room.cid,
-        roomId: room.roomId,
-        members: [demoUser._id, rmUser._id],
-        room_type: "personal",
+    await ChatRoom.findOneAndUpdate(
+      { roomId: rmRoom.roomId },
+      {
+        $setOnInsert: {
+          cid: rmRoom.cid,
+          roomId: rmRoom.roomId,
+          members: [demoUser._id, rmUser._id, resourceUser._id],
+          room_type: "personal",
+        },
       },
-    },
-    { upsert: true, new: true }
-  );
+      { upsert: true, new: true }
+    );
 
-  const channel = streamServerClient.channel("messaging", room.roomId!);
-  const messages = [
-  { text: "Hi Demo! I'm your relationship manager. How can I help you today?", from: rmUser },
-  { text: "Thanks! I'd like to kick off the website redesign project.", from: demoUser },
-  { text: "Perfect — I've reviewed your brief. Let's schedule a kickoff call this week.", from: rmUser },
-  { text: "Sounds great. I'll share brand assets in the project folder.", from: demoUser },
-  { text: "Received. The design team will share first concepts by Friday.", from: rmUser },
-  ];
+    const seededMessages = [
+      {
+        from: rmUser._id.toString(),
+        text: "Hi Demo! I'm your relationship manager. How can I help you today?",
+      },
+      {
+        from: demoUser._id.toString(),
+        text: "Thanks! I'd like to kick off the website redesign project.",
+      },
+      {
+        from: rmUser._id.toString(),
+        text: "Perfect — I've assigned Demo Resource. Let's keep feedback in this thread.",
+      },
+      {
+        from: resourceUser._id.toString(),
+        text: "On it — I'll share first concepts here once ready.",
+      },
+      {
+        from: demoUser._id.toString(),
+        text: "Sounds great. Brand assets are in the project folder.",
+      },
+    ];
 
-  for (const msg of messages) {
-    try {
-      await channel.sendMessage({
-        text: msg.text,
-        user_id: msg.from._id.toString(),
-      });
-    } catch {
-      // Messages may already exist on re-run; continue
+    for (const msg of seededMessages) {
+      try {
+        await collaborationOsService.sendMessage({
+          userId: msg.from,
+          channelId: rmRoom.roomId,
+          text: msg.text,
+          clientMessageId: `demo-seed-${rmRoom.roomId}-${msg.from}-${msg.text.slice(0, 24)}`,
+        });
+      } catch {
+        // Idempotent / membership race — continue
+      }
     }
-  }
 
-  console.log(`  ✓ RM channel ${room.roomId} with ${messages.length} messages`);
+    console.log(`  ✓ RM channel ${rmRoom.roomId} (${seededMessages.length} messages)`);
+
+    const firstProjectId = projectIds[0];
+    if (firstProjectId) {
+      const projectRoom = await collaborationOsService.provisionForProject({
+        projectId: firstProjectId.toString(),
+        name: "[Demo] Website Launch Sprint",
+        organizationId: demoUser._id.toString(),
+        memberUserIds: [
+          demoUser._id.toString(),
+          rmUser._id.toString(),
+          resourceUser._id.toString(),
+        ],
+        createdByUserId: rmUser._id.toString(),
+      });
+
+      const projectMessages = [
+        {
+          from: rmUser._id.toString(),
+          text: "Project kickoff: Website Launch Sprint is live.",
+        },
+        {
+          from: resourceUser._id.toString(),
+          text: "Starting hero concepts — will ping when draft is ready.",
+        },
+      ];
+
+      for (const msg of projectMessages) {
+        try {
+          await collaborationOsService.sendMessage({
+            userId: msg.from,
+            channelId: projectRoom.channelId,
+            text: msg.text,
+            clientMessageId: `demo-seed-${projectRoom.channelId}-${msg.from}-${msg.text.slice(0, 24)}`,
+          });
+        } catch {
+          // continue
+        }
+      }
+
+      console.log(`  ✓ Project channel ${projectRoom.channelId}`);
+    }
+  } catch (err: any) {
+    console.warn(`  ⚠ Chat channel skipped: ${err?.message || err}`);
+  }
 }
 
 async function connectDb() {
@@ -745,24 +1005,46 @@ async function main() {
   const categoryMap = await seedCategories();
   await seedPlans();
   const users = await seedUsers();
-  const staff = await seedStaff(users.rm);
+  const { rmStaff, resourceStaff } = await seedStaff(
+    users.rm,
+    users.resource,
+    [users.cs2, users.cs3, users.cs4],
+    [users.resource2, users.resource3, users.resource4],
+  );
   await seedSubscription(users.demo);
   const org = await seedOrganization(users.demo);
   const teammateTeam = await seedTeams(users.demo, users.teammate, users.invitee, org);
   await seedRequirements(users.demo, categoryMap);
-  await seedProjects(users.demo, org, staff, teammateTeam, categoryMap);
+  const projectIds = await seedProjects(
+    users.demo,
+    org,
+    resourceStaff,
+    teammateTeam,
+    categoryMap
+  );
+  await seedTasks(projectIds, resourceStaff, rmStaff);
   await seedNotifications(users.demo);
-  await seedChat(users.demo, users.rm, staff);
+  await seedChat(users.demo, users.rm, users.resource, rmStaff, projectIds);
   await seedPayments(users.demo);
 
   console.log("\n✅ Demo seed complete!\n");
-  console.log("Primary login:");
+  console.log("Primary mobile login:");
   console.log(`  Email:    ${DEMO_USERS.demo}`);
   console.log(`  Password: ${DEMO_PASSWORD}`);
-  console.log("\nOther demo accounts (same password):");
-  Object.values(DEMO_USERS)
-    .filter((e) => e !== DEMO_USERS.demo)
-    .forEach((e) => console.log(`  - ${e}`));
+  console.log("\nAdmin portal logins (same password):");
+  console.log(`  Super Admin  ${DEMO_USERS.superadmin}`);
+  console.log(`  Admin        ${DEMO_USERS.admin}`);
+  console.log(`  Resource     ${DEMO_USERS.resource}`);
+  console.log(`  Resource     ${DEMO_USERS.resource2}`);
+  console.log(`  Resource     ${DEMO_USERS.resource3}`);
+  console.log(`  Resource     ${DEMO_USERS.resource4}`);
+  console.log(`  CS (RM)      ${DEMO_USERS.rm}`);
+  console.log(`  CS           ${DEMO_USERS.cs2}`);
+  console.log(`  CS           ${DEMO_USERS.cs3}`);
+  console.log(`  CS           ${DEMO_USERS.cs4}`);
+  console.log("\nOther customer accounts:");
+  console.log(`  - ${DEMO_USERS.teammate}`);
+  console.log(`  - ${DEMO_USERS.invitee}`);
   console.log("");
 }
 

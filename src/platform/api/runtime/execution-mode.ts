@@ -1,9 +1,9 @@
 /**
  * Enterprise API execution mode — authoritative runtime configuration.
  *
- * STUB:        Synthetic API execution (no Integration OS provider path).
- * SIMULATED:   Full Intelligence OS pipeline; ControllableDispatcher (no network).
- * LIVE:        Full Intelligence OS pipeline; real provider dispatcher (explicit only).
+ * STUB:        Synthetic API execution (no direct provider path).
+ * SIMULATED:   Direct provider pipeline; ControllableDispatcher (no network).
+ * LIVE:        Direct provider pipeline; real provider dispatch (explicit only).
  */
 
 import type { CreateEnterpriseApiOptions } from "../factories/create-enterprise-api-platform";
@@ -68,19 +68,19 @@ export function resolveEnterpriseApiExecutionMode(
 export function integrationPipelineModeFor(
   _mode: EnterpriseApiExecutionMode
 ): "full" | "planning_through_routing" {
-  // Canonical AI OS spine: every integration execution runs the full pipeline
-  // (stages 1–11). Post-runtime stages 12–18 remain async in IntegrationPipeline.
+  // DirectExecutionEngine always runs routing → provider for sync "full" jobs.
+  // Name retains "integrationPipeline" for callers; there is no IntegrationPipeline.
   return "full";
 }
 
 export function executionModeLabel(mode: EnterpriseApiExecutionMode): string {
   switch (mode) {
     case "stub":
-      return "STUB (StubJobExecutor — no Intelligence OS provider execution)";
+      return "STUB (StubJobExecutor — no direct provider execution)";
     case "simulated":
-      return "SIMULATED (Intelligence OS — ControllableDispatcher, no provider network)";
+      return "SIMULATED (Direct — ControllableDispatcher, no provider network)";
     case "live":
-      return "LIVE (Intelligence OS — real provider dispatch)";
+      return "LIVE (Direct — real provider dispatch)";
   }
 }
 

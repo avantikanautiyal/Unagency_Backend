@@ -9,6 +9,10 @@ import {
 } from "../contracts/artifact-version";
 import { DeliveryError } from "../contracts/errors";
 import { logOsExecutionEvent } from "../../observability/execution-log";
+import { defaultBrandMemoryPromoteService } from "../../creative/brand-memory-promote-service";
+import { defaultCampaignMemoryService } from "../../creative/campaign-memory-service";
+import type { ArtifactBrandMemoryHint } from "../../creative/promote-on-approve";
+import type { PromoteOnApproveResult } from "../../creative/promote-on-approve";
 
 export interface IArtifactVersionStore {
   createVersion(
@@ -137,6 +141,11 @@ export class InMemoryArtifactVersionStore implements IArtifactVersionStore {
     readonly organizationId: string;
     readonly approvalReference: string;
     readonly nowIso?: () => string;
+    /**
+     * Phase A1 — when set, may promote into Brand Memory (flag-gated).
+     * Omit to keep legacy approve-only behaviour.
+     */
+    readonly brandMemory?: ArtifactBrandMemoryHint;
   }): Promise<OsArtifactVersion> {
     const list = [
       ...(this.versions.get(this.key(input.artifactId, input.organizationId)) ??
@@ -168,6 +177,87 @@ export class InMemoryArtifactVersionStore implements IArtifactVersionStore {
       planId: list[idx]!.planId,
       planVersion: list[idx]!.planVersion,
     });
+
+    if (input.brandMemory?.brandId?.trim()) {
+      try {
+        const promoted: PromoteOnApproveResult | null =
+          await defaultBrandMemoryPromoteService.promoteOnApprove({
+            organizationId: input.organizationId,
+            brandId: input.brandMemory.brandId.trim(),
+            artifactId: input.artifactId,
+            artifactVersion: input.version,
+            executionId: list[idx]!.executionId,
+            approvalReference: input.approvalReference,
+            slotKey: input.brandMemory.slotKey,
+            tier: input.brandMemory.tier,
+            assetId: input.brandMemory.assetId,
+            facts: input.brandMemory.facts,
+            nowIso: nowIso(),
+          });
+        if (promoted) {
+          logOsExecutionEvent("brand_memory.promote_hook", {
+            requestId: list[idx]!.executionId,
+            executionId: list[idx]!.executionId,
+            organizationId: input.organizationId,
+            status: promoted.shadowed
+              ? "shadow"
+              : promoted.idempotentReplay
+                ? "idempotent"
+                : "ok",
+            capabilityId: String(promoted.slotKey),
+          });
+        }
+
+        // Phase A5 — campaign pack + selection signal (flag-gated inside service).
+        const campaignId = input.brandMemory.campaignId?.trim();
+        if (campaignId) {
+          await defaultCampaignMemoryService.promotePackToWorking({
+            organizationId: input.organizationId,
+            brandId: input.brandMemory.brandId.trim(),
+            campaignId,
+            title: input.brandMemory.campaignTitle,
+            executionId: list[idx]!.executionId,
+            leafAssetIds: input.brandMemory.assetId
+              ? [input.brandMemory.assetId]
+              : undefined,
+            slotPointers: [
+              {
+                slotKey: input.brandMemory.slotKey,
+                version: promoted?.version ?? input.version,
+                tier: input.brandMemory.tier ?? "working",
+                assetId: input.brandMemory.assetId,
+                provenance: promoted?.provenance ?? `Approved v${input.version}`,
+              },
+            ],
+            nowIso: nowIso(),
+          });
+        }
+        if (input.brandMemory.recordSelection !== false) {
+          await defaultCampaignMemoryService.recordSelectionSignal({
+            organizationId: input.organizationId,
+            brandId: input.brandMemory.brandId.trim(),
+            campaignId,
+            executionId: list[idx]!.executionId,
+            artifactId: input.artifactId,
+            artifactVersion: input.version,
+            assetId: input.brandMemory.assetId,
+            slotKey: input.brandMemory.slotKey,
+            service: input.brandMemory.service,
+            kind: campaignId ? "pack_leaf_approved" : "approved",
+            nowIso: nowIso(),
+          });
+        }
+      } catch {
+        // Memory write must never fail artifact approval (L3 path stays durable).
+        logOsExecutionEvent("brand_memory.promote_hook", {
+          requestId: list[idx]!.executionId,
+          executionId: list[idx]!.executionId,
+          organizationId: input.organizationId,
+          status: "error_swallowed",
+        });
+      }
+    }
+
     return list[idx]!;
   }
 
@@ -176,6 +266,7 @@ export class InMemoryArtifactVersionStore implements IArtifactVersionStore {
     readonly version: number;
     readonly organizationId: string;
     readonly nowIso?: () => string;
+    readonly brandMemory?: ArtifactBrandMemoryHint;
   }): Promise<OsArtifactVersion> {
     const list = [
       ...(this.versions.get(this.key(input.artifactId, input.organizationId)) ??
@@ -192,6 +283,29 @@ export class InMemoryArtifactVersionStore implements IArtifactVersionStore {
       revokedAt: nowIso(),
     };
     this.versions.set(this.key(input.artifactId, input.organizationId), list);
+
+    if (input.brandMemory?.brandId?.trim()) {
+      try {
+        await defaultBrandMemoryPromoteService.archiveOnReject({
+          organizationId: input.organizationId,
+          brandId: input.brandMemory.brandId.trim(),
+          artifactId: input.artifactId,
+          artifactVersion: input.version,
+          executionId: list[idx]!.executionId,
+          slotKey: input.brandMemory.slotKey,
+          assetId: input.brandMemory.assetId,
+          nowIso: nowIso(),
+        });
+      } catch {
+        logOsExecutionEvent("brand_memory.archive_hook", {
+          requestId: list[idx]!.executionId,
+          executionId: list[idx]!.executionId,
+          organizationId: input.organizationId,
+          status: "error_swallowed",
+        });
+      }
+    }
+
     return list[idx]!;
   }
 

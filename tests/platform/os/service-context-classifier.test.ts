@@ -1,4 +1,4 @@
-import { classifyServiceContext } from "../../../src/platform/os/brief/engine/service-context-classifier";
+import { classifyServiceContext } from "../../../src/platform/config/service-context-classifier";
 
 describe("classifyServiceContext megaprompt", () => {
   it("does not misclassify pitch deck as logo when brand block mentions logo", () => {

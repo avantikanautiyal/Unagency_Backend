@@ -2,7 +2,6 @@
  * Factory for M9.4 / M9.4A durable stores — shared across API instances.
  */
 
-import type { IBrandBrainRepository } from "./interfaces/brand-brain-repository";
 import type {
   IArtifactRepository,
   IExecutionExtrasRepository,
@@ -11,8 +10,6 @@ import type {
   ITenantUsageStore,
 } from "./interfaces/execution-store-ports";
 import { isDurableRuntimeEnabled, redisConnectionFromEnv } from "./durable-mode";
-import { InMemoryBrandBrainRepository } from "./repositories/in-memory-brand-brain-repository";
-import { MongoBrandBrainRepository } from "./repositories/mongo-brand-brain-repository";
 import {
   InMemoryArtifactRepository,
   InMemoryExecutionExtrasRepository,
@@ -49,20 +46,24 @@ import { SharedMemoryKvStore, asKvClient, type KvClient } from "./redis/shared-m
 import type { IJobStore } from "../execution/interfaces/execution";
 import type { IRateLimitService } from "../../api/interfaces";
 import type { RateLimitPolicy } from "../../api/contracts";
-import type { IModelPerformanceStore } from "../../intelligence/providers/routing/performance/interfaces/model-performance-store";
-import { InMemoryModelPerformanceStore } from "../../intelligence/providers/routing/performance/stores/in-memory-model-performance-store";
-import { MongoModelPerformanceStore } from "../../intelligence/providers/routing/performance/stores/mongo-model-performance-store";
-import type { IToolInvocationStore } from "../../intelligence/providers/tools/idempotency/tool-invocation-store";
+import type { IModelPerformanceStore } from "../../providers/routing/performance/interfaces/model-performance-store";
+import { InMemoryModelPerformanceStore } from "../../providers/routing/performance/stores/in-memory-model-performance-store";
+import { MongoModelPerformanceStore } from "../../providers/routing/performance/stores/mongo-model-performance-store";
+import type { IToolInvocationStore } from "../../providers/tools/idempotency/tool-invocation-store";
 import type { OsDurableBundle } from "./create-os-durable-bundle";
 import {
   createInMemoryOsDurableBundle,
   createMongoOsDurableBundle,
 } from "./create-os-durable-bundle";
-import { InMemoryToolInvocationStore } from "../../intelligence/providers/tools/idempotency/in-memory-tool-invocation-store";
-import { MongoToolInvocationStore } from "../../intelligence/providers/tools/idempotency/mongo-tool-invocation-store";
+import { InMemoryToolInvocationStore } from "../../providers/tools/idempotency/in-memory-tool-invocation-store";
+import { MongoToolInvocationStore } from "../../providers/tools/idempotency/mongo-tool-invocation-store";
+
+/** True when durable stores are backed by Mongo (production), not in-memory test harness. */
+export function durableStoresUseMongoPersistence(stores: DurableStores): boolean {
+  return stores.isDurable && stores.composition?.executions?.startsWith("Mongo") === true;
+}
 
 export interface DurableStores {
-  readonly brandBrain: IBrandBrainRepository;
   readonly executions: IExecutionRepository;
   readonly artifacts: IArtifactRepository;
   readonly extras: IExecutionExtrasRepository;
@@ -78,7 +79,6 @@ export interface DurableStores {
   readonly os?: OsDurableBundle;
   readonly isDurable: boolean;
   readonly composition?: {
-    brandBrain: string;
     executions: string;
     artifacts: string;
     extras: string;
@@ -94,7 +94,6 @@ export interface DurableStores {
 }
 
 let testSharedKv: SharedMemoryKvStore | undefined;
-let testSharedBrandRepo: InMemoryBrandBrainRepository | undefined;
 let testSharedExecutionRepo: InMemoryExecutionRepository | undefined;
 let testSharedArtifactRepo: InMemoryArtifactRepository | undefined;
 let testSharedExtrasRepo: InMemoryExecutionExtrasRepository | undefined;
@@ -111,7 +110,6 @@ export function getSharedTestDurableStores(options?: {
   rateLimitPolicies?: readonly RateLimitPolicy[];
 }): DurableStores {
   if (!testSharedKv) testSharedKv = new SharedMemoryKvStore();
-  if (!testSharedBrandRepo) testSharedBrandRepo = new InMemoryBrandBrainRepository();
   if (!testSharedExecutionRepo) testSharedExecutionRepo = new InMemoryExecutionRepository();
   if (!testSharedArtifactRepo) testSharedArtifactRepo = new InMemoryArtifactRepository();
   if (!testSharedExtrasRepo) testSharedExtrasRepo = new InMemoryExecutionExtrasRepository();
@@ -141,7 +139,6 @@ export function getSharedTestDurableStores(options?: {
   }
 
   return {
-    brandBrain: testSharedBrandRepo,
     executions: testSharedExecutionRepo,
     artifacts: testSharedArtifactRepo,
     extras: testSharedExtrasRepo,
@@ -155,7 +152,6 @@ export function getSharedTestDurableStores(options?: {
     os: testSharedOs,
     isDurable: true,
     composition: {
-      brandBrain: "InMemoryBrandBrainRepository",
       executions: "InMemoryExecutionRepository",
       artifacts: "InMemoryArtifactRepository",
       extras: "InMemoryExecutionExtrasRepository",
@@ -171,7 +167,6 @@ export function getSharedTestDurableStores(options?: {
 
 export function resetSharedTestDurableStores(): void {
   testSharedKv?.clear();
-  testSharedBrandRepo?.clear();
   testSharedExecutionRepo?.clear();
   testSharedArtifactRepo?.clear();
   testSharedExtrasRepo?.clear();
@@ -179,7 +174,6 @@ export function resetSharedTestDurableStores(): void {
   testSharedTenantUsage?.clear();
   testSharedJobStore?.clear();
   testSharedKv = undefined;
-  testSharedBrandRepo = undefined;
   testSharedExecutionRepo = undefined;
   testSharedArtifactRepo = undefined;
   testSharedExtrasRepo = undefined;
@@ -216,7 +210,6 @@ export function createDurableStores(
         })
       : undefined;
     return {
-      brandBrain: new InMemoryBrandBrainRepository(),
       executions: new InMemoryExecutionRepository(),
       artifacts,
       extras: new InMemoryExecutionExtrasRepository(),
@@ -265,7 +258,6 @@ export function createDurableStores(
     : undefined;
 
   return {
-    brandBrain: new MongoBrandBrainRepository(),
     executions: new MongoExecutionRepository(),
     artifacts,
     extras: new MongoExecutionExtrasRepository(),
@@ -280,7 +272,6 @@ export function createDurableStores(
     os: createMongoOsDurableBundle(),
     isDurable: true,
     composition: {
-      brandBrain: "MongoBrandBrainRepository",
       executions: "MongoExecutionRepository",
       artifacts: "MongoArtifactRepository",
       extras: "MongoExecutionExtrasRepository",

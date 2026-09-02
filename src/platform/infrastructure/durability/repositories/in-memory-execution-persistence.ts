@@ -99,11 +99,6 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       osLifecycle?: string;
       governance?: unknown;
       asyncLane?: unknown;
-      structuredBrief?: unknown;
-      structuredBrandContext?: unknown;
-      structuredKnowledgeContext?: unknown;
-      structuredExecutionPlan?: unknown;
-      structuredTaskGraphState?: unknown;
     }
   >();
 
@@ -119,11 +114,6 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       osLifecycle?: string;
       governance?: unknown;
       asyncLane?: unknown;
-      structuredBrief?: unknown;
-      structuredBrandContext?: unknown;
-      structuredKnowledgeContext?: unknown;
-      structuredExecutionPlan?: unknown;
-      structuredTaskGraphState?: unknown;
     }
   ): Promise<void> {
     this.store.set(executionId, { organizationId, ...extras });
@@ -132,21 +122,8 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
   async get(executionId: string) {
     const row = this.store.get(executionId);
     if (!row) return undefined;
-    const {
-      diagnostics,
-      trace,
-      cost,
-      evaluation,
-      experience,
-      osLifecycle,
-      governance,
-      asyncLane,
-      structuredBrief,
-      structuredBrandContext,
-      structuredKnowledgeContext,
-      structuredExecutionPlan,
-      structuredTaskGraphState,
-    } = row;
+    const { diagnostics, trace, cost, evaluation, experience, osLifecycle, governance, asyncLane } =
+      row;
     return {
       diagnostics,
       trace,
@@ -156,17 +133,6 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       ...(osLifecycle != null ? { osLifecycle } : {}),
       ...(governance != null ? { governance } : {}),
       ...(asyncLane != null ? { asyncLane } : {}),
-      ...(structuredBrief != null ? { structuredBrief } : {}),
-      ...(structuredBrandContext != null ? { structuredBrandContext } : {}),
-      ...(structuredKnowledgeContext != null
-        ? { structuredKnowledgeContext }
-        : {}),
-      ...(structuredExecutionPlan != null
-        ? { structuredExecutionPlan }
-        : {}),
-      ...(structuredTaskGraphState != null
-        ? { structuredTaskGraphState }
-        : {}),
     };
   }
 

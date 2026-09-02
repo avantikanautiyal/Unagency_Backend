@@ -4,7 +4,6 @@ export {
   redisConnectionFromEnv,
   durableRuntimeRequired,
 } from "./durable-mode";
-export type { IBrandBrainRepository } from "./interfaces/brand-brain-repository";
 export type {
   IExecutionRepository,
   IArtifactRepository,
@@ -17,6 +16,7 @@ export {
   createDurableStores,
   getSharedTestDurableStores,
   resetSharedTestDurableStores,
+  durableStoresUseMongoPersistence,
   type DurableStores,
 } from "./create-durable-stores";
 export {
@@ -24,8 +24,6 @@ export {
   createMongoOsDurableBundle,
   type OsDurableBundle,
 } from "./create-os-durable-bundle";
-export { InMemoryBrandBrainRepository } from "./repositories/in-memory-brand-brain-repository";
-export { MongoBrandBrainRepository } from "./repositories/mongo-brand-brain-repository";
 export { MongoJobStore } from "./repositories/mongo-job-store";
 export { InMemoryClaimableJobStore } from "./repositories/in-memory-claimable-job-store";
 export {

@@ -30,6 +30,10 @@ export interface EvaluationScores {
   readonly specComplianceScore?: number;
   readonly brandComplianceScore?: number;
   readonly riskScore?: number;
+  /** Track B3 — sum of 10 creative dimensions (0–100). */
+  readonly creativeScoreTotal?: number;
+  /** Track B3 — each dimension 0–10. */
+  readonly creativeDimensionScores?: Readonly<Record<string, number>>;
 }
 
 export interface EvaluationFinding {
@@ -84,6 +88,32 @@ export interface EvaluateOutputInput {
   readonly brandPreferredTerms?: readonly string[];
   readonly prohibitedPatterns?: readonly string[];
   readonly requiredSections?: readonly string[];
+  /** Track A Phase A3 — continuity-bound job. */
+  readonly continuityBound?: boolean;
+  readonly boundLogoAssetId?: string;
+  readonly mediaOutputCount?: number;
+  readonly capabilityId?: string;
+  readonly isImageCapability?: boolean;
+  /** Track B3 — product service hint for channel-fit scoring. */
+  readonly service?: string;
+  readonly territory?: string;
+  /** Service-output contract fields for deterministic SpecGuard checks. */
+  readonly outputKind?: string;
+  readonly mockupRole?: string;
+  readonly expectedModalities?: readonly string[];
+  readonly actualModality?: string;
+  readonly expectedAspectRatio?: string;
+  readonly actualAspectRatio?: string;
+  /** Step 2 — service output contract validation context. */
+  readonly subtype?: string;
+  readonly platform?: string;
+  readonly format?: string;
+  readonly industry?: string;
+  readonly structuredData?: unknown;
+  readonly mediaArtifactIds?: readonly string[];
+  readonly buildSucceeded?: boolean;
+  readonly buildOutput?: string;
+  readonly runtimeErrors?: readonly string[];
   readonly nowIso?: () => string;
   readonly createId?: (prefix: string) => string;
 }

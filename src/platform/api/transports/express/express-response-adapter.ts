@@ -6,7 +6,7 @@
 
 import type { Response } from "express";
 import type { ApiResponse } from "../../contracts";
-import { formatSseFrame } from "../../../intelligence/providers/streaming/transport/sse-writer";
+import { formatSseFrame } from "../../../providers/streaming/transport/sse-writer";
 
 export function sendApiResponse(res: Response, apiResponse: ApiResponse): void {
   for (const [key, value] of Object.entries(apiResponse.headers)) {

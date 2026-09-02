@@ -2,8 +2,8 @@
  * Distributed Execution Engine — in-memory job system.
  */
 
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 import type { IDistributedExecutionEngine, IJobExecutor, IJobStore } from "../interfaces/execution";
 import type {
   BatchJobSpec,
@@ -235,6 +235,8 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
       return failure(new ValidationError("execution platform is shut down"));
     }
 
+    await this.ensureRunnableJobsQueued();
+
     this.scheduler.promoteDue();
     for (const job of this.store.list()) {
       if (job.status === "retrying") {
@@ -272,7 +274,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
       } catch (err) {
         // Reclaim must not abort the tick — new jobs still need to run.
         console.warn(
-          `⚙️  [AI OS] lease reclaim failed | ${err instanceof Error ? err.message : String(err)}`
+          `⚙️  [Direct] lease reclaim failed | ${err instanceof Error ? err.message : String(err)}`
         );
       }
     }
@@ -292,8 +294,14 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         break;
       }
 
-      const job = this.store.get(next.jobId);
+      let job = this.store.get(next.jobId);
+      if (!job && typeof this.store.hydrate === "function") {
+        job = await this.store.hydrate(next.jobId);
+      }
       if (!job || job.status === "cancelled" || job.status === "paused") {
+        if (job && (job.status === "queued" || job.status === "retrying")) {
+          this.enqueueToQueue(job);
+        }
         this.concurrency.release();
         continue;
       }
@@ -324,7 +332,10 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           this.nowIso()
         );
         if (!claimed) {
-          // Lost race — another worker claimed this job
+          // Lost race — another worker claimed this job; put it back if still runnable.
+          if (job.status === "queued" || job.status === "retrying") {
+            this.enqueueToQueue(job);
+          }
           this.throttle.exit(limits);
           this.concurrency.release();
           continue;
@@ -565,6 +576,52 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         this.queues.get("immediate").enqueue(recovered.jobId);
       }
     }
+  }
+
+  /** Re-enqueue durable queued jobs that are not present in in-memory queue backends. */
+  private async ensureRunnableJobsQueued(): Promise<void> {
+    if (typeof this.store.listRunnableFromDatabase !== "function") return;
+    try {
+      const jobs = await this.store.listRunnableFromDatabase();
+      if (jobs.length > 0) {
+        console.log(
+          `⚙️  [Direct] recovering ${jobs.length} queued job(s) into worker queue`
+        );
+      }
+      for (const job of jobs) {
+        if (job.status !== "queued" && job.status !== "retrying") continue;
+        if (this.isJobEnqueued(job.jobId)) continue;
+        this.enqueueToQueue({
+          ...job,
+          queueKind:
+            job.queueKind === "dead_letter" || job.queueKind === "scheduled"
+              ? "immediate"
+              : job.queueKind,
+        });
+      }
+      if (jobs.length > 0) {
+        console.log(
+          `⚙️  [Direct] recovered ${jobs.length} queued job(s) into worker queue`
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `⚙️  [Direct] queued job recovery failed | ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  private isJobEnqueued(jobId: JobId): boolean {
+    const kinds: QueueKind[] = [
+      "priority",
+      "immediate",
+      "retry",
+      "batch",
+      "streaming",
+      "long_running",
+      "scheduled",
+    ];
+    return kinds.some((kind) => this.queues.get(kind).list().includes(jobId));
   }
 
   private enqueueToQueue(job: ExecutionJob): void {

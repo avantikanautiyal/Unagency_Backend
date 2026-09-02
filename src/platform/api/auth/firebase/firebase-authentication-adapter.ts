@@ -7,8 +7,8 @@ import {
   verifyFirebaseIdToken,
   type VerifiedFirebaseIdentity,
 } from "../../../../libs/firebase/verify-id-token";
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 import type { AuthPrincipal } from "../../contracts";
 import type { ITenantService } from "../../interfaces";
 import { LegacyUserIdentityResolver } from "./legacy-user-identity-resolver";

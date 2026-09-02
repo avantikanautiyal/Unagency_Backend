@@ -37,6 +37,7 @@ import {
 } from "../platform/media/processing/media-processing-job-store";
 import { auditMediaAccess } from "../platform/media/audit/media-access-audit";
 import { supportsMultipart } from "../platform/persistence/storage/multipart-blob-storage";
+import { registerProductAssetBlobOwnership } from "./register-product-asset-blob-ownership";
 
 const SIGNED_TTL_SECONDS = Math.min(
   Number(process.env.ENTERPRISE_BLOB_SIGNED_URL_TTL_SECONDS ?? 300) || 300,
@@ -87,11 +88,14 @@ function kindFromMime(mime: string): ProductAssetKind {
   if (cat === "image") return "image";
   if (cat === "video") return "video";
   if (cat === "audio") return "audio";
+  const base = mime.toLowerCase().split(";")[0]?.trim() || "";
   if (
-    mime === "application/pdf" ||
-    mime.startsWith("text/") ||
-    mime.includes("document") ||
-    mime.includes("presentation")
+    base === "application/pdf" ||
+    base.startsWith("text/") ||
+    base.includes("document") ||
+    base.includes("presentation") ||
+    base === "application/zip" ||
+    base === "application/x-zip-compressed"
   ) {
     return "document";
   }
@@ -241,16 +245,37 @@ export class ProductAssetService {
 
     const kind = kindFromMime(pipeline.mimeType);
 
+    let resolvedBrandId = input.brandId?.trim() || undefined;
+    if (input.executionId?.trim()) {
+      try {
+        const { EnterpriseExecution } = await import(
+          "../platform/infrastructure/durability/mongo/models/enterprise-execution.model"
+        );
+        const exec = await EnterpriseExecution.findOne({
+          executionId: input.executionId.trim(),
+          organizationId,
+        })
+          .select("brandId")
+          .lean();
+        const ownership = exec?.brandId?.trim();
+        if (ownership) {
+          resolvedBrandId = ownership;
+        }
+      } catch {
+        // Ownership lookup must not fail upload — fall through to client brandId.
+      }
+    }
+
     if (input.projectId) {
       await this.assertProjectInOrg(input.projectId, organizationId, input.userId);
     }
     if (input.briefId) {
       await this.assertBriefOwnedByUser(input.briefId, input.userId, organizationId);
     }
-    if (input.brandId) {
+    if (resolvedBrandId) {
       const Brands = (await import("../models/brand.model")).default;
       const brand = await Brands.findOne({
-        _id: input.brandId,
+        _id: resolvedBrandId,
         organizationId: new mongoose.Types.ObjectId(organizationId),
         status: "active",
       });
@@ -259,12 +284,16 @@ export class ProductAssetService {
 
     const wantDedupe = input.dedupe !== false && DEDUPE_ENABLED;
     if (wantDedupe && pipeline.checksum) {
-      const existing = await MediaFile.findOne({
+      const dedupeFilter: Record<string, unknown> = {
         organizationId: new mongoose.Types.ObjectId(organizationId),
         checksum: pipeline.checksum,
         status: { $ne: "deleted" },
         storageKey: { $exists: true, $ne: null },
-      });
+      };
+      if (resolvedBrandId) {
+        dedupeFilter.brandId = new mongoose.Types.ObjectId(resolvedBrandId);
+      }
+      const existing = await MediaFile.findOne(dedupeFilter);
       if (existing) {
         void auditMediaAccess({
           action: "upload",
@@ -315,8 +344,8 @@ export class ProductAssetService {
         briefId: input.briefId
           ? new mongoose.Types.ObjectId(input.briefId)
           : undefined,
-        brandId: input.brandId
-          ? new mongoose.Types.ObjectId(input.brandId)
+        brandId: resolvedBrandId
+          ? new mongoose.Types.ObjectId(resolvedBrandId)
           : undefined,
         folder: input.folder ?? "",
         tags: input.tags ?? [],
@@ -350,7 +379,7 @@ export class ProductAssetService {
         assetId: dto.id,
         storageKey,
         mimeType: pipeline.mimeType,
-        brandId: input.brandId,
+        brandId: resolvedBrandId,
         assetName: dto.name,
       }).catch((err) => {
         console.warn(
@@ -365,6 +394,21 @@ export class ProductAssetService {
         userId: input.userId,
         assetId: dto.id,
         storageKey,
+      });
+
+      void registerProductAssetBlobOwnership({
+        storageKey,
+        organizationId,
+        assetId: dto.id,
+        mimeType: pipeline.mimeType,
+        sizeBytes: pipeline.sizeBytes,
+        checksum,
+        executionId: input.executionId,
+      }).catch((err) => {
+        console.warn(
+          "[product-asset-service] blob ownership registration failed:",
+          err instanceof Error ? err.message : err
+        );
       });
 
       return dto;
@@ -430,7 +474,9 @@ export class ProductAssetService {
   }): Promise<ProductAssetDto> {
     const doc = await this.requireOwnedAsset(input.userId, input.assetId);
     if (input.patch.name != null) {
-      doc.fileName = sanitizeFilename(input.patch.name);
+      // Display title for vault tiles — keep human labels (·, &); block path tricks only.
+      const raw = String(input.patch.name).trim().replace(/\0/g, "").replace(/\.\./g, "");
+      doc.fileName = (raw || "untitled").slice(0, 180);
     }
     if (input.patch.folder != null) doc.folder = String(input.patch.folder);
     if (input.patch.tags != null) doc.tags = input.patch.tags.map(String);
@@ -550,9 +596,9 @@ export class ProductAssetService {
   }
 
   /**
-   * Resolve a product asset into an Intelligence input reference (M10.15).
+   * Resolve a product asset into a provider input reference.
    */
-  async resolveIntelligenceInput(input: {
+  async resolveProviderInputAsset(input: {
     userId: string;
     assetId: string;
     organizationId: string;
@@ -590,6 +636,17 @@ export class ProductAssetService {
     const url = data.startsWith("data:")
       ? data
       : `data:${contentType};base64,${data}`;
+
+    await registerProductAssetBlobOwnership({
+      storageKey: doc.storageKey,
+      organizationId: input.organizationId,
+      assetId: doc._id.toString(),
+      mimeType: contentType,
+      sizeBytes: doc.sizeBytes ?? undefined,
+      checksum: doc.checksum ?? undefined,
+      executionId: doc.executionId?.toString(),
+    });
+
     return {
       storageRef: doc.storageKey,
       url,
@@ -629,6 +686,94 @@ export class ProductAssetService {
     });
 
     return { id: doc._id.toString(), status: "deleted" };
+  }
+
+  /**
+   * Hard-delete vault assets matching project / execution / explicit ids.
+   * Used when a project or service chat is permanently removed.
+   */
+  async hardDeleteMatching(input: {
+    userId: string;
+    organizationId?: string;
+    projectId?: string;
+    executionIds?: string[];
+    assetIds?: string[];
+  }): Promise<{ deletedCount: number }> {
+    const organizationId = await resolveCustomerOrganizationId(
+      input.userId,
+      input.organizationId
+    );
+    const or: Record<string, unknown>[] = [];
+    if (input.projectId && mongoose.isValidObjectId(input.projectId)) {
+      or.push({ projectId: new mongoose.Types.ObjectId(input.projectId) });
+    }
+    const executionIds = [
+      ...new Set(
+        (input.executionIds ?? [])
+          .map((id) => String(id || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    if (executionIds.length > 0) {
+      or.push({ executionId: { $in: executionIds } });
+    }
+    const assetIds = [
+      ...new Set(
+        (input.assetIds ?? [])
+          .map((id) => String(id || "").trim())
+          .filter((id) => mongoose.isValidObjectId(id))
+      ),
+    ];
+    if (assetIds.length > 0) {
+      or.push({
+        _id: {
+          $in: assetIds.map((id) => new mongoose.Types.ObjectId(id)),
+        },
+      });
+    }
+    if (or.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    const docs = await MediaFile.find({
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      $or: or,
+    })
+      .select("_id storageKey thumbnailKey organizationId")
+      .lean();
+
+    if (docs.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    for (const doc of docs) {
+      const storageKey =
+        typeof doc.storageKey === "string" ? doc.storageKey : undefined;
+      const thumbnailKey =
+        typeof (doc as { thumbnailKey?: string }).thumbnailKey === "string"
+          ? (doc as { thumbnailKey?: string }).thumbnailKey
+          : undefined;
+      if (storageKey) {
+        await this.storage.delete(storageKey).catch(() => undefined);
+      }
+      if (thumbnailKey) {
+        await this.storage.delete(thumbnailKey).catch(() => undefined);
+      }
+      void auditMediaAccess({
+        action: "delete",
+        organizationId,
+        userId: input.userId,
+        assetId: String(doc._id),
+        storageKey,
+        detail: "hard_delete_cascade",
+      });
+    }
+
+    const result = await MediaFile.deleteMany({
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      _id: { $in: docs.map((d) => d._id) },
+    });
+    return { deletedCount: result.deletedCount ?? docs.length };
   }
 
   async restore(input: {
@@ -699,7 +844,7 @@ export class ProductAssetService {
       input.userId,
       input.organizationId
     );
-    const mime = (input.mimeType || "").toLowerCase().trim();
+    const mime = (input.mimeType || "").toLowerCase().trim().split(";")[0]?.trim() || "";
     if (!PRODUCT_ALLOWED_MIME.has(mime)) {
       throw new ApiError("MIME type not allowed", 400);
     }
@@ -905,6 +1050,20 @@ export class ProductAssetService {
       userId: input.userId,
       assetId: doc._id.toString(),
       storageKey: session.storageKey,
+    });
+
+    void registerProductAssetBlobOwnership({
+      storageKey: session.storageKey,
+      organizationId: session.organizationId.toString(),
+      assetId: doc._id.toString(),
+      mimeType: session.mimeType,
+      sizeBytes,
+      checksum: completed.value.checksum,
+    }).catch((err) => {
+      console.warn(
+        "[product-asset-service] blob ownership registration failed:",
+        err instanceof Error ? err.message : err
+      );
     });
 
     return toProductAssetDto(doc);

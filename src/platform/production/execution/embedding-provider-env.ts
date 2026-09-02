@@ -6,8 +6,8 @@ import {
   ALL_EMBEDDING_PROVIDER_SPECS,
   VERIFIED_EMBEDDING_PROVIDER_SPECS,
   type VerifiedEmbeddingProviderSpec,
-} from "../../intelligence/providers/embedding/configs/verified-embedding-provider-specs";
-import { SEED_MODELS } from "../../intelligence/model-registry/discovery/inventory-seed";
+} from "../../providers/embedding/configs/verified-embedding-provider-specs";
+import { SEED_MODELS } from "../../model-registry/discovery/inventory-seed";
 import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export interface EmbeddingProviderEnvStatus {

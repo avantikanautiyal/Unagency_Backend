@@ -3,7 +3,7 @@
  * Implemented by S3BlobStorage; memory adapter simulates for tests.
  */
 
-import type { Result } from "../../intelligence/shared/result";
+import type { Result } from "../../core/result";
 
 export type MultipartInitResult = {
   uploadId: string;

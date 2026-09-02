@@ -2,8 +2,6 @@
  * Phase 8 — OS durable store bundle (in-memory for tests, Mongo for production).
  */
 
-import type { ITaskGraphRunStore } from "../../os/task-graph-executor/persistence/task-graph-run-store";
-import { InMemoryTaskGraphRunStore } from "../../os/task-graph-executor/persistence/task-graph-run-store";
 import type { IOsWorkQueue } from "../../os/runtime/contracts/os-work-job";
 import { InMemoryOsWorkQueue } from "../../os/runtime/queues/in-memory-os-work-queue";
 import type { IEvaluationLedger } from "../../os/evaluation/persistence/evaluation-ledger";
@@ -20,7 +18,6 @@ import type { IArtifactVersionStore } from "../../os/delivery/artifact/artifact-
 import { InMemoryArtifactVersionStore } from "../../os/delivery/artifact/artifact-version-store";
 import type { IDeliveryReceiptStore } from "../../os/delivery/persistence/delivery-receipt-store";
 import { InMemoryDeliveryReceiptStore } from "../../os/delivery/persistence/delivery-receipt-store";
-import { MongoTaskGraphRunStore } from "./repositories/mongo-task-graph-run-store";
 import { MongoOsWorkQueue } from "./repositories/mongo-os-work-queue";
 import {
   MongoArtifactVersionStore,
@@ -33,7 +30,6 @@ import {
 } from "./repositories/mongo-os-ledgers";
 
 export interface OsDurableBundle {
-  readonly taskGraph: ITaskGraphRunStore;
   readonly workQueue: IOsWorkQueue;
   readonly evaluations: IEvaluationLedger;
   readonly governance: IGovernanceDecisionStore;
@@ -47,7 +43,6 @@ export interface OsDurableBundle {
 
 export function createInMemoryOsDurableBundle(): OsDurableBundle {
   return {
-    taskGraph: new InMemoryTaskGraphRunStore(),
     workQueue: new InMemoryOsWorkQueue(),
     evaluations: new InMemoryEvaluationLedger(),
     governance: new InMemoryGovernanceDecisionStore(),
@@ -62,7 +57,6 @@ export function createInMemoryOsDurableBundle(): OsDurableBundle {
 
 export function createMongoOsDurableBundle(): OsDurableBundle {
   return {
-    taskGraph: new MongoTaskGraphRunStore(),
     workQueue: new MongoOsWorkQueue(),
     evaluations: new MongoEvaluationLedger(),
     governance: new MongoGovernanceDecisionStore(),

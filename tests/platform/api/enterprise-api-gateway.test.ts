@@ -8,7 +8,7 @@ import { hasPermission, permissionsForRoles } from "../../../src/platform/api/au
 import { InMemoryRateLimitService } from "../../../src/platform/api/rate-limits/in-memory-rate-limit-service";
 import { InMemoryStreamingService } from "../../../src/platform/api/streaming/in-memory-streaming-service";
 import { validateApiRequest } from "../../../src/platform/api/validation/validate-request";
-import { listCatalogProviderIds } from "../../../src/platform/intelligence/provider-catalog/catalog/provider-catalog-seed";
+import { listCatalogProviderIds } from "../../../src/platform/config/provider-catalog-seed";
 
 describe("Enterprise API Gateway", () => {
   it("exposes v1 and v2 route contracts", () => {

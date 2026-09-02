@@ -14,6 +14,10 @@ export interface IOrganization {
   contactEmail: string;
   contactMobile: string;
   status: string;
+  targetAudience?: string;
+  about?: string;
+  businessAge?: string;
+  businessSize?: string;
 }
 
 const OrganizationSchema = new Schema<IOrganization>(
@@ -31,6 +35,10 @@ const OrganizationSchema = new Schema<IOrganization>(
     contactMobile: { type: String, default: "" },
     contactEmail: { type: String, default: "" },
     status: { type: String, default: "active" },
+    targetAudience: { type: String, default: "" },
+    about: { type: String, default: "" },
+    businessAge: { type: String, default: "" },
+    businessSize: { type: String, default: "" },
   },
   { collection: "organizations", timestamps: true }
 );
@@ -52,6 +60,10 @@ export class Organization {
   contactEmail?: string;
   contactMobile?: string;
   status?: string;
+  targetAudience?: string;
+  about?: string;
+  businessAge?: string;
+  businessSize?: string;
   constructor(data: any) {
     this.owner = data.owner;
     this.companyName = data.companyName || '';
@@ -65,6 +77,10 @@ export class Organization {
     this.contactEmail = data.contactEmail || '';
     this.contactMobile = data.contactMobile || '';
     this.status = data.status || '';
+    this.targetAudience = data.targetAudience || '';
+    this.about = data.about || '';
+    this.businessAge = data.businessAge || '';
+    this.businessSize = data.businessSize || '';
 
   }
 }

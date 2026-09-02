@@ -3,25 +3,25 @@
  * Unverified providers are catalogued only — never LIVE-executable.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
-import { asProviderId, type ProviderId } from "../../intelligence/shared/identifiers";
-import type { IModelRegistry } from "../../intelligence/model-registry/interfaces/model-registry";
-import type { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import type { IAsyncProviderDispatcher } from "../../intelligence/providers/async/interfaces/async-provider-dispatcher";
+import { success, type Result } from "../../core/result";
+import { asProviderId, type ProviderId } from "../../core/identifiers";
+import type { IModelRegistry } from "../../model-registry/interfaces/model-registry";
+import type { InMemoryProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import type { IAsyncProviderDispatcher } from "../../providers/async/interfaces/async-provider-dispatcher";
 import {
   ALL_VIDEO_PROVIDER_SPECS,
   VERIFIED_VIDEO_PROVIDER_SPECS,
-} from "../../intelligence/providers/video/configs/verified-video-provider-specs";
-import { createVerifiedVideoProvider } from "../../intelligence/providers/video/factories/create-verified-video-provider";
+} from "../../providers/video/configs/verified-video-provider-specs";
+import { createVerifiedVideoProvider } from "../../providers/video/factories/create-verified-video-provider";
 import type { BlobAccessService } from "../../media/blob/blob-access-service";
 import {
   evaluateVideoProviderEnv,
   isVideoProviderExecutable,
   resolveVideoApiKey,
 } from "./video-provider-env";
-import type { VendorVideoAuthContext } from "../../intelligence/providers/video/common/vendor-video-protocol";
-import type { IVideoHttpClient } from "../../intelligence/providers/video/http/video-http-client";
-import type { ProviderInputBytesLoader } from "../../intelligence/providers/video/pixverse/pixverse-i2v-dispatcher";
+import type { VendorVideoAuthContext } from "../../providers/video/common/vendor-video-protocol";
+import type { IVideoHttpClient } from "../../providers/video/http/video-http-client";
+import type { ProviderInputBytesLoader } from "../../providers/video/pixverse/pixverse-i2v-dispatcher";
 
 export interface RegisteredVideoProvider {
   readonly providerId: ProviderId;

@@ -20,6 +20,7 @@ import Notifications from "../src/models/notification.model";
 import Payments from "../src/models/payment.model";
 import ProjectLogs from "../src/models/projectlogs.model";
 import ChatRoom from "../src/models/chatRoom.model";
+import Tasks from "../src/models/tasks.model";
 import { streamServerClient } from "../src/config/getStreamIo.config";
 import {
   DEMO_EMAIL_DOMAIN,
@@ -105,6 +106,7 @@ async function main() {
     subscriptionId: DEMO_SUBSCRIPTION_ID,
   });
   await Requirement.deleteMany({ title: { $regex: "^\\[Demo\\]" } });
+  await Tasks.deleteMany({ title: { $regex: "^\\[Demo\\]" } });
   const demoProjects = await Projects.find({ title: { $regex: "^\\[Demo\\]" } });
   const demoProjectIds = demoProjects.map((p) => p._id);
   await ProjectLogs.deleteMany({ projectId: { $in: demoProjectIds } });

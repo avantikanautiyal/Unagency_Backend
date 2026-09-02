@@ -2,8 +2,8 @@
  * In-memory tenant / organization / workspace / user service.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError, NotFoundError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError, NotFoundError } from "../../core/errors";
 import type {
   OrganizationRecord,
   WorkspaceRecord,

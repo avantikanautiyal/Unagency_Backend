@@ -3,8 +3,8 @@
  * AI execution is delegated exclusively through Enterprise API Gateway.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { NotFoundError, ValidationError, AuthorizationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { NotFoundError, ValidationError, AuthorizationError } from "../../core/errors";
 import type {
   Organization,
   Workspace,

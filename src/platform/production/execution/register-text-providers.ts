@@ -2,19 +2,19 @@
  * Register executable text/reasoning providers into M9.5A runtime registry.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
-import { asProviderId, type ProviderId } from "../../intelligence/shared/identifiers";
-import type { IModelRegistry } from "../../intelligence/model-registry/interfaces/model-registry";
-import type { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import type { IProviderDispatcher } from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
-import { createOpenAIProvider } from "../../intelligence/providers/openai/factories/create-openai-provider";
-import { OPENAI_PROVIDER_ID } from "../../intelligence/providers/openai/constants";
-import { createAnthropicProvider } from "../../intelligence/providers/anthropic/factories/create-anthropic-provider";
-import { createGeminiProvider } from "../../intelligence/providers/gemini/factories/create-gemini-provider";
-import { createCohereProvider } from "../../intelligence/providers/cohere/factories/create-cohere-provider";
-import { createCompatTextProvider } from "../../intelligence/providers/compat/factories/create-compat-text-provider";
-import { COMPAT_TEXT_PROVIDER_CONFIGS } from "../../intelligence/providers/compat/configs/text-provider-configs";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
+import { asProviderId, type ProviderId } from "../../core/identifiers";
+import type { IModelRegistry } from "../../model-registry/interfaces/model-registry";
+import type { InMemoryProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
+import { createOpenAIProvider } from "../../providers/openai/factories/create-openai-provider";
+import { OPENAI_PROVIDER_ID } from "../../providers/openai/constants";
+import { createAnthropicProvider } from "../../providers/anthropic/factories/create-anthropic-provider";
+import { createGeminiProvider } from "../../providers/gemini/factories/create-gemini-provider";
+import { createCohereProvider } from "../../providers/cohere/factories/create-cohere-provider";
+import { createCompatTextProvider } from "../../providers/compat/factories/create-compat-text-provider";
+import { COMPAT_TEXT_PROVIDER_CONFIGS } from "../../providers/compat/configs/text-provider-configs";
 import {
   ALL_TEXT_PROVIDER_ENV_SPECS,
   isTextProviderConfigured,
@@ -24,7 +24,7 @@ import {
   GEMINI_TEXT_ENV,
   COHERE_TEXT_ENV,
 } from "./text-provider-env";
-import { isEmbeddingExecutableProvider } from "../../intelligence/providers/embedding/configs/verified-embedding-provider-specs";
+import { isEmbeddingExecutableProvider } from "../../providers/embedding/configs/verified-embedding-provider-specs";
 
 export interface RegisteredTextProvider {
   readonly providerId: ProviderId;

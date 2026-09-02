@@ -1,6 +1,6 @@
 /**
  * Phase 7 — Canonical refinement engine (request → MCQ → spec → re-execution provenance).
- * Does NOT call providers. Re-enters Execution Intelligence via replan + TaskGraphExecutor.
+ * Does NOT call providers. Re-enters thin create / refinement flows via Gateway.
  */
 
 import { RefinementError } from "../contracts/errors";
@@ -23,8 +23,6 @@ import {
 import { buildRefinementSpecification } from "./refinement-spec-builder";
 import { inferOutputType } from "../questions/question-bank";
 import { logOsExecutionEvent } from "../../observability/execution-log";
-import type { IBrandBrainEngine } from "../../../business/brand-brain/interfaces";
-import { learnFromRefinement } from "../../../business/brand-brain/learning/refinement-signal-learner";
 
 export interface IRefinementStore {
   save(req: RefinementRequest): Promise<RefinementRequest>;
@@ -123,14 +121,12 @@ export class RefinementEngine {
   private readonly store: IRefinementStore;
   private readonly feedback: FeedbackSessionEngine;
   private readonly feedbackStore: IFeedbackSessionStore;
-  private readonly brandBrainEngine?: IBrandBrainEngine;
 
   constructor(
     deps: {
       readonly store?: IRefinementStore;
       readonly feedback?: FeedbackSessionEngine;
       readonly feedbackStore?: IFeedbackSessionStore;
-      readonly brandBrainEngine?: IBrandBrainEngine;
     } = {}
   ) {
     this.store = deps.store ?? new InMemoryRefinementStore();
@@ -138,7 +134,6 @@ export class RefinementEngine {
     this.feedback =
       deps.feedback ??
       createFeedbackSessionEngine({ store: this.feedbackStore });
-    this.brandBrainEngine = deps.brandBrainEngine;
   }
 
   getStore(): IRefinementStore {
@@ -230,6 +225,7 @@ export class RefinementEngine {
       organizationId: input.organizationId,
       executionId: input.executionId,
       outputType,
+      sourcePreview: input.sourcePreview,
       nowIso,
     });
 
@@ -376,13 +372,6 @@ export class RefinementEngine {
     });
     await this.store.saveSpec(spec);
 
-    // Persist brand learning signals — best-effort, never blocks finalization
-    if (this.brandBrainEngine) {
-      void learnFromRefinement(spec, session.answered, {
-        brandBrainEngine: this.brandBrainEngine,
-      });
-    }
-
     const blocking = spec.conflicts.some(
       (c) => c.resolution === "rejected" && c.code === "BRAND_OVERRIDE_DENIED"
     );
@@ -433,7 +422,20 @@ export function createRefinementEngine(deps?: {
   readonly store?: IRefinementStore;
   readonly feedback?: FeedbackSessionEngine;
   readonly feedbackStore?: IFeedbackSessionStore;
-  readonly brandBrainEngine?: IBrandBrainEngine;
+  readonly integration?: import("../../direct/contracts").IDirectExecutionEngine;
+  readonly createId?: (prefix: string) => string;
 }): RefinementEngine {
-  return new RefinementEngine(deps);
+  const feedbackStore = deps?.feedbackStore ?? new InMemoryFeedbackSessionStore();
+  const feedback =
+    deps?.feedback ??
+    createFeedbackSessionEngine({
+      store: feedbackStore,
+      integration: deps?.integration,
+      createId: deps?.createId,
+    });
+  return new RefinementEngine({
+    ...deps,
+    feedback,
+    feedbackStore,
+  });
 }

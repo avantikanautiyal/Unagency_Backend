@@ -25,11 +25,11 @@ Envelope (`ApiErrorBody`):
 | 500 | `INTERNAL_ERROR` | Unhandled server failure |
 | 503 | `UNAVAILABLE` | Dependency unavailable (when mapped) |
 
-Codes map from platform `IntelligenceError` / validation / auth services in:
+Codes map from platform errors / validation / auth services in:
 
 - `src/platform/api/middleware/pipeline.ts`
 - `src/platform/api/serialization/serialize.ts`
-- `src/platform/intelligence/shared/errors`
+- `src/platform/core/errors`
 
 Clients should branch on **HTTP status** first, then `error.code`.
 

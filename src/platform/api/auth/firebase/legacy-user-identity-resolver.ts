@@ -7,8 +7,8 @@ import type { Types } from "mongoose";
 import Users, { type IUser } from "../../../../models/users.model";
 import Organizations from "../../../../models/organization.model";
 import Teams from "../../../../models/team.model";
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 import type { VerifiedFirebaseIdentity } from "../../../../libs/firebase/verify-id-token";
 import type { LegacyRoleMappingContext } from "./role-permission-mapper";
 

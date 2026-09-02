@@ -3,10 +3,10 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/apiResponse";
 import Organizations, { Organization } from "../models/organization.model";
 import Teams from "../models/team.model";
+import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
-import Users from "../models/users.model";
 
 import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
@@ -136,10 +136,25 @@ const OrganizationByUserId = asyncHandler(async (req: RequestUser, res) => {
 
   if (!userId) throw new ApiError("userId not provided", 400);
 
-  const org = await Organizations.findOne({
+  const ownerOrg = await Organizations.findOne({
     owner: new mongoose.Types.ObjectId(userId),
   });
-  return new ApiResponse(200, org, "");
+
+  if (ownerOrg) {
+    return new ApiResponse(200, ownerOrg, "");
+  }
+
+  const membership = await Teams.findOne({
+    userId: new mongoose.Types.ObjectId(userId),
+    invitationStatus: "accepted",
+  });
+
+  if (membership?.Organization) {
+    const org = await Organizations.findById(membership.Organization);
+    return new ApiResponse(200, org, "");
+  }
+
+  return new ApiResponse(200, null, "");
 });
 
 //TESTED OK = TODO - Remove params

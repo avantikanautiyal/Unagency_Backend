@@ -14,7 +14,7 @@ Mobile / Web
 
 1. **Auth (product today)** — Legacy `/auth/register-login` or Firebase verify → store legacy token.
 2. **Auth (platform Gateway)** — `POST /v1/auth/login` → store `accessToken`.
-3. **AI execution** — always Gateway:
+3. **AI execution** — always Gateway (thin/direct path — do **not** send enrichment novels):
 
 ```http
 POST /v1/executions
@@ -27,8 +27,9 @@ Content-Type: application/json
   "workspaceId": "ws_…",
   "capabilityId": "marketing.copy",
   "metadata": {
-    "brandBrain": {},
-    "knowledgeIntelligence": {}
+    "directPassthrough": true,
+    "brandBindingMode": "product_brand",
+    "brandId": "brand_…"
   },
   "stream": true
 }
@@ -37,24 +38,9 @@ Content-Type: application/json
 4. **Poll status** — `GET /v1/executions/{executionId}`
 5. **Stream** — `GET /v1/executions/{executionId}/stream` (SSE frames inside JSON `data`; parse frames client-side)
 6. **Artifacts / cost / eval / experience** — sibling GET routes under the same execution id
-7. **Execution intelligence (explainability)** — inspect decisions without prompts/secrets:
-
-```http
-GET /v1/executions/{executionId}/model-decision
-GET /v1/executions/{executionId}/routing
-GET /v1/executions/{executionId}/planning
-GET /v1/executions/{executionId}/timeline
-GET /v1/executions/{executionId}/provider
-GET /v1/executions/{executionId}/metrics
-GET /v1/executions/{executionId}/tokens
-GET /v1/executions/{executionId}/cost-breakdown
-GET /v1/executions/{executionId}/quality
-GET /v1/executions/{executionId}/confidence
-GET /v1/executions/{executionId}/audit
-GET /v1/executions/{executionId}/decision-graph
-```
-
+7. **Explainability / execution-intelligence** — **removed**. Do not call `/model-decision`, `/routing`, `/planning`, `/decision-graph`, etc.
 8. **Catalogs** — `GET /v1/capabilities|providers|models`
+9. **Runtime capabilities** — `GET /v1/runtime/capabilities`
 
 ## Headers
 
@@ -85,12 +71,11 @@ Legacy Express uses existing controller response shapes (status + body conventio
 
 ## What frontends must NOT call
 
-- Intelligence OS modules directly
-- Provider SDKs
-- Brand Brain / Knowledge Intelligence engines directly
-- Persistence / Studio engines directly
+- Provider SDKs directly
+- Internal platform modules (`src/platform/direct`, `src/platform/providers`, etc.) — use Gateway only
+- Persistence engines directly
 
-Enrichment should arrive as **structured metadata** on `POST /v1/executions` once product orchestration attaches Brand Brain / KI packages (orchestration is Business/Studio’s job — not ad-hoc frontend OS calls).
+Brand/knowledge enrichment should arrive as **metadata** on `POST /v1/executions` when product orchestration attaches brand context.
 
 ## Imports for tooling
 

@@ -61,23 +61,6 @@ export function toBrandDto(doc: IBrand): BrandDto {
     updatedAt: doc.updatedAt?.toISOString?.() ?? new Date().toISOString(),
   };
 }
-
-/**
- * Best-effort Brand Brain sync — never throws, never blocks the caller.
- * Dynamic import avoids a static circular dependency (brand-brain-sync
- * ultimately reaches back into the Enterprise API runtime bootstrap chain).
- */
-function syncBrainInBackground(brand: BrandDto): void {
-  void import("./brand-brain-sync-service")
-    .then(({ syncProductBrandToBrain }) => syncProductBrandToBrain(brand))
-    .catch((err) => {
-      console.warn(
-        "[brand-service] Brand Brain sync failed (non-fatal):",
-        err instanceof Error ? err.message : err
-      );
-    });
-}
-
 const GUIDELINES_STRING_FIELDS: readonly (keyof IBrandGuidelinesProfile)[] = [
   "mission",
   "vision",
@@ -192,7 +175,6 @@ export class BrandService {
       memberUserIds: [new mongoose.Types.ObjectId(input.userId)],
     });
     const dto = toBrandDto(doc);
-    syncBrainInBackground(dto);
     // M10.19 — auto-provision brand collaboration channel (non-blocking)
     void import("./collaboration/collaboration-channel-service")
       .then(({ collaborationChannelService }) => {
@@ -316,7 +298,6 @@ export class BrandService {
     }
     await doc.save();
     const dto = toBrandDto(doc);
-    syncBrainInBackground(dto);
     return dto;
   }
 

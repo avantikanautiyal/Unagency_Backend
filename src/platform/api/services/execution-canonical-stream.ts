@@ -1,13 +1,14 @@
 /**
- * Canonical streaming path — OS ingress already applied via handoff.
+ * Canonical streaming path — matrix route (planning_through_routing) then provider stream.
+ * Planning mode must not call the generation provider; DirectExecutionEngine enforces that.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type { CreateExecutionRequest, ExecutionResource } from "../contracts";
 import { logOsExecutionEvent } from "../../os";
-import type { IntelligenceOsIntegrationReport } from "../../intelligence/integration/contracts/result";
-import type { StreamingExecutionResult } from "../../intelligence/providers/streaming/orchestrator/streaming-execution-orchestrator";
+import type { DirectExecutionReport } from "../../direct/contracts";
+import type { StreamingExecutionResult } from "../../providers/streaming/orchestrator/streaming-execution-orchestrator";
 import {
   CANONICAL_STREAM_PLANNING_MODE,
   type CanonicalStreamHandoff,
@@ -19,7 +20,7 @@ import {
   buildIntegrationPlanningSnapshot,
   buildProviderRuntimeFromStreamResult,
   runDeferredIntegrationPostProcessing,
-} from "../../intelligence/integration/adapters/deferred-post-processing";
+} from "../../direct/deferred-post-processing";
 import { mergePostProcessingIntoExtras } from "./integration-post-processing-extras";
 import {
   startEnterpriseSimulatedStream,
@@ -48,9 +49,10 @@ export async function executeCanonicalStream(
       : undefined);
 
   let streamPrompt = providerPrompt;
-  let planningReport: IntelligenceOsIntegrationReport | undefined;
+  let planningReport: DirectExecutionReport | undefined;
 
-  // Integration pipeline stages 1–10 — optimize before provider stream.
+  // Matrix routing only (planning_through_routing) — pins provider/model for the stream.
+  // Must not generate; DirectExecutionEngine returns after routing for this mode.
   if (host.deps.integration) {
     const planning = await runCanonicalIntegration(host.deps.integration, {
       executionId,
@@ -59,7 +61,6 @@ export async function executeCanonicalStream(
       providerPrompt,
       req,
       workingMetadata: handoff.workingMetadata,
-      structuredBrief: handoff.structuredBrief,
       principal: handoff.principal,
       mode: CANONICAL_STREAM_PLANNING_MODE,
     });
@@ -86,7 +87,7 @@ export async function executeCanonicalStream(
 
   const liveMode = host.deps.executionMode === "live";
   const { composeNativeStreamingDispatchers } = await import(
-    "../../intelligence/providers/streaming/composition/compose-native-streaming-dispatchers"
+    "../../providers/streaming/composition/compose-native-streaming-dispatchers"
   );
   const dispatchers =
     host.deps.nativeStreamDispatchers && host.deps.nativeStreamDispatchers.size > 0
@@ -106,7 +107,6 @@ export async function executeCanonicalStream(
       modelId: chosenModelId,
       metadata: {
         ...(handoff.workingMetadata ?? {}),
-        enrichedPrompt: streamPrompt,
         canonicalPipeline: true,
       },
     };
@@ -172,13 +172,13 @@ export async function executeCanonicalStream(
   }
 
   const { StreamingExecutionOrchestrator, providerStreamEventToSse } = await import(
-    "../../intelligence/providers/streaming"
+    "../../providers/streaming"
   );
   const { CancellationSource } = await import(
-    "../../intelligence/providers/runtime/cancellation/cancellation-engine"
+    "../../providers/runtime/cancellation/cancellation-engine"
   );
   const { asCapabilityId, asOrganizationId, asProviderId } = await import(
-    "../../intelligence/shared/identifiers"
+    "../../core/identifiers"
   );
 
   const now = host.deps.nowIso();
@@ -371,7 +371,7 @@ export async function applyDeferredStreamPostProcessing(
   host: ExecutionCreateHost,
   input: {
   readonly handoff: CanonicalStreamHandoff;
-  readonly planningReport: IntelligenceOsIntegrationReport;
+  readonly planningReport: DirectExecutionReport;
   readonly providerId: string;
   readonly modelId: string;
   readonly terminalStatus: ExecutionResource["status"];
@@ -389,7 +389,6 @@ export async function applyDeferredStreamPostProcessing(
       providerPrompt: input.handoff.providerPrompt,
       req: input.handoff.req,
       workingMetadata: input.handoff.workingMetadata,
-      structuredBrief: input.handoff.structuredBrief,
       principal: input.handoff.principal,
       mode: CANONICAL_STREAM_PLANNING_MODE,
     }),
@@ -426,8 +425,11 @@ export async function applyDeferredStreamPostProcessing(
     governanceFinalize: host.governanceFinalize,
     organizationId: trustedOrganizationId,
     capabilityId: input.handoff.req.capabilityId,
-    objective: input.handoff.structuredBrief?.objective ?? input.handoff.req.prompt,
-    brandTone: input.handoff.structuredBrandContext?.tone?.tone,
+    objective: input.handoff.req.prompt,
+    brandTone:
+      typeof input.handoff.workingMetadata?.brandTone === "string"
+        ? input.handoff.workingMetadata.brandTone
+        : undefined,
     createId: host.deps.createId,
   });
 

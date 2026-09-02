@@ -3,7 +3,7 @@
   "info": {
     "title": "UNAGENCY Enterprise API Gateway",
     "version": "1.0.0",
-    "description": "Sole external Intelligence / platform entry point. Paths are identical under /v1 and /v2. Source of truth: src/platform/api/routes/route-map.ts. This inventory does not redesign APIs.",
+    "description": "Sole external Runtime / platform entry point. Paths are identical under /v1 and /v2. Source of truth: src/platform/api/routes/route-map.ts. This inventory does not redesign APIs.",
     "contact": {
       "name": "UNAGENCY Platform"
     }
@@ -39,6 +39,9 @@
     },
     {
       "name": "capabilities"
+    },
+    {
+      "name": "runtime"
     },
     {
       "name": "providers"
@@ -789,8 +792,130 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "List capabilities",
+        "summary": "List catalogue capabilities (marketing)",
         "operationId": "get_capabilities",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        },
+        "x-permissions": [
+          "capability:read"
+        ]
+      }
+    },
+    "/runtime/capabilities": {
+      "get": {
+        "tags": [
+          "runtime"
+        ],
+        "summary": "List executable runtime capabilities (authoritative availability)",
+        "operationId": "get_runtime_capabilities",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        },
+        "x-permissions": [
+          "capability:read"
+        ]
+      }
+    },
+    "/intelligence/capabilities": {
+      "get": {
+        "tags": [
+          "runtime"
+        ],
+        "summary": "Deprecated alias for /runtime/capabilities",
+        "operationId": "get_intelligence_capabilities",
         "security": [
           {
             "bearerAuth": []

@@ -414,7 +414,81 @@
                 "capabilities"
               ]
             },
-            "description": "List capabilities\nDomain: capabilities\nPermissions: capability:read"
+            "description": "List catalogue capabilities (marketing)\nDomain: capabilities\nPermissions: capability:read"
+          }
+        },
+        {
+          "name": "GET /runtime/capabilities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/runtime/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "runtime",
+                "capabilities"
+              ]
+            },
+            "description": "List executable runtime capabilities (authoritative availability)\nDomain: runtime\nPermissions: capability:read"
+          }
+        },
+        {
+          "name": "GET /intelligence/capabilities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/intelligence/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "intelligence",
+                "capabilities"
+              ]
+            },
+            "description": "Deprecated alias for /runtime/capabilities\nDomain: runtime\nPermissions: capability:read"
           }
         },
         {
@@ -4397,6 +4471,102 @@
               "path": []
             },
             "description": "[Legacy Express] System: Hello"
+          }
+        },
+        {
+          "name": "GET /runtime/health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/runtime/health",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "runtime",
+                "health"
+              ]
+            },
+            "description": "[Legacy Express] Runtime: Runtime health"
+          }
+        },
+        {
+          "name": "GET /intelligence/health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/intelligence/health",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "intelligence",
+                "health"
+              ]
+            },
+            "description": "[Legacy Express] Runtime: Deprecated alias for /runtime/health"
+          }
+        },
+        {
+          "name": "GET /runtime/costs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/runtime/costs",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "runtime",
+                "costs"
+              ]
+            },
+            "description": "[Legacy Express] Runtime: Runtime cost aggregates"
+          }
+        },
+        {
+          "name": "GET /intelligence/costs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{legacyToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{legacyBaseUrl}}/intelligence/costs",
+              "host": [
+                "{{legacyBaseUrl}}"
+              ],
+              "path": [
+                "intelligence",
+                "costs"
+              ]
+            },
+            "description": "[Legacy Express] Runtime: Deprecated alias for /runtime/costs"
           }
         }
       ]

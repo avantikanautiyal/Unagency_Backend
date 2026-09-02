@@ -8,6 +8,7 @@ export interface EnterpriseExecutionDoc extends Document {
   userId?: string;
   status: ExecutionApiStatus;
   correlationId: string;
+  capabilityId?: string;
   jobId?: string;
   createdAt: string;
   updatedAt: string;
@@ -20,6 +21,14 @@ export interface EnterpriseExecutionDoc extends Document {
   attemptId?: string;
   providerDispatchState?: string;
   providerRequestId?: string;
+  result?: unknown;
+  artifactIds?: string[];
+  brandId?: string;
+  modelId?: string;
+  providerId?: string;
+  /** Service AI conversation this execution belongs to. */
+  conversationId?: string;
+  channelId?: string;
 }
 
 const enterpriseExecutionSchema = new Schema<EnterpriseExecutionDoc>(
@@ -30,6 +39,7 @@ const enterpriseExecutionSchema = new Schema<EnterpriseExecutionDoc>(
     userId: String,
     status: { type: String, required: true, index: true },
     correlationId: { type: String, required: true },
+    capabilityId: String,
     jobId: String,
     createdAt: { type: String, required: true },
     updatedAt: { type: String, required: true },
@@ -42,6 +52,13 @@ const enterpriseExecutionSchema = new Schema<EnterpriseExecutionDoc>(
     attemptId: String,
     providerDispatchState: String,
     providerRequestId: String,
+    result: Schema.Types.Mixed,
+    artifactIds: [String],
+    brandId: { type: String, index: true },
+    modelId: String,
+    providerId: String,
+    conversationId: { type: String, index: true },
+    channelId: String,
   },
   { collection: "enterprise_executions" }
 );

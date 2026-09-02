@@ -12,8 +12,14 @@ import {
   type CreateEnterpriseApiOptions,
   type EnterpriseApiPlatform,
 } from "../factories/create-enterprise-api-platform";
-import { bootstrapIntelligenceGateway } from "../../intelligence/gateway/factories/bootstrap-gateway";
 import { bootProductionExecution } from "../../production/execution/production-executor";
+import {
+  runEnterpriseAdaptiveRoutingStartupValidation,
+  type AdaptiveRoutingStartupResult,
+} from "./adaptive-routing-startup";
+
+export type { AdaptiveRoutingStartupResult };
+export { runEnterpriseAdaptiveRoutingStartupValidation };
 import {
   executionModeLabel,
   readEnterpriseApiRuntimeOptionsFromEnv,
@@ -25,6 +31,7 @@ import { evaluateTextProviderEnv } from "../../production/execution/text-provide
 import { evaluateVideoProviderEnv } from "../../production/execution/video-provider-env";
 import { evaluateAudioProviderEnv } from "../../production/execution/audio-provider-env";
 import { evaluateImageProviderEnv } from "../../production/execution/image-provider-env";
+import { bootAccountingPlatform } from "../../accounting/boot-accounting-platform";
 
 export interface EnterpriseApiRuntime {
   readonly platform: EnterpriseApiPlatform;
@@ -35,41 +42,6 @@ export interface EnterpriseApiRuntime {
 }
 
 let runtimeInstance: EnterpriseApiRuntime | undefined;
-
-/**
- * Wire kernel + gateway + orchestrator to the production integration engine.
- * Idempotent — safe to call from sync/async bootstrap and app startup.
- */
-export async function wireIntelligenceControlPlane(
-  platform: EnterpriseApiPlatform
-): Promise<void> {
-  if (platform.intelligencePlatform?.gateway) {
-    platform.executions.setIntelligenceGateway(platform.intelligencePlatform.gateway);
-    platform.intelligenceGatewayHolder?.set(platform.intelligencePlatform.gateway);
-    return;
-  }
-
-  const integrationEngine = platform.integrationEngine;
-  if (!integrationEngine) {
-    throw new Error(
-      "Cannot wire intelligence control plane — integration engine is not available on platform"
-    );
-  }
-
-  const intelligencePlatform = await bootstrapIntelligenceGateway({
-    autoStartKernel: true,
-    registerMocks: false,
-    integration: integrationEngine,
-    capabilityRegistry: platform.executions.getCapabilityRegistry(),
-  });
-
-  platform.intelligencePlatform = intelligencePlatform;
-  platform.executions.setIntelligenceGateway(intelligencePlatform.gateway);
-  platform.intelligenceGatewayHolder?.set(intelligencePlatform.gateway);
-  console.log(
-    "🧠 [AI OS] Intelligence control plane wired — kernel → gateway → orchestrator → integration"
-  );
-}
 
 function buildRuntime(
   platform: EnterpriseApiPlatform,
@@ -141,7 +113,7 @@ export async function bootstrapEnterpriseApiRuntimeAsync(
     const cleared = syncBilledProviderEnvFromDotenvFile();
     if (cleared.length > 0) {
       console.log(
-        `🧠 [AI OS] cleared leftover provider env (commented/absent in .env): ${cleared.join(", ")}`
+        `🧠 [Direct] cleared leftover provider env (commented/absent in .env): ${cleared.join(", ")}`
       );
     }
     const boot = await bootProductionExecution({
@@ -165,10 +137,13 @@ export async function bootstrapEnterpriseApiRuntimeAsync(
     };
     configuredProviders = boot.value.configuredProviders;
     console.log(
-      `⚙️  [AI OS] LIVE providers ready: ${configuredProviders.join(", ") || "(none)"}`
+      `⚙️  [Direct] LIVE providers ready: ${configuredProviders.join(", ") || "(none)"}`
     );
-    console.log("⚙️  [AI OS] tool runtime: configured (structured output + tools)");
+    console.log("⚙️  [Direct] tool runtime: configured (structured output + tools)");
   }
+
+  await bootAccountingPlatform({ useMongo: true, seedPricing: true });
+  console.log("💰 [Accounting] AI usage ledger bootstrapped");
 
   const platform = createEnterpriseApiPlatform(platformOptions);
   const liveIds =
@@ -178,9 +153,6 @@ export async function bootstrapEnterpriseApiRuntimeAsync(
     configuredProviders = liveIds;
     logLiveProviderInventory(liveIds ?? []);
   }
-
-  // Intelligence control plane — kernel → gateway → orchestrator → integration pipeline.
-  await wireIntelligenceControlPlane(platform);
 
   runtimeInstance = buildRuntime(
     platform,
@@ -194,7 +166,7 @@ export async function bootstrapEnterpriseApiRuntimeAsync(
 function logLiveProviderInventory(executableIds: readonly string[]): void {
   const billed = new Set(executableIds);
   console.log(
-    `🧠 [AI OS] LIVE executable leaves: ${executableIds.join(", ") || "(none)"}`
+    `🧠 [Direct] LIVE executable leaves: ${executableIds.join(", ") || "(none)"}`
   );
   const skipped: string[] = [];
   for (const row of evaluateTextProviderEnv()) {
@@ -250,20 +222,15 @@ function logLiveProviderInventory(executableIds: readonly string[]): void {
       !s.includes("higgsfield")
   );
   if (notable.length) {
-    console.log(`🧠 [AI OS] not called (commented, missing, or unverified): ${notable.join("; ")}`);
+    console.log(`🧠 [Direct] not called (commented, missing, or unverified): ${notable.join("; ")}`);
   }
   if (!billed.has("provider.seedance") && process.env.SEEDANCE_API_KEY?.trim()) {
     console.log(
-      "🧠 [AI OS] Seedance key present but not executable — check SEEDANCE_ENABLED and WaveSpeed connectivity"
+      "🧠 [Direct] Seedance key present but not executable — check SEEDANCE_ENABLED and WaveSpeed connectivity"
     );
   }
   if (billed.has("provider.seedance")) {
-    console.log("🧠 [AI OS] Seedance video provider LIVE via WaveSpeed");
-  }
-  if (!process.env.KLING_SECRET_KEY?.trim() && process.env.KLING_ACCESS_KEY?.trim()) {
-    console.log(
-      "🧠 [AI OS] Kling: using ACCESS_KEY as JWT secret (KLING_SECRET_KEY not set)"
-    );
+    console.log("🧠 [Direct] Seedance video provider LIVE via WaveSpeed");
   }
 }
 

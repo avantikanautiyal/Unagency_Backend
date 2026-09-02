@@ -18,7 +18,7 @@ router.get("/user-organization", VerifyRole(["customer"]), UserOrganization);
 //Desc: It allows system to find user's organization information;
 router.get(
   "/:userId",
-  VerifyRole(["servicing", "admin", "superadmin"]),
+  VerifyRole(["servicing", "admin", "superadmin", "resource"]),
   OrganizationByUserId
 );
 //Desc: It allows customer to create their organization

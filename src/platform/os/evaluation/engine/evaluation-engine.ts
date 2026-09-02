@@ -28,6 +28,7 @@ export interface AggregateEvaluation {
     readonly specComplianceScore?: number;
     readonly brandComplianceScore?: number;
     readonly riskScore?: number;
+    readonly creativeScoreTotal?: number;
   };
   readonly runtimeVersion: typeof OS_EVALUATOR_RUNTIME_VERSION;
   readonly evaluatedAt: string;
@@ -69,6 +70,17 @@ export interface IOsEvaluationEngine {
       readonly outputContractId: string;
     }[];
     readonly brandTone?: string;
+    readonly brandVoice?: string;
+    readonly brandAvoidTerms?: readonly string[];
+    readonly brandPreferredTerms?: readonly string[];
+    readonly prohibitedPatterns?: readonly string[];
+    readonly continuityBound?: boolean;
+    readonly boundLogoAssetId?: string;
+    readonly mediaOutputCount?: number;
+    readonly capabilityId?: string;
+    readonly isImageCapability?: boolean;
+    readonly service?: string;
+    readonly territory?: string;
     readonly nowIso?: () => string;
     readonly createId?: (prefix: string) => string;
   }): AggregateEvaluation;
@@ -107,6 +119,32 @@ export class OsEvaluationEngine implements IOsEvaluationEngine {
       readonly outputContractId: string;
     }[];
     readonly brandTone?: string;
+    readonly brandVoice?: string;
+    readonly brandAvoidTerms?: readonly string[];
+    readonly brandPreferredTerms?: readonly string[];
+    readonly prohibitedPatterns?: readonly string[];
+    readonly continuityBound?: boolean;
+    readonly boundLogoAssetId?: string;
+    readonly mediaOutputCount?: number;
+    readonly capabilityId?: string;
+    readonly isImageCapability?: boolean;
+    readonly service?: string;
+    readonly territory?: string;
+    readonly subtype?: string;
+    readonly platform?: string;
+    readonly format?: string;
+    readonly industry?: string;
+    readonly outputKind?: string;
+    readonly mockupRole?: string;
+    readonly expectedModalities?: readonly string[];
+    readonly actualModality?: string;
+    readonly expectedAspectRatio?: string;
+    readonly actualAspectRatio?: string;
+    readonly structuredData?: unknown;
+    readonly mediaArtifactIds?: readonly string[];
+    readonly buildSucceeded?: boolean;
+    readonly buildOutput?: string;
+    readonly runtimeErrors?: readonly string[];
     readonly nowIso?: () => string;
     readonly createId?: (prefix: string) => string;
   }): AggregateEvaluation {
@@ -117,16 +155,45 @@ export class OsEvaluationEngine implements IOsEvaluationEngine {
       .map((t) => `[${t.taskKey}]\n${t.preview}`)
       .join("\n\n");
 
+    const primaryContract =
+      input.taskResults[0]?.outputContractId ?? "output.copy";
+
     return this.evaluateOutput({
       organizationId: input.organizationId,
       executionId: input.executionId,
       planId: input.planId,
       planVersion: input.planVersion,
-      outputContractId: "output.copy",
+      outputContractId: primaryContract,
       preview: combined || " ",
       objective: input.objective,
       briefObjective: input.objective,
       brandTone: input.brandTone,
+      brandVoice: input.brandVoice,
+      brandAvoidTerms: input.brandAvoidTerms,
+      brandPreferredTerms: input.brandPreferredTerms,
+      prohibitedPatterns: input.prohibitedPatterns,
+      continuityBound: input.continuityBound,
+      boundLogoAssetId: input.boundLogoAssetId,
+      mediaOutputCount: input.mediaOutputCount,
+      capabilityId: input.capabilityId,
+      isImageCapability: input.isImageCapability,
+      service: input.service,
+      territory: input.territory,
+      subtype: input.subtype,
+      platform: input.platform,
+      format: input.format,
+      industry: input.industry,
+      outputKind: input.outputKind,
+      mockupRole: input.mockupRole,
+      expectedModalities: input.expectedModalities,
+      actualModality: input.actualModality,
+      expectedAspectRatio: input.expectedAspectRatio,
+      actualAspectRatio: input.actualAspectRatio,
+      structuredData: input.structuredData,
+      mediaArtifactIds: input.mediaArtifactIds,
+      buildSucceeded: input.buildSucceeded,
+      buildOutput: input.buildOutput,
+      runtimeErrors: input.runtimeErrors,
       nowIso: input.nowIso,
       createId: input.createId,
     });
@@ -153,8 +220,14 @@ export class OsEvaluationEngine implements IOsEvaluationEngine {
       .map((r) => r.scores.overallScore)
       .filter((n): n is number => typeof n === "number");
 
+    const creatives = results
+      .map((r) => r.scores.creativeScoreTotal)
+      .filter((n): n is number => typeof n === "number");
+
     const avg = (xs: number[]) =>
       xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined;
+
+    const creativeTotal = creatives.length ? creatives[0] : undefined;
 
     return {
       organizationId: input.organizationId,
@@ -165,11 +238,15 @@ export class OsEvaluationEngine implements IOsEvaluationEngine {
       results,
       worstOutcome: worstOutcome(results),
       aggregateScores: {
-        overallScore: avg(overalls),
+        overallScore:
+          typeof creativeTotal === "number"
+            ? creativeTotal / 100
+            : avg(overalls),
         qualityScore: avg(quals),
         specComplianceScore: avg(specs),
         brandComplianceScore: avg(brands),
         riskScore: risks.length ? Math.max(...risks) : undefined,
+        creativeScoreTotal: creativeTotal,
       },
       runtimeVersion: OS_EVALUATOR_RUNTIME_VERSION,
       evaluatedAt: nowIso(),

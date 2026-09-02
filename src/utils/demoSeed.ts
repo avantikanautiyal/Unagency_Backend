@@ -5,9 +5,32 @@ export const DEMO_EMAIL_DOMAIN = "@unagency.test";
 export const DEMO_USERS = {
   demo: "demo@unagency.test",
   rm: "rm@unagency.test",
+  cs2: "cs2@unagency.test",
+  cs3: "cs3@unagency.test",
+  cs4: "cs4@unagency.test",
   teammate: "teammate@unagency.test",
   invitee: "invitee@unagency.test",
+  admin: "admin@unagency.test",
+  superadmin: "superadmin@unagency.test",
+  resource: "resource@unagency.test",
+  resource2: "resource2@unagency.test",
+  resource3: "resource3@unagency.test",
+  resource4: "resource4@unagency.test",
 } as const;
+
+/** Extra CS portal logins (beyond primary RM). */
+export const DEMO_CS_EXTRA_USERS = [
+  DEMO_USERS.cs2,
+  DEMO_USERS.cs3,
+  DEMO_USERS.cs4,
+] as const;
+
+/** Extra Resource / designer portal logins (beyond primary designer). */
+export const DEMO_RESOURCE_EXTRA_USERS = [
+  DEMO_USERS.resource2,
+  DEMO_USERS.resource3,
+  DEMO_USERS.resource4,
+] as const;
 
 export const DEMO_PLAN_IDS = {
   trial: "plan_demo_trial",

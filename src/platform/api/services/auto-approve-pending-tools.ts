@@ -2,14 +2,14 @@
  * Auto-approve pending tool invocations for autonomous AI / Hybrid modes.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type { AuthPrincipal } from "../contracts";
 import type { ExecutionResource } from "../contracts";
 import {
   approveToolInvocation,
   type ToolRuntimePlatform,
-} from "../../intelligence/providers/tools/composition/tool-runtime-platform";
+} from "../../providers/tools/composition/tool-runtime-platform";
 
 export interface AutoApproveToolsResult {
   readonly status: ExecutionResource["status"];

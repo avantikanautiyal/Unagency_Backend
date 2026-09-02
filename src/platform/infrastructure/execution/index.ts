@@ -12,8 +12,6 @@ export { QueueRegistry } from "./queues/queue-registry";
 export {
   StubJobExecutor,
   IntegrationLayerJobExecutor,
-  ProductionValidationJobExecutor,
-  IntelligenceGatewayHolder,
 } from "./workers/job-executors";
 export { EnqueueJobInputBuilder } from "./builders/enqueue-job-input-builder";
 export {

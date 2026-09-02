@@ -18,16 +18,6 @@ export interface EnterpriseExecutionExtrasDoc extends Document {
   osLifecycle?: string;
   governance?: unknown;
   asyncLane?: unknown;
-  /** Phase 1 — StructuredBrief (tenant-scoped via organizationId). */
-  structuredBrief?: unknown;
-  /** Phase 2 — BrandContext (tenant-scoped via organizationId). */
-  structuredBrandContext?: unknown;
-  /** Phase 3 — KnowledgeContext (tenant-scoped via organizationId). */
-  structuredKnowledgeContext?: unknown;
-  /** Phase 4 — ExecutionPlan (tenant-scoped via organizationId). */
-  structuredExecutionPlan?: unknown;
-  /** Phase 5 — TaskGraphRunSnapshot (tenant-scoped via organizationId). */
-  structuredTaskGraphState?: unknown;
   updatedAt: string;
 }
 
@@ -43,11 +33,6 @@ const enterpriseExecutionExtrasSchema = new Schema<EnterpriseExecutionExtrasDoc>
     osLifecycle: { type: String, required: false },
     governance: { type: Schema.Types.Mixed, required: false },
     asyncLane: { type: Schema.Types.Mixed, required: false },
-    structuredBrief: { type: Schema.Types.Mixed, required: false },
-    structuredBrandContext: { type: Schema.Types.Mixed, required: false },
-    structuredKnowledgeContext: { type: Schema.Types.Mixed, required: false },
-    structuredExecutionPlan: { type: Schema.Types.Mixed, required: false },
-    structuredTaskGraphState: { type: Schema.Types.Mixed, required: false },
     updatedAt: { type: String, required: true },
   },
   { collection: "enterprise_execution_extras" }

@@ -3,7 +3,7 @@
  *
  * Sole external entry point for frontends and SDKs.
  * Consumes Integration Layer / Distributed Execution / Catalog via services.
- * Does not redesign Intelligence OS or Infrastructure.
+ * Does not redesign direct execution or Infrastructure.
  */
 
 export * from "./contracts";
@@ -38,8 +38,6 @@ export { ExecutionApiService } from "./services/execution-api-service";
 export { CatalogApiService } from "./services/catalog-api-service";
 export { validateApiRequest, parseVersionFromPath } from "./validation/validate-request";
 export { serializeSuccess, serializeError, defaultHeaders } from "./serialization/serialize";
-export { MIDDLEWARE_PIPELINE } from "./middleware/pipeline";
-export { SUPPORTED_API_VERSIONS, isSupportedVersion } from "./versioning/versions";
 export {
   createEnterpriseApiPlatform,
   type EnterpriseApiPlatform,
@@ -47,4 +45,3 @@ export {
 } from "./factories/create-enterprise-api-platform";
 export * from "./runtime";
 export * from "./transports/express";
-export * from "./execution-intelligence";

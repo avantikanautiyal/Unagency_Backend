@@ -1,7 +1,9 @@
 # Understanding the UNAGENCY Intelligence Platform
 
 **Purpose of this document:** Help you understand *what we are building*, *why it exists*, and *what has been done so far* — in plain language.  
-**Companion doc:** For technical handoff details, see [`KNOWLEDGE_TRANSFER.md`](./KNOWLEDGE_TRANSFER.md).
+**Architecture note:** Execution runs via the thin/direct provider path (`src/platform/direct/`).
+
+> **Historical status (Aug 2026):** Sections below that claim Prompt Compiler, Knowledge Brain, Execution Intelligence, or TaskGraph are **obsolete**. Those layers were removed because they hurt generation quality. Live create is gateway → route → DirectExecutionEngine / async media. A new Creative Intelligence OS will be rebuilt from schemas/memory outward — do not resurrect the old enrichment novel.
 
 ---
 
@@ -208,23 +210,18 @@ This is the current frontier. We have built the **structure and logic** for:
 
 ## How This Relates to the Rest of the App
 
-Right now, the Intelligence Platform lives as a **self-contained module** inside the backend:
+AI execution lives under `src/platform/` as a modular stack:
 
 ```
-src/platform/intelligence/     ← all intelligence code
-src/controllers/               ← existing business API routes
+src/platform/direct/           ← DirectExecutionEngine (prompt → provider)
+src/platform/api/              ← Enterprise Gateway (/v1/*)
+src/platform/providers/        ← Provider runtime, routing, negotiation
+src/platform/os/               ← Governance, refinement, delivery, evaluation
+src/controllers/               ← Legacy business API routes
 src/models/                    ← MongoDB models for business data
-src/background/workers/        ← email, jobs, etc.
 ```
 
-The existing Prakria Direct backend (users, clients, briefs, projects, subscriptions, emails) **still runs independently**. The intelligence platform is **not yet wired into the Express API routes** for production features. That integration — exposing the gateway from business controllers — is a key upcoming step.
-
-So when you explore the repo, you'll see two worlds:
-
-1. **The business backend** — traditional CRUD, auth, emails, MongoDB
-2. **The intelligence platform** — the new AI infrastructure, tested in isolation
-
-They are designed to merge through the gateway, but that merge hasn't happened in production code yet.
+The Enterprise Gateway is mounted from `src/app.ts` when `ENTERPRISE_API_EXECUTION_MODE` is `simulated` or `live`. Product features call `POST /v1/executions` through the Gateway SDK — not internal platform modules directly.
 
 ---
 
@@ -306,12 +303,10 @@ To make this concrete, imagine the future:
 
 | If you want to understand… | Start here |
 |----------------------------|------------|
-| Why this exists | `docs/specification/00-VISION.md` |
-| Overall architecture | `docs/specification/01-SYSTEM_OVERVIEW.md` |
-| Full request lifecycle | `docs/specification/04-INTELLIGENCE_PIPELINE.md` |
-| Module list and roles | `src/platform/intelligence/README.md` |
-| How to bootstrap and test | `src/platform/intelligence/gateway/README.md` |
-| Technical handoff details | `docs/KNOWLEDGE_TRANSFER.md` |
+| Direct execution engine | `src/platform/direct/` |
+| Enterprise API gateway | `src/platform/api/` |
+| Provider runtime | `src/platform/providers/runtime/` |
+| Post-provider OS (governance, delivery) | `src/platform/os/` |
 | Any specific module | `<module>/README.md` inside `src/platform/intelligence/` |
 
 ---
@@ -348,4 +343,4 @@ To make this concrete, imagine the future:
 
 ---
 
-*This document describes the state of the platform as of July 2026. For the latest technical details and module status, cross-check with `docs/KNOWLEDGE_TRANSFER.md` and `docs/specification/20-ROADMAP.md`.*
+*This document describes the state of the platform as of July 2026. For current execution architecture, see `src/platform/direct/` and `src/platform/api/`.*

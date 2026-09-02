@@ -109,6 +109,8 @@ export type CreativeProjectInput = {
   productPath?: string;
   resumeStep?: string;
   prompt?: string;
+  /** Client creation mode: ai | human | hybrid */
+  creationMode?: string;
 };
 
 export type CreativeProjectDto = {
@@ -129,6 +131,7 @@ export type CreativeProjectDto = {
   prompt?: string;
   brandId?: string;
   origin?: string;
+  creationMode?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -149,6 +152,12 @@ function applyProductFields(
   if (input.artifactId) doc.artifactId = input.artifactId;
   if (input.brandId && mongoose.isValidObjectId(input.brandId)) {
     doc.brandId = new mongoose.Types.ObjectId(input.brandId);
+  }
+  if (input.creationMode) {
+    const mode = String(input.creationMode).toLowerCase().trim();
+    if (mode === "ai" || mode === "human" || mode === "hybrid") {
+      doc.creationMode = mode;
+    }
   }
 }
 
@@ -171,6 +180,7 @@ function toDto(doc: IProject & { createdAt?: Date; updatedAt?: Date }): Creative
     prompt: doc.creativePrompt || doc.description,
     brandId: doc.brandId?.toString?.(),
     origin: doc.origin,
+    creationMode: doc.creationMode,
     createdAt: doc.createdAt?.toISOString?.(),
     updatedAt: doc.updatedAt?.toISOString?.(),
   };
@@ -233,9 +243,18 @@ export class CreativeProjectService {
       existing.origin = "ai_creative";
       if (executionId) existing.executionId = executionId;
       applyProductFields(existing, input);
+      if (!existing.creationMode && input.creationMode) {
+        applyProductFields(existing, { creationMode: input.creationMode });
+      }
       await existing.save();
       return toDto(existing as any);
     }
+
+    const modeRaw = String(input.creationMode ?? "ai").toLowerCase().trim();
+    const creationMode =
+      modeRaw === "hybrid" || modeRaw === "human" || modeRaw === "ai"
+        ? modeRaw
+        : "ai";
 
     const created = await Projects.create({
       userId: new mongoose.Types.ObjectId(input.userId),
@@ -247,6 +266,7 @@ export class CreativeProjectService {
       deadline: defaultDeadline(now),
       status,
       origin: "ai_creative",
+      creationMode,
       executionId,
       sourceRouteId: input.sourceRouteId?.trim() || undefined,
       artifactId: input.artifactId?.trim() || undefined,
@@ -283,14 +303,18 @@ export class CreativeProjectService {
     if (!mongoose.isValidObjectId(input.projectId)) {
       throw new ApiError("Invalid project id", 400);
     }
+    if (!mongoose.isValidObjectId(input.userId)) {
+      throw new ApiError("Unauthorized", 401);
+    }
     const status = String(input.status ?? "").trim();
     if (!ALLOWED_STATUSES.has(status)) {
       throw new ApiError("Invalid project status", 400);
     }
 
+    const userOid = new mongoose.Types.ObjectId(input.userId);
     const doc = await Projects.findOne({
-      _id: input.projectId,
-      userId: input.userId,
+      _id: new mongoose.Types.ObjectId(input.projectId),
+      userId: userOid,
     });
     if (!doc) throw new ApiError("Project not found", 404);
 
@@ -303,6 +327,63 @@ export class CreativeProjectService {
     if (input.prompt?.trim()) doc.creativePrompt = input.prompt.trim();
     await doc.save();
     return toDto(doc as any);
+  }
+
+  async remove(input: {
+    userId: string;
+    projectId: string;
+  }): Promise<{ id: string }> {
+    if (!mongoose.isValidObjectId(input.projectId)) {
+      throw new ApiError("Invalid project id", 400);
+    }
+    if (!mongoose.isValidObjectId(input.userId)) {
+      throw new ApiError("Unauthorized", 401);
+    }
+    const userOid = new mongoose.Types.ObjectId(input.userId);
+    const projectOid = new mongoose.Types.ObjectId(input.projectId);
+    const doc = await Projects.findOne({
+      _id: projectOid,
+      userId: userOid,
+    });
+    if (!doc) throw new ApiError("Project not found", 404);
+
+    const fileIds = Array.isArray(doc.files)
+      ? doc.files.map((id) => String(id)).filter(Boolean)
+      : [];
+    const executionIds = doc.executionId?.trim()
+      ? [doc.executionId.trim()]
+      : [];
+
+    // Cascade: hard-delete vault assets tied to this project (not the parent chat).
+    try {
+      const { productAssetService } = await import("./product-asset-service");
+      await productAssetService.hardDeleteMatching({
+        userId: input.userId,
+        projectId: String(doc._id),
+        executionIds,
+        assetIds: fileIds,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // No org ⇒ no vault uploads possible; still allow project row delete.
+      if (!/no organisation/i.test(message)) {
+        console.warn(
+          "[creative-project-service] vault cascade failed:",
+          message
+        );
+        throw new ApiError(
+          "Could not delete project vault assets. Try again in a moment.",
+          503
+        );
+      }
+    }
+
+    const deleted = await Projects.findOneAndDelete({
+      _id: projectOid,
+      userId: userOid,
+    });
+    if (!deleted) throw new ApiError("Project not found", 404);
+    return { id: String(deleted._id) };
   }
 }
 

@@ -1,7 +1,7 @@
 {
   "_type": "export",
   "__export_format": 4,
-  "__export_date": "2026-07-17T07:29:06.367Z",
+  "__export_date": "2026-08-23T14:16:32.609Z",
   "__export_source": "unagency.api.inventory",
   "resources": [
     {
@@ -232,6 +232,44 @@
       "_id": "req_11",
       "_type": "request",
       "parentId": "wrk_unagency",
+      "name": "GET /v1/runtime/capabilities",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/runtime/capabilities",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_12",
+      "_type": "request",
+      "parentId": "wrk_unagency",
+      "name": "GET /v1/intelligence/capabilities",
+      "method": "GET",
+      "url": "{{ _.base_url }}/v1/intelligence/capabilities",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.access_token }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_13",
+      "_type": "request",
+      "parentId": "wrk_unagency",
       "name": "GET /v1/providers",
       "method": "GET",
       "url": "{{ _.base_url }}/v1/providers",
@@ -248,7 +286,7 @@
       "body": {}
     },
     {
-      "_id": "req_12",
+      "_id": "req_14",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/models",
@@ -267,7 +305,7 @@
       "body": {}
     },
     {
-      "_id": "req_13",
+      "_id": "req_15",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "POST /v1/executions",
@@ -289,7 +327,7 @@
       }
     },
     {
-      "_id": "req_14",
+      "_id": "req_16",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions",
@@ -308,7 +346,7 @@
       "body": {}
     },
     {
-      "_id": "req_15",
+      "_id": "req_17",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}",
@@ -327,7 +365,7 @@
       "body": {}
     },
     {
-      "_id": "req_16",
+      "_id": "req_18",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "POST /v1/executions/{executionId}/cancel",
@@ -346,7 +384,7 @@
       "body": {}
     },
     {
-      "_id": "req_17",
+      "_id": "req_19",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "POST /v1/executions/{executionId}/retry",
@@ -365,7 +403,7 @@
       "body": {}
     },
     {
-      "_id": "req_18",
+      "_id": "req_20",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/stream",
@@ -384,7 +422,7 @@
       "body": {}
     },
     {
-      "_id": "req_19",
+      "_id": "req_21",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/artifacts",
@@ -403,7 +441,7 @@
       "body": {}
     },
     {
-      "_id": "req_20",
+      "_id": "req_22",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/diagnostics",
@@ -422,7 +460,7 @@
       "body": {}
     },
     {
-      "_id": "req_21",
+      "_id": "req_23",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/trace",
@@ -441,7 +479,7 @@
       "body": {}
     },
     {
-      "_id": "req_22",
+      "_id": "req_24",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/cost",
@@ -460,7 +498,7 @@
       "body": {}
     },
     {
-      "_id": "req_23",
+      "_id": "req_25",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/cost-breakdown",
@@ -479,7 +517,7 @@
       "body": {}
     },
     {
-      "_id": "req_24",
+      "_id": "req_26",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/evaluation",
@@ -498,7 +536,7 @@
       "body": {}
     },
     {
-      "_id": "req_25",
+      "_id": "req_27",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/experience",
@@ -517,7 +555,7 @@
       "body": {}
     },
     {
-      "_id": "req_26",
+      "_id": "req_28",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/model-decision",
@@ -536,7 +574,7 @@
       "body": {}
     },
     {
-      "_id": "req_27",
+      "_id": "req_29",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/routing",
@@ -555,7 +593,7 @@
       "body": {}
     },
     {
-      "_id": "req_28",
+      "_id": "req_30",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/planning",
@@ -574,7 +612,7 @@
       "body": {}
     },
     {
-      "_id": "req_29",
+      "_id": "req_31",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/timeline",
@@ -593,7 +631,7 @@
       "body": {}
     },
     {
-      "_id": "req_30",
+      "_id": "req_32",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/provider",
@@ -612,7 +650,7 @@
       "body": {}
     },
     {
-      "_id": "req_31",
+      "_id": "req_33",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/metrics",
@@ -631,7 +669,7 @@
       "body": {}
     },
     {
-      "_id": "req_32",
+      "_id": "req_34",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/tokens",
@@ -650,7 +688,7 @@
       "body": {}
     },
     {
-      "_id": "req_33",
+      "_id": "req_35",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/quality",
@@ -669,7 +707,7 @@
       "body": {}
     },
     {
-      "_id": "req_34",
+      "_id": "req_36",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/confidence",
@@ -688,7 +726,7 @@
       "body": {}
     },
     {
-      "_id": "req_35",
+      "_id": "req_37",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/audit",
@@ -707,7 +745,7 @@
       "body": {}
     },
     {
-      "_id": "req_36",
+      "_id": "req_38",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/executions/{executionId}/decision-graph",
@@ -726,7 +764,7 @@
       "body": {}
     },
     {
-      "_id": "req_37",
+      "_id": "req_39",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/benchmarks",
@@ -745,7 +783,7 @@
       "body": {}
     },
     {
-      "_id": "req_38",
+      "_id": "req_40",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/analytics/summary",
@@ -764,7 +802,7 @@
       "body": {}
     },
     {
-      "_id": "req_39",
+      "_id": "req_41",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/billing/summary",
@@ -783,7 +821,7 @@
       "body": {}
     },
     {
-      "_id": "req_40",
+      "_id": "req_42",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/notifications",
@@ -802,7 +840,7 @@
       "body": {}
     },
     {
-      "_id": "req_41",
+      "_id": "req_43",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/audit",
@@ -821,7 +859,7 @@
       "body": {}
     },
     {
-      "_id": "req_42",
+      "_id": "req_44",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "POST /v1/files",
@@ -843,7 +881,7 @@
       }
     },
     {
-      "_id": "req_43",
+      "_id": "req_45",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/files/{fileId}",
@@ -862,7 +900,7 @@
       "body": {}
     },
     {
-      "_id": "req_44",
+      "_id": "req_46",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/reviews",
@@ -881,7 +919,7 @@
       "body": {}
     },
     {
-      "_id": "req_45",
+      "_id": "req_47",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "POST /v1/webhooks",
@@ -903,7 +941,7 @@
       }
     },
     {
-      "_id": "req_46",
+      "_id": "req_48",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/brand-profiles",
@@ -922,7 +960,7 @@
       "body": {}
     },
     {
-      "_id": "req_47",
+      "_id": "req_49",
       "_type": "request",
       "parentId": "wrk_unagency",
       "name": "GET /v1/knowledge-bases",

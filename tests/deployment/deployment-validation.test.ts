@@ -35,7 +35,7 @@ describe("Production Deployment & DevOps Platform", () => {
       "Dockerfile",
       "Dockerfile.api",
       "Dockerfile.business",
-      "Dockerfile.intelligence",
+      "Dockerfile.direct",
       "Dockerfile.worker",
       "Dockerfile.background",
       "Dockerfile.migration",

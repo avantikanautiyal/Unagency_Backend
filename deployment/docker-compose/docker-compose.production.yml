@@ -56,11 +56,11 @@ services:
     restart: unless-stopped
     depends_on: [api]
 
-  intelligence:
+  direct:
     image: ${UNAGENCY_IMAGE:-unagency/platform:1.0.0}
     env_file: ../environments/production/app.env
     environment:
-      SERVICE_ROLE: intelligence
+      SERVICE_ROLE: direct
     restart: unless-stopped
     depends_on: [api]
 

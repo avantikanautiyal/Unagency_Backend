@@ -1,12 +1,11 @@
 /**
- * Create-execution pipeline — thin orchestrator over prepass, OS assembly, dispatch.
+ * Create-execution pipeline — prepass → dispatch (direct provider path only).
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
+import { success, type Result } from "../../core/result";
 import type { AuthPrincipal, CreateExecutionRequest, ExecutionResource } from "../contracts";
 import type { ExecutionCreateHost } from "./execution-create-host";
 import { runCreatePrepass } from "./execution-create-prepass";
-import { runOsContextAssembly } from "./execution-os-context-assembly";
 import { runCreateDispatch } from "./execution-create-dispatch";
 
 export async function runCreateExecution(
@@ -18,9 +17,6 @@ export async function runCreateExecution(
   if (!pre.ok) return pre;
   if (pre.value.kind === "done") return success(pre.value.resource);
 
-  const assembled = await runOsContextAssembly(host, pre.value.state);
-  if (!assembled.ok) return assembled;
-  if (assembled.value.kind === "done") return success(assembled.value.resource);
-
-  return runCreateDispatch(host, assembled.value.state);
+  // Direct provider path — no OS/intelligence layer assembly.
+  return runCreateDispatch(host, pre.value.state);
 }

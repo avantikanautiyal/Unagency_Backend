@@ -5,7 +5,7 @@
  * reinforce brand preferences on pass, attach fix directive on fail.
  */
 
-import { mergePreferencesIntoProductBrand } from "../platform/business/brand-brain/learning/product-brand-preference-writer";
+import { mergePreferencesIntoProductBrand } from "./brand-preference-writer";
 import {
   buildPresentationGroundingLabels,
   extractPresentationMustUseFacts,

@@ -7,7 +7,7 @@ export function config() {
   const cleared = syncBilledProviderEnvFromDotenvFile();
   if (cleared.length > 0) {
     console.log(
-      `🧠 [AI OS] cleared leftover provider env (commented/absent in .env): ${cleared.join(", ")}`
+      `🧠 [Direct] cleared leftover provider env (commented/absent in .env): ${cleared.join(", ")}`
     );
   }
 }

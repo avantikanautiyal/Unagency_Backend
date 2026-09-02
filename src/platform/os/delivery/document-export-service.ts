@@ -50,6 +50,47 @@ const INK_SOFT = "F7F4F0";
 const MUTED = "6B7280";
 const WHITE = "FFFFFF";
 
+export type PresentationExportOptions = {
+  readonly brandName?: string;
+  readonly brandColors?: readonly string[];
+};
+
+function pptxColor(raw: string | undefined, fallback: string): string {
+  if (!raw?.trim()) return fallback;
+  const t = raw.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(t)) {
+    return t
+      .split("")
+      .map((c) => c + c)
+      .join("")
+      .toUpperCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(t)) return t.toUpperCase();
+  return fallback;
+}
+
+function pdfHex(raw: string | undefined, fallback: string): string {
+  if (!raw?.trim()) return fallback;
+  const t = raw.trim();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return t.toUpperCase();
+  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return `#${t}`.toUpperCase();
+  return fallback;
+}
+
+function resolvePresentationExportTheme(options?: PresentationExportOptions) {
+  const colors = options?.brandColors?.filter((c) => typeof c === "string" && c.trim()) ?? [];
+  return {
+    accent: pptxColor(colors[0], ACCENT),
+    ink: pptxColor(colors[1], INK),
+    inkSoft: pptxColor(colors[2], INK_SOFT),
+    muted: MUTED,
+    white: WHITE,
+    pdfAccent: pdfHex(colors[0], `#${ACCENT}`),
+    pdfInk: pdfHex(colors[1], `#${INK}`),
+    pdfInkSoft: pdfHex(colors[2], `#${INK_SOFT}`),
+  };
+}
+
 const LAYOUTS = new Set<string>([
   "title_hero",
   "section_divider",
@@ -62,14 +103,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseSlide(item: unknown): PresentationSlide | null {
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function normalizeSlide(item: unknown): PresentationSlide | null {
   if (!isRecord(item)) return null;
-  const slideTitle = typeof item.title === "string" ? item.title.trim() : "";
-  const bullets = Array.isArray(item.bullets)
-    ? item.bullets
-        .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
-        .map((b) => b.trim())
-    : [];
+  const slideTitle = firstNonEmptyString(item.title, item.heading, item.name) ?? "";
+  const bulletSources = [
+    item.bullets,
+    item.bulletPoints,
+    item.points,
+    item.keyPoints,
+  ];
+  let bullets: string[] = [];
+  for (const source of bulletSources) {
+    if (!Array.isArray(source)) continue;
+    bullets = source
+      .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+      .map((b) => b.trim());
+    if (bullets.length > 0) break;
+  }
+  if (bullets.length === 0) {
+    const body = firstNonEmptyString(item.body, item.content, item.text);
+    if (body) bullets = [body];
+  }
+  if (bullets.length === 1) {
+    bullets = [bullets[0]!, bullets[0]!];
+  }
   if (!slideTitle || bullets.length === 0) return null;
   const layoutRaw =
     typeof item.layout === "string" ? item.layout.trim() : "content_bullets";
@@ -87,6 +151,10 @@ function parseSlide(item: unknown): PresentationSlide | null {
       ? { visualCue: item.visualCue.trim() }
       : {}),
   };
+}
+
+function parseSlide(item: unknown): PresentationSlide | null {
+  return normalizeSlide(item);
 }
 
 function parseSlides(slidesRaw: unknown): PresentationSlide[] {
@@ -122,6 +190,108 @@ export function parsePresentationPlan(data: unknown): PresentationPlan | null {
   };
 }
 
+/** Unwrap schema-name or vendor envelope keys around `{ routes: [...] }`. */
+function unwrapPresentationRoutesEnvelope(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  if (Array.isArray(data.routes)) return data;
+  const envelopeKeys = [
+    "PresentationRoutes",
+    "presentationRoutes",
+    "presentation_routes",
+    "PresentationRoute",
+    "data",
+    "result",
+    "output",
+    "response",
+  ];
+  for (const key of envelopeKeys) {
+    const nested = data[key];
+    if (!isRecord(nested)) continue;
+    const unwrapped = unwrapPresentationRoutesEnvelope(nested);
+    if (Array.isArray(unwrapped.routes)) return unwrapped;
+  }
+  return data;
+}
+
+/**
+ * Normalize provider near-miss presentation JSON toward exportable routes.
+ * Models often omit deckTitle/layout or nest slides under `deck`.
+ */
+export function recoverPresentationRoutesPayload(data: unknown): unknown {
+  let normalized: unknown = data;
+  if (typeof normalized === "string" && normalized.trim()) {
+    try {
+      normalized = JSON.parse(normalized) as unknown;
+    } catch {
+      return data;
+    }
+  }
+  if (!isRecord(normalized)) return data;
+  const unwrapped = unwrapPresentationRoutesEnvelope(normalized);
+  if (parsePresentationRoutes(unwrapped)) return unwrapped;
+
+  const routesRaw = Array.isArray(unwrapped.routes) ? unwrapped.routes : null;
+  if (!routesRaw) {
+    const single = parsePresentationPlan(unwrapped);
+    if (single && single.slides.length > 0) {
+      return {
+        routes: [
+          {
+            title: single.title,
+            description: single.subtitle ?? single.title,
+            deckTitle: single.title,
+            deckSubtitle: single.subtitle ?? "",
+            slides: single.slides,
+          },
+        ],
+      };
+    }
+    return unwrapped;
+  }
+
+  const routes: Record<string, unknown>[] = [];
+  for (const item of routesRaw) {
+    if (!isRecord(item)) continue;
+    const title =
+      firstNonEmptyString(item.title, item.name, item.deckTitle) ?? "Route";
+    const description =
+      firstNonEmptyString(item.description, item.summary, item.subtitle) ??
+      title;
+    const deckTitle =
+      firstNonEmptyString(item.deckTitle, item.title, item.name) ?? title;
+    const deckSubtitle =
+      firstNonEmptyString(item.deckSubtitle, item.subtitle) ?? "";
+
+    let slidesRaw: unknown = item.slides;
+    if (!Array.isArray(slidesRaw) && isRecord(item.deck)) {
+      slidesRaw = item.deck.slides;
+    }
+
+    const slides: PresentationSlide[] = [];
+    if (Array.isArray(slidesRaw)) {
+      for (const slideItem of slidesRaw) {
+        const slide = normalizeSlide(slideItem);
+        if (slide) slides.push(slide);
+      }
+    }
+    if (slides.length === 0) continue;
+
+    routes.push({
+      title,
+      description,
+      deckTitle,
+      deckSubtitle,
+      slides,
+    });
+  }
+
+  if (routes.length === 0) return unwrapped;
+  const next: Record<string, unknown> = { ...unwrapped, routes };
+  delete next.concepts;
+  return next;
+}
+
 /** Exactly 3 pitch-deck creative routes (preferred product shape). */
 export function parsePresentationRoutes(
   data: unknown
@@ -142,6 +312,20 @@ export function parsePresentationRoutes(
     });
   }
   return routes.length > 0 ? routes : null;
+}
+
+/** True when payload has full slide decks ready for PDF/PPTX materialization. */
+export function isExportablePresentationPayload(data: unknown): boolean {
+  const recovered = recoverPresentationRoutesPayload(data);
+  return Boolean(parsePresentationRoutes(recovered) || parsePresentationPlan(recovered));
+}
+
+/** True when payload stopped at Phase-A concepts (not exportable alone). */
+export function isConceptsOnlyPresentationPayload(data: unknown): boolean {
+  if (!isRecord(data) || !Array.isArray(data.concepts) || data.concepts.length === 0) {
+    return false;
+  }
+  return !isExportablePresentationPayload(data);
 }
 
 export function parseDocumentPlan(data: unknown): DocumentPlan | null {
@@ -183,25 +367,38 @@ function applyNotes(
   }
 }
 
-function paintAccentBar(slide: {
+function paintAccentBar(
+  slide: {
   addShape: (
     type: string,
     opts: Record<string, unknown>
   ) => void;
-}): void {
+},
+  accent: string
+): void {
   slide.addShape("rect", {
     x: 0,
     y: 0,
     w: 0.12,
     h: 5.625,
-    fill: { color: ACCENT },
-    line: { color: ACCENT },
+    fill: { color: accent },
+    line: { color: accent },
   });
 }
 
 export async function buildPresentationPptx(
-  plan: PresentationPlan
+  plan: PresentationPlan,
+  options?: PresentationExportOptions
 ): Promise<Buffer> {
+  const theme = resolvePresentationExportTheme(options);
+  const paintBar = (slide: Parameters<typeof paintAccentBar>[0]) =>
+    paintAccentBar(slide, theme.accent);
+  const ACCENT = theme.accent;
+  const INK = theme.ink;
+  const INK_SOFT = theme.inkSoft;
+  const MUTED = theme.muted;
+  const WHITE = theme.white;
+  const brandFooter = options?.brandName?.trim() || "UNAGENCY";
   const pptx = new PptxGenJS();
   pptx.author = "Unagency";
   pptx.title = plan.title;
@@ -257,7 +454,7 @@ export async function buildPresentationPptx(
         fontFace: "Arial",
       });
     }
-    s.addText("UNAGENCY", {
+    s.addText(brandFooter, {
       x: 0.6,
       y: 5.05,
       w: 4,
@@ -283,7 +480,7 @@ export async function buildPresentationPptx(
         fill: { color: INK },
         line: { color: INK },
       });
-      paintAccentBar(s as never);
+      paintBar(s as never);
       s.addText(slide.title, {
         x: 0.7,
         y: layout === "closing" ? 1.8 : 1.5,
@@ -353,7 +550,7 @@ export async function buildPresentationPptx(
         fill: { color: INK_SOFT },
         line: { color: INK_SOFT },
       });
-      paintAccentBar(s as never);
+      paintBar(s as never);
       s.addText(slide.title, {
         x: 0.7,
         y: 1.4,
@@ -397,7 +594,7 @@ export async function buildPresentationPptx(
         fill: { color: WHITE },
         line: { color: WHITE },
       });
-      paintAccentBar(s as never);
+      paintBar(s as never);
       s.addShape("rect", {
         x: 0.7,
         y: 0.45,
@@ -452,8 +649,14 @@ export async function buildPresentationPptx(
 }
 
 export async function buildPresentationPdf(
-  plan: PresentationPlan
+  plan: PresentationPlan,
+  options?: PresentationExportOptions
 ): Promise<Buffer> {
+  const theme = resolvePresentationExportTheme(options);
+  const INK = theme.ink;
+  const ACCENT = theme.accent;
+  const INK_SOFT = theme.inkSoft;
+  const brandFooter = options?.brandName?.trim() || "UNAGENCY";
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       margin: 0,
@@ -486,7 +689,7 @@ export async function buildPresentationPdf(
         .fillColor(`#${ACCENT}`)
         .fontSize(10)
         .font("Helvetica-Bold")
-        .text("UNAGENCY", 48, 540);
+        .text(brandFooter, 48, 540);
     };
 
     drawCover();
@@ -574,6 +777,151 @@ export async function buildDocumentPdf(plan: DocumentPlan): Promise<Buffer> {
   });
 }
 
+function normalizeBrochureHex(raw: string | undefined, fallback: string): string {
+  if (!raw?.trim()) return fallback;
+  const t = raw.trim();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return t.toUpperCase();
+  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return `#${t}`.toUpperCase();
+  return fallback;
+}
+
+/**
+ * Designed multi-page brochure/leaflet PDF (not a plain text report).
+ * Keeps DocumentPlan as the content contract; layout is server-owned.
+ */
+export async function buildBrochurePdf(
+  plan: DocumentPlan,
+  options?: {
+    readonly brandName?: string;
+    readonly brandColors?: readonly string[];
+    readonly subtype?: "brochures" | "leaflets";
+  }
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const pageW = 595; // A4 portrait
+    const pageH = 842;
+    const doc = new PDFDocument({ margin: 0, size: [pageW, pageH] });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const primary = normalizeBrochureHex(options?.brandColors?.[0], `#${ACCENT}`);
+    const secondary = normalizeBrochureHex(options?.brandColors?.[1], `#${INK}`);
+    const surface = normalizeBrochureHex(options?.brandColors?.[2], `#${INK_SOFT}`);
+    const brand =
+      options?.brandName?.trim() ||
+      plan.title.split(/\s+/)[0] ||
+      "Brand";
+    const isLeaflet = options?.subtype === "leaflets";
+
+    // —— Cover / hero ——
+    doc.rect(0, 0, pageW, pageH).fill(secondary);
+    doc.rect(0, 0, pageW, 18).fill(primary);
+    doc.rect(0, pageH - 120, pageW, 120).fill(primary);
+    // Visual placement block (designed panel, not a mockup photo)
+    doc.rect(40, 80, pageW - 80, 220).fill(surface);
+    doc.rect(40, 80, 12, 220).fill(primary);
+    doc
+      .fillColor(primary)
+      .fontSize(11)
+      .font("Helvetica-Bold")
+      .text(isLeaflet ? "LEAFLET" : "BROCHURE", 64, 100, { width: 400 });
+    doc
+      .fillColor(secondary)
+      .fontSize(28)
+      .font("Helvetica-Bold")
+      .text(plan.title, 64, 140, { width: pageW - 140 });
+    if (plan.summary) {
+      doc
+        .fillColor(`#${MUTED}`)
+        .fontSize(12)
+        .font("Helvetica")
+        .text(plan.summary, 64, 240, { width: pageW - 140, lineGap: 3 });
+    }
+    doc
+      .fillColor("#FFFFFF")
+      .fontSize(14)
+      .font("Helvetica-Bold")
+      .text(brand, 48, pageH - 80, { width: pageW - 96 });
+    doc
+      .fillColor("#FFFFFF")
+      .fontSize(10)
+      .font("Helvetica")
+      .text("Designed publication · Unagency", 48, pageH - 55);
+
+    // —— Content pages (section layouts with hierarchy + whitespace) ——
+    const sections = plan.sections.slice(0, isLeaflet ? 4 : 8);
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i]!;
+      doc.addPage({ size: [pageW, pageH], margin: 0 });
+      const even = i % 2 === 0;
+      doc.rect(0, 0, pageW, pageH).fill(even ? "#FFFFFF" : surface);
+      doc.rect(0, 0, 16, pageH).fill(primary);
+      // Side visual band
+      doc.rect(pageW - 100, 0, 100, pageH).fill(even ? surface : "#FFFFFF");
+      doc.rect(pageW - 100, 60 + (i % 3) * 40, 100, 160).fill(primary);
+      doc
+        .fillColor(primary)
+        .fontSize(10)
+        .font("Helvetica-Bold")
+        .text(`0${i + 1}`, 48, 48);
+      doc
+        .fillColor(secondary)
+        .fontSize(22)
+        .font("Helvetica-Bold")
+        .text(section.heading, 48, 78, { width: pageW - 180 });
+      doc
+        .fillColor("#1F2937")
+        .fontSize(12)
+        .font("Helvetica")
+        .text(section.body, 48, 130, {
+          width: pageW - 180,
+          lineGap: 4,
+          align: "left",
+        });
+      doc
+        .fillColor(`#${MUTED}`)
+        .fontSize(9)
+        .font("Helvetica")
+        .text(brand, 48, pageH - 40);
+    }
+
+    // —— CTA / contact ——
+    doc.addPage({ size: [pageW, pageH], margin: 0 });
+    doc.rect(0, 0, pageW, pageH).fill(secondary);
+    doc.rect(40, 200, pageW - 80, 280).fill(primary);
+    doc
+      .fillColor("#FFFFFF")
+      .fontSize(24)
+      .font("Helvetica-Bold")
+      .text("Let's talk", 64, 240, { width: pageW - 128 });
+    doc
+      .fillColor("#FFFFFF")
+      .fontSize(13)
+      .font("Helvetica")
+      .text(
+        plan.summary?.trim() ||
+          `Connect with ${brand} — the next step starts here.`,
+        64,
+        290,
+        { width: pageW - 128, lineGap: 3 }
+      );
+    doc
+      .fillColor("#FFFFFF")
+      .fontSize(11)
+      .font("Helvetica-Bold")
+      .text(brand.toUpperCase(), 64, 400);
+    doc
+      .fillColor("#FFFFFF")
+      .fontSize(10)
+      .font("Helvetica")
+      .text("Contact · CTA · Unagency", 64, 430);
+
+    doc.end();
+  });
+}
+
 /** Also produce a simple PPTX for document plans (one section per slide). */
 export async function buildDocumentPptx(plan: DocumentPlan): Promise<Buffer> {
   const asPresentation: PresentationPlan = {
@@ -595,4 +943,46 @@ export async function buildDocumentPptx(plan: DocumentPlan): Promise<Buffer> {
       : { ...s, bullets: ["See document PDF for full detail."] }
   );
   return buildPresentationPptx({ ...asPresentation, slides });
+}
+
+/** Editable Word document for DocumentPlan downloads. */
+export async function buildDocumentDocx(plan: DocumentPlan): Promise<Buffer> {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import(
+    "docx"
+  );
+  const children: InstanceType<typeof Paragraph>[] = [
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      children: [new TextRun({ text: plan.title, bold: true })],
+    }),
+  ];
+  if (plan.summary?.trim()) {
+    children.push(
+      new Paragraph({
+        spacing: { after: 240 },
+        children: [
+          new TextRun({ text: plan.summary.trim(), italics: true, size: 22 }),
+        ],
+      })
+    );
+  }
+  for (const section of plan.sections) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 280, after: 120 },
+        children: [new TextRun({ text: section.heading, bold: true })],
+      }),
+      new Paragraph({
+        spacing: { after: 200 },
+        children: [new TextRun({ text: section.body, size: 22 })],
+      })
+    );
+  }
+  const doc = new Document({
+    creator: "Unagency",
+    title: plan.title,
+    sections: [{ children }],
+  });
+  return Packer.toBuffer(doc);
 }

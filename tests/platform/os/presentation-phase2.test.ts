@@ -8,6 +8,24 @@ const divastraBrief =
   "DiVastra ethnic fashion e-commerce growth strategy peach beige palette women 15-65";
 
 describe("presentation must-use constraints", () => {
+  it("extracts brand profile and palette into must-use facts", () => {
+    const facts = extractPresentationMustUseFacts({
+      userBrief: divastraBrief,
+      brandName: "DiVastra",
+      metadata: {
+        brandColors: ["#F5E6D3", "#E8A87C"],
+        brandIndustry: "Ethnic fashion e-commerce",
+        brandPositioning: "Premium handcrafted ethnic wear for modern women",
+        brandTargetAudience: "Women 25-55 seeking authentic Indian fashion",
+        brandSummary: "Peach and beige palette celebrating heritage craftsmanship",
+      },
+    });
+    expect(facts.some((f) => f.key === "palette")).toBe(true);
+    expect(facts.some((f) => f.key === "industry")).toBe(true);
+    expect(facts.some((f) => f.key === "positioning")).toBe(true);
+    expect(facts.some((f) => f.key === "audience")).toBe(true);
+  });
+
   it("extracts brand and brief anchors", () => {
     const facts = extractPresentationMustUseFacts({
       userBrief: divastraBrief,

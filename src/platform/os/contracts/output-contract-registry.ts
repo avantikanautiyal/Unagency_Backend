@@ -1,10 +1,21 @@
 /**
- * Output contract registry foundation — Phase 0.
- * Migrates awareness of existing structured/tool contracts without inventing full specs.
+ * Output contract registry foundation — Phase 0 + Step 1 canonical contracts.
+ * Capability-level contracts (KNOWN) + service-level contracts via ServiceOutputContractRegistry.
  */
 
 import type { IOutputContractRegistry } from "../contracts/layer-ports";
 import type { OsLayerImplementationStatus } from "../contracts/layer-status";
+import {
+  defaultServiceOutputContractRegistry,
+  resolveServiceOutputContractId,
+} from "./output-contracts/service-contract-registry";
+
+export {
+  defaultServiceOutputContractRegistry,
+  resolveServiceOutputContractId,
+  ServiceOutputContractRegistry,
+} from "./output-contracts/service-contract-registry";
+export * from "./output-contracts";
 
 const KNOWN: Readonly<
   Record<
@@ -128,8 +139,8 @@ const KNOWN: Readonly<
   },
   "output.document": {
     inputSchemaRef: "brief+brand+knowledge",
-    outputSchemaRef: "DocumentPlan + pdf/pptx artifacts",
-    requiredArtifacts: ["text", "pdf", "pptx"],
+    outputSchemaRef: "DocumentPlan + pdf/docx artifacts",
+    requiredArtifacts: ["text", "pdf", "docx"],
     status: "partial",
   },
   "output.image": {
@@ -160,6 +171,9 @@ const KNOWN: Readonly<
 
 export class OutputContractRegistry implements IOutputContractRegistry {
   readonly implementationStatus: OsLayerImplementationStatus = "partial";
+
+  /** Service-level canonical contracts (Step 1). */
+  readonly serviceContracts = defaultServiceOutputContractRegistry;
 
   getContract(capabilityId: string) {
     const known = KNOWN[capabilityId];

@@ -2,7 +2,7 @@
  * Maps deferred integration post-processing reports → execution extras fields.
  */
 
-import type { IntelligenceOsIntegrationReport } from "../../intelligence/integration/contracts/result";
+import type { DirectExecutionReport } from "../../direct/contracts";
 import type { EnterpriseApiExecutionMode } from "../runtime/execution-mode";
 import type {
   ExecutionExperienceSummary,
@@ -18,7 +18,7 @@ import {
 
 export function experienceSummaryFromIntegrationReport(
   executionId: string,
-  report: IntelligenceOsIntegrationReport
+  report: DirectExecutionReport
 ): ExecutionExperienceSummary {
   const jobSummary = buildIntegrationJobSummary({
     report,
@@ -39,7 +39,7 @@ export function experienceSummaryFromIntegrationReport(
 
 export function evaluationFromIntegrationReport(
   executionId: string,
-  report: IntelligenceOsIntegrationReport,
+  report: DirectExecutionReport,
   governanceFinalize: GovernanceFinalizeService,
   input: {
     readonly organizationId: string;
@@ -83,7 +83,7 @@ export function evaluationFromIntegrationReport(
 }
 
 export function governanceFromIntegrationReport(
-  report: IntelligenceOsIntegrationReport,
+  report: DirectExecutionReport,
   status: ExecutionResource["status"],
   governanceFinalize: GovernanceFinalizeService,
   input: {
@@ -124,7 +124,7 @@ export function governanceFromIntegrationReport(
 export function mergePostProcessingIntoExtras(input: {
   readonly executionId: string;
   readonly correlationId: string;
-  readonly report: IntelligenceOsIntegrationReport;
+  readonly report: DirectExecutionReport;
   readonly executionMode: EnterpriseApiExecutionMode;
   readonly status: ExecutionResource["status"];
   readonly existingExtras: Readonly<Record<string, unknown>> | undefined;
@@ -142,17 +142,7 @@ export function mergePostProcessingIntoExtras(input: {
     durationMs: input.report.durationMs,
   });
   const createId = input.createId ?? ((prefix: string) => `${prefix}_${Date.now()}`);
-  const organizationId =
-    input.organizationId ??
-    (typeof input.existingExtras?.structuredBrandContext === "object" &&
-    input.existingExtras.structuredBrandContext &&
-    typeof (input.existingExtras.structuredBrandContext as { organizationId?: unknown })
-      .organizationId === "string"
-      ? String(
-          (input.existingExtras.structuredBrandContext as { organizationId: string })
-            .organizationId
-        )
-      : "unknown");
+  const organizationId = input.organizationId ?? "unknown";
   const governanceInput = {
     executionId: input.executionId,
     organizationId,

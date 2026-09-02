@@ -171,7 +171,7 @@ describe("M10.10 full application E2E", () => {
     const caps = await gateway.handle(
       apiRequest({
         method: "GET",
-        path: "/v1/intelligence/capabilities",
+        path: "/v1/runtime/capabilities",
         headers: { authorization: `Bearer ${token}` },
       })
     );

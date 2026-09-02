@@ -2,8 +2,8 @@
  * Tenant service with Mongo organization sync for Firebase-bridged principals.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError, NotFoundError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError, NotFoundError } from "../../core/errors";
 import Organizations from "../../../models/organization.model";
 import type {
   OrganizationRecord,

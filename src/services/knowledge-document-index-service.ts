@@ -7,7 +7,7 @@
  *
  * Semantic search uses cosine similarity when embeddings exist; otherwise
  * falls back to keyword matching. Embeddings are only generated through the
- * Intelligence OS `embedding.generate` capability when the Enterprise API
+ * direct execution `embedding.generate` capability when the Enterprise API
  * runtime is mounted — never via a direct OpenAI SDK call from anywhere in
  * this service (and never from the frontend).
  */
@@ -107,7 +107,7 @@ async function extractText(
   return undefined;
 }
 
-/** Best-effort embedding via Intelligence OS — never OpenAI SDK directly. */
+/** Best-effort embedding via direct execution — never OpenAI SDK directly. */
 export async function tryGenerateEmbedding(
   text: string,
   organizationId: string
@@ -120,7 +120,7 @@ export async function tryGenerateEmbedding(
         prompt: text.slice(0, 8000),
         organizationId,
         capabilityId: "embedding.generate",
-        metadata: { skipBrandKnowledge: true, internal: true },
+        metadata: { internal: true },
       },
       {
         userId: "system_knowledge_indexer",

@@ -50,21 +50,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: intelligence
+  name: direct
   namespace: unagency
 spec:
   replicas: 2
   selector:
-    matchLabels: { app: intelligence }
+    matchLabels: { app: direct }
   template:
     metadata:
-      labels: { app: intelligence }
+      labels: { app: direct }
     spec:
       containers:
-        - name: intelligence
+        - name: direct
           image: unagency/platform:1.0.0
           env:
-            - { name: SERVICE_ROLE, value: intelligence }
+            - { name: SERVICE_ROLE, value: direct }
           envFrom:
             - configMapRef: { name: unagency-config }
             - secretRef: { name: unagency-secrets }

@@ -6,12 +6,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 const PRODUCTION_ROOTS = [
-  "src/platform/intelligence/integration/adapters",
-  "src/platform/intelligence/integration/bridges",
-  "src/platform/intelligence/integration/context",
-  "src/platform/intelligence/integration/factories",
-  "src/platform/intelligence/integration/pipeline",
-  "src/platform/intelligence/control-plane/pipeline",
+  "src/platform/direct",
   "src/platform/api/services",
 ];
 

@@ -18,6 +18,7 @@ export type ConversationEntityKind =
   | "knowledge_review"
   | "approval_review"
   | "rm"
+  | "service"
   | "general";
 
 export type CollabMessageType =
@@ -67,6 +68,10 @@ export interface IConversation extends Document {
   briefId?: mongoose.Types.ObjectId;
   executionId?: string;
   campaignId?: string;
+  /** Stable product path for service-scoped rooms (client+brand+service). */
+  productPath?: string;
+  /** AI service chat working state — active deliverable, route selection, in-flight exec. */
+  aiState?: Record<string, unknown>;
   createdByUserId: mongoose.Types.ObjectId;
   lastMessageAt?: Date;
   lastMessagePreview?: string;
@@ -85,6 +90,8 @@ const ConversationSchema = new Schema<IConversation>(
     briefId: { type: Schema.Types.ObjectId },
     executionId: { type: String },
     campaignId: { type: String },
+    productPath: { type: String, index: true },
+    aiState: { type: Schema.Types.Mixed },
     createdByUserId: { type: Schema.Types.ObjectId, required: true },
     lastMessageAt: { type: Date },
     lastMessagePreview: { type: String },
@@ -93,6 +100,8 @@ const ConversationSchema = new Schema<IConversation>(
   { timestamps: true, collection: "CollaborationConversations" }
 );
 ConversationSchema.index({ organizationId: 1, entityKind: 1, entityId: 1 });
+ConversationSchema.index({ brandId: 1, productPath: 1, entityKind: 1 });
+ConversationSchema.index({ createdByUserId: 1, entityKind: 1 });
 
 export interface IConversationMember extends Document {
   conversationId: mongoose.Types.ObjectId;

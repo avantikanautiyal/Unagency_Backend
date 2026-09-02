@@ -1,109 +1,108 @@
 # UNAGENCY Enterprise API — OpenAPI 3.1
 # Source: src/platform/api/routes/route-map.ts
-# Inventory only — no invented endpoints.
+# Do not invent endpoints — inventory only.
 
 openapi: 3.1.0
 info:
   title: UNAGENCY Enterprise API Gateway
   version: 1.0.0
-  description: 'Sole external Intelligence / platform entry point. Paths are identical
-    under /v1 and /v2. Source of truth: src/platform/api/routes/route-map.ts. This
-    inventory does not redesign APIs.'
+  description: "Sole external Runtime / platform entry point. Paths are identical under /v1 and /v2. Source of truth: src/platform/api/routes/route-map.ts. This inventory does not redesign APIs."
   contact:
     name: UNAGENCY Platform
 servers:
-- url: /v1
-  description: API v1
-- url: /v2
-  description: API v2 (mirror)
+  -     url: /v1
+        description: API v1
+  -     url: /v2
+        description: API v2 (mirror)
 tags:
-- name: health
-- name: authentication
-- name: organizations
-- name: workspaces
-- name: users
-- name: projects
-- name: capabilities
-- name: providers
-- name: models
-- name: executions
-- name: benchmarks
-- name: analytics
-- name: billing
-- name: notifications
-- name: audit
-- name: files
-- name: human_reviews
-- name: webhooks
-- name: brand_profiles
-- name: knowledge_bases
+  -     name: health
+  -     name: authentication
+  -     name: organizations
+  -     name: workspaces
+  -     name: users
+  -     name: projects
+  -     name: capabilities
+  -     name: runtime
+  -     name: providers
+  -     name: models
+  -     name: executions
+  -     name: benchmarks
+  -     name: analytics
+  -     name: billing
+  -     name: notifications
+  -     name: audit
+  -     name: files
+  -     name: human_reviews
+  -     name: webhooks
+  -     name: brand_profiles
+  -     name: knowledge_bases
 paths:
   /health:
     get:
       tags:
-      - health
+        - health
       summary: Gateway health
       operationId: get_health
       security: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
   /auth/login:
     post:
       tags:
-      - authentication
+        - authentication
       summary: Login
       operationId: post_auth_login
       security: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       requestBody:
         required: true
         content:
@@ -122,51 +121,51 @@ paths:
                 scheme:
                   type: string
                   enum:
-                  - jwt
-                  - oauth
-                  - session
+                    - jwt
+                    - oauth
+                    - session
               required:
-              - email
-              - password
-              - organizationId
-              - deviceId
+                - email
+                - password
+                - organizationId
+                - deviceId
   /auth/api-keys:
     post:
       tags:
-      - authentication
+        - authentication
       summary: Issue API key
       operationId: post_auth_api-keys
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - admin:*
+        - "admin:*"
       requestBody:
         required: true
         content:
@@ -181,44 +180,44 @@ paths:
                   items:
                     type: string
               required:
-              - name
+                - name
   /organizations:
     post:
       tags:
-      - organizations
+        - organizations
       summary: Create organization
       operationId: post_organizations
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - org:write
+        - "org:write"
       requestBody:
         required: true
         content:
@@ -229,86 +228,86 @@ paths:
                 name:
                   type: string
               required:
-              - name
+                - name
   /organizations/{organizationId}:
     get:
       tags:
-      - organizations
+        - organizations
       summary: Get organization
       operationId: get_organizations__organizationId_
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: organizationId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: organizationId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - org:read
+        - "org:read"
   /workspaces:
     post:
       tags:
-      - workspaces
+        - workspaces
       summary: Create workspace
       operationId: post_workspaces
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - workspace:write
+        - "workspace:write"
       requestBody:
         required: true
         content:
@@ -321,86 +320,86 @@ paths:
                 name:
                   type: string
               required:
-              - organizationId
-              - name
+                - organizationId
+                - name
     get:
       tags:
-      - workspaces
+        - workspaces
       summary: List workspaces
       operationId: get_workspaces
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: organizationId
-        in: query
-        required: false
-        schema:
-          type: string
+        -           name: organizationId
+                    in: query
+                    required: false
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - workspace:read
+        - "workspace:read"
   /users:
     post:
       tags:
-      - users
+        - users
       summary: Create user
       operationId: post_users
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - org:write
+        - "org:write"
       requestBody:
         required: true
         content:
@@ -419,45 +418,45 @@ paths:
                   items:
                     type: string
               required:
-              - email
-              - organizationId
+                - email
+                - organizationId
   /projects:
     post:
       tags:
-      - projects
+        - projects
       summary: Create project
       operationId: post_projects
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - workspace:write
+        - "workspace:write"
       requestBody:
         required: true
         content:
@@ -472,156 +471,230 @@ paths:
                 name:
                   type: string
               required:
-              - organizationId
-              - name
+                - organizationId
+                - name
   /capabilities:
     get:
       tags:
-      - capabilities
-      summary: List capabilities
+        - capabilities
+      summary: List catalogue capabilities (marketing)
       operationId: get_capabilities
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - capability:read
+        - "capability:read"
+  /runtime/capabilities:
+    get:
+      tags:
+        - runtime
+      summary: List executable runtime capabilities (authoritative availability)
+      operationId: get_runtime_capabilities
+      security:
+        -           bearerAuth: []
+        -           apiKeyAuth: []
+      parameters: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
+      x-permissions:
+        - "capability:read"
+  /intelligence/capabilities:
+    get:
+      tags:
+        - runtime
+      summary: Deprecated alias for /runtime/capabilities
+      operationId: get_intelligence_capabilities
+      security:
+        -           bearerAuth: []
+        -           apiKeyAuth: []
+      parameters: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
+      x-permissions:
+        - "capability:read"
   /providers:
     get:
       tags:
-      - providers
+        - providers
       summary: Provider catalog
       operationId: get_providers
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - provider:read
+        - "provider:read"
   /models:
     get:
       tags:
-      - models
+        - models
       summary: Model catalog
       operationId: get_models
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - provider:read
+        - "provider:read"
   /executions:
     post:
       tags:
-      - executions
+        - executions
       summary: Create execution
       operationId: post_executions
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:create
+        - "execution:create"
       requestBody:
         required: true
         content:
@@ -647,1190 +720,1190 @@ paths:
                   type: object
                   additionalProperties: true
               required:
-              - prompt
-              - organizationId
+                - prompt
+                - organizationId
     get:
       tags:
-      - executions
+        - executions
       summary: Execution history
       operationId: get_executions
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}:
     get:
       tags:
-      - executions
+        - executions
       summary: Get execution
       operationId: get_executions__executionId_
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/cancel:
     post:
       tags:
-      - executions
+        - executions
       summary: Cancel execution
       operationId: post_executions__executionId__cancel
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:cancel
+        - "execution:cancel"
   /executions/{executionId}/retry:
     post:
       tags:
-      - executions
+        - executions
       summary: Retry execution
       operationId: post_executions__executionId__retry
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:retry
+        - "execution:retry"
   /executions/{executionId}/stream:
     get:
       tags:
-      - executions
+        - executions
       summary: Stream execution (SSE frames in JSON envelope)
       operationId: get_executions__executionId__stream
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:stream
+        - "execution:stream"
   /executions/{executionId}/artifacts:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution artifacts
       operationId: get_executions__executionId__artifacts
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/diagnostics:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution diagnostics
       operationId: get_executions__executionId__diagnostics
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/trace:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution trace
       operationId: get_executions__executionId__trace
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/cost:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution cost
       operationId: get_executions__executionId__cost
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/cost-breakdown:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution cost breakdown
       operationId: get_executions__executionId__cost-breakdown
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/evaluation:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution evaluation
       operationId: get_executions__executionId__evaluation
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/experience:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution experience
       operationId: get_executions__executionId__experience
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/model-decision:
     get:
       tags:
-      - executions
+        - executions
       summary: Model decision explainability
       operationId: get_executions__executionId__model-decision
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/routing:
     get:
       tags:
-      - executions
+        - executions
       summary: Routing explainability
       operationId: get_executions__executionId__routing
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/planning:
     get:
       tags:
-      - executions
+        - executions
       summary: Planning explainability
       operationId: get_executions__executionId__planning
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/timeline:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution timeline
       operationId: get_executions__executionId__timeline
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/provider:
     get:
       tags:
-      - executions
+        - executions
       summary: Provider selection
       operationId: get_executions__executionId__provider
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/metrics:
     get:
       tags:
-      - executions
+        - executions
       summary: Execution metrics
       operationId: get_executions__executionId__metrics
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/tokens:
     get:
       tags:
-      - executions
+        - executions
       summary: Token usage
       operationId: get_executions__executionId__tokens
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/quality:
     get:
       tags:
-      - executions
+        - executions
       summary: Quality scores
       operationId: get_executions__executionId__quality
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/confidence:
     get:
       tags:
-      - executions
+        - executions
       summary: Confidence bands
       operationId: get_executions__executionId__confidence
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/audit:
     get:
       tags:
-      - executions
+        - executions
       summary: Immutable execution audit
       operationId: get_executions__executionId__audit
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /executions/{executionId}/decision-graph:
     get:
       tags:
-      - executions
+        - executions
       summary: Decision graph summary
       operationId: get_executions__executionId__decision-graph
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: executionId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: executionId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - execution:read
+        - "execution:read"
   /benchmarks:
     get:
       tags:
-      - benchmarks
+        - benchmarks
       summary: Benchmarks
       operationId: get_benchmarks
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - benchmark:read
+        - "benchmark:read"
   /analytics/summary:
     get:
       tags:
-      - analytics
+        - analytics
       summary: Analytics summary
       operationId: get_analytics_summary
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - analytics:read
+        - "analytics:read"
   /billing/summary:
     get:
       tags:
-      - billing
+        - billing
       summary: Billing summary
       operationId: get_billing_summary
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - billing:read
+        - "billing:read"
   /notifications:
     get:
       tags:
-      - notifications
+        - notifications
       summary: List notifications
       operationId: get_notifications
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - notification:read
+        - "notification:read"
   /audit:
     get:
       tags:
-      - audit
+        - audit
       summary: Audit logs
       operationId: get_audit
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - audit:read
+        - "audit:read"
   /files:
     post:
       tags:
-      - files
+        - files
       summary: Upload file metadata
       operationId: post_files
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - file:upload
+        - "file:upload"
       requestBody:
         required: true
         content:
@@ -1845,123 +1918,123 @@ paths:
                 sizeBytes:
                   type: number
               required:
-              - name
+                - name
   /files/{fileId}:
     get:
       tags:
-      - files
+        - files
       summary: Get file
       operationId: get_files__fileId_
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters:
-      - name: fileId
-        in: path
-        required: true
-        schema:
-          type: string
+        -           name: fileId
+                    in: path
+                    required: true
+                    schema:
+                      type: string
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - file:read
+        - "file:read"
   /reviews:
     get:
       tags:
-      - human_reviews
+        - human_reviews
       summary: Human reviews
       operationId: get_reviews
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - review:read
+        - "review:read"
   /webhooks:
     post:
       tags:
-      - webhooks
+        - webhooks
       summary: Register webhook
       operationId: post_webhooks
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - org:write
+        - "org:write"
       requestBody:
         required: true
         content:
@@ -1978,77 +2051,77 @@ paths:
   /brand-profiles:
     get:
       tags:
-      - brand_profiles
+        - brand_profiles
       summary: Brand profiles (thin list)
       operationId: get_brand-profiles
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - org:read
+        - "org:read"
   /knowledge-bases:
     get:
       tags:
-      - knowledge_bases
+        - knowledge_bases
       summary: Knowledge bases (thin list)
       operationId: get_knowledge-bases
       security:
-      - bearerAuth: []
-      - apiKeyAuth: []
+        -           bearerAuth: []
+        -           apiKeyAuth: []
       parameters: []
       responses:
-        '200':
+        200:
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '201':
+                $ref: "#/components/schemas/ApiSuccess"
+        201:
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiSuccess'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          $ref: '#/components/responses/ServerError'
+                $ref: "#/components/schemas/ApiSuccess"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        500:
+          $ref: "#/components/responses/ServerError"
       x-permissions:
-      - workspace:read
+        - "workspace:read"
 components:
   securitySchemes:
     bearerAuth:
@@ -2063,12 +2136,13 @@ components:
     ApiSuccess:
       type: object
       properties:
-        data: {}
+        data:
+
         meta:
           type: object
           additionalProperties: true
       required:
-      - data
+        - data
     ApiError:
       type: object
       properties:
@@ -2083,10 +2157,10 @@ components:
               type: object
               additionalProperties: true
           required:
-          - code
-          - message
+            - code
+            - message
       required:
-      - error
+        - error
     IssuedToken:
       type: object
       properties:
@@ -2097,7 +2171,7 @@ components:
         tokenType:
           type: string
           enum:
-          - Bearer
+            - Bearer
         expiresInSec:
           type: number
         scheme:
@@ -2137,46 +2211,45 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
     Unauthorized:
       description: Authentication required
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
     Forbidden:
       description: RBAC / tenant isolation denied
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
     RateLimited:
       description: Rate limit exceeded
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
     ServerError:
       description: Internal error
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
 x-unagency:
   surfaces:
-    enterpriseGateway: src/platform/api — in-process; nginx expects /v1|/v2
+    enterpriseGateway: "src/platform/api — in-process; nginx expects /v1|/v2"
     legacyExpress: src/app.ts — live SaaS HTTP today
   streaming:
-    note: GET /executions/{id}/stream returns SSE-shaped frames inside JSON success
-      envelope; not a native text/event-stream socket in V1 inventory.
+    note: "GET /executions/{id}/stream returns SSE-shaped frames inside JSON success envelope; not a native text/event-stream socket in V1 inventory."
     transportsDocumented:
-    - sse
-    - websocket
-    - chunked
+      - sse
+      - websocket
+      - chunked
     providerSpecificStreaming: false

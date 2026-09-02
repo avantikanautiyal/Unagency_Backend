@@ -2,17 +2,17 @@
  * Research provider environment + registration.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
-import { asProviderId, type ProviderId } from "../../intelligence/shared/identifiers";
-import type { IModelRegistry } from "../../intelligence/model-registry/interfaces/model-registry";
-import type { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import type { IProviderDispatcher } from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
+import { success, type Result } from "../../core/result";
+import { asProviderId, type ProviderId } from "../../core/identifiers";
+import type { IModelRegistry } from "../../model-registry/interfaces/model-registry";
+import type { InMemoryProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
 import {
   ALL_RESEARCH_PROVIDER_SPECS,
   VERIFIED_RESEARCH_PROVIDER_SPECS,
   type VerifiedResearchProviderSpec,
-} from "../../intelligence/providers/research/configs/verified-research-provider-specs";
-import { VendorSyncResearchDispatcher } from "../../intelligence/providers/research/common/vendor-sync-research-dispatcher";
+} from "../../providers/research/configs/verified-research-provider-specs";
+import { VendorSyncResearchDispatcher } from "../../providers/research/common/vendor-sync-research-dispatcher";
 import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export function resolveResearchApiKey(

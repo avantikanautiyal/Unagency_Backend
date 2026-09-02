@@ -15,7 +15,8 @@ export type CollaborationEntityKind =
   | "team"
   | "client"
   | "ai_discussion"
-  | "rm";
+  | "rm"
+  | "service";
 
 export type CollaborationMemberRole =
   | "owner"
@@ -91,6 +92,8 @@ export type CollaborationChannelDto = {
   brandId?: string;
   briefId?: string;
   executionId?: string;
+  productPath?: string;
+  createdByUserId?: string;
   unreadCount?: number;
   lastMessagePreview?: string;
   memberRole?: CollaborationMemberRole;

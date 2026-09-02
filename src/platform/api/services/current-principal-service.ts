@@ -6,8 +6,8 @@
 import Teams from "../../../models/team.model";
 import Organizations from "../../../models/organization.model";
 import Users from "../../../models/users.model";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { AuthorizationError, ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { AuthorizationError, ValidationError } from "../../core/errors";
 import type { AuthPrincipal, Permission, RoleName } from "../contracts";
 import { permissionsForRoles } from "../authorization/rbac";
 import { mapLegacyRoleToPlatformRoles } from "../auth/firebase/role-permission-mapper";

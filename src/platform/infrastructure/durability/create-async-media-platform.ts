@@ -28,10 +28,10 @@ import { FetchMediaDownloadClient } from "../../media/ingestion/fetch-media-down
 import { MediaArtifactService } from "../../media/artifacts/media-artifact-service";
 import { MediaDeliveryService } from "../../media/delivery/media-delivery-service";
 import type { IArtifactRepository, ITenantUsageStore } from "./interfaces/execution-store-ports";
-import type { IProviderOperationStore } from "../../intelligence/providers/async/interfaces/provider-operation-store";
-import { InMemoryProviderOperationStore } from "../../intelligence/providers/async/store/in-memory-provider-operation-store";
-import { MongoProviderOperationStore } from "../../intelligence/providers/async/store/mongo-provider-operation-store";
-import { AsyncProviderRuntime } from "../../intelligence/providers/async/runtime/async-provider-runtime";
+import type { IProviderOperationStore } from "../../providers/async/interfaces/provider-operation-store";
+import { InMemoryProviderOperationStore } from "../../providers/async/store/in-memory-provider-operation-store";
+import { MongoProviderOperationStore } from "../../providers/async/store/mongo-provider-operation-store";
+import { AsyncProviderRuntime } from "../../providers/async/runtime/async-provider-runtime";
 import { isDurableRuntimeEnabled } from "./durable-mode";
 
 export interface AsyncMediaPlatform {

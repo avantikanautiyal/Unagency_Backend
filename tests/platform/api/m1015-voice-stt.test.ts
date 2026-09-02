@@ -44,6 +44,22 @@ jest.mock("../../../src/models/mediaFile.model", () => {
         return rows;
       }),
       findById: jest.fn(async (id: string) => store.get(String(id)) || null),
+      findOne: jest.fn(async (q: any) => {
+        const rows = [...store.values()].filter((d) => {
+          if (q.status?.$ne && d.status === q.status.$ne) return false;
+          if (
+            q.organizationId &&
+            d.organizationId?.toString() !== q.organizationId.toString()
+          )
+            return false;
+          if (q.checksum && d.checksum !== q.checksum) return false;
+          if (q.folder && d.folder !== q.folder) return false;
+          if (q.brandId && d.brandId?.toString() !== q.brandId.toString())
+            return false;
+          return true;
+        });
+        return rows[0] || null;
+      }),
       __store: store,
     },
   };
@@ -119,7 +135,7 @@ describe("M10.15 voice / STT", () => {
     }
   });
 
-  test("resolveIntelligenceInput returns data-URL audio asset", async () => {
+  test("resolveProviderInputAsset returns data-URL audio asset", async () => {
     const service = new ProductAssetService(
       resolveProductAssetBlobStorage({ PRODUCT_ASSET_STORAGE: "memory" } as any)
     );
@@ -131,7 +147,7 @@ describe("M10.15 voice / STT", () => {
       bytes: Buffer.from("hello-audio"),
       tag: "voice_prompt",
     });
-    const resolved = await service.resolveIntelligenceInput({
+    const resolved = await service.resolveProviderInputAsset({
       userId: userA.toString(),
       assetId: dto.id,
       organizationId: orgA.toString(),

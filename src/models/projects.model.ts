@@ -21,6 +21,8 @@ export interface IProject {
   artifactId?: string;
   brandId?: mongoose.Types.ObjectId;
   productPath?: string;
+  /** Client creation mode: ai | human | hybrid */
+  creationMode?: string;
   /** Last incomplete Create Design step — describePrompt | generating | routeSelection | assetReady | document | chat */
   resumeStep?: string;
   productService?: string;
@@ -80,6 +82,7 @@ const ProjectSchema = new Schema<IProject>(
     artifactId: { type: String },
     brandId: { type: Schema.Types.ObjectId, ref: "Brands" },
     productPath: { type: String },
+    creationMode: { type: String },
     resumeStep: { type: String },
     productService: { type: String },
     productSubtype: { type: String },

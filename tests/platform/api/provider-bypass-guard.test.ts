@@ -1,5 +1,5 @@
 /**
- * M9.2D2 — production Intelligence OS must not call providers from API/controllers.
+ * M9.2D2 — production direct execution must not call providers from API/controllers.
  */
 
 import * as fs from "fs";
@@ -8,11 +8,9 @@ import * as path from "path";
 const FORBIDDEN_PRODUCTION_PATHS = [
   "src/platform/api/controllers",
   "src/platform/api/services/execution-api-service.ts",
-  "src/platform/intelligence/prompt-compiler",
+  "src/platform/direct",
   "src/platform/business",
-  "src/platform/intelligence/evaluation",
-  "src/platform/intelligence/cost",
-  "src/platform/intelligence/providers/streaming",
+  "src/platform/providers/streaming",
 ];
 
 const FORBIDDEN_IMAGE_SDK_PATTERNS = [
@@ -39,6 +37,7 @@ const FORBIDDEN_VIDEO_SDK_PATTERNS = [
   /api\.dev\.runwayml\.com/,
   /api\.klingai\.com/,
   /api\.lumalabs\.ai/,
+  /agents\.lumalabs\.ai/,
   /api\.pika\.art/,
   /api\.minimax\.chat/,
   /api\.minimax\.io/,

@@ -1,21 +1,20 @@
 /**
- * Canonical AI OS execution spine — every AI-producing path must use these contracts.
- * Stages 1–11 (or planning_through_routing for stream handoff) optimize output before providers.
+ * Canonical direct execution spine — every AI-producing path uses DirectExecutionEngine.
+ * planning_through_routing resolves matrix routing only, then hands off (stream/async)
+ * without calling the generation provider.
  */
 
 import {
   asOrganizationId,
   asWorkspaceId,
-} from "../../intelligence/shared/identifiers";
-import type { IntelligenceOsIntegrationRequest } from "../../intelligence/integration/contracts/request";
-import type { IntelligenceOsIntegrationReport } from "../../intelligence/integration/contracts/result";
-import type { IIntelligenceOsIntegrationEngine } from "../../intelligence/integration/interfaces/integration";
+} from "../../core/identifiers";
+import type { DirectExecutionRequest } from "../../direct/contracts";
+import type { DirectExecutionReport } from "../../direct/contracts";
+import type { IDirectExecutionEngine } from "../../direct/contracts";
 import type { CreateExecutionRequest } from "../contracts";
 import type { AuthPrincipal } from "../contracts/auth";
-import type { StructuredBrief } from "../../os";
-import { scenarioHintFromBrief } from "../../os";
 
-/** Handoff payload after canonical OS intelligence ingress (brief → plan). */
+/** Handoff payload after canonical direct execution ingress. */
 export interface CanonicalStreamHandoff {
   readonly executionId: string;
   readonly correlationId: string;
@@ -24,17 +23,13 @@ export interface CanonicalStreamHandoff {
   readonly capabilityIdRaw: string;
   readonly req: CreateExecutionRequest;
   readonly workingMetadata?: Record<string, unknown>;
-  readonly structuredBrief?: StructuredBrief;
-  readonly structuredBrandContext?: import("../../os").BrandContext;
-  readonly structuredKnowledgeContext?: import("../../os").KnowledgeContext;
-  readonly structuredExecutionPlan?: import("../../os").ExecutionPlan;
   readonly principal: AuthPrincipal;
 }
 
 /** Authoritative integration mode for production AI execution. */
 export const CANONICAL_INTEGRATION_MODE = "full" as const;
 
-/** Planning-only mode — stages 1–10 before a streaming provider handoff. */
+/** Planning-only mode — matrix routing without provider generation. */
 export const CANONICAL_STREAM_PLANNING_MODE = "planning_through_routing" as const;
 
 export interface CanonicalIntegrationInput {
@@ -44,14 +39,13 @@ export interface CanonicalIntegrationInput {
   readonly providerPrompt: string;
   readonly req: CreateExecutionRequest;
   readonly workingMetadata?: Record<string, unknown>;
-  readonly structuredBrief?: StructuredBrief;
   readonly principal?: AuthPrincipal;
   readonly mode?: typeof CANONICAL_INTEGRATION_MODE | typeof CANONICAL_STREAM_PLANNING_MODE;
 }
 
 export function buildCanonicalIntegrationRequest(
   input: CanonicalIntegrationInput
-): IntelligenceOsIntegrationRequest {
+): DirectExecutionRequest {
   const meta = {
     ...(input.req.metadata ?? {}),
     ...(input.workingMetadata ?? {}),
@@ -77,6 +71,13 @@ export function buildCanonicalIntegrationRequest(
       : {}),
   };
 
+  const scenarioHint =
+    typeof meta.scenarioHint === "string" && meta.scenarioHint.trim()
+      ? meta.scenarioHint.trim()
+      : typeof meta.service === "string" && meta.service.trim()
+        ? meta.service.trim()
+        : undefined;
+
   return {
     requestId: input.executionId,
     rawPrompt: input.providerPrompt,
@@ -88,18 +89,16 @@ export function buildCanonicalIntegrationRequest(
     tokenBudgetLimit: input.req.tokenBudgetLimit,
     correlationId: input.correlationId,
     mode: input.mode ?? CANONICAL_INTEGRATION_MODE,
-    scenarioHint: input.structuredBrief
-      ? scenarioHintFromBrief(input.structuredBrief)
-      : undefined,
+    scenarioHint,
     metadata: meta,
   };
 }
 
 export async function runCanonicalIntegration(
-  integration: IIntelligenceOsIntegrationEngine,
+  integration: IDirectExecutionEngine,
   input: CanonicalIntegrationInput
 ): Promise<
-  import("../../intelligence/shared/result").Result<IntelligenceOsIntegrationReport>
+  import("../../core/result").Result<DirectExecutionReport>
 > {
   return integration.run(buildCanonicalIntegrationRequest(input));
 }
@@ -110,20 +109,16 @@ export interface CanonicalRoutingSelection {
   readonly routingDecisionId?: string;
 }
 
-/** Extract provider routing from a completed planning or full integration report. */
+/** Extract provider routing from a completed direct execution report. */
 export function extractCanonicalRouting(
-  report: IntelligenceOsIntegrationReport,
+  report: DirectExecutionReport,
   fallback: { readonly providerId?: string; readonly modelId?: string } = {}
 ): CanonicalRoutingSelection {
   const routing = report.artifacts.routing?.plan;
-  const negotiation = report.artifacts.negotiation as
-    | { negotiated?: { selectedProviderId?: string; selectedModelId?: string } }
-    | undefined;
   const runtime = report.artifacts.runtime;
 
   const providerId = String(
     routing?.primary?.providerId ??
-      negotiation?.negotiated?.selectedProviderId ??
       runtime?.finalProviderId ??
       runtime?.response?.providerId ??
       fallback.providerId ??
@@ -131,15 +126,11 @@ export function extractCanonicalRouting(
   );
   const modelId = String(
     routing?.primary?.modelId ??
-      negotiation?.negotiated?.selectedModelId ??
       runtime?.finalModelId ??
       fallback.modelId ??
       "gpt-4o"
   );
-  const routingDecisionId =
-    typeof report.artifacts.routing?.decisionId === "string"
-      ? report.artifacts.routing.decisionId
-      : undefined;
+  const routingDecisionId = undefined;
 
   return { providerId, modelId, routingDecisionId };
 }

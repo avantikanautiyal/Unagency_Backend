@@ -3,13 +3,13 @@
  * Simulated mode: FakeStreamingDispatcher only (0 external AI calls).
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError, AuthorizationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError, AuthorizationError } from "../../core/errors";
 import {
   asCapabilityId,
   asOrganizationId,
   asProviderId,
-} from "../../intelligence/shared/identifiers";
+} from "../../core/identifiers";
 import type {
   AuthPrincipal,
   CreateExecutionRequest,
@@ -23,9 +23,9 @@ import {
   providerStreamEventToSse,
   type FakeStreamScript,
   type ProviderStreamEvent,
-} from "../../intelligence/providers/streaming";
-import type { ProviderExecutionRequest } from "../../intelligence/providers/runtime/contracts/provider-execution-request";
-import { CancellationSource } from "../../intelligence/providers/runtime/cancellation/cancellation-engine";
+} from "../../providers/streaming";
+import type { ProviderExecutionRequest } from "../../providers/runtime/contracts/provider-execution-request";
+import { CancellationSource } from "../../providers/runtime/cancellation/cancellation-engine";
 
 export type LiveSseExecutionPayload = {
   readonly kind: "live_sse";

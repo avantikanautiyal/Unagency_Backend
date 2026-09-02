@@ -3,8 +3,8 @@
  * Fail-closed when Redis/kv is unavailable (M9.4A).
  */
 
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 import type { RateLimitDecision, RateLimitDimension, RateLimitPolicy } from "../../../api/contracts";
 import type { IRateLimitService } from "../../../api/interfaces";
 import type { KvClient } from "./shared-memory-kv";

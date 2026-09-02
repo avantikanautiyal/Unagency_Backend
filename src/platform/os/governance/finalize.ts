@@ -53,6 +53,28 @@ export interface FinalizeTaskGovernanceInput {
   readonly brandPreferredTerms?: readonly string[];
   readonly prohibitedPatterns?: readonly string[];
   readonly requiredSections?: readonly string[];
+  /** Track A Phase A3 — continuity-bound job. */
+  readonly continuityBound?: boolean;
+  readonly boundLogoAssetId?: string;
+  readonly mediaOutputCount?: number;
+  readonly capabilityId?: string;
+  readonly isImageCapability?: boolean;
+  readonly service?: string;
+  readonly subtype?: string;
+  readonly platform?: string;
+  readonly format?: string;
+  readonly industry?: string;
+  readonly outputKind?: string;
+  readonly mockupRole?: string;
+  readonly expectedModalities?: readonly string[];
+  readonly actualModality?: string;
+  readonly expectedAspectRatio?: string;
+  readonly actualAspectRatio?: string;
+  readonly structuredData?: unknown;
+  readonly mediaArtifactIds?: readonly string[];
+  readonly buildSucceeded?: boolean;
+  readonly buildOutput?: string;
+  readonly runtimeErrors?: readonly string[];
   readonly policy?: GovernancePolicy;
   readonly nowIso?: () => string;
   readonly createId?: (prefix: string) => string;
@@ -71,6 +93,33 @@ export interface FinalizeExecutionGovernanceInput {
     readonly outputContractId: string;
   }[];
   readonly brandTone?: string;
+  readonly brandVoice?: string;
+  readonly brandAvoidTerms?: readonly string[];
+  readonly brandPreferredTerms?: readonly string[];
+  readonly prohibitedPatterns?: readonly string[];
+  /** Track A Phase A3 — continuity-bound job. */
+  readonly continuityBound?: boolean;
+  readonly boundLogoAssetId?: string;
+  readonly mediaOutputCount?: number;
+  readonly capabilityId?: string;
+  readonly isImageCapability?: boolean;
+  readonly service?: string;
+  readonly territory?: string;
+  readonly subtype?: string;
+  readonly platform?: string;
+  readonly format?: string;
+  readonly industry?: string;
+  readonly outputKind?: string;
+  readonly mockupRole?: string;
+  readonly expectedModalities?: readonly string[];
+  readonly actualModality?: string;
+  readonly expectedAspectRatio?: string;
+  readonly actualAspectRatio?: string;
+  readonly structuredData?: unknown;
+  readonly mediaArtifactIds?: readonly string[];
+  readonly buildSucceeded?: boolean;
+  readonly buildOutput?: string;
+  readonly runtimeErrors?: readonly string[];
   readonly providerSuccess?: boolean;
   readonly policy?: GovernancePolicy;
   readonly nowIso?: () => string;
@@ -210,6 +259,28 @@ export class GovernanceFinalizeService {
       brandPreferredTerms: input.brandPreferredTerms,
       prohibitedPatterns: input.prohibitedPatterns,
       requiredSections: input.requiredSections,
+      continuityBound: input.continuityBound,
+      boundLogoAssetId: input.boundLogoAssetId,
+      mediaOutputCount: input.mediaOutputCount,
+      capabilityId: input.capabilityId,
+      isImageCapability: input.isImageCapability,
+      service: input.service,
+      territory: input.territory,
+      subtype: input.subtype,
+      platform: input.platform,
+      format: input.format,
+      industry: input.industry,
+      outputKind: input.outputKind,
+      mockupRole: input.mockupRole,
+      expectedModalities: input.expectedModalities,
+      actualModality: input.actualModality,
+      expectedAspectRatio: input.expectedAspectRatio,
+      actualAspectRatio: input.actualAspectRatio,
+      structuredData: input.structuredData,
+      mediaArtifactIds: input.mediaArtifactIds,
+      buildSucceeded: input.buildSucceeded,
+      buildOutput: input.buildOutput,
+      runtimeErrors: input.runtimeErrors,
       nowIso,
       createId,
     });
@@ -297,6 +368,32 @@ export class GovernanceFinalizeService {
       objective: input.objective,
       taskResults: input.taskResults,
       brandTone: input.brandTone,
+      brandVoice: input.brandVoice,
+      brandAvoidTerms: input.brandAvoidTerms,
+      brandPreferredTerms: input.brandPreferredTerms,
+      prohibitedPatterns: input.prohibitedPatterns,
+      continuityBound: input.continuityBound,
+      boundLogoAssetId: input.boundLogoAssetId,
+      mediaOutputCount: input.mediaOutputCount,
+      capabilityId: input.capabilityId,
+      isImageCapability: input.isImageCapability,
+      service: input.service,
+      territory: input.territory,
+      subtype: input.subtype,
+      platform: input.platform,
+      format: input.format,
+      industry: input.industry,
+      outputKind: input.outputKind,
+      mockupRole: input.mockupRole,
+      expectedModalities: input.expectedModalities,
+      actualModality: input.actualModality,
+      expectedAspectRatio: input.expectedAspectRatio,
+      actualAspectRatio: input.actualAspectRatio,
+      structuredData: input.structuredData,
+      mediaArtifactIds: input.mediaArtifactIds,
+      buildSucceeded: input.buildSucceeded,
+      buildOutput: input.buildOutput,
+      runtimeErrors: input.runtimeErrors,
       nowIso,
       createId,
     });

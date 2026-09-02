@@ -3,23 +3,27 @@
  * NEVER uses FakeCapabilityRegistry / testing setupNegotiation.
  */
 
-import { CapabilityBuilder } from "../../intelligence/capability-registry/implementations/capability-builder";
-import { CapabilityRegistry } from "../../intelligence/capability-registry/implementations/capability-registry";
-import type { ICapabilityRegistry } from "../../intelligence/capability-registry/interfaces/capability-registry";
-import { ProviderCapabilityMatrix } from "../../intelligence/providers/capability-matrix/implementations/provider-capability-matrix";
-import type { IProviderCapabilityMatrix } from "../../intelligence/providers/capability-matrix/interfaces/provider-capability-matrix";
-import { InMemoryProviderHealthStore } from "../../intelligence/providers/health/in-memory-provider-health-store";
-import { ProviderBuilder } from "../../intelligence/providers/metadata/provider-builder";
+import { CapabilityBuilder } from "../../capability-registry/implementations/capability-builder";
+import { CapabilityRegistry } from "../../capability-registry/implementations/capability-registry";
+import type { ICapabilityRegistry } from "../../capability-registry/interfaces/capability-registry";
+import { ProviderCapabilityMatrix } from "../../providers/capability-matrix/implementations/provider-capability-matrix";
+import type { IProviderCapabilityMatrix } from "../../providers/capability-matrix/interfaces/provider-capability-matrix";
+import { InMemoryProviderHealthStore } from "../../providers/health/in-memory-provider-health-store";
+import { ProviderBuilder } from "../../providers/metadata/provider-builder";
 import {
   createNegotiationEngine,
   type CreateNegotiationEngineOptions,
-} from "../../intelligence/providers/negotiation/factories/create-negotiation-engine";
-import type { IProviderNegotiationEngine } from "../../intelligence/providers/negotiation/interfaces/negotiation-engine";
-import { ProviderRegistry } from "../../intelligence/providers/registry/provider-registry";
-import type { IProviderRegistry } from "../../intelligence/providers/registry/provider-registry";
-import { asCapabilityId, asProviderId } from "../../intelligence/shared/identifiers";
-import type { CapabilityId, ProviderId } from "../../intelligence/shared/identifiers";
-import type { TaskIntelligenceReport } from "../../intelligence/task-intelligence/contracts/result";
+} from "../../providers/negotiation/factories/create-negotiation-engine";
+import type { IProviderNegotiationEngine } from "../../providers/negotiation/interfaces/negotiation-engine";
+import { ProviderRegistry } from "../../providers/registry/provider-registry";
+import type { IProviderRegistry } from "../../providers/registry/provider-registry";
+import { asCapabilityId, asProviderId } from "../../core/identifiers";
+import type { CapabilityId, ProviderId } from "../../core/identifiers";
+
+/** Minimal task shape for capability seeding (legacy task intelligence removed). */
+export interface TaskCapabilityHint {
+  readonly capabilityMap: { readonly primary?: string };
+}
 
 export const PRODUCTION_NEGOTIATION_CAPABILITIES = [
   "text.generate",
@@ -78,7 +82,7 @@ export interface ProductionNegotiationPlatform {
   readonly capabilityMatrix: IProviderCapabilityMatrix;
   readonly healthStore: InMemoryProviderHealthStore;
   /** Ensures a capability from task intelligence exists in the production registry. */
-  readonly ensureCapabilityFromTask: (task: TaskIntelligenceReport) => void;
+  readonly ensureCapabilityFromTask: (task: TaskCapabilityHint) => void;
 }
 
 export interface CreateProductionNegotiationOptions {
@@ -272,7 +276,7 @@ export function createProductionNegotiationPlatform(
     ...options.engineOptions,
   });
 
-  const ensureCapabilityFromTask = (task: TaskIntelligenceReport): void => {
+  const ensureCapabilityFromTask = (task: TaskCapabilityHint): void => {
     const primary = String(task.capabilityMap.primary ?? "").trim();
     if (!primary) return;
     const id = asCapabilityId(primary);

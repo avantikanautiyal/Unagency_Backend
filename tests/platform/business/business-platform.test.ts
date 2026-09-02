@@ -3,7 +3,7 @@ import {
   gatewayLogin,
 } from "../../../src/platform/business/testing";
 import { permissionsForRoles, hasBusinessPermission } from "../../../src/platform/business/organizations/permissions";
-import { BusinessExecutionRequestBuilder } from "../../../src/platform/business/builders/business-builders";
+import { BusinessExecutionRequestBuilder } from "../../../src/platform/business/testing/business-builders";
 
 describe("UNAGENCY Business Platform", () => {
   it("creates multi-tenant organizations, workspaces, departments, teams", () => {

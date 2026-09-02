@@ -87,6 +87,9 @@ export interface ExecutionResource {
   readonly brandId?: string;
   readonly modelId?: string;
   readonly providerId?: string;
+  /** Service AI conversation linkage (persistent service chat). */
+  readonly conversationId?: string;
+  readonly channelId?: string;
 }
 
 export interface ExecutionArtifactRef {
@@ -107,11 +110,6 @@ export interface ExecutionDiagnostics {
   readonly provider?: string;
   readonly model?: string;
   readonly routingDecisionId?: string;
-  readonly contextSnapshotId?: string;
-  readonly promptCompilationId?: string;
-  readonly brandEnrichmentId?: string;
-  readonly brandBrainVersion?: number;
-  readonly knowledgeSnapshotId?: string;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly totalTokens?: number;
@@ -155,8 +153,13 @@ export interface ExecutionCostSummary {
 
 export interface ExecutionEvaluationSummary {
   readonly executionId: string;
+  /** Legacy normalized score 0–1, or creative/100 when B3 active */
   readonly score: number | null;
   readonly humanReviewRequired: boolean;
+  /** Track B3 — creative score /100 */
+  readonly creativeScore?: number | null;
+  readonly releaseBlocked?: boolean;
+  readonly weakDimensions?: readonly string[];
 }
 
 export interface ExecutionExperienceSummary {

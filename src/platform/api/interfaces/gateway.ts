@@ -2,7 +2,7 @@
  * Enterprise API Gateway interfaces.
  */
 
-import type { Result } from "../../intelligence/shared/result";
+import type { Result } from "../../core/result";
 import type {
   ApiRequest,
   ApiResponse,
@@ -140,45 +140,6 @@ export interface IExecutionApiService {
     executionId: string,
     tenant: TenantContext
   ): Promise<Result<{ readonly deliveryId?: string; readonly error?: string } | null>>;
-  /** Phase 1 — tenant-isolated StructuredBrief retrieval. */
-  getBrief(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<import("../../os/brief/contracts/structured-brief").StructuredBrief>>;
-  /** Phase 2 — tenant-isolated BrandContext retrieval. */
-  getBrandContext(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<import("../../os/brand/contracts/brand-context").BrandContext>>;
-  /** Phase 3 — tenant-isolated KnowledgeContext retrieval. */
-  getKnowledgeContext(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<import("../../os/knowledge/contracts/knowledge-context").KnowledgeContext>>;
-  /** Phase 4 — tenant-isolated ExecutionPlan retrieval (planning only; no task dispatch). */
-  getExecutionPlan(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<import("../../os/execution-intelligence/contracts/execution-plan").ExecutionPlan>>;
-  /** Phase 5 — execute/resume/cancel/status for Task Graph. */
-  executeTaskGraph(
-    executionId: string,
-    tenant: TenantContext,
-    options?: { readonly maxConcurrency?: number; readonly requestId?: string }
-  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
-  resumeTaskGraph(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
-  cancelTaskGraph(
-    executionId: string,
-    tenant: TenantContext,
-    reason?: string
-  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
-  getTaskGraphStatus(
-    executionId: string,
-    tenant: TenantContext
-  ): Promise<Result<import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot>>;
   submitHumanReviewDecision(
     executionId: string,
     tenant: TenantContext,
@@ -189,10 +150,7 @@ export interface IExecutionApiService {
       readonly comments?: string;
     }
   ): Promise<
-    Result<
-      | import("../../os/task-graph-executor/contracts/task-graph-state").TaskGraphRunSnapshot
-      | { readonly review: unknown; readonly singleCapability: true }
-    >
+    Result<{ readonly review: unknown; readonly singleCapability: true }>
   >;
   requestOsRefinement(
     tenant: TenantContext,
@@ -217,6 +175,12 @@ export interface IExecutionApiService {
     refinementId: string,
     tenant: TenantContext,
     idempotencyKey?: string
+  ): Promise<Result<unknown>>;
+  approveOsArtifactVersion(
+    artifactId: string,
+    version: number,
+    tenant: TenantContext,
+    body: Record<string, unknown>
   ): Promise<Result<unknown>>;
   getOsArtifact(
     artifactId: string,
@@ -251,6 +215,11 @@ export interface IExecutionApiService {
   getOsReview(
     reviewId: string,
     tenant: TenantContext
+  ): Promise<Result<unknown>>;
+  listOsReviews(
+    tenant: TenantContext | undefined,
+    query?: { readonly status?: string; readonly limit?: number },
+    options?: { readonly crossTenant?: boolean }
   ): Promise<Result<unknown>>;
   getOsPendingReview(
     executionId: string,

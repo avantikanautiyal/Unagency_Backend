@@ -5,7 +5,7 @@
 import {
   ALL_AUDIO_PROVIDER_SPECS,
   type VerifiedAudioProviderSpec,
-} from "../../intelligence/providers/audio/configs/verified-audio-provider-specs";
+} from "../../providers/audio/configs/verified-audio-provider-specs";
 import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export function resolveAudioApiKey(

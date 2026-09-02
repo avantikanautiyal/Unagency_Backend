@@ -91,7 +91,13 @@ export async function attachCollaborationSocketGateway(
       sub.on("error", (err) => {
         console.warn("[Collaboration OS] redis sub error:", err.message);
       });
-      await Promise.all([pub.connect(), sub.connect()]);
+      // Don't block gateway startup on a flaky Redis — fall back to in-process.
+      await Promise.race([
+        Promise.all([pub.connect(), sub.connect()]),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("redis adapter connect timeout")), 8_000)
+        ),
+      ]);
       io.adapter(createAdapter(pub, sub));
       console.log("[Collaboration OS] Socket.IO Redis adapter attached");
     } else {
@@ -101,7 +107,7 @@ export async function attachCollaborationSocketGateway(
     }
   } catch (err) {
     console.warn(
-      "[Collaboration OS] Redis adapter unavailable:",
+      "[Collaboration OS] Redis adapter unavailable — using in-process mode:",
       err instanceof Error ? err.message : err
     );
   }

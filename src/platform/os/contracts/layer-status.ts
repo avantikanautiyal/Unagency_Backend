@@ -16,53 +16,23 @@ export interface OsLayerContractMeta {
   readonly notes: string;
 }
 
-/** Authoritative Phase 0 status of intended OS layers (honest, not aspirational). */
+/** Authoritative status of active OS layers (honest, not aspirational). */
 export const OS_LAYER_STATUS: readonly OsLayerContractMeta[] = Object.freeze([
   {
-    layerId: "BriefIntelligence",
-    status: "implemented",
-    notes:
-      "Phase 1: deterministic NL→StructuredBrief on ExecutionApiService; consumed by IntegrationPipeline via metadata/capability hints.",
-  },
-  {
-    layerId: "BrandIntelligence",
-    status: "implemented",
-    notes:
-      "Phase 2: structured BrandContext on ExecutionApiService after Brief; rendered into provider prompt. BrandGuard (post-gen) is Phase 6.",
-  },
-  {
-    layerId: "KnowledgeIntelligence",
-    status: "implemented",
-    notes:
-      "Phase 3: structured KnowledgeContext on ExecutionApiService after Brand; task-aware retrieval; reaches provider prompt as untrusted DATA.",
-  },
-  {
-    layerId: "ExecutionIntelligence",
-    status: "implemented",
-    notes:
-      "Phase 4: deterministic ExecutionPlan (DAG) from Brief+Brand+Knowledge on ExecutionApiService; does NOT execute tasks (TaskGraphExecutor Phase 5).",
-  },
-  {
     layerId: "Orchestrator",
-    status: "partial",
-    notes:
-      "Canonical: IntegrationPipeline as single-execution coordinator. Phase 5 TaskGraphExecutor handles multi-task DAG runs.",
-  },
-  {
-    layerId: "TaskGraphExecutor",
     status: "implemented",
-    notes:
-      "Phase 5: executes APPROVED_FOR_EXECUTION OsExecutionPlan DAG via Integration capability path; bounded parallel leaves; resume/cancel/idempotent claims. Phase 8: durable TaskGraphRunStore + queued per-task workers (default execute remains in-process).",
+    notes: "Direct provider path: ExecutionApiService → DirectExecutionEngine → ProviderRuntime.",
   },
   {
     layerId: "CapabilityRegistry",
     status: "partial",
-    notes: "Real CapabilityRegistry seeded for production negotiation (Phase 0).",
+    notes: "Real CapabilityRegistry seeded for production negotiation.",
   },
   {
     layerId: "ModelRouter",
     status: "partial",
-    notes: "Wired on sync Integration path; async media uses modality routers.",
+    notes:
+      "Prepass owns matrix/modality routing pins (preferredProviderId/ModelId). A4 sharpenContinuityRoutingPins inherits refine-reuse pins; never rewrites brief.",
   },
   {
     layerId: "ExecutionRuntime",
@@ -72,59 +42,111 @@ export const OS_LAYER_STATUS: readonly OsLayerContractMeta[] = Object.freeze([
   {
     layerId: "OutputContractRegistry",
     status: "partial",
-    notes: "Tool/structured-output contracts exist; cross-capability registry is Phase 0 foundation only.",
+    notes:
+      "Capability-level contracts (partial) + Step 1 service-level canonical Output Contracts (implemented) via ServiceOutputContractRegistry. Coverage audit available.",
   },
   {
     layerId: "EvaluationEngine",
     status: "implemented",
-    notes:
-      "Phase 6: OsEvaluationEngine + EvaluatorRegistry (SpecGuard, BrandGuard, Quality); findings only — does not govern. Phase 8: append-only durable evaluation ledger.",
-  },
-  {
-    layerId: "ValidationEngine",
-    status: "infrastructure_only",
-    notes: "M9.1 offline certification harness; not request-path validation.",
+    notes: "OsEvaluationEngine + EvaluatorRegistry; findings only — does not govern.",
   },
   {
     layerId: "BrandGuard",
-    status: "implemented",
+    status: "partial",
     notes:
-      "Phase 6: post-generation brand compliance evaluator (tone/avoid/prohibited); brand context treated as DATA.",
+      "Evaluator exists, but create finalize typically passes no brand context (BRAND_CONTEXT_MISSING). Wire via Brand Memory before claiming implemented.",
   },
   {
     layerId: "SpecGuard",
-    status: "implemented",
+    status: "partial",
     notes:
-      "Phase 6: post-generation specification / output-contract compliance evaluator.",
+      "Step 2: executes effective Output Contract validation when service/subtype present on finalize path. Legacy capability registry retained for backward compat.",
   },
   {
     layerId: "GovernanceEngine",
     status: "implemented",
-    notes:
-      "Phase 6: policy-versioned decisions CONTINUE/RETRY/BLOCK/HUMAN_REVIEW/REJECT/APPROVE; human review gate; technical success ≠ approval. Phase 8: durable governance + human-review repositories.",
+    notes: "Policy-versioned decisions CONTINUE/RETRY/BLOCK/HUMAN_REVIEW/REJECT/APPROVE.",
   },
   {
     layerId: "ApprovalService",
     status: "implemented",
-    notes:
-      "Phase 6 human review + Phase 7 approval bound to artifact version; no approval → no delivery.",
+    notes: "Human review + approval bound to artifact version; no approval → no delivery.",
   },
   {
     layerId: "DeliveryService",
     status: "implemented",
-    notes:
-      "Phase 7: approval-gated, version-bound delivery with idempotent receipts (export + storage adapters). Phase 8: durable receipts, optional delivery queue/workers.",
+    notes: "Approval-gated, version-bound delivery with idempotent receipts.",
   },
   {
     layerId: "RefinementEngine",
     status: "implemented",
     notes:
-      "Phase 7: AI/HYBRID structured MCQ feedback (max 5), RefinementSpecification, replan+TaskGraph re-execution, immutable v2. Phase 8: durable sessions; question bank remains deterministic (LLM ranking not required).",
+      "AI/HYBRID structured MCQ feedback, RefinementSpecification; direct provider re-run. A4 completeOsRefinement returns continuityMetadata (same packet).",
   },
   {
     layerId: "AuditService",
     status: "partial",
-    notes: "Execution extras + layer logs + evaluation/governance/refinement/delivery/queue provenance events; Gateway /os/* control-plane APIs added in Phase 8.",
+    notes: "Execution extras + layer logs + evaluation/governance/refinement/delivery provenance.",
+  },
+  // Track A — Smart Continuity (contracts exist; create path unchanged until flagged on)
+  {
+    layerId: "BrandMemoryPlane",
+    status: "partial",
+    notes:
+      "Phase A1. InMemoryBrandMemoryStore + promote service. Create path unbound until A2 binder.",
+  },
+  {
+    layerId: "IntentGate",
+    status: "partial",
+    notes:
+      "Phase A2. detectIntentGateFromBrief on create when CONTINUITY_CONTEXT_BIND≠off.",
+  },
+  {
+    layerId: "KnowledgeResolver",
+    status: "partial",
+    notes: "Phase A2. BrandKnowledgeResolver reads canonical/working slots.",
+  },
+  {
+    layerId: "ContextBinder",
+    status: "partial",
+    notes:
+      "Phase A2. Packet + assetIds on metadata; CONTINUITY_CONTEXT_BIND default off. Missing required slots → ASK.",
+  },
+  {
+    layerId: "PostGuards",
+    status: "partial",
+    notes:
+      "Phase A3. Spec/Brand post-guards + ≤1 hard retry on sync path. CONTINUITY_POST_GUARDS default off. Taste → suggestRefine only.",
+  },
+  {
+    layerId: "MultiDeliverableOrchestrator",
+    status: "partial",
+    notes:
+      "Phase A4. Pack planner (CONTINUITY_PACKS). First leaf thin-creates; remaining leaves are plan-only. Default off.",
+  },
+  {
+    layerId: "BriefAssist",
+    status: "partial",
+    notes:
+      "Phase A4. Empty/vague + optInBriefAssist only (CONTINUITY_BRIEF_ASSIST). Default off; never auto-compiles all briefs.",
+  },
+  {
+    layerId: "CampaignMemory",
+    status: "partial",
+    notes:
+      "Phase A5. Packs→working campaign, selection signals, cross-service carry, rebrand archive. CONTINUITY_CAMPAIGN_MEMORY default off.",
+  },
+  {
+    layerId: "ProductIntelligenceUx",
+    status: "partial",
+    notes:
+      "Phase A6. Slot awareness + color contradiction ASK; continuityObservability on diagnostics; approveVersion HTTP. CONTINUITY_PRODUCT_UX default off.",
+  },
+  {
+    layerId: "ApprovePromote",
+    status: "partial",
+    notes:
+      "Phase A1. Hook on approveVersion(brandMemory?) behind CONTINUITY_APPROVE_PROMOTE (default off).",
   },
 ]);
 

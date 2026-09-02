@@ -2,11 +2,11 @@
  * Catalog API — reads Official Provider Catalog public seed (no OS internals).
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
+import { success, type Result } from "../../core/result";
 import {
   PROVIDER_CATALOG_SEED,
   listCatalogProviderIds,
-} from "../../intelligence/provider-catalog/catalog/provider-catalog-seed";
+} from "../../config/provider-catalog-seed";
 import type { CapabilityResource, ProviderCatalogResource, ModelCatalogResource } from "../contracts";
 import type { ICatalogApiService } from "../interfaces";
 

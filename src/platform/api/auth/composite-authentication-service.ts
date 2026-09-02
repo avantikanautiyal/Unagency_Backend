@@ -2,8 +2,8 @@
  * Composite authentication — platform credentials + Firebase ID token adapter.
  */
 
-import { failure, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type {
   ApiKeyRecord,
   AuthCredential,

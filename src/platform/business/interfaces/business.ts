@@ -2,7 +2,7 @@
  * Business Platform interfaces.
  */
 
-import type { Result } from "../../intelligence/shared/result";
+import type { Result } from "../../core/result";
 import type {
   Organization,
   Workspace,

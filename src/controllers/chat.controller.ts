@@ -19,6 +19,7 @@ import { collaborationChannelService } from "../services/collaboration/collabora
 import { collaborationActionsService } from "../services/collaboration/collaboration-actions-service";
 import { collaborationOsService } from "../platform/collaboration/collaboration-os-service";
 import { emitCollaborationEvent } from "../platform/collaboration/socket-gateway";
+import { serviceConversationService } from "../platform/collaboration/service-conversation-service";
 
 const template =
   "Hi Team UNAGENCY, I am interested in exploring your {service} services.";
@@ -54,9 +55,12 @@ export const listCollaborationChannels = asyncHandler(
   async (req: RequestUser) => {
     const userId = String(req.user?.userId || "");
     const brandId = req.query.brandId ? String(req.query.brandId) : undefined;
+    const productPath = req.query.productPath
+      ? String(req.query.productPath)
+      : undefined;
     const channels = await collaborationChannelService.listChannelsForUser(
       userId,
-      { brandId }
+      { brandId, productPath }
     );
     return new ApiResponse(200, channels, "channels fetched");
   }
@@ -71,6 +75,52 @@ export const ensureBrandChannel = asyncHandler(async (req: RequestUser) => {
     brandId,
   });
   return new ApiResponse(200, channel, "brand channel ready");
+});
+
+export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
+  const callerRole = String(req.user?.userRole || "");
+  const callerUserId = String(req.user?.userId || "");
+  const brandId = String(req.body?.brandId || "").trim();
+  const productPath = String(req.body?.productPath || "").trim();
+  const serviceLabel = req.body?.serviceLabel
+    ? String(req.body.serviceLabel).trim()
+    : undefined;
+  const requestedClientId = req.body?.customerUserId
+    ? String(req.body.customerUserId).trim()
+    : undefined;
+  if (!brandId) throw new ApiError("brandId is required", 400);
+  if (!productPath) throw new ApiError("productPath is required", 400);
+
+  const isOversightRole = callerRole === "admin" || callerRole === "superadmin";
+  const clientUserId =
+    isOversightRole && requestedClientId ? requestedClientId : callerUserId;
+  if (isOversightRole && requestedClientId && !mongoose.isValidObjectId(clientUserId)) {
+    throw new ApiError("customerUserId is invalid", 400);
+  }
+
+  const channel = await collaborationChannelService.ensureForService({
+    userId: clientUserId,
+    brandId,
+    productPath,
+    serviceLabel,
+    allowOversightBrandLoad: isOversightRole && Boolean(requestedClientId),
+  });
+  return new ApiResponse(200, channel, "service channel ready");
+});
+
+export const ensureProjectChannel = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user?.userId || "");
+  const projectId = String(req.body?.projectId || "").trim();
+  if (!projectId) throw new ApiError("projectId is required", 400);
+  const extra = Array.isArray(req.body?.memberUserIds)
+    ? req.body.memberUserIds.map(String).filter(Boolean)
+    : undefined;
+  const channel = await collaborationChannelService.ensureForProject({
+    actorUserId: userId,
+    projectId,
+    extraMemberUserIds: extra,
+  });
+  return new ApiResponse(200, channel, "project channel ready");
 });
 
 export const listChannelMembers = asyncHandler(async (req: RequestUser) => {
@@ -111,6 +161,44 @@ export const sendChannelMessage = asyncHandler(async (req: RequestUser) => {
   emitCollaborationEvent(message.channelId, "message:new", message as any);
   return new ApiResponse(200, message, "message sent");
 });
+
+/** Upload a file/voice note into a collaboration channel as a chat message. */
+export const uploadAttachmentInChannel = asyncHandler(
+  async (req: RequestUser) => {
+    const userId = String(req.user!.userId);
+    const channelId = String(req.params.channelId || "");
+    const file = req.file as Express.Multer.File | undefined;
+    if (!file) throw new ApiError("file is required", 400);
+
+    const url = String((file as any).location || "").trim();
+    if (!url) throw new ApiError("Upload failed — no file URL", 500);
+
+    const fileName = file.originalname || "attachment";
+    const mimeType = file.mimetype || "application/octet-stream";
+    const isAudio = mimeType.startsWith("audio/");
+    const caption = String(req.body?.caption || req.body?.text || "").trim();
+    const text =
+      caption ||
+      (isAudio ? `🎤 Voice note — ${fileName}` : `📎 ${fileName}`);
+
+    const message = await collaborationChannelService.sendMessage({
+      userId,
+      channelId,
+      text,
+      messageType: isAudio ? "voice" : "text",
+      parentId: req.body?.parentId,
+      metadata: {
+        kind: isAudio ? "voice_note" : "chat_attachment",
+        url,
+        fileName,
+        mimeType,
+        size: file.size,
+      },
+    });
+    emitCollaborationEvent(message.channelId, "message:new", message as any);
+    return new ApiResponse(200, message, "attachment uploaded");
+  }
+);
 
 export const shareAssetInChannel = asyncHandler(async (req: RequestUser) => {
   const message = await collaborationActionsService.shareAsset({
@@ -220,6 +308,140 @@ export const markChannelRead = asyncHandler(async (req: RequestUser) => {
     messageId: String(req.body?.messageId || ""),
   });
   return new ApiResponse(200, { ok: true }, "marked read");
+});
+
+/** Service AI conversation — persistent deliverable state for service chat. */
+export const getServiceAiState = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId || "");
+  const payload = await serviceConversationService.getFullConversation({
+    userId,
+    channelId,
+  });
+  return new ApiResponse(200, payload, "service ai state");
+});
+
+export const patchServiceAiState = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId || "");
+  const state = await serviceConversationService.updateState({
+    userId,
+    channelId,
+    patch: req.body ?? {},
+  });
+  return new ApiResponse(200, state, "service ai state updated");
+});
+
+export const listServiceAiMessages = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId || "");
+  const messages = await serviceConversationService.listMessages({
+    userId,
+    channelId,
+    limit: Number(req.query.limit) || 80,
+  });
+  return new ApiResponse(200, messages, "service ai messages");
+});
+
+export const upsertServiceAiMessage = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId || "");
+  const clientMessageId = String(
+    req.body?.clientMessageId || req.body?.dedupeKey || ""
+  ).trim();
+  if (!clientMessageId) {
+    throw new ApiError("clientMessageId is required", 400);
+  }
+  const role = req.body?.role === "assistant" ? "assistant" : "user";
+  const text = String(req.body?.text || "").trim();
+  const message = await serviceConversationService.upsertMessage({
+    userId,
+    channelId,
+    role,
+    text,
+    clientMessageId,
+    dedupeKey: req.body?.dedupeKey,
+    executionId: req.body?.executionId,
+    artifactId: req.body?.artifactId,
+    routes: req.body?.routes,
+    clarification: req.body?.clarification,
+    failed: req.body?.failed,
+    intentChip: req.body?.intentChip,
+    mediaUri: req.body?.mediaUri,
+  });
+  emitCollaborationEvent(channelId, "message:new", message as any);
+  return new ApiResponse(200, message, "service ai message upserted");
+});
+
+export const buildServiceExecutionContext = asyncHandler(
+  async (req: RequestUser) => {
+    const userId = String(req.user!.userId);
+    const channelId = String(req.params.channelId || "");
+    const latestUserMessage = String(
+      req.body?.latestUserMessage || req.body?.prompt || ""
+    ).trim();
+    if (!latestUserMessage) {
+      throw new ApiError("latestUserMessage is required", 400);
+    }
+    const context = await serviceConversationService.buildExecutionContext({
+      userId,
+      channelId,
+      latestUserMessage,
+    });
+    return new ApiResponse(200, context, "execution context");
+  }
+);
+
+export const resolveServiceConversationalTurn = asyncHandler(
+  async (req: RequestUser) => {
+    const userId = String(req.user!.userId);
+    const channelId = String(req.params.channelId || "");
+    const latestUserMessage = String(
+      req.body?.latestUserMessage || req.body?.prompt || ""
+    ).trim();
+    if (!latestUserMessage) {
+      throw new ApiError("latestUserMessage is required", 400);
+    }
+    const resolution = await serviceConversationService.resolveTurn({
+      userId,
+      channelId,
+      latestUserMessage,
+      messageId: req.body?.messageId,
+      persist: req.body?.persist !== false,
+    });
+    return new ApiResponse(200, resolution, "conversational turn resolved");
+  }
+);
+
+export const linkServiceExecution = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId || "");
+  const executionId = String(req.body?.executionId || "").trim();
+  if (!executionId) throw new ApiError("executionId is required", 400);
+  const state = await serviceConversationService.linkExecution({
+    userId,
+    channelId,
+    executionId,
+    artifactId: req.body?.artifactId,
+    inProgress: req.body?.inProgress === true,
+    selectedRouteId: req.body?.selectedRouteId,
+    selectedRouteTitle: req.body?.selectedRouteTitle,
+  });
+  return new ApiResponse(200, state, "execution linked");
+});
+
+export const clearServiceAiHistory = asyncHandler(async (req: RequestUser) => {
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId || "");
+  const payload = await serviceConversationService.clearHistory({
+    userId,
+    channelId,
+  });
+  emitCollaborationEvent(channelId, "history:cleared", {
+    channelId,
+    deletedCount: payload.deletedCount,
+  });
+  return new ApiResponse(200, payload, "service history cleared");
 });
 
 export const addCollaborationMembers = asyncHandler(async (req: RequestUser) => {

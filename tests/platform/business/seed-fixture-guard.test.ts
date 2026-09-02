@@ -9,14 +9,8 @@ const PRODUCTION_ROOTS = [
   "src/platform/api/factories",
   "src/platform/api/runtime",
   "src/platform/api/services",
-  "src/platform/intelligence/integration/factories",
-  "src/platform/intelligence/integration/adapters",
-  "src/platform/intelligence/integration/bridges",
-  "src/platform/intelligence/integration/context",
-  "src/platform/intelligence/integration/pipeline",
+  "src/platform/direct",
   "src/platform/infrastructure/execution/factories",
-  "src/platform/business/execution-context/live",
-  "src/platform/business/execution-context/factories",
 ];
 
 describe("M9.2D1 seed-fixture guard", () => {

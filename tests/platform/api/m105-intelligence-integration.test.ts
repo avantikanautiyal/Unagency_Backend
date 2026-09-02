@@ -1,5 +1,5 @@
 /**
- * M10.5 — Intelligence feature integration (credential-free).
+ * Runtime capability + simulated execution (credential-free).
  * Frontend → POST /v1/executions → Capability/Model/Routing → ControllableDispatcher.
  */
 
@@ -9,11 +9,11 @@ import {
   loginDemo,
 } from "../../../src/platform/api/testing";
 import { bootstrapEnterpriseApiRuntime, resetEnterpriseApiRuntimeForTests } from "../../../src/platform/api/runtime";
-import { listIntelligenceCapabilities } from "../../../src/platform/api/services/intelligence-capabilities-service";
+import { listRuntimeCapabilities } from "../../../src/platform/api/services/runtime-capabilities-service";
 
 describe("M10.5 intelligence capabilities truth", () => {
   it("lists inventory capabilities as available under simulated mode", () => {
-    const caps = listIntelligenceCapabilities("simulated");
+    const caps = listRuntimeCapabilities("simulated");
     expect(caps.length).toBe(9);
     const text = caps.find((c) => c.capabilityId === "text.generate");
     expect(text?.available).toBe(true);
@@ -21,11 +21,11 @@ describe("M10.5 intelligence capabilities truth", () => {
   });
 
   it("marks capabilities unavailable under stub mode", () => {
-    const caps = listIntelligenceCapabilities("stub");
+    const caps = listRuntimeCapabilities("stub");
     expect(caps.every((c) => c.available === false)).toBe(true);
   });
 
-  it("GET /v1/intelligence/capabilities returns runtime truth via gateway", async () => {
+  it("GET /v1/runtime/capabilities returns runtime truth via gateway", async () => {
     resetEnterpriseApiRuntimeForTests();
     bootstrapEnterpriseApiRuntime({
       executionMode: "simulated",
@@ -42,7 +42,7 @@ describe("M10.5 intelligence capabilities truth", () => {
     const res = await runtime.platform.gateway.handle(
       apiRequest({
         method: "GET",
-        path: "/v1/intelligence/capabilities",
+        path: "/v1/runtime/capabilities",
         headers: { authorization: `Bearer ${token}` },
       })
     );

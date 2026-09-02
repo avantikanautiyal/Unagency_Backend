@@ -3,6 +3,8 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/apiResponse";
 import { RequestUser } from "../types/user";
 import { brandService } from "../services/brand-service";
+import { learnBrandKnowledgeFromBrief } from "../services/brand-learn-from-brief";
+import { getEnterpriseApiRuntime } from "../platform/api/runtime/bootstrap-enterprise-api";
 
 function orgIdFromUser(req: RequestUser): string | undefined {
   const org = req.user?.organization as { _id?: { toString(): string } } | null;
@@ -55,6 +57,31 @@ export const updateBrand = asyncHandler(async (req: RequestUser) => {
     patch: req.body ?? {},
   });
   return new ApiResponse(200, data, "Brand updated");
+});
+
+export const learnBrandFromBrief = asyncHandler(async (req: RequestUser) => {
+  const prompt =
+    typeof req.body?.prompt === "string" ? req.body.prompt : undefined;
+  const prompts = Array.isArray(req.body?.prompts)
+    ? req.body.prompts.filter((p: unknown) => typeof p === "string")
+    : undefined;
+  const integration = getEnterpriseApiRuntime()?.platform?.integrationEngine;
+  const result = await learnBrandKnowledgeFromBrief({
+    userId: req.user!.userId!,
+    brandId: req.params.brandId,
+    organizationId:
+      (req.body?.organizationId as string | undefined) || orgIdFromUser(req),
+    prompt,
+    prompts,
+    source:
+      typeof req.body?.source === "string" ? req.body.source : "chat_learn",
+    ...(integration ? { integration } : {}),
+  });
+  return new ApiResponse(
+    200,
+    result,
+    result.updated ? "Brand knowledge updated" : "No new brand facts extracted"
+  );
 });
 
 export const archiveBrand = asyncHandler(async (req: RequestUser) => {

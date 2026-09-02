@@ -2,17 +2,17 @@
  * Register verified sync image providers into M9.5A runtime registry.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
-import { asProviderId, type ProviderId } from "../../intelligence/shared/identifiers";
-import type { IModelRegistry } from "../../intelligence/model-registry/interfaces/model-registry";
-import type { InMemoryProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import type { IProviderDispatcher } from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
+import { success, type Result } from "../../core/result";
+import { asProviderId, type ProviderId } from "../../core/identifiers";
+import type { IModelRegistry } from "../../model-registry/interfaces/model-registry";
+import type { InMemoryProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
 import {
   ALL_IMAGE_PROVIDER_SPECS,
   VERIFIED_IMAGE_PROVIDER_SPECS,
-} from "../../intelligence/providers/image/configs/verified-image-provider-specs";
-import { createVerifiedImageProvider } from "../../intelligence/providers/image/factories/create-verified-image-provider";
-import type { IImageHttpClient } from "../../intelligence/providers/image/http/image-http-client";
+} from "../../providers/image/configs/verified-image-provider-specs";
+import { createVerifiedImageProvider } from "../../providers/image/factories/create-verified-image-provider";
+import type { IImageHttpClient } from "../../providers/image/http/image-http-client";
 import {
   isImageProviderExecutable,
   resolveImageApiKey,

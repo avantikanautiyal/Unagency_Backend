@@ -20,9 +20,12 @@ export const PRODUCT_ALLOWED_MIME = new Set([
   "application/pdf",
   "text/plain",
   "text/markdown",
+  "text/html",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip",
+  "application/x-zip-compressed",
   "video/mp4",
   "video/webm",
   "video/quicktime",
@@ -69,7 +72,7 @@ export async function runUploadPipeline(input: {
   sizeLimits?: typeof DEFAULT_MEDIA_SIZE_LIMITS;
   skipVirusScan?: boolean;
 }): Promise<UploadValidationResult> {
-  const mime = (input.mimeType || "").toLowerCase().trim();
+  const mime = (input.mimeType || "").toLowerCase().trim().split(";")[0]?.trim() || "";
   const allowed = input.allowedMime ?? PRODUCT_ALLOWED_MIME;
   if (!mime || !allowed.has(mime)) {
     return { ok: false, statusCode: 400, message: "MIME type not allowed" };

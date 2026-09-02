@@ -5,7 +5,7 @@
 import {
   ALL_IMAGE_PROVIDER_SPECS,
   type VerifiedImageProviderSpec,
-} from "../../intelligence/providers/image/configs/verified-image-provider-specs";
+} from "../../providers/image/configs/verified-image-provider-specs";
 import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export function resolveImageApiKey(

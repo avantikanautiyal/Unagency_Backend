@@ -4,18 +4,18 @@
  * Lives in production/ — does not modify Intelligence modules.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
-import { asProviderId } from "../../intelligence/shared/identifiers";
+import { success, type Result } from "../../core/result";
+import { asProviderId } from "../../core/identifiers";
 import type {
   IProviderDispatcher,
   StreamingChunkListener,
-} from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
-import type { CancellationToken } from "../../intelligence/providers/runtime/contracts/cancellation";
-import type { ProviderExecutionRequest } from "../../intelligence/providers/runtime/contracts/provider-execution-request";
-import type { ProviderExecutionResponse } from "../../intelligence/providers/runtime/contracts/provider-execution-response";
-import type { ProviderId } from "../../intelligence/shared/identifiers";
-import type { OpenAIProviderPlatform } from "../../intelligence/providers/openai/factories/create-openai-provider";
-import { OPENAI_PROVIDER_ID } from "../../intelligence/providers/openai/constants";
+} from "../../providers/runtime/interfaces/provider-dispatcher";
+import type { CancellationToken } from "../../providers/runtime/contracts/cancellation";
+import type { ProviderExecutionRequest } from "../../providers/runtime/contracts/provider-execution-request";
+import type { ProviderExecutionResponse } from "../../providers/runtime/contracts/provider-execution-response";
+import type { ProviderId } from "../../core/identifiers";
+import type { OpenAIProviderPlatform } from "../../providers/openai/factories/create-openai-provider";
+import { OPENAI_PROVIDER_ID } from "../../providers/openai/constants";
 
 export class ProductionPinnedOpenAIDispatcher implements IProviderDispatcher {
   constructor(private readonly openai: OpenAIProviderPlatform) {}

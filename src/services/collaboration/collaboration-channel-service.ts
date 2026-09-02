@@ -27,6 +27,7 @@ export type ProvisionChannelInput = {
   briefId?: string;
   executionId?: string;
   campaignId?: string;
+  productPath?: string;
   memberRoles?: Record<string, CollaborationMemberRole>;
 };
 
@@ -83,6 +84,7 @@ export class CollaborationChannelService {
       briefId: input.briefId,
       executionId: input.executionId,
       campaignId: input.campaignId,
+      productPath: input.productPath,
       memberRoles: input.memberRoles as any,
     });
     return {
@@ -108,6 +110,109 @@ export class CollaborationChannelService {
       createdByUserId: input.createdByUserId,
       projectId: input.projectId,
     });
+  }
+
+  /**
+   * CS ↔ Resource task workspace — one room per project (not client service chat).
+   */
+  async ensureForProject(input: {
+    actorUserId: string;
+    projectId: string;
+    extraMemberUserIds?: string[];
+  }): Promise<CollaborationChannelDto> {
+    const Projects = (await import("../../models/projects.model")).default;
+    const Staff = (await import("../../models/staff.model")).default;
+    const Users = (await import("../../models/users.model")).default;
+    const Tasks = (await import("../../models/tasks.model")).default;
+
+    const resolveUserId = async (raw: string): Promise<string | null> => {
+      const id = String(raw ?? "").trim();
+      if (!id) return null;
+      const asUser = await Users.findById(id).select("_id");
+      if (asUser?._id) return String(asUser._id);
+      const asStaff = await Staff.findById(id).select("userId");
+      if (asStaff?.userId) return String(asStaff.userId);
+      const byStaffUser = await Staff.findOne({ userId: id }).select("userId");
+      if (byStaffUser?.userId) return String(byStaffUser.userId);
+      return id;
+    };
+
+    const project = await Projects.findById(input.projectId).select(
+      "title userId orgId resource"
+    );
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const memberUserIds = new Set<string>();
+    const addMember = async (raw?: string) => {
+      if (!raw) return;
+      const resolved = await resolveUserId(raw);
+      if (resolved) memberUserIds.add(resolved);
+    };
+
+    await addMember(input.actorUserId);
+    for (const raw of input.extraMemberUserIds ?? []) {
+      await addMember(raw);
+    }
+
+    const customer = await Users.findById(project.userId).select(
+      "relationship_manager"
+    );
+    if (customer?.relationship_manager) {
+      await addMember(String(customer.relationship_manager));
+    }
+
+    if (Array.isArray(project.resource)) {
+      for (const staffId of project.resource) {
+        await addMember(String(staffId));
+      }
+    }
+
+    const taskRows = await Tasks.find({ project: project._id })
+      .select("assignedTo")
+      .populate({ path: "assignedTo", select: "userId" });
+    for (const task of taskRows) {
+      const assigned = task.assignedTo as { userId?: unknown; _id?: unknown } | null;
+      if (assigned?._id) await addMember(String(assigned._id));
+      const uid =
+        assigned?.userId != null
+          ? typeof assigned.userId === "object" &&
+            assigned.userId &&
+            "_id" in (assigned.userId as object)
+            ? String((assigned.userId as { _id: unknown })._id)
+            : String(assigned.userId)
+          : "";
+      if (uid) await addMember(uid);
+    }
+
+    const orgId = String(project.orgId || "");
+    if (!orgId) {
+      throw new Error("Project organization is required for collaboration");
+    }
+
+    const provisioned = await this.provisionForProject({
+      projectId: String(project._id),
+      name: String(project.title || "Project"),
+      organizationId: orgId,
+      memberUserIds: [...memberUserIds],
+      createdByUserId: input.actorUserId,
+    });
+
+    const channels = await this.listChannelsForUser(input.actorUserId);
+    const found = channels.find((c) => c.channelId === provisioned.channelId);
+    if (found) return found;
+
+    return {
+      channelId: provisioned.channelId,
+      cid: provisioned.cid,
+      name: String(project.title || "Project"),
+      entityKind: "project",
+      entityId: String(project._id),
+      organizationId: orgId,
+      projectId: String(project._id),
+      createdByUserId: input.actorUserId,
+    };
   }
 
   async provisionForBrand(input: {
@@ -178,7 +283,7 @@ export class CollaborationChannelService {
 
   async listChannelsForUser(
     userId: string,
-    options?: { brandId?: string }
+    options?: { brandId?: string; productPath?: string }
   ): Promise<CollaborationChannelDto[]> {
     const rows = await collaborationOsService.listConversationsForUser(userId);
     const mapped = rows.map((r) => ({
@@ -192,17 +297,24 @@ export class CollaborationChannelService {
       brandId: r.brandId,
       briefId: r.briefId,
       executionId: r.executionId,
+      productPath: r.productPath,
+      createdByUserId: r.createdByUserId,
       unreadCount: r.unreadCount,
       lastMessagePreview: r.lastMessagePreview,
       memberRole: r.memberRole as CollaborationMemberRole | undefined,
     }));
     const brandId = options?.brandId?.trim();
-    if (!brandId) return mapped;
-    return mapped.filter(
-      (c) =>
-        c.brandId === brandId ||
-        (c.entityKind === "brand" && c.entityId === brandId)
-    );
+    const productPath = options?.productPath?.trim();
+    return mapped.filter((c) => {
+      if (brandId) {
+        const brandMatch =
+          c.brandId === brandId ||
+          (c.entityKind === "brand" && c.entityId === brandId);
+        if (!brandMatch) return false;
+      }
+      if (productPath && c.productPath !== productPath) return false;
+      return true;
+    });
   }
 
   /**
@@ -240,6 +352,142 @@ export class CollaborationChannelService {
       entityId: brand.id,
       organizationId: brand.organizationId,
       brandId: brand.id,
+      createdByUserId: input.userId,
+    };
+  }
+
+  /**
+   * One stable room per (client + brand + productPath/service).
+   * Always includes the client's relationship manager (CS) as a member.
+   */
+  async ensureForService(input: {
+    userId: string;
+    brandId: string;
+    productPath: string;
+    serviceLabel?: string;
+    /** Admin oversight — load brand by id if customer membership lookup fails */
+    allowOversightBrandLoad?: boolean;
+  }): Promise<CollaborationChannelDto> {
+    const crypto = await import("crypto");
+    const { brandService } = await import("../brand-service");
+    const Brands = (await import("../../models/brand.model")).default;
+    const Users = (await import("../../models/users.model")).default;
+    const Staff = (await import("../../models/staff.model")).default;
+    const { ApiError } = await import("../../utils/apiError");
+
+    const productPath = input.productPath.trim();
+    if (!productPath || productPath === "unspecified") {
+      throw new Error("productPath is required for service chat");
+    }
+
+    let brandOrgId: string;
+    let brandName: string;
+    let brandMemberUserIds: string[];
+    let brandId: string;
+
+    try {
+      const brand = await brandService.get({
+        userId: input.userId,
+        brandId: input.brandId,
+      });
+      brandOrgId = brand.organizationId;
+      brandName = brand.name;
+      brandMemberUserIds = brand.memberUserIds;
+      brandId = brand.id;
+    } catch (err) {
+      if (!input.allowOversightBrandLoad) throw err;
+      const doc = await Brands.findById(input.brandId);
+      if (!doc) throw new ApiError("Brand not found", 404);
+      brandOrgId = doc.organizationId.toString();
+      brandName = doc.name;
+      brandMemberUserIds = (doc.memberUserIds ?? []).map((id) => id.toString());
+      brandId = doc._id.toString();
+    }
+
+    const memberUserIds = new Set<string>([
+      input.userId,
+      ...(brandMemberUserIds.length > 0 ? brandMemberUserIds : [input.userId]),
+    ]);
+
+    const customer = await Users.findById(input.userId).select(
+      "relationship_manager name"
+    );
+    if (customer?.relationship_manager) {
+      const staff = await Staff.findById(customer.relationship_manager).select(
+        "userId"
+      );
+      if (staff?.userId) {
+        memberUserIds.add(String(staff.userId));
+      }
+    }
+
+    const oversightUsers = await Users.find({
+      role: { $in: ["admin", "superadmin"] },
+    })
+      .select("_id")
+      .lean();
+    for (const oversightUser of oversightUsers) {
+      memberUserIds.add(String(oversightUser._id));
+    }
+
+    const entityId = crypto
+      .createHash("sha256")
+      .update(`${input.userId}|${brandId}|${productPath}`)
+      .digest("hex")
+      .slice(0, 40);
+
+    const label =
+      input.serviceLabel?.trim() ||
+      productPath.split("/").filter(Boolean).join(" · ") ||
+      "Service";
+    const name = `${brandName} · ${label}`;
+
+    const provisioned = await this.provision({
+      entityKind: "service",
+      entityId,
+      name,
+      organizationId: brandOrgId,
+      memberUserIds: [...memberUserIds],
+      createdByUserId: input.userId,
+      brandId,
+      productPath,
+      memberRoles: {
+        [input.userId]: "client",
+        ...Object.fromEntries(
+          [...memberUserIds]
+            .filter((id) => id !== input.userId)
+            .map((id) => {
+              const oversight = oversightUsers.some(
+                (user) => String(user._id) === id
+              );
+              return [
+                id,
+                oversight
+                  ? ("viewer" as CollaborationMemberRole)
+                  : ("manager" as CollaborationMemberRole),
+              ];
+            })
+        ),
+      },
+    });
+
+    const channels = await this.listChannelsForUser(input.userId, {
+      brandId,
+      productPath,
+    });
+    const found = channels.find((c) => c.channelId === provisioned.channelId);
+    if (found) return found;
+
+    return {
+      channelId: provisioned.channelId,
+      cid: provisioned.cid,
+      name,
+      entityKind: "service",
+      entityId,
+      organizationId: brandOrgId,
+      brandId,
+      productPath,
+      createdByUserId: input.userId,
     };
   }
 

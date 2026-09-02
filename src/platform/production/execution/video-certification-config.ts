@@ -4,9 +4,9 @@
  * for Model Intelligence + Routing candidate filtering.
  */
 
-import { asProviderId, type ProviderId } from "../../intelligence/shared/identifiers";
-import type { IProviderRuntimeRegistry } from "../../intelligence/providers/runtime/registry/in-memory-provider-runtime-registry";
-import { RUNWAY_VIDEO_SPEC } from "../../intelligence/providers/video/configs/verified-video-provider-specs";
+import { asProviderId, type ProviderId } from "../../core/identifiers";
+import type { IProviderRuntimeRegistry } from "../../providers/runtime/registry/in-memory-provider-runtime-registry";
+import { RUNWAY_VIDEO_SPEC } from "../../providers/video/configs/verified-video-provider-specs";
 import { isVideoProviderConfigured } from "./video-provider-env";
 
 export const VIDEO_CERTIFICATION_PROVIDER_ENV = "VIDEO_CERTIFICATION_PROVIDER";

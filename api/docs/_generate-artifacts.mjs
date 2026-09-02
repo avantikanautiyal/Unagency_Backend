@@ -20,7 +20,9 @@ const gatewayPaths = [
   { method: "GET", path: "/workspaces", domain: "workspaces", summary: "List workspaces", auth: true, permissions: ["workspace:read"] },
   { method: "POST", path: "/users", domain: "users", summary: "Create user", auth: true, permissions: ["org:write"], body: { email: "string", displayName: "string", organizationId: "string", roles: ["member"] } },
   { method: "POST", path: "/projects", domain: "projects", summary: "Create project", auth: true, permissions: ["workspace:write"], body: { organizationId: "string", workspaceId: "string", name: "string" } },
-  { method: "GET", path: "/capabilities", domain: "capabilities", summary: "List capabilities", auth: true, permissions: ["capability:read"] },
+  { method: "GET", path: "/capabilities", domain: "capabilities", summary: "List catalogue capabilities (marketing)", auth: true, permissions: ["capability:read"] },
+  { method: "GET", path: "/runtime/capabilities", domain: "runtime", summary: "List executable runtime capabilities (authoritative availability)", auth: true, permissions: ["capability:read"] },
+  { method: "GET", path: "/intelligence/capabilities", domain: "runtime", summary: "Deprecated alias for /runtime/capabilities", auth: true, permissions: ["capability:read"] },
   { method: "GET", path: "/providers", domain: "providers", summary: "Provider catalog", auth: true, permissions: ["provider:read"] },
   { method: "GET", path: "/models", domain: "models", summary: "Model catalog", auth: true, permissions: ["provider:read"] },
   { method: "POST", path: "/executions", domain: "executions", summary: "Create execution", auth: true, permissions: ["execution:create"], body: { prompt: "string", organizationId: "string", workspaceId: "string?", capabilityId: "string?", budgetLimit: "number?", tokenBudgetLimit: "number?", stream: "boolean?", metadata: "object?" } },
@@ -168,6 +170,10 @@ const legacyRoutes = [
   ["POST", "/razorpay/webhook", "Razorpay", "Razorpay webhook"],
   ["POST", "/razorpay/webhook", "Razorpay", "Mounted webhook alias"],
   ["GET", "/", "System", "Hello"],
+  ["GET", "/runtime/health", "Runtime", "Runtime health"],
+  ["GET", "/intelligence/health", "Runtime", "Deprecated alias for /runtime/health"],
+  ["GET", "/runtime/costs", "Runtime", "Runtime cost aggregates"],
+  ["GET", "/intelligence/costs", "Runtime", "Deprecated alias for /runtime/costs"],
 ];
 
 function buildOpenApi() {
@@ -267,7 +273,7 @@ function buildOpenApi() {
       title: "UNAGENCY Enterprise API Gateway",
       version: "1.0.0",
       description:
-        "Sole external Intelligence / platform entry point. Paths are identical under /v1 and /v2. Source of truth: src/platform/api/routes/route-map.ts. This inventory does not redesign APIs.",
+        "Sole external Runtime / platform entry point. Paths are identical under /v1 and /v2. Source of truth: src/platform/api/routes/route-map.ts. This inventory does not redesign APIs.",
       contact: { name: "UNAGENCY Platform" },
     },
     servers: [

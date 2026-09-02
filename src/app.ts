@@ -49,7 +49,6 @@ import {
   logEnterpriseApiMount,
   parseEnterpriseApiExecutionModeFromEnv,
   validateEnterpriseApiExecutionConfig,
-  wireIntelligenceControlPlane,
 } from "./platform/api/runtime";
 import { savedRouteService } from "./services/saved-route-service";
 import { createExpressPlatformAdapter } from "./platform/api/transports/express";
@@ -75,7 +74,6 @@ if (enterpriseExecutionMode !== "live") {
   enterpriseApiRuntime = bootstrapEnterpriseApiRuntime({
     executionMode: enterpriseExecutionMode,
   });
-  savedRouteService.setBrandBrainEngine(enterpriseApiRuntime.platform.brandBrainEngine);
   app.use(
     createExpressPlatformAdapter({ gateway: enterpriseApiRuntime.platform.gateway })
   );
@@ -129,8 +127,16 @@ app.get("/intelligence/business/analytics/:organizationId", VerifyUserHandler, (
   return res.json(result.value);
 });
 
-// Intelligence costs endpoint — returns aggregated cost data from the telemetry store.
-// Public (no auth) for ops/infra visibility; use VerifyUserHandler if exposing to users.
+// Runtime cost telemetry — aggregated from the observability store.
+app.get("/runtime/costs", (_req, res) => {
+  const store = enterpriseApiRuntime?.platform?.telemetryStore;
+  if (!store) {
+    return res.status(503).json({ status: "unavailable", message: "Telemetry store not yet ready" });
+  }
+  const { aggregateCosts } = require("./platform/infrastructure/observability/costs/cost-intelligence");
+  const snapshot = aggregateCosts(store.listCosts());
+  return res.json(snapshot);
+});
 app.get("/intelligence/costs", (_req, res) => {
   const store = enterpriseApiRuntime?.platform?.telemetryStore;
   if (!store) {
@@ -141,36 +147,97 @@ app.get("/intelligence/costs", (_req, res) => {
   return res.json(snapshot);
 });
 
-// Intelligence Platform health endpoint — reports the status of every
-// subsystem in the kernel (capability registry, provider registry,
-// planning engine, orchestrator, runtime).
-// Public: no auth required (ops/infra visibility only).
-app.get("/intelligence/health", async (_req, res) => {
-  const gateway = enterpriseApiRuntime?.platform?.intelligencePlatform?.gateway;
-  if (!gateway) {
-    return res.status(503).json({ status: "unavailable", message: "Intelligence Gateway not yet bootstrapped" });
-  }
-  const result = await gateway.health();
-  if (!result.ok) {
-    return res.status(500).json({ status: "error", message: result.error.message });
-  }
-  const httpStatus = result.value.status === "healthy" ? 200 : result.value.status === "degraded" ? 207 : 503;
-  return res.status(httpStatus).json(result.value);
+// Direct execution health.
+app.get("/runtime/health", (_req, res) => {
+  return res.status(200).json({
+    status: "healthy",
+    mode: "direct_provider",
+    message: "Direct provider execution active",
+  });
+});
+app.get("/intelligence/health", (_req, res) => {
+  return res.status(200).json({
+    status: "healthy",
+    mode: "direct_provider",
+    message: "Deprecated alias — use /runtime/health",
+  });
 });
 
 (app as CustomExpress).run = async () => {
   try {
-    // LIVE boots async (provider registry). Mount BEFORE 404/error handlers so
+    // Keep the API process alive across transient Atlas/Redis blips.
+    // Without these handlers, MongoServerSelectionError / ETIMEDOUT crash npm start.
+    const isTransientInfraError = (err: unknown): boolean => {
+      const message = err instanceof Error ? err.message : String(err ?? "");
+      const name = err instanceof Error ? err.name : "";
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: unknown }).code ?? "")
+          : "";
+      return (
+        name === "MongoServerSelectionError" ||
+        name === "MongoNetworkTimeoutError" ||
+        name === "MongoNetworkError" ||
+        code === "ETIMEDOUT" ||
+        code === "ECONNRESET" ||
+        code === "ECONNREFUSED" ||
+        /ETIMEDOUT|ECONNRESET|ECONNREFUSED|MongoServerSelection|ReplicaSetNoPrimary|timed out/i.test(
+          message
+        )
+      );
+    };
+
+    process.on("unhandledRejection", (reason) => {
+      if (isTransientInfraError(reason)) {
+        console.warn(
+          "[infra] transient unhandledRejection (kept alive):",
+          reason instanceof Error ? reason.message : reason
+        );
+        return;
+      }
+      console.error("[infra] unhandledRejection:", reason);
+    });
+    process.on("uncaughtException", (err) => {
+      if (isTransientInfraError(err)) {
+        console.warn(
+          "[infra] transient uncaughtException (kept alive):",
+          err.message
+        );
+        return;
+      }
+      console.error("[infra] uncaughtException:", err);
+      process.exit(1);
+    });
+
+    mongoose.connection.on("connected", () => {
+      console.log("DB_CONNECTED");
+    });
+    mongoose.connection.on("error", (err) => {
+      console.warn("[mongo] connection error:", err.message);
+    });
+    mongoose.connection.on("disconnected", () => {
+      console.warn("[mongo] disconnected — waiting to reconnect");
+    });
+    mongoose.connection.on("reconnected", () => {
+      console.log("[mongo] reconnected");
+    });
+
+    await mongoose.connect(process.env.DB_URI!, {
+      serverSelectionTimeoutMS: 15_000,
+      socketTimeoutMS: 45_000,
+      maxPoolSize: 20,
+      // Driver buffers ops while reconnecting instead of failing the process.
+      bufferCommands: true,
+    });
+
+    // LIVE boots async (provider registry + accounting). Mount BEFORE 404/error handlers so
     // /v1|/v2 executions are reachable — previously live mounted after ErrorHandler
     // and product generate/enhance calls never hit the Enterprise gateway.
     if (enterpriseExecutionMode === "live") {
       enterpriseApiRuntime = await bootstrapEnterpriseApiRuntimeAsync();
-      savedRouteService.setBrandBrainEngine(enterpriseApiRuntime.platform.brandBrainEngine);
       app.use(
         createExpressPlatformAdapter({ gateway: enterpriseApiRuntime.platform.gateway })
       );
-    } else {
-      await wireIntelligenceControlPlane(enterpriseApiRuntime.platform);
     }
 
     // Invalid Path Error Handler + Error handler (after all routes, including live /v1)
@@ -182,51 +249,41 @@ app.get("/intelligence/health", async (_req, res) => {
       enterpriseApiRuntime.firebaseBridgeEnabled,
       enterpriseApiRuntime.configuredProviders
     );
-    mongoose.connect(process.env.DB_URI!);
-    mongoose.connection.on("connected", () => {
-      console.log("DB_CONNECTED");
-    });
 
-    // Explicit legacy background worker lifecycle (not import side-effect)
+    void (async () => {
+      try {
+        const { collaborationOsService } = await import(
+          "./platform/collaboration/collaboration-os-service"
+        );
+        const count = await collaborationOsService.backfillServiceChannelOversight();
+        if (count > 0) {
+          console.log(
+            `[collaboration] synced admin oversight on ${count} service channel(s)`
+          );
+        }
+      } catch (err) {
+        console.warn(
+          "[collaboration] service channel oversight backfill skipped:",
+          err instanceof Error ? err.message : err
+        );
+      }
+    })();
+
+    try {
+      const { runEnterpriseAdaptiveRoutingStartupValidation } = await import(
+        "./platform/api/runtime/adaptive-routing-startup"
+      );
+      await runEnterpriseAdaptiveRoutingStartupValidation(enterpriseApiRuntime.platform);
+    } catch (err) {
+      console.warn(
+        "[UNAGENCY-ADAPTIVE-ROUTING] startup validation failed (fail closed):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     if (process.env.ENTERPRISE_API_START_LEGACY_WORKERS !== "false") {
       await import("./background/queue/taskDeadline.queue");
       await import("./background/queue/notificationCron.queue");
-    }
-
-    // Intelligence Orchestrator — control-plane lifecycle coordinator.
-    // Bootstrapped as a singleton after providers are ready so it can observe
-    // execution lifecycle events without blocking the HTTP path.
-    try {
-      const { createIntelligenceOrchestrator } = await import(
-        "./platform/intelligence/orchestrator/factories/create-orchestrator"
-      );
-      const { createExecutionRuntime } = await import(
-        "./platform/intelligence/execution-runtime/factories/create-execution-runtime"
-      );
-      const { InMemoryEventBus } = await import(
-        "./platform/intelligence/events/implementations/in-memory-event-bus"
-      );
-      const { EventFactory } = await import(
-        "./platform/intelligence/events/implementations/event-factory"
-      );
-      const eventBus = new InMemoryEventBus();
-      const eventFactory = new EventFactory(
-        { generate: (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2)}` },
-        { now: () => new Date(), nowIso: () => new Date().toISOString() }
-      );
-      const orchestratorRuntime = createExecutionRuntime({ eventBus, eventFactory });
-      const orchestrator = createIntelligenceOrchestrator({
-        runtime: orchestratorRuntime,
-        includeDefaultMiddleware: true,
-      });
-      // Attach to global so the enterprise gateway can optionally emit lifecycle events.
-      (globalThis as Record<string, unknown>).__intelligenceOrchestrator = orchestrator;
-      console.log("🧠 [AI OS] IntelligenceOrchestrator bootstrapped — control-plane ready");
-    } catch (err) {
-      console.warn(
-        "[AI OS] IntelligenceOrchestrator failed to bootstrap (non-fatal):",
-        err instanceof Error ? err.message : err
-      );
     }
 
     // M10.18 — media processing worker (claimable Mongo jobs; not BullMQ)
@@ -241,6 +298,33 @@ app.get("/intelligence/health", async (_req, res) => {
         "[M10.18] media processing worker not started:",
         err instanceof Error ? err.message : err
       );
+    }
+
+    // Pump durable queued jobs (website/deck/doc) — in-memory queues are lost on restart.
+    let distributedExecutionTimer: ReturnType<typeof setInterval> | undefined;
+    let distributedTickInFlight = false;
+    const distributed = enterpriseApiRuntime?.platform?.distributed;
+    if (distributed) {
+      distributed.registerWorker("execution", 4);
+      console.log("⚙️  [Direct] distributed execution worker started (1s tick)");
+      const pumpDistributedJobs = () => {
+        if (distributedTickInFlight) return;
+        distributedTickInFlight = true;
+        void distributed
+          .tick(4)
+          .catch((err: unknown) => {
+            console.warn(
+              "[Direct] distributed job tick failed:",
+              err instanceof Error ? err.message : err
+            );
+          })
+          .finally(() => {
+            distributedTickInFlight = false;
+          });
+      };
+      pumpDistributedJobs();
+      distributedExecutionTimer = setInterval(pumpDistributedJobs, 1000);
+      distributedExecutionTimer.unref?.();
     }
 
     const server = app.listen(process.env.PORT ?? 4000, () => {
@@ -276,7 +360,7 @@ app.get("/intelligence/health", async (_req, res) => {
             try {
               const { getActiveStreamRegistry, loadStreamingRuntimeConfig } =
                 await import(
-                  "./platform/intelligence/providers/streaming"
+                  "./platform/providers/streaming"
                 );
               const cfg = loadStreamingRuntimeConfig(process.env);
               await getActiveStreamRegistry().shutdown({
@@ -290,6 +374,10 @@ app.get("/intelligence/health", async (_req, res) => {
               await mediaProcessingWorker?.shutdown();
             } catch {
               /* media worker optional */
+            }
+            if (distributedExecutionTimer) {
+              clearInterval(distributedExecutionTimer);
+              distributedExecutionTimer = undefined;
             }
             try {
               const { shutdownCollaborationSocketGateway } = await import(

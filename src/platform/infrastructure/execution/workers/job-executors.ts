@@ -1,22 +1,24 @@
 /**
- * Job executor adapters — consume Integration / Production Validation public APIs.
- * Workers never own Intelligence logic.
+ * Job executor adapters — distributed jobs call DirectExecutionEngine.
+ * Workers never own intelligence / prompt-compiler logic.
  */
 
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 import type { IJobExecutor } from "../interfaces/execution";
 import type { ExecutionJob } from "../contracts/job";
-import type { IIntelligenceOsIntegrationEngine } from "../../../intelligence/integration/interfaces/integration";
-import type { IIntelligenceGateway } from "../../../intelligence/gateway/interfaces/intelligence-gateway";
+import type { IDirectExecutionEngine } from "../../../direct/contracts";
 import {
-  runIntegrationViaControlPlane,
+  runDirectProviderExecution,
   resolveControlPlaneWorkspaceId,
 } from "../../../api/services/integration-control-plane-runner";
-import type { IProductionValidationEngine } from "../../../production/interfaces/production";
-import { asOrganizationId, asWorkspaceId } from "../../../intelligence/shared/identifiers";
+import { asOrganizationId, asWorkspaceId } from "../../../core/identifiers";
 import { buildIntegrationJobSummary } from "./integration-job-summary";
-import { isImageGenerationCapability } from "../../../intelligence/providers/common/resolve-execution-modality";
+import { isImageGenerationCapability } from "../../../providers/common/resolve-execution-modality";
+import {
+  isRequiredDocumentOrPresentationExport,
+  isSoftDocumentExportMiss,
+} from "../../../api/services/document-export-materializer";
 
 export type SyncImageMaterializer = (input: {
   readonly executionId: string;
@@ -27,33 +29,37 @@ export type SyncImageMaterializer = (input: {
   readonly runtimeOutput: Readonly<Record<string, unknown>> | undefined;
 }) => Promise<Result<readonly string[]>>;
 
+export type DocumentExportMaterializer = (input: {
+  readonly executionId: string;
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly jobSummary: Readonly<Record<string, unknown>>;
+  readonly runtimeOutput: Readonly<Record<string, unknown>> | undefined;
+  readonly metadata: Readonly<Record<string, unknown>> | undefined;
+}) => Promise<
+  Result<{
+    readonly artifactIds: readonly string[];
+    readonly structuredData?: unknown;
+    readonly exportKind?: string;
+  }>
+>;
+
 export interface IntegrationLayerJobExecutorOptions {
   readonly integrationMode?: "full" | "planning_through_routing";
   readonly executionMode?: "simulated" | "live";
-  /** Persist sync image.generate bytes before the job summary drops runtime payloads. */
   readonly materializeSyncImage?: SyncImageMaterializer;
-  /** When set, distributed jobs route through kernel → gateway → orchestrator. */
-  readonly intelligenceGateway?: IIntelligenceGateway;
+  readonly materializeDocumentExport?: DocumentExportMaterializer;
 }
 
-/** Mutable gateway slot — wired post-bootstrap when async gateway becomes available. */
-export class IntelligenceGatewayHolder {
-  private gateway?: IIntelligenceGateway;
-
-  set(gateway: IIntelligenceGateway): void {
-    this.gateway = gateway;
-  }
-
-  get(): IIntelligenceGateway | undefined {
-    return this.gateway;
-  }
-}
-
+/**
+ * Distributed job executor for the direct provider spine.
+ * Class name is legacy ("IntegrationLayer"); implementation is DirectExecutionEngine only.
+ */
 export class IntegrationLayerJobExecutor implements IJobExecutor {
   constructor(
-    private readonly integration: IIntelligenceOsIntegrationEngine,
-    private readonly options: IntegrationLayerJobExecutorOptions = {},
-    private readonly gatewayHolder?: IntelligenceGatewayHolder
+    private readonly integration: IDirectExecutionEngine,
+    private readonly options: IntegrationLayerJobExecutorOptions = {}
   ) {}
 
   async execute(
@@ -72,7 +78,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
     }
 
     const start = Date.now();
-    // Canonical spine: distributed jobs always run the full IntegrationPipeline.
+    // Distributed jobs always run full direct provider execution (not planning-only).
     const integrationMode = "full" as const;
 
     const executionMode = this.options.executionMode ?? "simulated";
@@ -114,11 +120,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       },
     } as const;
 
-    const gateway =
-      this.options.intelligenceGateway ?? this.gatewayHolder?.get();
-
-    const result = await runIntegrationViaControlPlane({
-      gateway,
+    const result = await runDirectProviderExecution({
       integration: this.integration,
       request: integrationRequest,
       capabilityId,
@@ -194,7 +196,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
           modelId,
         };
         console.log(
-          `🖼️  [AI OS] sync image materialized | executionId=${executionId} | artifacts=${materialized.value.join(", ")}`
+          `🖼️  [Direct] sync image materialized | executionId=${executionId} | artifacts=${materialized.value.join(", ")}`
         );
       } else {
         const reason = !materialized.ok
@@ -205,8 +207,121 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
           mediaMaterializationError: reason,
         };
         console.warn(
-          `🖼️  [AI OS] sync image materialization failed | executionId=${executionId} | ${reason}`
+          `🖼️  [Direct] sync image materialization failed | executionId=${executionId} | ${reason}`
         );
+      }
+    }
+
+    // Document/presentation plans must be exported while runtime output is still
+    // in memory — distributed jobs only retain a summary afterward.
+    // Gate on recoverable structured data (or a known plan schema name). Export
+    // itself requires parseable plan data — name alone must not hard-fail the job.
+    const structuredNameHint = String(
+      (job.payload.metadata?.structuredOutput as { name?: unknown } | undefined)
+        ?.name ?? ""
+    ).toLowerCase();
+    const likelyDocumentExport =
+      summary.structuredData != null ||
+      structuredNameHint === "documentplan" ||
+      structuredNameHint === "presentationplan" ||
+      structuredNameHint === "presentationroutes" ||
+      structuredNameHint === "presentationrouteconcepts" ||
+      structuredNameHint === "emailplan";
+    if (
+      report.success &&
+      likelyDocumentExport &&
+      this.options.materializeDocumentExport
+    ) {
+      const executionId = String(
+        job.payload.metadata?.apiExecutionId ??
+          job.payload.metadata?.executionId ??
+          job.jobId
+      );
+      const organizationId = String(job.payload.organizationId ?? "org_unknown");
+      const runtimeOutput = report.artifacts.runtime?.response?.output as
+        | Readonly<Record<string, unknown>>
+        | undefined;
+      const providerId = String(
+        report.artifacts.runtime?.finalProviderId ??
+          report.artifacts.runtime?.response?.providerId ??
+          summary.routedProviderId ??
+          summary.provider ??
+          "provider.unknown"
+      );
+      const modelId = String(
+        report.artifacts.runtime?.finalModelId ??
+          summary.routedModelId ??
+          summary.model ??
+          "unknown"
+      );
+      const exported = await this.options.materializeDocumentExport({
+        executionId,
+        organizationId,
+        providerId,
+        modelId,
+        jobSummary: summary,
+        runtimeOutput,
+        metadata: job.payload.metadata,
+      });
+      if (exported.ok) {
+        summary = {
+          ...summary,
+          ...(exported.value.structuredData !== undefined
+            ? { structuredData: exported.value.structuredData }
+            : {}),
+          ...(exported.value.exportKind
+            ? { documentExportKind: exported.value.exportKind }
+            : {}),
+          mediaArtifactIds: [
+            ...new Set([
+              ...(Array.isArray(summary.mediaArtifactIds)
+                ? (summary.mediaArtifactIds as string[])
+                : []),
+              ...exported.value.artifactIds,
+            ]),
+          ],
+          providerId,
+          modelId,
+        };
+        console.log(
+          `📄 [Direct] document export materialized | executionId=${executionId} | artifacts=${exported.value.artifactIds.join(", ")}`
+        );
+      } else if (exported.error.message) {
+        const softMiss = isSoftDocumentExportMiss(exported.error.message);
+        const meta = job.payload.metadata as
+          | Readonly<Record<string, unknown>>
+          | undefined;
+        const structuredName =
+          meta?.structuredOutput &&
+          typeof meta.structuredOutput === "object"
+            ? String(
+                (meta.structuredOutput as { name?: unknown }).name ?? ""
+              )
+            : undefined;
+        const required = isRequiredDocumentOrPresentationExport({
+          outputKind:
+            typeof meta?.outputKind === "string" ? meta.outputKind : undefined,
+          structuredName,
+          service:
+            typeof meta?.service === "string" ? meta.service : undefined,
+          subtype:
+            typeof meta?.subtype === "string" ? meta.subtype : undefined,
+          deliverableRequired: meta?.deliverableRequired === true,
+        });
+        if (required || !softMiss) {
+          summary = {
+            ...summary,
+            success: false,
+            errorMessage: exported.error.message,
+          };
+          console.warn(
+            `📄 [Direct] document export failed | executionId=${executionId} | ${exported.error.message}`
+          );
+        } else if (softMiss) {
+          console.warn(
+            `📄 [Direct] document export skipped | executionId=${executionId} | ${exported.error.message}`
+          );
+        }
       }
     }
 
@@ -234,7 +349,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
 
     console.log(
       [
-        "⚙️  [AI OS] execution complete",
+        "⚙️  [Direct] execution complete",
         `mode=${executionMode}`,
         `success=${String(summary.success)}`,
         `capability=${capability}`,
@@ -256,48 +371,6 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
         typeof summary.provider === "string" ? summary.provider : undefined,
       stages: report.stagesCompleted.map(String),
       durationMs: report.durationMs || Date.now() - start,
-    });
-  }
-}
-
-/** Optional production-validation executor for certification jobs. */
-export class ProductionValidationJobExecutor implements IJobExecutor {
-  constructor(private readonly validation: IProductionValidationEngine) {}
-
-  async execute(
-    job: ExecutionJob,
-    signal: { cancelled: boolean }
-  ): Promise<
-    Result<{
-      summary: Readonly<Record<string, unknown>>;
-      currentProvider?: string;
-      stages?: readonly string[];
-      durationMs: number;
-    }>
-  > {
-    if (signal.cancelled) {
-      return failure(new ValidationError("job cancelled before execution"));
-    }
-    const result = await this.validation.validate({
-      requestId: String(job.jobId),
-      scenarioId: typeof job.payload.metadata?.scenarioId === "string"
-        ? job.payload.metadata.scenarioId
-        : "scn_retail",
-      correlationId: job.payload.correlationId,
-      organizationId: job.payload.organizationId,
-      workspaceId: job.payload.workspaceId,
-      mode: "openai_simulated",
-    });
-    if (!result.ok) return result;
-    return success({
-      summary: {
-        success: result.value.success,
-        readiness: result.value.readiness.overall,
-        grade: result.value.readiness.grade,
-      },
-      currentProvider: result.value.selectedProvider,
-      stages: result.value.checks.map((c) => c.checkId),
-      durationMs: result.value.durationMs,
     });
   }
 }

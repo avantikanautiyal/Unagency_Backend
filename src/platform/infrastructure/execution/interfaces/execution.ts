@@ -2,7 +2,7 @@
  * Distributed Execution interfaces.
  */
 
-import type { Result } from "../../../intelligence/shared/result";
+import type { Result } from "../../../core/result";
 import type {
   BatchJobSpec,
   BatchRecord,
@@ -62,6 +62,10 @@ export interface IJobStore {
    * Returns requeued jobs (status → queued).
    */
   reclaimExpired?(nowIso: string, nowMs: number): Promise<readonly ExecutionJob[]>;
+  /** Reload queued/retrying jobs from durable storage (Mongo) into the local cache. */
+  listRunnableFromDatabase?(): Promise<readonly ExecutionJob[]>;
+  /** Load one job from durable storage when the in-memory cache misses. */
+  hydrate?(jobId: JobId): Promise<ExecutionJob | undefined>;
 }
 
 export interface IQueueBackend {

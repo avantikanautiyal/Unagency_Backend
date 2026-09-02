@@ -68,16 +68,6 @@ export interface IExecutionExtrasRepository {
       osLifecycle?: string;
       governance?: unknown;
       asyncLane?: unknown;
-      /** Phase 1 StructuredBrief — tenant-scoped via organizationId on save. */
-      structuredBrief?: unknown;
-      /** Phase 2 BrandContext — tenant-scoped via organizationId on save. */
-      structuredBrandContext?: unknown;
-      /** Phase 3 KnowledgeContext — tenant-scoped via organizationId on save. */
-      structuredKnowledgeContext?: unknown;
-      /** Phase 4 ExecutionPlan — tenant-scoped via organizationId on save. */
-      structuredExecutionPlan?: unknown;
-      /** Phase 5 TaskGraphRunSnapshot — tenant-scoped via organizationId on save. */
-      structuredTaskGraphState?: unknown;
       workflowFollowUp?: unknown;
       pendingHumanReview?: unknown;
       autoDelivery?: unknown;
@@ -93,11 +83,6 @@ export interface IExecutionExtrasRepository {
         osLifecycle?: string;
         governance?: unknown;
         asyncLane?: unknown;
-        structuredBrief?: unknown;
-        structuredBrandContext?: unknown;
-        structuredKnowledgeContext?: unknown;
-        structuredExecutionPlan?: unknown;
-        structuredTaskGraphState?: unknown;
         workflowFollowUp?: unknown;
         pendingHumanReview?: unknown;
         autoDelivery?: unknown;

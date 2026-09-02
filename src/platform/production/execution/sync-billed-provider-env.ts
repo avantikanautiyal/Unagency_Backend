@@ -10,19 +10,19 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ALL_TEXT_PROVIDER_ENV_SPECS } from "./text-provider-env";
-import { ALL_IMAGE_PROVIDER_SPECS } from "../../intelligence/providers/image/configs/verified-image-provider-specs";
-import { ALL_VIDEO_PROVIDER_SPECS } from "../../intelligence/providers/video/configs/verified-video-provider-specs";
-import { ALL_AUDIO_PROVIDER_SPECS } from "../../intelligence/providers/audio/configs/verified-audio-provider-specs";
-import { ALL_RESEARCH_PROVIDER_SPECS } from "../../intelligence/providers/research/configs/verified-research-provider-specs";
-import { ALL_EMBEDDING_PROVIDER_SPECS } from "../../intelligence/providers/embedding/configs/verified-embedding-provider-specs";
+import { ALL_IMAGE_PROVIDER_SPECS } from "../../providers/image/configs/verified-image-provider-specs";
+import { ALL_VIDEO_PROVIDER_SPECS } from "../../providers/video/configs/verified-video-provider-specs";
+import { ALL_AUDIO_PROVIDER_SPECS } from "../../providers/audio/configs/verified-audio-provider-specs";
+import { ALL_RESEARCH_PROVIDER_SPECS } from "../../providers/research/configs/verified-research-provider-specs";
+import { ALL_EMBEDDING_PROVIDER_SPECS } from "../../providers/embedding/configs/verified-embedding-provider-specs";
 
 const EXTRA_PROVIDER_ENV_VARS = [
   "GOOGLE_API_KEY",
   "GOOGLE_ENABLED",
   "GEMINI_API_KEY",
   "GEMINI_ENABLED",
+  "KLING_API_KEY",
   "KLING_ACCESS_KEY",
-  "KLING_SECRET_KEY",
   "KLING_ENABLED",
   "SEEDANCE_API_KEY",
   "SEEDANCE_ENABLED",

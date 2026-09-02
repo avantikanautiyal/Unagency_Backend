@@ -1,5 +1,5 @@
 /**
- * Background OS production worker — delivery + task graph queue ticks.
+ * Background OS production worker — delivery queue ticks only.
  */
 
 import type { OsProductionRuntime } from "./os-production-runtime";
@@ -33,7 +33,6 @@ export class OsProductionWorker {
     const workerId = this.deps.workerId ?? "os-production-worker";
     try {
       await this.deps.runtime.tickDeliveryWorker(workerId);
-      await this.deps.runtime.tickTaskWorker(workerId);
     } finally {
       this.activeTicks -= 1;
       this.running = false;
@@ -50,13 +49,5 @@ export class OsProductionWorker {
     while (this.activeTicks > 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50));
     }
-  }
-
-  isRunning(): boolean {
-    return this.running;
-  }
-
-  isShutDown(): boolean {
-    return this.shutDown;
   }
 }

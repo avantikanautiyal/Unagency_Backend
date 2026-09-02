@@ -4,8 +4,8 @@
  */
 
 import dns from "node:dns/promises";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",

@@ -51,11 +51,11 @@ services:
       SERVICE_ROLE: business
     depends_on: [api]
 
-  intelligence:
+  direct:
     image: ${UNAGENCY_IMAGE:-unagency/platform:staging}
     env_file: ../environments/staging/app.env
     environment:
-      SERVICE_ROLE: intelligence
+      SERVICE_ROLE: direct
     depends_on: [api]
 
   worker:

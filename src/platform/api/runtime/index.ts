@@ -4,8 +4,9 @@ export {
   getEnterpriseApiRuntime,
   resetEnterpriseApiRuntimeForTests,
   logEnterpriseApiMount,
-  wireIntelligenceControlPlane,
+  runEnterpriseAdaptiveRoutingStartupValidation,
   type EnterpriseApiRuntime,
+  type AdaptiveRoutingStartupResult,
 } from "./bootstrap-enterprise-api";
 export { composeEnterpriseExecution } from "./compose-enterprise-execution";
 export { evaluateReadiness } from "./readiness";

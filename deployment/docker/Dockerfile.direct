@@ -1,0 +1,5 @@
+# Direct execution service image (provider runtime host)
+ARG BASE_IMAGE=unagency/platform:latest
+FROM ${BASE_IMAGE}
+ENV SERVICE_ROLE=direct
+EXPOSE 3000

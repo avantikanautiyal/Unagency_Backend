@@ -1,56 +1,65 @@
 /**
- * Business Platform testing helpers.
+ * Business platform test helpers — not imported by production code.
  */
 
-import {
-  createBusinessPlatform,
-  type BusinessPlatform,
-  type CreateBusinessPlatformOptions,
-} from "../factories/create-business-platform";
-import { apiRequest } from "../../api/testing";
-import type { IssuedToken } from "../../api/contracts";
+import { bootstrapEnterpriseApiRuntime, resetEnterpriseApiRuntimeForTests } from "../../api/runtime";
+import { loginDemo } from "../../api/testing";
+import type { BusinessPlatformEngine } from "../engine/business-platform-engine";
 
-export function deterministicBusinessHelpers() {
-  let id = 0;
-  let ms = 5_000;
+export type BusinessPlatformTestContext = {
+  readonly engine: BusinessPlatformEngine;
+  readonly runtime: ReturnType<typeof bootstrapEnterpriseApiRuntime>;
+  readonly seed?: {
+    organizationId: string;
+    workspaceId: string;
+    userId: string;
+    email: string;
+  };
+  readonly reset: () => void;
+};
+
+export function setupBusinessPlatform(): BusinessPlatformTestContext {
+  resetEnterpriseApiRuntimeForTests();
+  const runtime = bootstrapEnterpriseApiRuntime({
+    executionMode: "simulated",
+    seedDemoTenant: true,
+  });
+  const engine = runtime.platform.businessPlatform;
+
+  let seed: BusinessPlatformTestContext["seed"];
+  if (runtime.platform.seed) {
+    const apiSeed = runtime.platform.seed;
+    const org = engine.createOrganization({
+      name: "UNAGENCY Demo",
+      ownerEmail: apiSeed.email ?? "admin@unagency.local",
+      ownerDisplayName: "Platform Admin",
+      organizationId: apiSeed.organizationId,
+      ownerUserId: apiSeed.userId,
+    });
+    if (org.ok) {
+      const ws = engine.createWorkspace(apiSeed.organizationId, "Default");
+      seed = {
+        organizationId: apiSeed.organizationId,
+        workspaceId: ws.ok ? ws.value.workspaceId : apiSeed.workspaceId,
+        userId: apiSeed.userId,
+        email: apiSeed.email ?? "admin@unagency.local",
+      };
+    }
+  }
+
   return {
-    createId: (prefix: string) => `${prefix}_${++id}`,
-    nowIso: () => new Date(ms).toISOString(),
-    clockMs: () => (ms += 7),
+    engine,
+    runtime,
+    seed,
+    reset: () => resetEnterpriseApiRuntimeForTests(),
   };
 }
 
-export function setupBusinessPlatform(
-  options: CreateBusinessPlatformOptions = {}
-): BusinessPlatform {
-  const helpers = deterministicBusinessHelpers();
-  return createBusinessPlatform({
-    createId: helpers.createId,
-    nowIso: helpers.nowIso,
-    clockMs: helpers.clockMs,
-    alignWithApiSeed: true,
-    ...options,
-  });
+export async function gatewayLogin(
+  platform: BusinessPlatformTestContext,
+): Promise<string> {
+  const { token } = await loginDemo(platform.runtime.platform);
+  return token;
 }
 
-/** Login to Enterprise API Gateway using aligned seed credentials. */
-export async function gatewayLogin(platform: BusinessPlatform): Promise<string> {
-  const seed = platform.seed!;
-  const res = await platform.api.gateway.handle(
-    apiRequest({
-      method: "POST",
-      path: "/v1/auth/login",
-      body: {
-        email: seed.email,
-        password: seed.password,
-        organizationId: seed.organizationId,
-        deviceId: "biz_device",
-        scheme: "jwt",
-      },
-    })
-  );
-  if (!res.ok || res.value.status >= 400) {
-    throw new Error(`gateway login failed: ${JSON.stringify(res)}`);
-  }
-  return (res.value.body as { data: IssuedToken }).data.accessToken;
-}
+export { BusinessExecutionRequestBuilder } from "./business-builders";

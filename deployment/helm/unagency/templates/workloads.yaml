@@ -1,4 +1,4 @@
-{{- range $role, $replicas := dict "worker" .Values.replicaCount.worker "business" .Values.replicaCount.business "intelligence" .Values.replicaCount.intelligence "background" .Values.replicaCount.background }}
+{{- range $role, $replicas := dict "worker" .Values.replicaCount.worker "business" .Values.replicaCount.business "direct" .Values.replicaCount.direct "background" .Values.replicaCount.background }}
 ---
 apiVersion: apps/v1
 kind: Deployment

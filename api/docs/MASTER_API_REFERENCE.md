@@ -8,7 +8,6 @@ Generated from:
 |---------|-----------------|------------------|
 | Enterprise API Gateway | `src/platform/api/routes/route-map.ts` | In-process today; nginx/health docs expect `/v1` `/v2` |
 | Legacy SaaS Express | `src/app.ts` + `src/routes/*` | **Yes** — current production HTTP |
-| Intelligence Playground | `src/platform/intelligence/playground/routes/route-manifest.ts` | **No** (`enabledInM0: false`) |
 
 Related artifacts in this folder:
 
@@ -64,12 +63,13 @@ Errors:
 
 | Method | Path | Permissions |
 |--------|------|-------------|
-| GET | `/capabilities` | `capability:read` |
+| GET | `/capabilities` | `capability:read` | Marketing catalogue |
+| GET | `/runtime/capabilities` | `capability:read` | Executable availability (authoritative) |
 | GET | `/providers` | `provider:read` |
 | GET | `/models` | `provider:read` |
 | GET | `/benchmarks` | `benchmark:read` |
 
-### Executions (Intelligence OS entry via Gateway only)
+### Executions (direct provider path via Gateway)
 
 | Method | Path | Permissions | Notes |
 |--------|------|-------------|-------|
@@ -86,19 +86,10 @@ Errors:
 | GET | `/executions/{executionId}/cost-breakdown` | `execution:read` | Cost line items (no secrets) |
 | GET | `/executions/{executionId}/evaluation` | `execution:read` | |
 | GET | `/executions/{executionId}/experience` | `execution:read` | |
-| GET | `/executions/{executionId}/model-decision` | `execution:read` | Why model selected / rejected |
-| GET | `/executions/{executionId}/routing` | `execution:read` | Negotiation + routing |
-| GET | `/executions/{executionId}/planning` | `execution:read` | Intent / agents / plan |
-| GET | `/executions/{executionId}/timeline` | `execution:read` | Stage timeline |
-| GET | `/executions/{executionId}/provider` | `execution:read` | Provider selection |
-| GET | `/executions/{executionId}/metrics` | `execution:read` | Latency metrics |
-| GET | `/executions/{executionId}/tokens` | `execution:read` | Token usage |
-| GET | `/executions/{executionId}/quality` | `execution:read` | Quality / compliance |
-| GET | `/executions/{executionId}/confidence` | `execution:read` | Confidence bands |
-| GET | `/executions/{executionId}/audit` | `execution:read` | Immutable audit |
-| GET | `/executions/{executionId}/decision-graph` | `execution:read` | Decision graph summary |
 
-**Counts:** 47 paths × 2 versions = **94** Gateway routes.
+Explainability routes (`/model-decision`, `/routing`, `/planning`, `/timeline`, `/provider`, `/metrics`, `/tokens`, `/quality`, `/confidence`, `/audit`, `/decision-graph`) were **removed** with execution-intelligence. Use execution diagnostics / trace / cost on the resource instead.
+
+**Counts:** see `src/platform/api/routes/route-map.ts` (source of truth).
 
 ### Platform summaries (thin / stub list handlers)
 
@@ -162,13 +153,11 @@ These exist as programmatic engines and are **not** redesigned here. Frontends m
 
 | Platform | Path | How to reach from clients |
 |----------|------|---------------------------|
-| Intelligence OS | `src/platform/intelligence` | Gateway `POST /v1/executions` only |
-| Brand Brain | `src/platform/business/brand-brain` | No public REST today — see MISSING report |
-| Knowledge Intelligence | `src/platform/business/knowledge-intelligence` | Thin `/brand-profiles`, `/knowledge-bases` only |
+| Direct execution | `src/platform/direct` | Gateway `POST /v1/executions` |
+| Brand Brain | `src/platform/business/brand-brain` | Metadata on executions; sync via product services |
 | Business Platform | `src/platform/business` | Partial via Gateway + Legacy Express |
-| Studio Engine | `src/platform/studio` | Contracts only; executions via Gateway |
 | Persistence | `src/platform/persistence` | No HTTP |
-| Multi-Provider / Production | `src/platform/production` | Via Gateway catalogs |
+| Multi-Provider / Production | `src/platform/production` | Via Gateway catalogs + validation tooling |
 
 ---
 

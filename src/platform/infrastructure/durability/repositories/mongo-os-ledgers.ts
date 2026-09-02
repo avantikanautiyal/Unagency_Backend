@@ -283,6 +283,22 @@ export class MongoHumanReviewStore implements IHumanReviewStore {
     return doc ? (doc.record as HumanReviewRecord) : undefined;
   }
 
+  async list(options: {
+    readonly organizationId?: string;
+    readonly status?: HumanReviewRecord["status"];
+    readonly limit?: number;
+  } = {}): Promise<readonly HumanReviewRecord[]> {
+    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
+    const filter: Record<string, unknown> = {};
+    if (options.organizationId) filter.organizationId = options.organizationId;
+    if (options.status) filter.status = options.status;
+    const docs = await EnterpriseOsHumanReview.find(filter)
+      .sort({ "record.requestedAt": -1 })
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => doc.record as HumanReviewRecord);
+  }
+
   async decide(input: {
     readonly reviewId: string;
     readonly organizationId: string;

@@ -54,31 +54,20 @@ export function diagnosticsFromJobSummary(
         ? jobSummary.providerMode
         : undefined,
     provider:
-      typeof jobSummary.provider === "string" ? jobSummary.provider : undefined,
-    model: typeof jobSummary.model === "string" ? jobSummary.model : undefined,
+      typeof jobSummary.provider === "string"
+        ? jobSummary.provider
+        : typeof jobSummary.routedProviderId === "string"
+          ? jobSummary.routedProviderId
+          : undefined,
+    model:
+      typeof jobSummary.model === "string"
+        ? jobSummary.model
+        : typeof jobSummary.routedModelId === "string"
+          ? jobSummary.routedModelId
+          : undefined,
     routingDecisionId:
       typeof jobSummary.routingDecisionId === "string"
         ? jobSummary.routingDecisionId
-        : undefined,
-    contextSnapshotId:
-      typeof jobSummary.contextSnapshotId === "string"
-        ? jobSummary.contextSnapshotId
-        : undefined,
-    promptCompilationId:
-      typeof jobSummary.promptCompilationId === "string"
-        ? jobSummary.promptCompilationId
-        : undefined,
-    brandEnrichmentId:
-      typeof jobSummary.brandEnrichmentId === "string"
-        ? jobSummary.brandEnrichmentId
-        : undefined,
-    brandBrainVersion:
-      typeof jobSummary.brandBrainVersion === "number"
-        ? jobSummary.brandBrainVersion
-        : undefined,
-    knowledgeSnapshotId:
-      typeof jobSummary.knowledgeSnapshotId === "string"
-        ? jobSummary.knowledgeSnapshotId
         : undefined,
     inputTokens:
       typeof jobSummary.inputTokens === "number"
@@ -107,7 +96,10 @@ export function diagnosticsFromJobSummary(
   };
 }
 
-export function mapJobStatus(status: string): ExecutionResource["status"] {
+export function mapJobStatus(
+  status: string,
+  resultSummary?: Readonly<Record<string, unknown>> | null
+): ExecutionResource["status"] {
   switch (status) {
     case "queued":
     case "scheduled":
@@ -116,6 +108,9 @@ export function mapJobStatus(status: string): ExecutionResource["status"] {
     case "reserved":
       return "running";
     case "completed":
+      // Direct engine returns Result.ok with summary.success=false on provider timeout/fail.
+      // Those jobs are stored as "completed" — surface them as failed executions.
+      if (resultSummary?.success === false) return "failed";
       return "succeeded";
     case "failed":
     case "dead_letter":

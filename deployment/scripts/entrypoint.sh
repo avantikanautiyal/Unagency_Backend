@@ -6,7 +6,7 @@ ROLE="${SERVICE_ROLE:-api}"
 echo "[unagency] starting service role=${ROLE}"
 
 case "$ROLE" in
-  api|business|intelligence)
+  api|business|direct|intelligence)
     # Existing compiled Express/platform host
     exec node dist/index.js
     ;;

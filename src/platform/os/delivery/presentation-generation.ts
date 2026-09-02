@@ -72,8 +72,57 @@ export type PresentationRelevanceResult = {
   readonly anchorTotal: number;
 };
 
+/** Max chars for brief anchors in presentation instruction blocks. */
+export const PRESENTATION_BRIEF_ANCHOR_MAX_CHARS = 2000;
+
+const MEGAPROMPT_BLOCK_BOUNDARY =
+  /(?=\[(?:Product selection|Selected brand|Structured |Refine OS|User brief|User prompt)|Respond with ONLY valid JSON|$)/i;
+
+function extractMegapromptBlock(prompt: string, blockName: string): string {
+  const re = new RegExp(
+    `\\[${blockName}[^\\]]*\\]\\s*([\\s\\S]*?)${MEGAPROMPT_BLOCK_BOUNDARY.source}`,
+    "i",
+  );
+  const match = prompt.match(re);
+  return match?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function mergeStructuredMegapromptContext(
+  prompt: string,
+  userBrief: string,
+): string {
+  const parts: string[] = [];
+  const trimmed = userBrief.trim();
+  if (trimmed) parts.push(trimmed);
+
+  for (const blockName of [
+    "Structured Brief",
+    "Structured Brand Context",
+    "Structured Knowledge Context",
+  ] as const) {
+    const content = extractMegapromptBlock(prompt, blockName);
+    if (!content) continue;
+    const hay = trimmed.toLowerCase();
+    if (hay && hay.includes(content.toLowerCase())) continue;
+    parts.push(content);
+  }
+
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function previewUserBrief(
+  brief: string,
+  maxChars = PRESENTATION_BRIEF_ANCHOR_MAX_CHARS,
+): string {
+  if (brief.length <= maxChars) return brief;
+  return `${brief.slice(0, maxChars - 1)}…`;
+}
+
 export function extractUserBriefFromMegaprompt(prompt: string): string {
-  let text = prompt.trim();
+  const raw = prompt.trim();
+  if (!raw) return "";
+
+  let text = raw;
   const markers = ["[User brief]", "[User prompt]", "Original client brief:"] as const;
   for (const marker of markers) {
     const idx = text.indexOf(marker);
@@ -82,7 +131,7 @@ export function extractUserBriefFromMegaprompt(prompt: string): string {
       break;
     }
   }
-  return text
+  text = text
     .replace(/\[Product selection[\s\S]*?(?=\[|$)/gi, " ")
     .replace(/\[Selected brand[\s\S]*?(?=\[|$)/gi, " ")
     .replace(/\[Structured Brief[\s\S]*?(?=\[|$)/gi, " ")
@@ -92,6 +141,8 @@ export function extractUserBriefFromMegaprompt(prompt: string): string {
     .replace(/Respond with ONLY valid JSON[\s\S]*$/i, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  return mergeStructuredMegapromptContext(raw, text);
 }
 
 export function extractBrandNameFromMegaprompt(prompt: string): string | undefined {
@@ -203,15 +254,21 @@ export function buildPresentationNonNegotiablesBlock(input: {
     );
   }
   if (input.userBrief?.trim()) {
-    const preview =
-      input.userBrief.length > 500
-        ? `${input.userBrief.slice(0, 497)}…`
-        : input.userBrief;
-    lines.push(`Client brief (all routes must reflect this): ${preview}`);
+    lines.push(
+      `Client brief (all routes must reflect this): ${previewUserBrief(input.userBrief)}`,
+    );
   }
   lines.push(
     "Forbidden unless in brief: culinary, sustainability tropes, generic digital transformation filler.",
+    "Never use placeholder or mock content (no lorem ipsum, sample companies, generic SaaS filler). Every bullet must cite real facts from the brief and brand profile above.",
   );
+  const paletteFacts =
+    input.mustUseFacts?.filter((f) => f.key === "palette") ?? [];
+  if (paletteFacts.length) {
+    lines.push(
+      `Brand colours (reference in visualCue on every slide): ${paletteFacts.map((f) => f.value).join(", ")}`,
+    );
+  }
   return lines.join("\n");
 }
 
@@ -259,6 +316,7 @@ function colorTokensFromMetadata(
   };
   push(metadata?.learnedBrandColors);
   push(metadata?.brandColors);
+  push(metadata?.briefExtractedColors);
   if (metadata?.visualBrandFields && typeof metadata.visualBrandFields === "object") {
     push((metadata.visualBrandFields as Record<string, unknown>).colors);
   }
@@ -270,7 +328,68 @@ function colorTokensFromMetadata(
       push(palette);
     }
   }
+  const packet = metadata?.brandContextPacket;
+  if (packet && typeof packet === "object") {
+    const packetFacts = (packet as Record<string, unknown>).facts;
+    if (Array.isArray(packetFacts)) {
+      for (const item of packetFacts) {
+        if (!item || typeof item !== "object") continue;
+        const f = item as Record<string, unknown>;
+        const key = typeof f.key === "string" ? f.key.toLowerCase() : "";
+        const value = typeof f.value === "string" ? f.value.trim() : "";
+        if ((key.includes("color") || key.includes("palette")) && value) {
+          push(value);
+        }
+      }
+    }
+  }
   return [...new Set(out)].slice(0, 6);
+}
+
+function profileFactsFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): Array<{ key: string; value: string }> {
+  if (!metadata) return [];
+  const out: Array<{ key: string; value: string }> = [];
+  const push = (key: string, raw: unknown) => {
+    if (typeof raw === "string" && raw.trim().length >= 3) {
+      out.push({ key, value: raw.trim() });
+    }
+  };
+  push("industry", metadata.brandIndustry);
+  push("positioning", metadata.brandPositioning);
+  push("audience", metadata.brandTargetAudience);
+  push("summary", metadata.brandSummary);
+  push("photography", metadata.brandPhotographyStyle);
+  push("illustration", metadata.brandIllustrationStyle);
+  push("typography", metadata.brandTypography);
+  const avoid = metadata.brandWordsToAvoid;
+  if (Array.isArray(avoid) && avoid.length) {
+    const joined = avoid
+      .filter((w): w is string => typeof w === "string" && w.trim().length > 0)
+      .slice(0, 6)
+      .join(", ");
+    if (joined.length >= 3) out.push({ key: "avoid", value: joined });
+  }
+  return out;
+}
+
+function packetFactsFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): Array<{ key: string; value: string }> {
+  const packet = metadata?.brandContextPacket;
+  if (!packet || typeof packet !== "object") return [];
+  const facts = (packet as Record<string, unknown>).facts;
+  if (!Array.isArray(facts)) return [];
+  const out: Array<{ key: string; value: string }> = [];
+  for (const item of facts.slice(0, 8)) {
+    if (!item || typeof item !== "object") continue;
+    const f = item as Record<string, unknown>;
+    const key = typeof f.key === "string" ? f.key.trim() : "";
+    const value = typeof f.value === "string" ? f.value.trim() : "";
+    if (key && value.length >= 3) out.push({ key, value });
+  }
+  return out;
 }
 
 /** Pull generation constraints from brief, brand, and knowledge — not just RAG context. */
@@ -312,6 +431,14 @@ export function extractPresentationMustUseFacts(input: {
       value: toneParts.slice(0, 4).join(", "),
       source: "brand",
     });
+  }
+
+  for (const { key, value } of profileFactsFromMetadata(input.metadata)) {
+    pushUniqueFact(facts, seen, { key, value, source: "brand" });
+  }
+
+  for (const { key, value } of packetFactsFromMetadata(input.metadata)) {
+    pushUniqueFact(facts, seen, { key, value, source: "knowledge" });
   }
 
   const knowledgeCtx = input.metadata?.structuredKnowledgeContext;
@@ -387,6 +514,25 @@ export function validatePresentationMustUseCoverage(input: {
       if (hits >= Math.ceil(words.length * 0.5)) continue;
     }
     missing.push(fact.key);
+  }
+
+  const paletteFacts = input.facts.filter((f) => f.key === "palette");
+  if (paletteFacts.length) {
+    const paletteHit = paletteFacts.some((f) => {
+      const raw = f.value.trim().toLowerCase();
+      const hex = raw.replace(/^#/, "");
+      return blob.includes(raw) || (hex.length >= 3 && blob.includes(hex));
+    });
+    if (!paletteHit && !missing.includes("palette")) {
+      missing.push("palette");
+    }
+  }
+
+  const criticalKeys = ["brand", "industry", "positioning", "audience", "summary"];
+  for (const key of criticalKeys) {
+    if (input.facts.some((f) => f.key === key) && missing.includes(key)) {
+      return { ok: false, missing };
+    }
   }
 
   if (input.facts.some((f) => f.key === "brand") && missing.includes("brand")) {
@@ -480,11 +626,7 @@ export function buildPresentationConceptsInstructionBlock(input: {
     );
   }
   if (input.userBrief?.trim()) {
-    const preview =
-      input.userBrief.length > 350
-        ? `${input.userBrief.slice(0, 347)}…`
-        : input.userBrief;
-    lines.push(`Brief anchor: ${preview}`);
+    lines.push(`Brief anchor: ${previewUserBrief(input.userBrief)}`);
   }
   if (input.isRetry) {
     lines.push(
@@ -524,16 +666,26 @@ export function buildPresentationExpansionInstructionBlock(input: {
   readonly lockedConcepts: unknown;
   readonly brandName?: string;
   readonly subtype?: string;
+  readonly userBrief?: string;
+  readonly mustUseFacts?: readonly PresentationMustUseFact[];
 }): string {
   const locked = lockedConceptsDirectionsText(input.lockedConcepts);
   const lines = [
     "[Presentation Phase B — expand locked concepts to full decks]",
     "Expand each validated concept below into a complete deck (deckTitle, deckSubtitle, 6–14 slides).",
     "Do NOT change concept titles or narrative angles — only expand into designed slides.",
+    "Use ONLY facts from the client brief and brand profile — never generic mock or placeholder content.",
     deckGuidanceForSubtype(input.subtype),
     locked ? `\n${locked}` : "",
-    "Use varied slide layouts. Every slide needs visualCue tied to the brand and brief.",
+    "Use varied slide layouts. Every slide needs visualCue tied to the brand colours and brief.",
   ];
+  const mustUse = buildPresentationMustUseBlock(input.mustUseFacts);
+  if (mustUse) lines.push(mustUse);
+  if (input.userBrief?.trim()) {
+    lines.push(
+      `Brief anchor (every slide must reflect this): ${previewUserBrief(input.userBrief)}`,
+    );
+  }
   if (input.brandName?.trim()) {
     lines.push(
       `Brand lock: "${input.brandName.trim()}" must appear in every deckTitle or title slide.`,
@@ -583,14 +735,20 @@ export function validatePresentationRoutesRelevance(input: {
   const anchors = extractAnchorTokens(brief, brand);
   const anchorHits = anchors.filter((a) => blob.includes(a)).length;
   const anchorTotal = anchors.length;
-  if (anchorTotal >= 4 && anchorHits < 2) {
+  // Soften: require zero overlap only when the brief has enough anchors.
+  if (anchorTotal >= 4 && anchorHits === 0) {
     reasons.push("low_brief_overlap");
   }
 
+  let offTopicCount = 0;
   for (const phrase of OFF_TOPIC_PHRASES) {
     if (blob.includes(phrase) && !briefLower.includes(phrase)) {
-      reasons.push(`off_topic:${phrase}`);
+      offTopicCount += 1;
     }
+  }
+  // Single stock phrase is a soft smell; multiple is a hard off-brief signal.
+  if (offTopicCount >= 2) {
+    reasons.push(`off_topic:multiple`);
   }
 
   return {
@@ -633,11 +791,9 @@ export function buildPresentationRoutesInstructionBlock(input: {
     );
   }
   if (input.userBrief?.trim()) {
-    const preview =
-      input.userBrief.length > 400
-        ? `${input.userBrief.slice(0, 397)}…`
-        : input.userBrief;
-    lines.push(`Brief anchor (all routes must reflect this): ${preview}`);
+    lines.push(
+      `Brief anchor (all routes must reflect this): ${previewUserBrief(input.userBrief)}`,
+    );
   }
 
   lines.push(
@@ -711,10 +867,33 @@ export function presentationContextFromMetadata(
 export function resolvePresentationExpandMode(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): PresentationExpandMode {
+  const productAction =
+    typeof metadata?.productAction === "string"
+      ? metadata.productAction.trim().toLowerCase()
+      : "";
+  // Client on-demand expand of one locked concept → single-deck path.
+  if (productAction === "expand_presentation_route") {
+    return "single";
+  }
+
+  const subtype =
+    typeof metadata?.subtype === "string"
+      ? metadata.subtype.trim().toLowerCase()
+      : "";
+  // GIFs remain concepts-only / lazy on create.
+  if (subtype === "gifs") {
+    return "lazy";
+  }
+
   const mode = metadata?.presentationExpandMode;
-  if (mode === "full" || mode === "single" || mode === "lazy") return mode;
+  if (mode === "single") return "single";
+  // Pitch decks and other presentation subtypes must expand to full slide decks
+  // on create so PDF/PPTX can materialize. Ignore stale client "lazy" stamps.
+  if (mode === "full" || mode === "lazy" || mode == null) {
+    return "full";
+  }
   if (metadata?.presentationLazyExpand === false) return "full";
-  return "lazy";
+  return "full";
 }
 
 export function conceptRecordAt(

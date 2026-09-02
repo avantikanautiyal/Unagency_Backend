@@ -1,5 +1,5 @@
 import { Schema, model, type Document } from "mongoose";
-import type { ProviderOperationRecord } from "../../../../intelligence/providers/async/contracts/provider-operation";
+import type { ProviderOperationRecord } from "../../../../providers/async/contracts/provider-operation";
 
 export type EnterpriseProviderOperationDoc = Document & ProviderOperationRecord & {
   usageRecorded?: boolean;

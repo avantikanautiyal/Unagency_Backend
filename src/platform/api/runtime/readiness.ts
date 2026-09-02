@@ -14,13 +14,13 @@ import { evaluateTextProviderEnv } from "../../production/execution/text-provide
 import { evaluateVideoReadiness } from "../../production/execution/register-video-providers";
 import { evaluateAudioReadiness } from "../../production/execution/register-audio-providers";
 import { evaluateEmbeddingReadiness } from "../../production/execution/embedding-provider-env";
-import { evaluateToolRuntimeReadiness } from "../../intelligence/providers/tools/readiness/tool-runtime-readiness";
-import { evaluateStreamingReadiness } from "../../intelligence/providers/streaming/capability/streaming-readiness";
+import { evaluateToolRuntimeReadiness } from "../../providers/tools/readiness/tool-runtime-readiness";
+import { evaluateStreamingReadiness } from "../../providers/streaming/capability/streaming-readiness";
 import {
   isRunwayLiveCertificationReady,
   resolveVideoCertificationProviderId,
 } from "../../production/execution/video-certification-config";
-import { RUNWAY_VIDEO_SPEC } from "../../intelligence/providers/video/configs/verified-video-provider-specs";
+import { RUNWAY_VIDEO_SPEC } from "../../providers/video/configs/verified-video-provider-specs";
 import { isAsyncMediaEnabled } from "../../infrastructure/durability/create-async-media-platform";
 import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
 import { pingAsyncMediaDependencies } from "../../infrastructure/durability/create-async-media-platform";

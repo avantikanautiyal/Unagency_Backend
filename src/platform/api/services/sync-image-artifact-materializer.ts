@@ -6,13 +6,13 @@
  * succeed with content "[1 image(s)]" but never produce downloadable media.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
 import {
   mapOpenAIImageDataToOutputs,
   type CanonicalMediaOutput,
-} from "../../intelligence/providers/common/media-output";
+} from "../../providers/common/media-output";
 
 function extractBase64FromDataUrl(url: string): string | undefined {
   const marker = ";base64,";

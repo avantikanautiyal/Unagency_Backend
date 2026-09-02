@@ -1,10 +1,10 @@
 /**
  * Delegates AI execution ONLY through Enterprise API Gateway.
- * Never calls Intelligence OS / Runtime / Providers directly.
+ * Never calls provider runtime directly.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type { IApiGateway } from "../../api/interfaces";
 import type { ApiRequest } from "../../api/contracts";
 

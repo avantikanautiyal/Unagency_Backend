@@ -15,12 +15,12 @@ import {
   OsLifecycleTransitionError,
   defaultGovernanceEngine,
 } from "../../../src/platform/os";
-import { createIntelligenceOsIntegrationPlatform } from "../../../src/platform/intelligence/integration/factories/create-intelligence-os-integration-platform";
-import { ControllableDispatcher } from "../../../src/platform/intelligence/providers/runtime/testing";
+import { createDirectExecutionPlatform } from "../../../src/platform/direct/create-direct-execution-platform";
+import { ControllableDispatcher } from "../../../src/platform/providers/runtime/testing";
 import {
   FakeCapabilityRegistry,
   setupNegotiation,
-} from "../../../src/platform/intelligence/providers/negotiation/testing";
+} from "../../../src/platform/providers/negotiation/testing";
 import { createEnterpriseApiPlatform } from "../../../src/platform/api/factories/create-enterprise-api-platform";
 import {
   bootstrapEnterpriseApiRuntime,
@@ -28,43 +28,36 @@ import {
 } from "../../../src/platform/api/runtime";
 
 describe("Phase 0 — canonical OS architecture", () => {
-  it("declares one production spine authority: integration_pipeline", () => {
-    expect(CANONICAL_PRODUCTION_OS_SPINE.authority).toBe("integration_pipeline");
-    expect(CANONICAL_PRODUCTION_OS_SPINE.nonProductionStacks).toEqual(
-      expect.arrayContaining([
-        "IntelligenceKernel",
-        "IntelligenceGateway",
-        "IntelligenceOrchestrator",
-      ])
+  it("declares direct provider spine authority", () => {
+    expect(CANONICAL_PRODUCTION_OS_SPINE.authority).toBe("direct_provider");
+    expect(CANONICAL_PRODUCTION_OS_SPINE.path).toEqual(
+      expect.arrayContaining(["DirectExecutionEngine", "ProviderRuntime"])
     );
   });
 
-  it("marks BriefIntelligence, BrandIntelligence, and KnowledgeIntelligence as implemented", () => {
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "BriefIntelligence")?.status).toBe(
-      "implemented"
-    );
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "BrandIntelligence")?.status).toBe(
-      "implemented"
-    );
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "KnowledgeIntelligence")?.status).toBe(
-      "implemented"
-    );
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "ExecutionIntelligence")?.status).toBe(
-      "implemented"
-    );
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "TaskGraphExecutor")?.status).toBe(
-      "implemented"
+  it("marks BrandGuard and SpecGuard as partial until Brand Memory / Job Object feed them", () => {
+    expect(OS_LAYER_STATUS.find((l) => l.layerId === "BrandGuard")?.status).toBe(
+      "partial"
     );
     expect(OS_LAYER_STATUS.find((l) => l.layerId === "SpecGuard")?.status).toBe(
+      "partial"
+    );
+  });
+
+  it("marks refinement, delivery, governance, and evaluation as implemented", () => {
+    expect(OS_LAYER_STATUS.find((l) => l.layerId === "RefinementEngine")?.status).toBe(
       "implemented"
     );
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "BrandGuard")?.status).toBe(
+    expect(OS_LAYER_STATUS.find((l) => l.layerId === "DeliveryService")?.status).toBe(
+      "implemented"
+    );
+    expect(OS_LAYER_STATUS.find((l) => l.layerId === "GovernanceEngine")?.status).toBe(
       "implemented"
     );
     expect(OS_LAYER_STATUS.find((l) => l.layerId === "EvaluationEngine")?.status).toBe(
       "implemented"
     );
-    expect(OS_LAYER_STATUS.find((l) => l.layerId === "GovernanceEngine")?.status).toBe(
+    expect(OS_LAYER_STATUS.find((l) => l.layerId === "Orchestrator")?.status).toBe(
       "implemented"
     );
   });
@@ -77,13 +70,11 @@ describe("Phase 0 — canonical OS architecture", () => {
     expect(isFakeCapabilityRegistry(testing.capabilityRegistry)).toBe(true);
   });
 
-  it("Integration OS factory uses production negotiation", () => {
-    const platform = createIntelligenceOsIntegrationPlatform({
-      executionMode: "simulated",
-      allowSimulatedDispatcher: true,
+  it("Direct execution factory composes with a dispatcher", () => {
+    const platform = createDirectExecutionPlatform({
+      runtimeDispatcher: new ControllableDispatcher(),
     });
-    expect(platform.negotiationSource).toBe("production");
-    expect(isFakeCapabilityRegistry(platform.capabilityRegistry)).toBe(false);
+    expect(platform.engine).toBeDefined();
   });
 
   it("rejects ControllableDispatcher for LIVE composition", () => {
@@ -166,11 +157,28 @@ describe("Phase 0 — governance honesty", () => {
     expect(decision.action).toBe("CONTINUE_WITH_GAPS");
     const brand = decision.checks.find((c) => c.checkId === "brand_guard");
     const spec = decision.checks.find((c) => c.checkId === "spec_guard");
-    expect(brand?.status).toBe("NOT_IMPLEMENTED");
-    expect(spec?.status).toBe("NOT_IMPLEMENTED");
+    expect(brand?.status).toBe("SKIPPED");
+    expect(spec?.status).toBe("SKIPPED");
     expect(decision.checks.find((c) => c.checkId === "evaluation")?.status).toBe(
       "PLACEHOLDER"
     );
+    expect(decision.checks.find((c) => c.checkId === "creative_score")?.status).toBe(
+      "SKIPPED"
+    );
+  });
+
+  it("blocks delivery when creative score is below 80", () => {
+    const decision = defaultGovernanceEngine.decide({
+      evaluationScore: 0.65,
+      creativeScoreTotal: 65,
+      evaluationPlaceholder: false,
+      humanReviewFlag: false,
+      providerSuccess: true,
+      nowIso: () => "2026-01-01T00:00:00.000Z",
+    });
+    expect(decision.action).toBe("REJECT");
+    expect(decision.blocking).toBe(true);
+    expect(decision.reason).toMatch(/below release gate/);
   });
 
   it("rejects on provider failure", () => {

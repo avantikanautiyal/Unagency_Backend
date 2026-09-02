@@ -6,7 +6,7 @@
 
 ## Role images
 
-`Dockerfile.api|business|intelligence|worker|background|migration` set `SERVICE_ROLE`.
+`Dockerfile.api|business|direct|worker|background|migration` set `SERVICE_ROLE`.
 
 ## Build
 

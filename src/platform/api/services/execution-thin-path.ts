@@ -1,29 +1,41 @@
 /**
- * Thin create path — skip OS layers that dilute prompts / add latency without
- * improving product creative quality.
+ * Thin create path — all executions use direct prompt → provider.
+ * Model selection via client matrix routers in prepass.
+ * Output format from service-output-map spreadsheet.
  *
- * Pain we explicitly decided to clear from the hot path:
- * - Full Brief/Brand/Knowledge/Plan on enhance_prompt / route_visual / task_graph_leaf
- * - Non-executing ExecutionPlan on ordinary product creates
- * - PromptCompiler re-stack when the prompt is already OS-enriched
- *
- * Task Intelligence (Phase 5) stays opt-in: enable plan for multi-deliverable,
- * execute graph via separate API, each leaf uses thin metadata.
+ * Single backend contract: applyDirectPassthroughMetadata (always applied in prepass).
+ * Client counterpart: withThinDirectExecutionMetadata in @unagency/api.
  */
 
-export const THIN_OS_PRODUCT_ACTIONS = new Set([
-  "enhance_prompt",
-  "route_visual",
-  "task_graph_leaf",
-]);
+import {
+  isImageGenerationCapability,
+  isVideoGenerationCapability,
+} from "../../providers/common/resolve-execution-modality";
 
-/** Product actions that still want Brand/Knowledge compounding, but not dead Plan. */
-export const PRODUCT_CREATE_ACTIONS = new Set([
-  "create_design",
-  "refine_brief",
-  "generate",
-  "write_copy",
-]);
+/** Force thin/direct metadata — the only live thin-path writer on create. */
+export function applyDirectPassthroughMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(metadata ?? {}) };
+  next.directPassthrough = true;
+  next.directProvider = true;
+  next.thinOsPath = true;
+  delete next.enrichedPrompt;
+  delete next.enableExecutionPlan;
+  delete next.taskGraphRecommended;
+  // Phase A4: keep pack fan-out marker only when Continuity pack planner stamped it.
+  const allowPack =
+    next.continuityPack === true &&
+    next.packPlan != null &&
+    typeof next.packPlan === "object";
+  if (!allowPack) {
+    delete next.multiDeliverable;
+  }
+  if (!productActionFromMetadata(next)) {
+    next.productAction = "direct_passthrough";
+  }
+  return next;
+}
 
 export function productActionFromMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -34,137 +46,117 @@ export function productActionFromMetadata(
 }
 
 /**
- * Whether this create should build an ExecutionPlan (for optional task-graph).
- * Multi-deliverable / compound only — never every pitch deck.
+ * Image/video providers return binary artifacts — never JSON schemas.
+ * Strip presentation/LaunchPlan structured output inherited from parent runs
+ * or stale client metadata (e.g. performance-ads route_visual fan-out).
  */
-export function shouldEnableExecutionPlan(input: {
-  readonly metadata?: Readonly<Record<string, unknown>>;
-  readonly deliverableCount?: number;
-}): boolean {
-  const meta = input.metadata ?? {};
-  if (meta.enableExecutionPlan === true || meta.forceReplan === true) {
-    return true;
+export function sanitizeMediaGenerationCreateMetadata(input: {
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly capabilityId: string;
+  readonly structuredOutput?: unknown;
+}): {
+  readonly metadata: Record<string, unknown>;
+  readonly structuredOutput: unknown | undefined;
+} {
+  const cap = input.capabilityId.trim().toLowerCase();
+  const isVideo = isVideoGenerationCapability(cap);
+  const isImage = isImageGenerationCapability(cap);
+  if (!isVideo && !isImage) {
+    return {
+      metadata: { ...input.metadata },
+      structuredOutput: input.structuredOutput,
+    };
   }
-  if (meta.multiDeliverable === true || meta.taskGraphRecommended === true) {
-    return true;
-  }
-  if (meta.serviceContextKind === "compound") {
-    return true;
-  }
-  if (
-    typeof input.deliverableCount === "number" &&
-    input.deliverableCount >= 2
-  ) {
-    return true;
-  }
-  return false;
-}
 
-/**
- * Metadata for Phase 5 leaf Integration runs — Brand/Knowledge already inlined
- * as DATA in the task prompt; do not re-assemble OS layers.
- */
-export function buildThinTaskGraphLeafMetadata(
-  base?: Readonly<Record<string, unknown>>
-): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...input.metadata };
+  for (const key of [
+    "structuredOutput",
+    "presentationExpandMode",
+    "deliverableRequired",
+    "presentationPhase",
+    "presentationLockedConcept",
+    "presentationMeta",
+    "presentationConcepts",
+    "presentationRelevance",
+    "presentationMustUse",
+    "presentationQuality",
+  ]) {
+    delete next[key];
+  }
+
+  const outputKind =
+    typeof next.outputKind === "string" ? next.outputKind.trim().toLowerCase() : "";
+  if (
+    !outputKind ||
+    outputKind === "presentation" ||
+    outputKind === "document" ||
+    outputKind === "email" ||
+    outputKind === "deferred_website" ||
+    outputKind === "website"
+  ) {
+    next.outputKind = isVideo ? "video" : "image";
+  }
+
   return {
-    ...(base ?? {}),
-    productAction: "task_graph_leaf",
-    thinOsPath: true,
-    taskGraphLeaf: true,
-    taskGraphExecutionEnabled: true,
-    skipBriefIntelligence: true,
-    skipBrandKnowledge: true,
-    skipBrandIntelligence: true,
-    skipKnowledgeIntelligence: true,
-    skipExecutionIntelligence: true,
-    skipPlanning: true,
-    skipPromptCompiler: true,
-    skipServiceContextCheck: true,
-    skipVaguePromptCheck: true,
+    metadata: applyDirectPassthroughMetadata(next),
+    structuredOutput: undefined,
   };
 }
 
-/**
- * Apply skip flags for thin product actions (enhance / route visuals / leaves).
- * Mutates a shallow copy — never throws.
- */
-export function applyThinOsPathMetadata(
+export function isWebsiteGenerationMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
-): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...(metadata ?? {}) };
-  const action = productActionFromMetadata(next);
-
-  if (action && THIN_OS_PRODUCT_ACTIONS.has(action)) {
-    next.skipBriefIntelligence = true;
-    next.skipBrandKnowledge = true;
-    next.skipBrandIntelligence = true;
-    next.skipKnowledgeIntelligence = true;
-    next.skipExecutionIntelligence = true;
-    next.skipPlanning = true;
-    next.skipPromptCompiler = true;
-    next.thinOsPath = true;
-    return next;
-  }
-
-  // Opt-in plan for multi-deliverable before the product skip-plan rule.
-  if (shouldEnableExecutionPlan({ metadata: next })) {
-    next.enableExecutionPlan = true;
-    next.taskGraphRecommended = true;
-    // Do not skip planning when multi-deliverable — Phase 5 needs the plan.
-    delete next.skipExecutionIntelligence;
-    delete next.skipPlanning;
-  } else {
-    // Product creatives: skip dead ExecutionPlan unless explicitly enabled.
-    const isProductCreative =
-      (action != null && PRODUCT_CREATE_ACTIONS.has(action)) ||
-      typeof next.service === "string" ||
-      typeof next.productPath === "string";
-    if (
-      isProductCreative &&
-      next.enableExecutionPlan !== true &&
-      next.forceReplan !== true
-    ) {
-      next.skipExecutionIntelligence = true;
-      next.skipPlanning = true;
-    }
-  }
-
-  // Already-enriched prompts should not be recompiled (PromptCompiler restack).
-  if (
-    next.skipPromptCompiler !== true &&
-    (next.briefAware === true ||
-      next.brandAware === true ||
-      next.knowledgeAware === true ||
-      typeof next.enrichedPrompt === "string")
-  ) {
-    next.skipPromptCompiler = true;
-  }
-
-  return next;
+): boolean {
+  const service =
+    typeof metadata?.service === "string"
+      ? metadata.service.trim().toLowerCase()
+      : "";
+  const outputKind =
+    typeof metadata?.outputKind === "string"
+      ? metadata.outputKind.trim().toLowerCase()
+      : "";
+  return service === "website" || outputKind === "deferred_website" || outputKind === "website";
 }
 
-/** True when PromptCompiler would only re-dilute an already OS-stacked prompt. */
-export function shouldSkipPromptCompiler(input: {
-  readonly metadata?: Readonly<Record<string, unknown>>;
-  readonly rawPrompt?: string;
-}): boolean {
-  const meta = input.metadata ?? {};
-  if (meta.skipPromptCompiler === true || meta.thinOsPath === true) {
-    return true;
-  }
-  const action = productActionFromMetadata(meta);
-  if (action && THIN_OS_PRODUCT_ACTIONS.has(action)) return true;
+/** Pitch decks: concepts + expansion + export routinely exceed 3 minutes. */
+export function isLongRunningPresentationMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): boolean {
+  const service =
+    typeof metadata?.service === "string"
+      ? metadata.service.trim().toLowerCase()
+      : "";
+  const outputKind =
+    typeof metadata?.outputKind === "string"
+      ? metadata.outputKind.trim().toLowerCase()
+      : "";
+  const subtype =
+    typeof metadata?.subtype === "string"
+      ? metadata.subtype.trim().toLowerCase()
+      : "";
+  if (subtype === "gifs") return false;
+  return service === "presentations" || outputKind === "presentation";
+}
 
-  const prompt = (input.rawPrompt ?? "").trim();
-  if (
-    prompt.includes("[Structured Brief") ||
-    prompt.includes("[Structured Brand Context") ||
-    prompt.includes("[Structured Knowledge Context") ||
-    prompt.startsWith("[Brand name=") ||
-    prompt.startsWith("[Knowledge facts=")
-  ) {
-    return true;
-  }
-  return false;
+/** Brochures / print documents: large briefs + DocumentPlan JSON + PDF export. */
+export function isLongRunningDocumentMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): boolean {
+  const service =
+    typeof metadata?.service === "string"
+      ? metadata.service.trim().toLowerCase()
+      : "";
+  const outputKind =
+    typeof metadata?.outputKind === "string"
+      ? metadata.outputKind.trim().toLowerCase()
+      : "";
+  const subtype =
+    typeof metadata?.subtype === "string"
+      ? metadata.subtype.trim().toLowerCase()
+      : "";
+  if (service === "presentations" || outputKind === "presentation") return false;
+  return (
+    outputKind === "document" ||
+    (service === "print" &&
+      /brochure|leaflet|guideline|report|catalog/i.test(subtype))
+  );
 }

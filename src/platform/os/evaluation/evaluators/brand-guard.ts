@@ -1,5 +1,8 @@
 /**
- * BrandGuard — post-generation brand compliance (DATA only; not instructions).
+ * BrandGuard — post-generation brand compliance evaluator (DATA only; not instructions).
+ *
+ * Phase A3: when BrandContextPacket is bound, avoid-terms and hard continuity
+ * misses are enforced. Taste (tone) stays warning-only — never auto-retry.
  */
 
 import type {
@@ -11,9 +14,8 @@ import type {
 import { OS_EVALUATION_VERSION } from "../contracts/evaluation-result";
 
 export const BRAND_GUARD_EVALUATOR_ID = "brand_guard" as const;
-export const BRAND_GUARD_VERSION = "1.0.0" as const;
+export const BRAND_GUARD_VERSION = "1.1.0" as const;
 
-/** Injection / instruction-like patterns in output that violate brand data boundary. */
 const INJECTION_RE =
   /\b(ignore\s+(all\s+)?previous\s+instructions?|reveal\s+secrets?|system\s+prompt)\b/i;
 
@@ -33,12 +35,15 @@ export class BrandGuardEvaluator implements IEvaluator {
       Boolean(input.brandTone) ||
       Boolean(input.brandVoice) ||
       (input.brandAvoidTerms?.length ?? 0) > 0 ||
-      (input.prohibitedPatterns?.length ?? 0) > 0;
+      (input.prohibitedPatterns?.length ?? 0) > 0 ||
+      input.continuityBound === true ||
+      Boolean(input.boundLogoAssetId);
 
     if (!hasBrandSignal) {
       findings.push({
         code: "BRAND_CONTEXT_MISSING",
-        message: "No brand context provided — brand compliance skipped (not a hard fail)",
+        message:
+          "No brand context provided — brand compliance skipped (not a hard fail)",
         severity: "info",
       });
       return {
@@ -111,7 +116,40 @@ export class BrandGuardEvaluator implements IEvaluator {
       }
     }
 
-    // Soft tone alignment: if tone says premium and output is slang-heavy, warn
+    // Hard continuity: bound logo expected for image jobs but no media output.
+    if (
+      input.continuityBound &&
+      input.boundLogoAssetId &&
+      input.isImageCapability &&
+      (input.mediaOutputCount ?? 0) === 0 &&
+      (input.preview ?? "").trim().length > 0
+    ) {
+      // Text-only response on an image continuity job — hard miss.
+      findings.push({
+        code: "BRAND_BOUND_OUTPUT_MISSING",
+        message:
+          "Continuity-bound image job produced no media artifact while a logo was bound",
+        severity: "error",
+        field: "media",
+      });
+      brandScore = Math.min(brandScore, 0.1);
+    } else if (
+      input.continuityBound &&
+      input.boundLogoAssetId &&
+      input.isImageCapability &&
+      (input.mediaOutputCount ?? 0) > 0
+    ) {
+      // Cannot vision-verify logo pixels in A3 — record honesty, not a retry.
+      findings.push({
+        code: "BRAND_CONTINUITY_VISUAL_UNVERIFIED",
+        message:
+          "Logo was bound for this job; visual presence in the image is not auto-verified yet",
+        severity: "info",
+        field: "logo",
+      });
+    }
+
+    // Soft tone alignment — taste only (suggest refine, never hard retry).
     if (
       input.brandTone &&
       /premium|confident|luxury/i.test(input.brandTone) &&
@@ -123,11 +161,19 @@ export class BrandGuardEvaluator implements IEvaluator {
         severity: "warning",
         field: "tone",
       });
+      findings.push({
+        code: "BRAND_TASTE_SUGGEST_REFINE",
+        message: "Taste issue — suggest explicit refine; do not auto-regenerate",
+        severity: "warning",
+        field: "refine",
+      });
       brandScore = Math.min(brandScore, 0.7);
     }
 
     const critical = findings.some((f) => f.severity === "critical");
-    const errors = findings.filter((f) => f.severity === "error" || f.severity === "critical");
+    const errors = findings.filter(
+      (f) => f.severity === "error" || f.severity === "critical"
+    );
     const warnings = findings.filter((f) => f.severity === "warning");
 
     const outcome = critical
@@ -166,6 +212,11 @@ export class BrandGuardEvaluator implements IEvaluator {
         {
           field: "brandTone",
           value: input.brandTone ?? "",
+          source: "BRAND",
+        },
+        {
+          field: "continuityBound",
+          value: String(input.continuityBound === true),
           source: "BRAND",
         },
       ],

@@ -7,9 +7,31 @@ import {
 } from '../../../src/platform/os/delivery/presentation-generation';
 
 describe('presentation Phase 3 lazy expand', () => {
-  it('defaults to lazy expand mode', () => {
-    expect(resolvePresentationExpandMode({})).toBe('lazy');
-    expect(resolvePresentationExpandMode({ presentationExpandMode: 'full' })).toBe('full');
+  it('coerces stale client lazy to full for pitch-deck creates', () => {
+    expect(resolvePresentationExpandMode({})).toBe('full');
+    expect(
+      resolvePresentationExpandMode({
+        presentationExpandMode: 'full',
+        subtype: 'pitch-decks',
+      }),
+    ).toBe('full');
+    expect(
+      resolvePresentationExpandMode({
+        presentationExpandMode: 'lazy',
+        subtype: 'pitch-decks',
+      }),
+    ).toBe('full');
+    expect(
+      resolvePresentationExpandMode({
+        presentationExpandMode: 'lazy',
+        subtype: 'gifs',
+      }),
+    ).toBe('lazy');
+    expect(
+      resolvePresentationExpandMode({
+        productAction: 'expand_presentation_route',
+      }),
+    ).toBe('single');
   });
 
   it('detects lazy concept payloads', () => {

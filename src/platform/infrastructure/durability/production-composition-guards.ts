@@ -5,7 +5,6 @@
 import type { DurableStores } from "./create-durable-stores";
 
 const REQUIRED_PRODUCTION_COMPOSITION = {
-  brandBrain: "MongoBrandBrainRepository",
   executions: "MongoExecutionRepository",
   artifacts: "MongoArtifactRepository",
   extras: "MongoExecutionExtrasRepository",

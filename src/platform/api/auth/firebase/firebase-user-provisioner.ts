@@ -5,8 +5,8 @@
 
 import Users, { type IUser } from "../../../../models/users.model";
 import type { VerifiedFirebaseIdentity } from "../../../../libs/firebase/verify-id-token";
-import { failure, success, type Result } from "../../../intelligence/shared/result";
-import { ValidationError } from "../../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../../core/result";
+import { ValidationError } from "../../../core/errors";
 
 export type ProvisionFirebaseUserResult = {
   readonly user: IUser;

@@ -2,8 +2,8 @@
  * Tenant-authoritative blob access — never trust client-supplied organizationId.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import { BlobOwnershipRegistry } from "./blob-ownership-registry";
 import type { IBlobMetadataRepository } from "./blob-metadata-repository";
 import type { S3BlobStorage, RecordingS3BlobStorage } from "../../persistence/storage/s3-blob-storage";

@@ -2,7 +2,7 @@
  * Rate limiting — per org / workspace / user / api key / capability / provider.
  */
 
-import { success, type Result } from "../../intelligence/shared/result";
+import { success, type Result } from "../../core/result";
 import type { RateLimitDecision, RateLimitDimension, RateLimitPolicy } from "../contracts";
 import type { IRateLimitService } from "../interfaces";
 

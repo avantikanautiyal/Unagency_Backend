@@ -2,15 +2,26 @@
  * Secure artifact media delivery — short-lived signed URLs for tenant-owned blobs.
  * In-memory backends mint tokenized HTTP content URLs (never multi-MB data URLs in JSON)
  * so Expo Image / RN can load bytes without Authorization headers.
+ *
+ * Optional `format` query selects a supported download encoding. Raster images
+ * may be converted PNG↔JPG; unsupported formats are rejected (never substituted).
  */
 
 import type { IArtifactRepository } from "../../infrastructure/durability/interfaces/execution-store-ports";
 import type { BlobAccessService } from "../blob/blob-access-service";
 import type { IBlobStorage } from "../../persistence/interfaces/persistence";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { NotFoundError, ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { NotFoundError, ValidationError } from "../../core/errors";
 import { parseStorageRefKey } from "../blob/tenant-blob-key-builder";
 import { EphemeralMediaTokenStore } from "./ephemeral-media-token-store";
+import {
+  canConvertRasterFormat,
+  convertRasterImage,
+  formatFromMime,
+  mimeForRasterFormat,
+  normalizeRasterFormat,
+  type RasterDownloadFormat,
+} from "./image-format-converter";
 
 export type ArtifactMediaUrlResult = {
   readonly artifactId: string;
@@ -48,7 +59,7 @@ export class MediaDeliveryService {
   async resolveArtifactMediaUrl(
     artifactId: string,
     tenantOrganizationId: string,
-    options?: { publicOrigin?: string }
+    options?: { publicOrigin?: string; format?: string; preferSameOrigin?: boolean }
   ): Promise<Result<ArtifactMediaUrlResult>> {
     const rec = await this.artifacts.get(artifactId);
     if (!rec || rec.organizationId !== tenantOrganizationId) {
@@ -58,21 +69,68 @@ export class MediaDeliveryService {
       return failure(new ValidationError("Artifact is not a durable blob reference"));
     }
     const storageRef = rec.artifact.label;
-    const signed = await this.blobAccess.createProviderInputSignedUrl(
+    const requestedRaw = options?.format?.trim();
+
+    // Prefer ownership metadata for MIME (no byte download). Fall back to blob
+    // Content-Type only when metadata is missing — vault save + format validation
+    // both need a real type, not application/octet-stream.
+    let sourceMime = "application/octet-stream";
+    const owned = await this.blobAccess.resolveForTenantAsync(
       storageRef,
       tenantOrganizationId
     );
-    if (signed.ok) {
-      return success({
-        artifactId,
-        signedUrl: signed.value.signedUrl,
-        expiresInSeconds: signed.value.expiresInSeconds,
-      });
+    if (owned.ok && owned.value.mimeType) {
+      sourceMime = owned.value.mimeType;
+    }
+    const needsBlobMimeLookup =
+      sourceMime === "application/octet-stream" || Boolean(requestedRaw);
+    if (this.blobStorage && needsBlobMimeLookup) {
+      const key = parseStorageRefKey(storageRef);
+      const got = await this.blobStorage.get(key);
+      if (got.ok && got.value?.contentType) {
+        sourceMime = got.value.contentType;
+      }
     }
 
-    // In-memory / non-S3 backends — tokenized HTTP URL (Expo-safe), not a data URL.
+    if (requestedRaw) {
+      const validated = validateRequestedDownloadFormat({
+        sourceMime,
+        requested: requestedRaw,
+      });
+      if (!validated.ok) return validated;
+    }
+
+    const rasterTarget = normalizeRasterFormat(requestedRaw);
+    const sourceRaster = formatFromMime(sourceMime);
+    const needsRasterConversion =
+      Boolean(rasterTarget) &&
+      Boolean(sourceRaster) &&
+      sourceRaster !== rasterTarget;
+
+    // Prefer provider signed URL when no conversion is required (unless browser
+    // clients need same-origin bytes for CORS-safe fetch, e.g. vault re-upload).
+    if (!needsRasterConversion && !options?.preferSameOrigin) {
+      const signed = await this.blobAccess.createProviderInputSignedUrl(
+        storageRef,
+        tenantOrganizationId
+      );
+      if (signed.ok) {
+        return success({
+          artifactId,
+          signedUrl: signed.value.signedUrl,
+          expiresInSeconds: signed.value.expiresInSeconds,
+          // Always return contentType — clients re-upload to Brand Vault and
+          // reject application/octet-stream (PRODUCT_ALLOWED_MIME).
+          contentType: rasterTarget
+            ? mimeForRasterFormat(rasterTarget)
+            : sourceMime,
+        });
+      }
+    }
+
+    // Tokenized path (in-memory / conversion / non-S3).
     if (!this.blobStorage) {
-      return signed;
+      return failure(new ValidationError("Blob storage unavailable for media delivery"));
     }
     const key = parseStorageRefKey(storageRef);
     const got = await this.blobStorage.get(key);
@@ -87,20 +145,27 @@ export class MediaDeliveryService {
       storageRef,
       contentType,
       ttlSeconds: this.ephemeralTtlSeconds,
+      ...(rasterTarget ? { requestedFormat: rasterTarget } : {}),
     });
     const origin = normalizePublicOrigin(options?.publicOrigin);
-    const signedUrl = `${origin}/v1/artifacts/${encodeURIComponent(artifactId)}/content?token=${encodeURIComponent(token.token)}`;
+    const formatQuery = rasterTarget
+      ? `&format=${encodeURIComponent(rasterTarget)}`
+      : "";
+    const signedUrl = `${origin}/v1/artifacts/${encodeURIComponent(artifactId)}/content?token=${encodeURIComponent(token.token)}${formatQuery}`;
     return success({
       artifactId,
       signedUrl,
       expiresInSeconds: this.ephemeralTtlSeconds,
-      contentType,
+      contentType: rasterTarget
+        ? mimeForRasterFormat(rasterTarget)
+        : contentType,
     });
   }
 
   async resolveArtifactBinaryByToken(
     artifactId: string,
-    token: string
+    token: string,
+    options?: { format?: string }
   ): Promise<Result<ArtifactBinaryContent>> {
     const record = this.tokens.resolve(token);
     if (!record || record.artifactId !== artifactId) {
@@ -115,13 +180,111 @@ export class MediaDeliveryService {
     if (!got.value) {
       return failure(new NotFoundError("Blob bytes not found"));
     }
+
+    const sourceMime = got.value.contentType ?? record.contentType;
+    const bytes = Buffer.from(got.value.data, "base64");
+    const target =
+      normalizeRasterFormat(options?.format) ??
+      normalizeRasterFormat(record.requestedFormat);
+
+    if (!target) {
+      return success({
+        kind: "binary_media",
+        artifactId,
+        contentType: sourceMime,
+        bytes,
+      });
+    }
+
+    const validated = validateRequestedDownloadFormat({
+      sourceMime,
+      requested: target,
+    });
+    if (!validated.ok) return validated;
+
+    const converted = convertRasterImage({
+      bytes,
+      sourceMime,
+      targetFormat: target,
+    });
+    if (!converted.ok) return converted;
+
     return success({
       kind: "binary_media",
       artifactId,
-      contentType: got.value.contentType ?? record.contentType,
-      bytes: Buffer.from(got.value.data, "base64"),
+      contentType: converted.value.contentType,
+      bytes: converted.value.bytes,
     });
   }
+}
+
+export function validateRequestedDownloadFormat(input: {
+  readonly sourceMime: string;
+  readonly requested: string;
+}): Result<RasterDownloadFormat | true> {
+  const requested = input.requested.trim().toLowerCase();
+  const rasterTarget = normalizeRasterFormat(requested);
+  const sourceRaster = formatFromMime(input.sourceMime);
+
+  // Non-raster artifacts: only allow the exact stored extension family.
+  if (!sourceRaster) {
+    const sourceFormat = mimeToExactFormat(input.sourceMime);
+    if (!sourceFormat) {
+      return failure(
+        new ValidationError(
+          `Download format "${requested}" is not supported for this artifact`
+        )
+      );
+    }
+    const normalized =
+      requested === "jpeg" ? "jpg" : requested;
+    if (normalized !== sourceFormat) {
+      return failure(
+        new ValidationError(
+          `Download format "${requested}" is not supported for this artifact (supported: ${sourceFormat})`
+        )
+      );
+    }
+    return success(true);
+  }
+
+  if (!rasterTarget) {
+    return failure(
+      new ValidationError(
+        `Download format "${requested}" is not supported for this artifact (supported: png, jpg)`
+      )
+    );
+  }
+
+  if (
+    !canConvertRasterFormat({
+      sourceMime: input.sourceMime,
+      requestedFormat: rasterTarget,
+    })
+  ) {
+    return failure(
+      new ValidationError(
+        `Download format "${requested}" is not supported for this artifact`
+      )
+    );
+  }
+
+  return success(rasterTarget);
+}
+
+function mimeToExactFormat(mimeType: string): string | undefined {
+  const mime = mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+  if (mime === "application/pdf") return "pdf";
+  if (mime.includes("presentationml")) return "pptx";
+  if (mime.includes("wordprocessingml")) return "docx";
+  if (mime === "text/html" || mime === "application/xhtml+xml") return "html";
+  if (mime === "application/zip" || mime === "application/x-zip-compressed") {
+    return "zip";
+  }
+  if (mime === "video/mp4") return "mp4";
+  if (mime === "text/plain") return "txt";
+  if (mime === "image/svg+xml") return "svg";
+  return undefined;
 }
 
 function normalizePublicOrigin(raw?: string): string {

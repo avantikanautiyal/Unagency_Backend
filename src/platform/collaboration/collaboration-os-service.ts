@@ -23,6 +23,15 @@ import {
 import Notifications from "../../models/notification.model";
 import Users from "../../models/users.model";
 
+const OVERSIGHT_ROLES = ["admin", "superadmin"] as const;
+
+async function listOversightUserIds(): Promise<string[]> {
+  const rows = await Users.find({ role: { $in: [...OVERSIGHT_ROLES] } })
+    .select("_id")
+    .lean();
+  return rows.map((row) => String(row._id));
+}
+
 export type MessageDto = {
   id: string;
   channelId: string;
@@ -55,6 +64,8 @@ export type ConversationDto = {
   brandId?: string;
   briefId?: string;
   executionId?: string;
+  productPath?: string;
+  createdByUserId?: string;
   unreadCount?: number;
   lastMessagePreview?: string;
   memberRole?: MemberRole;
@@ -100,6 +111,8 @@ function toConversationDto(
     brandId: doc.brandId?.toString(),
     briefId: doc.briefId?.toString(),
     executionId: doc.executionId,
+    productPath: doc.productPath,
+    createdByUserId: doc.createdByUserId?.toString(),
     unreadCount: member?.unreadCount ?? 0,
     lastMessagePreview: doc.lastMessagePreview,
     memberRole: member?.role,
@@ -147,6 +160,7 @@ export class CollaborationOsService {
     briefId?: string;
     executionId?: string;
     campaignId?: string;
+    productPath?: string;
     memberRoles?: Record<string, MemberRole>;
   }): Promise<{ channelId: string; conversationId: string; created: boolean }> {
     const roomKey = buildRoomKey(input.entityKind, input.entityId);
@@ -177,8 +191,12 @@ export class CollaborationOsService {
           : undefined,
         executionId: input.executionId,
         campaignId: input.campaignId,
+        productPath: input.productPath,
         createdByUserId: new mongoose.Types.ObjectId(input.createdByUserId),
       });
+    } else if (input.productPath && !convo.productPath) {
+      convo.productPath = input.productPath;
+      await convo.save();
     }
 
     for (const uid of members) {
@@ -198,6 +216,13 @@ export class CollaborationOsService {
           },
         },
         { upsert: true }
+      );
+    }
+
+    if (input.entityKind === "service") {
+      await this.syncServiceChannelOversight(
+        convo._id.toString(),
+        input.organizationId
       );
     }
 
@@ -272,6 +297,50 @@ export class CollaborationOsService {
       brandId: input.brandId,
       briefId: input.briefId,
     });
+  }
+
+  async syncServiceChannelOversight(
+    conversationId: string,
+    organizationId: string
+  ): Promise<void> {
+    const oversightUserIds = await listOversightUserIds();
+    if (!oversightUserIds.length) return;
+
+    for (const uid of oversightUserIds) {
+      await ConversationMember.findOneAndUpdate(
+        {
+          conversationId: new mongoose.Types.ObjectId(conversationId),
+          userId: new mongoose.Types.ObjectId(uid),
+        },
+        {
+          $setOnInsert: {
+            conversationId: new mongoose.Types.ObjectId(conversationId),
+            userId: new mongoose.Types.ObjectId(uid),
+            organizationId: new mongoose.Types.ObjectId(organizationId),
+            role: "viewer" as MemberRole,
+            unreadCount: 0,
+            joinedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+    }
+  }
+
+  async backfillServiceChannelOversight(): Promise<number> {
+    const convos = await Conversation.find({
+      entityKind: "service",
+      archived: { $ne: true },
+    })
+      .select("_id organizationId")
+      .lean();
+    for (const convo of convos) {
+      await this.syncServiceChannelOversight(
+        convo._id.toString(),
+        convo.organizationId.toString()
+      );
+    }
+    return convos.length;
   }
 
   async assertMembership(
@@ -381,10 +450,13 @@ export class CollaborationOsService {
     approvalId?: string;
     metadata?: Record<string, unknown>;
   }): Promise<MessageDto> {
-    const { conversation } = await this.assertMembership(
+    const { conversation, member } = await this.assertMembership(
       input.userId,
       input.channelId
     );
+    if (member.role === "viewer") {
+      throw new ApiError("Read-only conversation access", 403);
+    }
 
     if (input.clientMessageId) {
       const existing = await CollabMessage.findOne({

@@ -6,6 +6,8 @@ import { ApiResponse } from "../utils/apiResponse";
 import Tasks, { ITasks } from "../models/tasks.model";
 import Staff from "../models/staff.model";
 import MediaFile from "../models/mediaFile.model";
+import Projects from "../models/projects.model";
+import Requirement from "../models/requestProject.model";
 import mongoose from "mongoose";
 import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
@@ -14,6 +16,41 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
+
+/** When a designer submits a draft, CS Inbox must see the linked requirement as pending review. */
+async function syncRequirementPendingReview(projectId: unknown) {
+  if (!projectId || !mongoose.Types.ObjectId.isValid(String(projectId))) return;
+  const project = await Projects.findById(projectId)
+    .select("userId brandId productPath title")
+    .lean();
+  if (!project?.userId) return;
+
+  const filter: Record<string, unknown> = {
+    userId: project.userId,
+    status: { $nin: ["closed", "cancelled", "rejected", "approved", "delivered"] },
+  };
+  if (project.brandId) filter.brandId = project.brandId;
+  if (project.productPath) filter.productPath = project.productPath;
+
+  let updated = await Requirement.findOneAndUpdate(
+    filter,
+    { $set: { status: "pending_review" } },
+    { sort: { updatedAt: -1 }, new: true }
+  );
+
+  // Fallback: match by title when brand/path weren't stored on the requirement
+  if (!updated && project.title) {
+    updated = await Requirement.findOneAndUpdate(
+      {
+        userId: project.userId,
+        title: project.title,
+        status: { $nin: ["closed", "cancelled", "rejected", "approved", "delivered"] },
+      },
+      { $set: { status: "pending_review" } },
+      { sort: { updatedAt: -1 }, new: true }
+    );
+  }
+}
 
 // TESTED OK
 const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
@@ -81,6 +118,23 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     assignedBy: req.user?.staff?._id,
   });
 
+  try {
+    const { collaborationChannelService } = await import(
+      "../services/collaboration/collaboration-channel-service"
+    );
+    const resourceUserId = String((staff.userId as { _id?: unknown })?._id ?? assignUserId);
+    await collaborationChannelService.ensureForProject({
+      actorUserId: String(req.user?.userId || resourceUserId),
+      projectId: String(project),
+      extraMemberUserIds: [resourceUserId],
+    });
+  } catch (err) {
+    console.warn(
+      "[CreateTask] project chat ensure failed (non-fatal):",
+      err instanceof Error ? err.message : err
+    );
+  }
+
   // await projectNotification.add(create?._id?.toString(), {
   //   action: "ASSIGN",
   //   data: {
@@ -147,73 +201,56 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
 });
 // TESTED OK
 const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
-  let staffId, query;
-  if (
+  const role = req.user?.role;
+  const staffId =
     req.user?.staff &&
     typeof req.user.staff === "object" &&
     "_id" in req.user.staff
-  ) {
-    staffId = req.user.staff._id;
-  } else {
+      ? req.user.staff._id
+      : null;
+
+  let filter: Record<string, unknown> | null = null;
+  if (role === "admin" || role === "superadmin") {
+    filter = {};
+  } else if (!staffId) {
     return new ApiResponse(400, null, "Invalid Staff ID");
+  } else if (role === "resource") {
+    filter = { assignedTo: staffId };
+  } else if (role === "servicing") {
+    filter = { assignedBy: staffId };
   }
 
-  const role = req.user?.role;
-  if (role == "resource") {
-    query = await Tasks.find({ assignedTo: staffId })
-      .sort({ createdAt: -1 })
-      .populate({
-        path: "assignedTo",
-        select: "userId",
-        populate: {
-          path: "userId",
-          model: "Users",
-          select: "name email",
-        },
-      })
-      .populate({
-        path: "assignedBy",
-        select: "userId",
-        populate: {
-          path: "userId",
-          model: "Users",
-          select: "name email",
-        },
-      })
-      .populate({
-        path: "project",
-        select: "_id title",
-      })
-      .populate("files");
-  } else if (role == "servicing") {
-    query = await Tasks.find({ assignedBy: staffId })
-      .sort({ createdAt: -1 })
-      .populate({
-        path: "assignedTo",
-        select: "userId",
-        populate: {
-          path: "userId",
-          model: "Users",
-          select: "name email",
-        },
-      })
-      .populate({
-        path: "assignedBy",
-        select: "userId",
-        populate: {
-          path: "userId",
-          model: "Users",
-          select: "name email",
-        },
-      })
-      .populate({
-        path: "project",
-        select: "_id title",
-      })
-      .populate("files");
-  } else {
-    query = null;
+  if (!filter) {
+    return new ApiResponse(200, [], "Task List found");
   }
+
+  const query = await Tasks.find(filter)
+    .sort({ createdAt: -1 })
+    .populate({
+      path: "assignedTo",
+      select: "userId",
+      populate: {
+        path: "userId",
+        model: "Users",
+        select: "name email",
+      },
+    })
+    .populate({
+      path: "assignedBy",
+      select: "userId",
+      populate: {
+        path: "userId",
+        model: "Users",
+        select: "name email",
+      },
+    })
+    .populate({
+      path: "project",
+      select:
+        "_id title userId orgId executionId origin creationMode brandId productPath resource creativePrompt",
+    })
+    .populate("files");
+
   return new ApiResponse(200, query, "Task List found");
 });
 
@@ -256,7 +293,7 @@ const TaskListByUserId = asyncHandler(async (req: RequestUser) => {
 // TESTED OK
 const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   const { taskId } = req.params; // Task ID from the URL parameters
-  const updates: Partial<ITasks> = req.body; // Fields to be updated
+  const updates: Partial<ITasks> = { ...req.body }; // Fields to be updated
 
   if (!taskId || !mongoose.Types.ObjectId.isValid(taskId)) {
     return new ApiResponse(400, null, "Invalid Task ID");
@@ -264,11 +301,50 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
 
   delete updates._id;
   delete updates.assignedBy;
+
+  // Admin UI historically sent "pending review" — map to schema enum.
+  if (typeof updates.status === "string") {
+    const normalized = updates.status.toLowerCase().trim();
+    if (
+      normalized === "pending review" ||
+      normalized === "pending_review" ||
+      normalized === "draft ready"
+    ) {
+      updates.status = "submitted";
+    }
+  }
+
+  // Resolve assignedTo when a User id is provided (create-task style).
+  if (updates.assignedTo && mongoose.Types.ObjectId.isValid(String(updates.assignedTo))) {
+    const assignRaw = String(updates.assignedTo);
+    const asStaff = await Staff.findById(assignRaw);
+    if (!asStaff) {
+      const byUser = await Staff.findOne({ userId: assignRaw });
+      if (byUser) {
+        updates.assignedTo = byUser._id as mongoose.Types.ObjectId;
+      }
+    }
+  }
+
+  // Append newly uploaded files (S3 via multer) onto the task.
+  const uploaded = req.files as Express.Multer.File[] | undefined;
+  const newFileIds: mongoose.Types.ObjectId[] = [];
+  if (uploaded && uploaded.length > 0) {
+    for (const file of uploaded) {
+      const newFile = await MediaFile.create({
+        url: (file as { location?: string }).location,
+        fileName: file.originalname,
+        uploadedAt: new Date(),
+      });
+      newFileIds.push(newFile._id as mongoose.Types.ObjectId);
+    }
+  }
+
   // Find the task by ID and update it with the new fields
   const role = req.user?.role;
   if (updates.status) {
     if (role === "servicing") {
-      const allowedStatuses = ["feedback", "revision", "approved"];
+      const allowedStatuses = ["feedback", "revision", "approved", "submitted"];
       if (!allowedStatuses.includes(updates.status)) {
         return new ApiResponse(
           403,
@@ -288,10 +364,25 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     }
   }
 
-  const updatedTask = await Tasks.findByIdAndUpdate(taskId, updates, {
+  const updateOps: Record<string, unknown> = { ...updates };
+  if (newFileIds.length) {
+    delete updateOps.files;
+  }
+
+  let updatedTask = await Tasks.findByIdAndUpdate(taskId, updateOps, {
     new: true,
     runValidators: true,
-  })
+  });
+
+  if (newFileIds.length && updatedTask) {
+    updatedTask = await Tasks.findByIdAndUpdate(
+      taskId,
+      { $addToSet: { files: { $each: newFileIds } } },
+      { new: true, runValidators: true }
+    );
+  }
+
+  updatedTask = await Tasks.findById(taskId)
     .populate({
       path: "assignedTo",
       select: "userId",
@@ -337,26 +428,12 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   // Check for status change notifications
   switch (updates.status) {
     case "submitted":
-      // here inform a task servicing manager
-      // await projectNotification.add("task update", {
-      //   action: "ASSIGN",
-      //   data: {
-      //     status: updatedTask?.status,
-      //     // userId: staff?.userId?._id,
-      //     emails: [(updatedTask?.assignedBy as any)?.userId?.email],
-      //     // name: (staff.userId as any).name,
-      //     deadline: updatedTask?.deadline,
-      //     assignedBy: req?.user?.name,
-      //   },
-      //   notification: new Notification({
-      //     title: updatedTask?.title!,
-      //     description: updatedTask?.description!,
-      //     type: "TASK",
-      //     action: "task.open",
-      //     actionText: "view task",
-      //     symbol: "👷🏻",
-      //   }),
-      // });
+      // Surface on CS Inbox "Pending Review" (requirements drive that queue).
+      try {
+        await syncRequirementPendingReview(updatedTask?.project);
+      } catch (err) {
+        console.error("Failed to sync requirement pending_review after task submit", err);
+      }
 
       EmailQueue.add("task updation", {
         action: "TASK",
@@ -622,7 +699,8 @@ const getTaskById = asyncHandler(async (req: RequestUser) => {
     })
     .populate({
       path: "project",
-      select: "_id title",
+      select:
+        "_id title userId orgId executionId origin creationMode brandId productPath resource creativePrompt",
     })
     .populate("files");
 

@@ -7,7 +7,7 @@ import {
   ALL_VIDEO_PROVIDER_SPECS,
   VERIFIED_VIDEO_PROVIDER_SPECS,
   type VerifiedVideoProviderSpec,
-} from "../../intelligence/providers/video/configs/verified-video-provider-specs";
+} from "../../providers/video/configs/verified-video-provider-specs";
 import { isVideoProviderConfigured } from "./video-provider-env";
 
 export interface VideoLiveSmokeGate {

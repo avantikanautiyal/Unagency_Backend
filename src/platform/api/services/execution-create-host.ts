@@ -1,9 +1,9 @@
 /**
  * Ports for extracted create / stream execution paths.
- * Maps and engines stay owned by ExecutionApiService; phases receive this host.
+ * Direct provider path only — no OS intelligence layer assembly.
  */
 
-import type { Result } from "../../intelligence/shared/result";
+import type { Result } from "../../core/result";
 import type {
   AuthPrincipal,
   CreateExecutionRequest,
@@ -16,22 +16,15 @@ import type {
   ExecutionTraceSummary,
 } from "../contracts";
 import type { IDistributedExecutionEngine } from "../../infrastructure/execution/interfaces/execution";
-import type { IIntelligenceOsIntegrationEngine } from "../../intelligence/integration/interfaces/integration";
+import type { IDirectExecutionEngine } from "../../direct/contracts";
 import type { IStreamingService } from "../interfaces";
-import type { ExecutionIntelligenceSnapshot } from "../execution-intelligence";
 import type { EnterpriseApiExecutionMode } from "../runtime/execution-mode";
 import type {
-  BrandContext,
-  ExecutionPlan,
   GovernanceDecision,
   GovernanceFinalizeService,
-  KnowledgeContext,
   OsDeliveryService,
   OsLifecycleState,
-  StructuredBrief,
-  TaskGraphRunSnapshot,
 } from "../../os";
-import type { IBrandBrainEngine } from "../../business/brand-brain/interfaces";
 import type {
   IArtifactRepository,
   IExecutionExtrasRepository,
@@ -39,12 +32,12 @@ import type {
   IIdempotencyStore,
   ITenantUsageStore,
 } from "../../infrastructure/durability/interfaces/execution-store-ports";
-import type { AsyncExecutionCoordinator } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
+import type { AsyncExecutionCoordinator } from "../../providers/async/coordination/async-execution-coordinator";
 import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
-import type { ToolRuntimePlatform } from "../../intelligence/providers/tools/composition/tool-runtime-platform";
+import type { ToolRuntimePlatform } from "../../providers/tools/composition/tool-runtime-platform";
 import type { CanonicalStreamHandoff } from "./canonical-execution-spine";
 import type { WorkflowFollowUpPayload } from "./workflow-follow-up";
-import type { PromptSignals } from "../../business/brand-brain/learning/prompt-signal-learner";
+import type { AdaptiveRoutingDecisionServiceDeps } from "../../providers/routing/performance/benchmark/adaptive/adaptive-routing-decision-service";
 
 export const EXECUTION_MAX_PROMPT_CHARS = 100_000;
 export const EXECUTION_MAX_METADATA_BYTES = 65_536;
@@ -58,11 +51,6 @@ export type ExecutionExtrasRecord = {
   osLifecycle?: OsLifecycleState;
   governance?: GovernanceDecision;
   asyncLane?: unknown;
-  structuredBrief?: StructuredBrief;
-  structuredBrandContext?: BrandContext;
-  structuredKnowledgeContext?: KnowledgeContext;
-  structuredExecutionPlan?: ExecutionPlan;
-  structuredTaskGraphState?: TaskGraphRunSnapshot;
   workflowFollowUp?: WorkflowFollowUpPayload;
   pendingHumanReview?: {
     readonly reviewId: string;
@@ -73,6 +61,13 @@ export type ExecutionExtrasRecord = {
     readonly deliveryId?: string;
     readonly error?: string;
   };
+  /** Track A — bound packet snapshot for refine reuse / packs / post-guards. */
+  continuitySnapshot?: unknown;
+  continuityPostGuards?: unknown;
+  packPlan?: unknown;
+  packPlanShadow?: unknown;
+  continuityPack?: boolean;
+  continuityObservability?: unknown;
 };
 
 export type ExecutionServiceDeps = {
@@ -80,10 +75,9 @@ export type ExecutionServiceDeps = {
   createId: (prefix: string) => string;
   clockMs: () => number;
   distributed?: IDistributedExecutionEngine;
-  integration?: IIntelligenceOsIntegrationEngine;
+  integration?: IDirectExecutionEngine;
   streaming?: IStreamingService;
   autoTick?: boolean;
-  onIntelligenceSnapshot?: (snapshot: ExecutionIntelligenceSnapshot) => void;
   executionMode?: EnterpriseApiExecutionMode;
   persistence?: {
     executions: IExecutionRepository;
@@ -94,15 +88,17 @@ export type ExecutionServiceDeps = {
   };
   asyncCoordinator?: AsyncExecutionCoordinator;
   asyncMedia?: AsyncMediaPlatform;
-  videoRouter?: import("../../intelligence/providers/video/routing/video-execution-router").VideoExecutionRouter;
-  imageRouter?: import("../../intelligence/providers/image/routing/image-execution-router").ImageExecutionRouter;
-  audioRouter?: import("../../intelligence/providers/audio/routing/audio-execution-router").AudioExecutionRouter;
-  textRouter?: import("../../intelligence/providers/routing/text/text-execution-router").TextExecutionRouter;
+  videoRouter?: import("../../providers/video/routing/video-execution-router").VideoExecutionRouter;
+  imageRouter?: import("../../providers/image/routing/image-execution-router").ImageExecutionRouter;
+  audioRouter?: import("../../providers/audio/routing/audio-execution-router").AudioExecutionRouter;
+  textRouter?: import("../../providers/routing/text/text-execution-router").TextExecutionRouter;
   toolRuntime?: ToolRuntimePlatform;
   nativeStreamDispatchers?: ReadonlyMap<
     string,
-    import("../../intelligence/providers/streaming/interfaces/native-streaming-dispatcher").INativeStreamingDispatcher
+    import("../../providers/streaming/interfaces/native-streaming-dispatcher").INativeStreamingDispatcher
   >;
+  /** Step 13 — adaptive routing decision deps (optional; static routing when absent). */
+  adaptiveRouting?: AdaptiveRoutingDecisionServiceDeps;
 };
 
 export type ExecutionCreateHost = {
@@ -112,26 +108,8 @@ export type ExecutionCreateHost = {
   readonly idempotencyIndex: Map<string, { fingerprint: string; executionId: string }>;
   readonly tenantTokenUsage: Map<string, number>;
   readonly extrasStore: Map<string, ExecutionExtrasRecord>;
-  readonly briefIntelligence: ReturnType<
-    typeof import("../../os").createBriefIntelligenceEngine
-  >;
-  readonly brandIntelligence: ReturnType<
-    typeof import("../../os").createBrandIntelligenceEngine
-  >;
-  readonly knowledgeIntelligence: ReturnType<
-    typeof import("../../os").createKnowledgeIntelligenceOsEngine
-  >;
-  readonly executionIntelligence: ReturnType<
-    typeof import("../../os").createExecutionIntelligenceOsEngine
-  >;
-  readonly briefByExecutionId: Map<string, StructuredBrief>;
-  readonly brandByExecutionId: Map<string, BrandContext>;
-  readonly knowledgeByExecutionId: Map<string, KnowledgeContext>;
-  readonly planByExecutionId: Map<string, ExecutionPlan>;
   readonly streamHandoffByExecutionId: Map<string, CanonicalStreamHandoff>;
-  readonly brandBrainEngine?: IBrandBrainEngine;
   readonly governanceFinalize: GovernanceFinalizeService;
   readonly deliveryService: OsDeliveryService;
-  intelligenceGateway?: import("../../intelligence/gateway/interfaces/intelligence-gateway").IIntelligenceGateway;
   loadExecution(executionId: string): Promise<ExecutionResource | undefined>;
 };

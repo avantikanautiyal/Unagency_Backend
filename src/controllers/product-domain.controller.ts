@@ -125,6 +125,7 @@ export const globalSearch = asyncHandler(async (req: RequestUser) => {
     page: req.query.page ? Number(req.query.page) : undefined,
     limit: req.query.limit ? Number(req.query.limit) : 20,
     cursor: req.query.cursor as string | undefined,
+    recordRecent: req.query.recordRecent === "true" || req.query.recordRecent === "1",
   });
   return new ApiResponse(200, data, "Search results");
 });

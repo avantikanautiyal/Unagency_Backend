@@ -3,63 +3,152 @@
  * sync distributed/integration/stub run, materialization, finalize.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
-import type { ServiceContextWorkflow } from "../../os/brief/engine/service-context-classifier";
-import { runIntegrationViaControlPlane, resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
+import type { ServiceContextWorkflow } from "../../config/service-context-classifier";
+
+function conversationFieldsFromMetadata(
+  metadata?: Readonly<Record<string, unknown>>
+): Pick<ExecutionResource, "conversationId" | "channelId"> {
+  const conversationId =
+    typeof metadata?.conversationId === "string"
+      ? metadata.conversationId.trim()
+      : "";
+  const channelId =
+    typeof metadata?.channelId === "string" ? metadata.channelId.trim() : "";
+  return {
+    ...(conversationId ? { conversationId } : {}),
+    ...(channelId ? { channelId } : {}),
+  };
+}
+
+/** Backfill video wire params from product format when client metadata omits them. */
+function resolveAsyncVideoPayloadFromMetadata(
+  metadata?: Readonly<Record<string, unknown>>
+): {
+  duration?: number;
+  aspectRatio?: string;
+  resolution?: string;
+} {
+  if (!metadata) return {};
+  const format =
+    typeof metadata.format === "string" ? metadata.format : undefined;
+  const service =
+    typeof metadata.service === "string" ? metadata.service : undefined;
+  const subtype =
+    typeof metadata.subtype === "string" ? metadata.subtype : undefined;
+  const aspectRatio =
+    typeof metadata.aspectRatio === "string"
+      ? metadata.aspectRatio
+      : aspectRatioForFormat(format);
+  let duration: number | undefined;
+  if (metadata.duration != null) {
+    const raw =
+      typeof metadata.duration === "number"
+        ? metadata.duration
+        : Number(String(metadata.duration).replace(/s$/i, ""));
+    if (Number.isFinite(raw)) duration = raw;
+  } else {
+    duration = durationForFormat(format, service, subtype);
+  }
+  const resolution =
+    typeof metadata.resolution === "string" ? metadata.resolution : undefined;
+  return {
+    ...(duration != null ? { duration } : {}),
+    ...(aspectRatio ? { aspectRatio } : {}),
+    ...(resolution ? { resolution } : {}),
+  };
+}
+import { runDirectProviderExecution, resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
 import {
   asOrganizationId,
   asWorkspaceId,
-} from "../../intelligence/shared/identifiers";
+} from "../../core/identifiers";
 import type {
   ExecutionArtifactRef,
   ExecutionResource,
+  ExecutionEvaluationSummary,
 } from "../contracts";
-import { buildExecutionIntelligenceSnapshot } from "../execution-intelligence/projection/build-snapshot";
 import {
   logOsExecutionEvent,
   resolveProductMode,
-  scenarioHintFromBrief,
+  parseProductMode,
   productModeAutoApprovesTools,
   defaultAsyncExecutionBoundary,
   osLifecycleFromApiStatus,
 } from "../../os";
 import { defaultGovernanceEngine } from "../../os/governance/types";
-import { isAsyncExecutionRequest } from "../../intelligence/providers/async/coordination/async-execution-coordinator";
+import { isAsyncExecutionRequest } from "../../providers/async/coordination/async-execution-coordinator";
 import { materializeSyncImageArtifacts } from "./sync-image-artifact-materializer";
 import {
   isImageGenerationCapability,
   isVideoGenerationCapability,
-} from "../../intelligence/providers/common/resolve-execution-modality";
-import { fakeAsyncProviderId } from "../../intelligence/providers/async/fake/fake-async-provider";
-import { buildExecutionResultPayload } from "./execution-result-payload";
+} from "../../providers/common/resolve-execution-modality";
+import { fakeAsyncProviderId } from "../../providers/async/fake/fake-async-provider";
+import {
+  buildExecutionResultPayload,
+  mergeExportArtifactsIntoResult,
+} from "./execution-result-payload";
 import {
   buildPendingApprovals,
   type PendingToolApprovalPresentation,
 } from "./tool-approval-presentation";
 import { buildIntegrationJobSummary } from "../../infrastructure/execution/workers/integration-job-summary";
+import { deriveFinalizeExecutionCost } from "../../accounting/cost/finalize-execution-cost";
+import { asJobId, type JobId } from "../../infrastructure/execution/contracts/job";
+import { applyWebsiteExportToExecution } from "./website-export-materializer";
+import { isWebsiteGenerationMetadata, isLongRunningPresentationMetadata, isLongRunningDocumentMetadata } from "./execution-thin-path";
+import {
+  aspectRatioForFormat,
+  durationForFormat,
+} from "../../os/contracts/output-contracts/format-overlays";
+import { failoverChainFromMetadata, resolveAsyncMediaRoutingPins } from "./async-media-routing-pins";
 import {
   experienceSummaryFromJobSummary,
   diagnosticsFromJobSummary,
   mapJobStatus,
 } from "./execution-summary-helpers";
-import { finalizeExecutionGovernanceExtras, previewFromJobSummary } from "./execution-governance-extras";
+import { finalizeExecutionGovernanceExtras, previewFromJobSummary, validationContextFromExecution } from "./execution-governance-extras";
+import { hookProductionEvidenceAfterFinalize } from "../../providers/routing/performance/benchmark/production/production-evidence-hook";
+import {
+  readExecutionSpecSnapshot,
+  resolveBriefObjectiveFromMetadata,
+} from "../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
+import {
+  recordProviderDispatchFromSummary,
+  recordWebsiteMaterializationTrace,
+} from "../../os/observability/execution-trace";
+import {
+  continuityPostGuardExtras,
+  extractContinuityGuardContext,
+  runContinuityPostGuards,
+  type ContinuityPostGuardReport,
+} from "../../os/creative";
+import { continuitySnapshotForExtras } from "../../os/creative/refine-packet-continuity";
+import { buildContinuityObservabilitySummary } from "../../os/creative/continuity-product-ux";
 import { buildWorkflowFollowUpFromMetadata } from "./workflow-follow-up";
 import { maybeAutoDeliverOnSuccess } from "./auto-delivery-on-success";
 import { autoApprovePendingToolInvocations } from "./auto-approve-pending-tools";
-import {
-  CANONICAL_INTEGRATION_MODE,
-  CANONICAL_STREAM_PLANNING_MODE,
-  buildCanonicalIntegrationRequest,
-  extractCanonicalRouting,
-  runCanonicalIntegration,
-} from "./canonical-execution-spine";
-import {
-  buildIntegrationPlanningSnapshot,
-  integrationPlanningSnapshotExtras,
-} from "../../intelligence/integration/adapters/deferred-post-processing";
-import type { ExecutionCreateHost } from "./execution-create-host";
+import { CANONICAL_INTEGRATION_MODE } from "./canonical-execution-spine";
+import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
 import type { CreatePipelineState } from "./execution-create-state";
+
+/** execution.brandId is the only creative ownership SoT (confirmed in prepass). */
+function resolveExecutionBrandId(
+  workingMetadata: Record<string, unknown> | undefined,
+  reqMetadata: Readonly<Record<string, unknown>> | undefined
+): string | undefined {
+  if (
+    typeof workingMetadata?.brandId === "string" &&
+    workingMetadata.brandId.trim()
+  ) {
+    return workingMetadata.brandId.trim();
+  }
+  if (typeof reqMetadata?.brandId === "string" && reqMetadata.brandId.trim()) {
+    return reqMetadata.brandId.trim();
+  }
+  return undefined;
+}
 
 export async function runCreateDispatch(
   host: ExecutionCreateHost,
@@ -75,12 +164,12 @@ export async function runCreateDispatch(
   const executionId = state.executionId;
   const correlationId = state.correlationId;
   const now = state.now;
-  const structuredBrief = state.structuredBrief;
-  const structuredBrandContext = state.structuredBrandContext;
-  const structuredKnowledgeContext = state.structuredKnowledgeContext;
-  const structuredExecutionPlan = state.structuredExecutionPlan;
+  const executionBrandId = resolveExecutionBrandId(
+    workingMetadata,
+    req.metadata
+  );
 
-  // Canonical stream handoff — OS ingress complete; defer provider execution to SSE path.
+  // Canonical stream handoff — defer provider execution to SSE path.
   if (workingMetadata?.canonicalStreamHandoff === true) {
     host.streamHandoffByExecutionId.set(executionId, {
       executionId,
@@ -90,10 +179,6 @@ export async function runCreateDispatch(
       capabilityIdRaw,
       req,
       workingMetadata,
-      structuredBrief,
-      structuredBrandContext,
-      structuredKnowledgeContext,
-      structuredExecutionPlan,
       principal,
     });
 
@@ -107,15 +192,12 @@ export async function runCreateDispatch(
       createdAt: now,
       updatedAt: now,
       promptPreview: req.prompt.slice(0, 120),
+      ...(executionBrandId ? { brandId: executionBrandId } : {}),
+      ...conversationFieldsFromMetadata(req.metadata),
       result: { kind: "pending" },
     };
 
-    const extrasPayload = {
-      structuredBrief,
-      structuredBrandContext,
-      structuredKnowledgeContext,
-      structuredExecutionPlan,
-    };
+    const extrasPayload = {};
 
     if (host.deps.persistence) {
       await host.deps.persistence.executions.save(streamResource);
@@ -134,7 +216,7 @@ export async function runCreateDispatch(
           trace: {
             executionId,
             correlationId,
-            stages: ["gateway", "brief", "brand", "knowledge", "execution_plan"],
+            stages: ["gateway", "direct_provider"],
             durationMs: 0,
           },
           cost: { executionId, amount: null, currency: null, status: "unknown" },
@@ -157,7 +239,7 @@ export async function runCreateDispatch(
         trace: {
           executionId,
           correlationId,
-          stages: ["gateway", "brief", "brand", "knowledge", "execution_plan"],
+          stages: ["gateway", "matrix_route", "stream"],
           durationMs: 0,
         },
         cost: { executionId, amount: null, currency: null, status: "unknown" },
@@ -189,56 +271,22 @@ export async function runCreateDispatch(
     })
   ) {
     const capabilityId = req.capabilityId ?? "video.generate";
-    const preferredProviderId =
-      req.providerId?.trim() ||
-      (typeof req.metadata?.providerId === "string" ? req.metadata.providerId : undefined);
-    const preferredModelId =
-      req.modelId?.trim() ||
-      (typeof req.metadata?.modelId === "string" ? req.metadata.modelId : undefined);
+    const {
+      preferredProviderId,
+      preferredModelId,
+      prepassPinned,
+    } = resolveAsyncMediaRoutingPins({
+      reqProviderId: req.providerId,
+      reqModelId: req.modelId,
+      workingMetadata,
+      metadata: req.metadata,
+    });
 
+    // Prepass owns matrix/modality routing. Honor pins; do not re-route when complete.
     let providerId = preferredProviderId ?? "";
     let modelId = preferredModelId ?? "";
     let routingDecisionId: string | undefined;
     let failoverChain: { providerId: string; modelId: string }[] = [];
-    let pipelineGovernanceAttached = false;
-    let integrationPlanningSnapshotExtrasPayload:
-      | Readonly<Record<string, unknown>>
-      | undefined;
-
-    // Canonical pipeline stages 1–10 before async media coordinator handoff.
-    if (host.deps.integration) {
-      const planningInput = {
-        executionId,
-        correlationId,
-        trustedOrganizationId,
-        providerPrompt,
-        req,
-        workingMetadata,
-        structuredBrief,
-        principal,
-        mode: CANONICAL_STREAM_PLANNING_MODE as typeof CANONICAL_STREAM_PLANNING_MODE,
-      };
-      const planning = await runCanonicalIntegration(
-        host.deps.integration,
-        planningInput
-      );
-      if (planning.ok) {
-        pipelineGovernanceAttached = true;
-        integrationPlanningSnapshotExtrasPayload = integrationPlanningSnapshotExtras(
-          buildIntegrationPlanningSnapshot(
-            buildCanonicalIntegrationRequest(planningInput),
-            planning.value
-          )
-        );
-        const routing = extractCanonicalRouting(planning.value, {
-          providerId: providerId || preferredProviderId,
-          modelId: modelId || preferredModelId,
-        });
-        providerId = routing.providerId;
-        modelId = routing.modelId;
-        routingDecisionId = routing.routingDecisionId;
-      }
-    }
 
     const useSimulatedFakeLeaf =
       (host.deps.executionMode === "simulated" || host.deps.executionMode === "stub") &&
@@ -249,6 +297,13 @@ export async function runCreateDispatch(
       // Credential-free M10.6 path — Model/Routing authority still owns LIVE video.
       providerId = String(fakeAsyncProviderId());
       modelId = "fake-async-model";
+    } else if (prepassPinned) {
+      providerId = preferredProviderId!;
+      modelId = preferredModelId!;
+      const fromWorking = failoverChainFromMetadata(workingMetadata);
+      failoverChain = fromWorking.length
+        ? fromWorking
+        : failoverChainFromMetadata(req.metadata);
     } else if (isVideoGenerationCapability(capabilityId) && host.deps.videoRouter) {
       const routed = await host.deps.videoRouter.resolve({
         prompt: req.prompt,
@@ -295,7 +350,7 @@ export async function runCreateDispatch(
     } else if (!providerId || !modelId) {
       return failure(
         new ValidationError(
-          "async media execution requires routing or simulated fake async provider"
+          "async media execution requires prepass routing pins or a modality router"
         )
       );
     }
@@ -310,6 +365,8 @@ export async function runCreateDispatch(
       createdAt: now,
       updatedAt: now,
       promptPreview: req.prompt.slice(0, 120),
+      ...(executionBrandId ? { brandId: executionBrandId } : {}),
+      ...conversationFieldsFromMetadata(req.metadata),
       result: { kind: "pending" },
     };
     if (host.deps.persistence) {
@@ -333,11 +390,7 @@ export async function runCreateDispatch(
         ...(Array.isArray(req.metadata?.assets) ? { assets: req.metadata.assets } : {}),
         ...(req.metadata?.audio ? { audio: req.metadata.audio } : {}),
         ...(req.metadata?.image ? { image: req.metadata.image } : {}),
-        ...(req.metadata?.duration != null ? { duration: req.metadata.duration } : {}),
-        ...(req.metadata?.aspectRatio != null
-          ? { aspectRatio: req.metadata.aspectRatio }
-          : {}),
-        ...(req.metadata?.resolution != null ? { resolution: req.metadata.resolution } : {}),
+        ...resolveAsyncVideoPayloadFromMetadata(req.metadata),
         ...(routingDecisionId ? { routingDecisionId } : {}),
         ...(failoverChain.length ? { failoverChain } : {}),
       },
@@ -357,19 +410,12 @@ export async function runCreateDispatch(
       );
     }
 
-    const asyncLaneBase = defaultAsyncExecutionBoundary.attachAsyncExecution({
+    const asyncLane = defaultAsyncExecutionBoundary.attachAsyncExecution({
       executionId,
       organizationId: trustedOrganizationId,
       requestId: correlationId,
       capabilityId,
     });
-    const asyncLane = {
-      ...asyncLaneBase,
-      governanceAttached: pipelineGovernanceAttached,
-      notes: pipelineGovernanceAttached
-        ? "Canonical IntegrationPipeline stages 1–10 applied before async media coordinator."
-        : asyncLaneBase.notes,
-    };
     logOsExecutionEvent("execution.async_lane", {
       requestId: correlationId,
       executionId,
@@ -378,6 +424,11 @@ export async function runCreateDispatch(
       status: "waiting_provider",
       lifecycle: asyncLane.lifecycle,
     });
+    const asyncTraceStages = [
+      "gateway",
+      "modality_route",
+      "async_media_coordinator",
+    ];
     if (host.deps.persistence) {
       await host.deps.persistence.extras.save(executionId, trustedOrganizationId, {
         diagnostics: diagnosticsFromJobSummary(
@@ -394,17 +445,7 @@ export async function runCreateDispatch(
         trace: {
           executionId,
           correlationId,
-          stages: pipelineGovernanceAttached
-            ? [
-                "gateway",
-                "brief",
-                "brand",
-                "knowledge",
-                "execution_plan",
-                "integration_pipeline_planning",
-                "async_media_coordinator",
-              ]
-            : ["gateway", "async_media_coordinator"],
+          stages: asyncTraceStages,
           durationMs: 0,
         },
         cost: {
@@ -432,11 +473,6 @@ export async function runCreateDispatch(
           nowIso: host.deps.nowIso,
         }),
         asyncLane,
-        ...(structuredBrief ? { structuredBrief } : {}),
-        ...(structuredBrandContext ? { structuredBrandContext } : {}),
-        ...(structuredKnowledgeContext ? { structuredKnowledgeContext } : {}),
-        ...(structuredExecutionPlan ? { structuredExecutionPlan } : {}),
-        ...(integrationPlanningSnapshotExtrasPayload ?? {}),
       });
     } else {
       host.extrasStore.set(executionId, {
@@ -454,17 +490,7 @@ export async function runCreateDispatch(
         trace: {
           executionId,
           correlationId,
-          stages: pipelineGovernanceAttached
-            ? [
-                "gateway",
-                "brief",
-                "brand",
-                "knowledge",
-                "execution_plan",
-                "integration_pipeline_planning",
-                "async_media_coordinator",
-              ]
-            : ["gateway", "async_media_coordinator"],
+          stages: asyncTraceStages,
           durationMs: 0,
         },
         cost: {
@@ -484,11 +510,6 @@ export async function runCreateDispatch(
           applied: false,
         },
         osLifecycle: asyncLane.lifecycle,
-        ...(structuredBrief ? { structuredBrief } : {}),
-        ...(structuredBrandContext ? { structuredBrandContext } : {}),
-        ...(structuredKnowledgeContext ? { structuredKnowledgeContext } : {}),
-        ...(structuredExecutionPlan ? { structuredExecutionPlan } : {}),
-        ...(integrationPlanningSnapshotExtrasPayload ?? {}),
       });
     }
 
@@ -506,11 +527,27 @@ export async function runCreateDispatch(
   let jobSummary: Readonly<Record<string, unknown>> = {};
   let runtimeOutputForMedia: Readonly<Record<string, unknown>> | undefined;
   let mediaArtifactIds: readonly string[] | undefined;
+  let usedSyncDirectPath = false;
+  /** True when create returns before the distributed job finishes (website/deck/doc/media). */
+  let deferredLongRunning = false;
   const apiExecutionMode = host.deps.executionMode ?? "stub";
   const integrationMode = CANONICAL_INTEGRATION_MODE;
 
   if (host.deps.distributed) {
+    const routeVisualAction =
+      workingMetadata?.productAction === "route_visual" ||
+      workingMetadata?.productAction === "route_visual_refine";
     const enq = await host.deps.distributed.enqueue({
+      ...(routeVisualAction
+        ? {
+            retryPolicy: {
+              strategy: "exponential" as const,
+              maxAttempts: 1,
+              baseDelayMs: 0,
+              maxDelayMs: 0,
+            },
+          }
+        : {}),
       payload: {
         rawPrompt: providerPrompt,
         organizationId: trustedOrganizationId,
@@ -519,9 +556,7 @@ export async function runCreateDispatch(
         tokenBudgetLimit: req.tokenBudgetLimit,
         correlationId,
         capabilityHint: req.capabilityId,
-        scenarioHint: structuredBrief
-          ? scenarioHintFromBrief(structuredBrief)
-          : undefined,
+        scenarioHint: undefined,
         metadata: {
           ...(req.metadata ?? {}),
           ...(workingMetadata ?? {}),
@@ -534,10 +569,7 @@ export async function runCreateDispatch(
           projectId: req.projectId,
           integrationMode,
           enterpriseExecutionMode: apiExecutionMode,
-          brandId:
-            typeof req.metadata?.brandId === "string"
-              ? req.metadata.brandId
-              : undefined,
+          brandId: executionBrandId,
           campaignId:
             typeof req.metadata?.campaignId === "string"
               ? req.metadata.campaignId
@@ -555,29 +587,113 @@ export async function runCreateDispatch(
       const isLongRunningMedia =
         isImageGenerationCapability(capabilityIdRaw) ||
         isVideoGenerationCapability(capabilityIdRaw);
-      // LIVE image/video can exceed the mobile HTTP timeout — tick in background.
-      // Text (Enhance, copy) must finish so GET/create return resultText.
-      if (live && isLongRunningMedia) {
-        void host.deps.distributed.tick(4).catch((err) => {
-          logOsExecutionEvent("execution.background_tick.failed", {
-            requestId: correlationId,
-            executionId,
-            organizationId: trustedOrganizationId,
-            status: "failed",
-            errorCode: err instanceof Error ? err.message : String(err),
-          });
-        });
+      const isLongRunningWebsite = isWebsiteGenerationMetadata({
+        ...(req.metadata ?? {}),
+        ...(workingMetadata ?? {}),
+      });
+      const isLongRunningPresentation = isLongRunningPresentationMetadata({
+        ...(req.metadata ?? {}),
+        ...(workingMetadata ?? {}),
+      });
+      const isLongRunningDocument = isLongRunningDocumentMetadata({
+        ...(req.metadata ?? {}),
+        ...(workingMetadata ?? {}),
+      });
+      // LIVE image/video/website/pitch-deck/brochure can exceed the mobile HTTP timeout — tick in background.
+      // Short copy/enhance must finish so GET/create return resultText.
+      if (
+        live &&
+        (isLongRunningMedia ||
+          isLongRunningWebsite ||
+          isLongRunningPresentation ||
+          isLongRunningDocument)
+      ) {
+        deferredLongRunning = true;
+        void (async () => {
+          try {
+            const deadlineMs = host.deps.clockMs() + 25 * 60 * 1000;
+            while (host.deps.clockMs() < deadlineMs) {
+              await host.deps.distributed!.tick(4);
+              const liveJob = host.deps.distributed!.getJob(ownJobId);
+              if (!liveJob.ok || !liveJob.value) break;
+              const liveSummary = liveJob.value.resultSummary ?? {};
+              if (
+                isTerminalJobStatus(liveJob.value.status) ||
+                liveSummary.awaitingToolApproval === true
+              ) {
+                break;
+              }
+              await new Promise((r) => setTimeout(r, 250));
+            }
+            const after = host.deps.distributed!.getJob(ownJobId);
+            const afterSummary = after.ok
+              ? (after.value?.resultSummary ?? {})
+              : {};
+            const timedOut =
+              !after.ok ||
+              !after.value ||
+              (!isTerminalJobStatus(after.value.status) &&
+                afterSummary.awaitingToolApproval !== true);
+            if (timedOut) {
+              await markExecutionFailedFromBackground({
+                host,
+                executionId,
+                organizationId: trustedOrganizationId,
+                errorMessage:
+                  "Generation timed out before the deliverable was ready. Please try again.",
+              });
+              return;
+            }
+            await finalizeDeferredDistributedJob({
+              host,
+              executionId,
+              jobId: ownJobId,
+              organizationId: trustedOrganizationId,
+              correlationId,
+              capabilityId: capabilityIdRaw || "text.generate",
+              workingMetadata,
+              reqMetadata: req.metadata,
+              structuredOutputName:
+                req.structuredOutput &&
+                typeof req.structuredOutput === "object" &&
+                typeof req.structuredOutput.name === "string"
+                  ? req.structuredOutput.name
+                  : undefined,
+            });
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : String(err);
+            logOsExecutionEvent("execution.background_tick.failed", {
+              requestId: correlationId,
+              executionId,
+              organizationId: trustedOrganizationId,
+              status: "failed",
+              errorCode: message,
+            });
+            await markExecutionFailedFromBackground({
+              host,
+              executionId,
+              organizationId: trustedOrganizationId,
+              errorMessage:
+                message ||
+                "Background generation worker failed. Please try again.",
+            });
+          }
+        })();
       } else {
         await host.deps.distributed.tick(1);
       }
       const job = host.deps.distributed.getJob(ownJobId);
       if (job.ok && job.value) {
-        status = mapJobStatus(job.value.status);
-        completedAt = job.value.completedAt;
-        errorMessage = job.value.lastError;
         const summary = job.value.resultSummary ?? {};
+        status = mapJobStatus(job.value.status, summary);
+        completedAt = job.value.completedAt;
+        errorMessage =
+          (typeof summary.errorMessage === "string"
+            ? summary.errorMessage
+            : undefined) ?? job.value.lastError;
         jobSummary = summary;
-        cost = Number(summary.cost ?? 0.01) || 0.01;
+        cost = undefined;
         evaluationScore =
           typeof summary.evaluationScore === "number" &&
           Number.isFinite(summary.evaluationScore)
@@ -605,15 +721,32 @@ export async function runCreateDispatch(
               ? summary.errorMessage
               : "integration context resolution failed";
         }
+        recordProviderDispatchFromSummary({
+          executionId,
+          status,
+          jobSummary: summary,
+          workingMetadata,
+          errorMessage,
+        });
+      }
+      // Deferred long-running: create must stay non-terminal until the background
+      // tick finishes — otherwise Phase-6 governance treats queued as provider fail.
+      if (
+        deferredLongRunning &&
+        (status === "queued" || status === "running" || status === "retrying")
+      ) {
+        status = "queued";
+        completedAt = undefined;
+        errorMessage = undefined;
       }
     }
   } else if (host.deps.integration) {
+    usedSyncDirectPath = true;
     status = "running";
     const capabilityForGateway =
       capabilityIdRaw?.trim() || "text.generate";
     const controlPlaneWorkspaceId = resolveControlPlaneWorkspaceId(req.workspaceId);
-    const run = await runIntegrationViaControlPlane({
-      gateway: host.intelligenceGateway,
+    const run = await runDirectProviderExecution({
       integration: host.deps.integration,
       request: {
         requestId: executionId,
@@ -624,9 +757,7 @@ export async function runCreateDispatch(
         tokenBudgetLimit: req.tokenBudgetLimit,
         correlationId,
         mode: CANONICAL_INTEGRATION_MODE,
-        scenarioHint: structuredBrief
-          ? scenarioHintFromBrief(structuredBrief)
-          : undefined,
+        scenarioHint: undefined,
         metadata: {
           ...(req.metadata ?? {}),
           ...(workingMetadata ?? {}),
@@ -640,10 +771,7 @@ export async function runCreateDispatch(
           userId: principal.userId,
           roles: principal.roles,
           projectId: req.projectId,
-          brandId:
-            typeof req.metadata?.brandId === "string"
-              ? req.metadata.brandId
-              : undefined,
+          brandId: executionBrandId,
           campaignId:
             typeof req.metadata?.campaignId === "string"
               ? req.metadata.campaignId
@@ -675,42 +803,28 @@ export async function runCreateDispatch(
         : "failed";
     completedAt = awaitingToolApproval ? undefined : host.deps.nowIso();
     cost = undefined;
-    evaluationScore =
-      run.value.artifacts.evaluation?.integrity?.qualityScore ??
-      (run.value.artifacts.evaluation?.integrity?.feedbackEligible
-        ? run.value.artifacts.evaluation?.report?.summary?.overallScore
-        : undefined);
-    // Never invent quality when integrity says quality is unknown.
-    if (
-      run.value.artifacts.evaluation?.integrity &&
-      run.value.artifacts.evaluation.integrity.qualityScore == null
-    ) {
-      evaluationScore = undefined;
-    }
+    evaluationScore = undefined;
     errorMessage = awaitingToolApproval
       ? runtime?.error?.message
       : run.value.success
         ? undefined
         : "integration failed";
-    const eiAttrs = (
-      run.value.artifacts.contextTrace ?? {}
-    ) as Readonly<Record<string, unknown>>;
     const runtimeOutput = (runtime?.response?.output ?? {}) as Readonly<
       Record<string, unknown>
     >;
     runtimeOutputForMedia = runtimeOutput;
-    jobSummary = {
-      ...buildIntegrationJobSummary({
-        report: run.value,
-        executionMode: apiExecutionMode === "live" ? "live" : "simulated",
-        durationMs: run.value.durationMs,
-      }),
-      contextSnapshotId: eiAttrs.contextSnapshotId,
-      brandEnrichmentId: eiAttrs.brandEnrichmentId,
-      brandBrainVersion: eiAttrs.brandBrainVersion,
-      knowledgeSnapshotId: eiAttrs.knowledgeSnapshotId,
-      promptCompilationId: eiAttrs.promptCompilationId,
-    };
+    jobSummary = buildIntegrationJobSummary({
+      report: run.value,
+      executionMode: apiExecutionMode === "live" ? "live" : "simulated",
+      durationMs: run.value.durationMs,
+    });
+    recordProviderDispatchFromSummary({
+      executionId,
+      status,
+      jobSummary: jobSummary as Readonly<Record<string, unknown>>,
+      workingMetadata,
+      errorMessage,
+    });
   } else {
     // Platform-local completion (tests / degraded mode) — still API-mediated.
     status = "succeeded";
@@ -720,9 +834,10 @@ export async function runCreateDispatch(
   }
 
   const resolvedProductMode = resolveProductMode(workingMetadata ?? req.metadata);
+  const explicitProductMode = parseProductMode(workingMetadata ?? req.metadata);
   if (
     status === "awaiting_approval" &&
-    productModeAutoApprovesTools(resolvedProductMode) &&
+    productModeAutoApprovesTools(explicitProductMode) &&
     host.deps.toolRuntime
   ) {
     const autoApproved = await autoApprovePendingToolInvocations({
@@ -769,10 +884,12 @@ export async function runCreateDispatch(
 
   if (status === "succeeded" && summaryArtifactIds.length > 0) {
     mediaArtifactIds = summaryArtifactIds;
-    result = {
-      kind: "artifact",
-      data: { artifactIds: [...summaryArtifactIds] },
-    };
+    result = mergeExportArtifactsIntoResult({
+      status,
+      result,
+      jobSummary,
+      mediaArtifactIds: summaryArtifactIds,
+    });
   } else if (
     status === "succeeded" &&
     isImageGenerationCapability(capabilityIdRaw) &&
@@ -849,37 +966,109 @@ export async function runCreateDispatch(
     }
   }
 
-  // Presentation / document structured plans → PPTX + PDF for in-app preview + download.
-  if (status === "succeeded" && host.deps.asyncMedia) {
+  // Presentation / document structured plans → PPTX + PDF / PDF + DOCX.
+  // Prefer worker-side materialization (full runtime still in memory).
+  if (status === "succeeded" && jobSummary.documentExportKind == null) {
+    const structuredNameHint =
+      req.structuredOutput &&
+      typeof req.structuredOutput === "object" &&
+      typeof req.structuredOutput.name === "string"
+        ? req.structuredOutput.name
+        : typeof workingMetadata?.structuredOutput === "object" &&
+            workingMetadata.structuredOutput &&
+            typeof (workingMetadata.structuredOutput as { name?: unknown })
+              .name === "string"
+          ? String(
+              (workingMetadata.structuredOutput as { name: string }).name
+            )
+          : undefined;
+    const outputKindHint =
+      typeof workingMetadata?.outputKind === "string"
+        ? workingMetadata.outputKind
+        : undefined;
+    const {
+      materializeDocumentExports,
+      resolveDocumentExportKind,
+      isRequiredDocumentOrPresentationExport,
+    } = await import("./document-export-materializer");
+    const deliverableRequired = isRequiredDocumentOrPresentationExport({
+      outputKind: outputKindHint,
+      structuredName: structuredNameHint,
+      service:
+        typeof workingMetadata?.service === "string"
+          ? workingMetadata.service
+          : undefined,
+      subtype:
+        typeof workingMetadata?.subtype === "string"
+          ? workingMetadata.subtype
+          : undefined,
+      deliverableRequired: workingMetadata?.deliverableRequired === true,
+    });
+
+    if (!host.deps.asyncMedia && deliverableRequired) {
+      status = "failed";
+      errorMessage =
+        "Document/presentation export requires async media (ENTERPRISE_ASYNC_MEDIA_ENABLED)";
+      logOsExecutionEvent("execution.document_export.failed", {
+        requestId: correlationId,
+        executionId,
+        organizationId: trustedOrganizationId,
+        status: "failed",
+        errorCode: errorMessage,
+      });
+    } else if (host.deps.asyncMedia) {
     try {
-      const {
-        materializeDocumentExports,
-        resolveDocumentExportKind,
-      } = await import("./document-export-materializer");
-      const structuredCandidate =
+      let structuredCandidate: unknown =
         (result.kind === "structured" ? result.data : undefined) ??
+        jobSummary.structuredData ??
         runtimeOutputForMedia?.structured ??
         runtimeOutputForMedia?.structuredOutput ??
         runtimeOutputForMedia?.data;
+      const { recoverPresentationRoutesPayload } = await import(
+        "../../os/delivery/document-export-service"
+      );
+      if (structuredCandidate != null) {
+        structuredCandidate = recoverPresentationRoutesPayload(
+          structuredCandidate
+        );
+      }
       const exportKind = resolveDocumentExportKind({
-        outputKind:
-          typeof workingMetadata?.outputKind === "string"
-            ? workingMetadata.outputKind
-            : undefined,
+        outputKind: outputKindHint,
         mediaKind:
           typeof workingMetadata?.mediaKind === "string"
             ? workingMetadata.mediaKind
             : undefined,
+        structuredName: structuredNameHint,
         data: structuredCandidate,
       });
-      if (exportKind) {
+      if (!exportKind && deliverableRequired) {
+        status = "failed";
+        errorMessage =
+          (structuredNameHint ?? "").toLowerCase().includes("presentation") ||
+          (outputKindHint ?? "").toLowerCase() === "presentation"
+            ? "Presentation completed without slide decks required for PDF/PPTX export."
+            : "Document completed without a valid DocumentPlan required for PDF/DOCX export.";
+        logOsExecutionEvent("execution.document_export.failed", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "failed",
+          errorCode: errorMessage,
+        });
+      } else if (exportKind) {
         const exported = await materializeDocumentExports({
           asyncMedia: host.deps.asyncMedia,
           executionId,
           organizationId: trustedOrganizationId,
           exportKind,
           runtimeOutput: runtimeOutputForMedia,
-          jobSummary,
+          jobSummary: {
+            ...jobSummary,
+            ...(structuredCandidate != null
+              ? { structuredData: structuredCandidate }
+              : {}),
+          },
+          metadata: workingMetadata,
           createId: host.deps.createId,
           providerId: String(
             jobSummary.providerId ??
@@ -902,14 +1091,32 @@ export async function runCreateDispatch(
           result = {
             kind: "structured",
             data: {
+              ...(typeof structuredCandidate === "object" &&
+              structuredCandidate &&
+              !Array.isArray(structuredCandidate)
+                ? (structuredCandidate as Record<string, unknown>)
+                : {}),
               ...(typeof exported.value.plan === "object" &&
               exported.value.plan
                 ? (exported.value.plan as Record<string, unknown>)
                 : {}),
               exportKind,
               pdfArtifactId: exported.value.pdfArtifactId,
-              pptxArtifactId: exported.value.pptxArtifactId,
-              downloadFormats: ["pdf", "pptx"],
+              ...(exported.value.pptxArtifactId
+                ? { pptxArtifactId: exported.value.pptxArtifactId }
+                : {}),
+              ...(exported.value.docxArtifactId
+                ? { docxArtifactId: exported.value.docxArtifactId }
+                : {}),
+              ...(exported.value.htmlArtifactId
+                ? { htmlArtifactId: exported.value.htmlArtifactId }
+                : {}),
+              downloadFormats:
+                exportKind === "email"
+                  ? ["html"]
+                  : exportKind === "document"
+                    ? ["pdf", "docx"]
+                    : ["pdf", "pptx"],
             },
           };
           logOsExecutionEvent("execution.document_export.materialized", {
@@ -919,6 +1126,13 @@ export async function runCreateDispatch(
             status: "succeeded",
           });
         } else {
+          // Required deliverables always hard-fail; never soft-skip to succeeded.
+          status = "failed";
+          errorMessage =
+            exported.error.message ||
+            (exportKind === "document"
+              ? "Could not build the document deliverable from the model output."
+              : "Could not build the presentation deliverable from the model output.");
           logOsExecutionEvent("execution.document_export.failed", {
             requestId: correlationId,
             executionId,
@@ -929,13 +1143,292 @@ export async function runCreateDispatch(
         }
       }
     } catch (err) {
-      logOsExecutionEvent("execution.document_export.skipped", {
+      if (deliverableRequired) {
+        status = "failed";
+        errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Document/presentation export failed";
+        logOsExecutionEvent("execution.document_export.failed", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "failed",
+          errorCode: errorMessage,
+        });
+      } else {
+        logOsExecutionEvent("execution.document_export.skipped", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "skipped",
+          errorCode: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    }
+  }
+
+  // Web Tech → HTML artifact (live preview URL + downloadable source).
+  if (status === "succeeded") {
+    const websiteRequired =
+      (typeof workingMetadata?.service === "string" &&
+        workingMetadata.service.toLowerCase() === "website") ||
+      (typeof workingMetadata?.outputKind === "string" &&
+        /^(deferred_)?website$/i.test(workingMetadata.outputKind)) ||
+      (workingMetadata?.structuredOutput &&
+        typeof workingMetadata.structuredOutput === "object" &&
+        /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
+          String(
+            (workingMetadata.structuredOutput as { name?: unknown }).name ??
+              "",
+          ),
+        ));
+    try {
+      const exported = await applyWebsiteExportToExecution({
+        asyncMedia: host.deps.asyncMedia,
+        executionId,
+        organizationId: trustedOrganizationId,
+        status,
+        jobSummary,
+        runtimeOutput: runtimeOutputForMedia,
+        metadata: workingMetadata,
+        createId: host.deps.createId,
+        currentResult: result,
+        currentArtifactIds: mediaArtifactIds,
+      });
+      result = exported.result;
+      if (exported.artifactIds?.length) {
+        mediaArtifactIds = exported.artifactIds;
+      }
+      if (exported.exported) {
+        logOsExecutionEvent("execution.website_export.materialized", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "succeeded",
+        });
+      } else if (websiteRequired) {
+        status = "failed";
+        errorMessage =
+          exported.errorCode ||
+          "Could not build the website deliverable from the model output.";
+        logOsExecutionEvent("execution.website_export.failed", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "failed",
+          errorCode: exported.errorCode ?? errorMessage,
+        });
+      } else if (exported.errorCode) {
+        logOsExecutionEvent("execution.website_export.failed", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "skipped",
+          errorCode: exported.errorCode,
+        });
+      }
+      recordWebsiteMaterializationTrace({
+        executionId,
+        exported: exported.exported,
+        websiteRequired: Boolean(websiteRequired),
+        artifactIds: mediaArtifactIds,
+        errorCode: exported.errorCode,
+        finalProviderId: String(
+          jobSummary.providerId ??
+            jobSummary.routedProviderId ??
+            workingMetadata?.preferredProviderId ??
+            "unknown",
+        ),
+        finalModelId: String(
+          jobSummary.modelId ??
+            jobSummary.routedModelId ??
+            workingMetadata?.preferredModelId ??
+            "unknown",
+        ),
+      });
+    } catch (err) {
+      if (websiteRequired) {
+        status = "failed";
+        errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Website export failed";
+        logOsExecutionEvent("execution.website_export.failed", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "failed",
+          errorCode: errorMessage,
+        });
+      } else {
+        logOsExecutionEvent("execution.website_export.skipped", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "skipped",
+          errorCode: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  // Track A Phase A3 — post-guards + ≤1 hard-miss retry on sync direct path only.
+  let continuityPostGuardReport: ContinuityPostGuardReport | null = null;
+  if (
+    usedSyncDirectPath &&
+    host.deps.integration &&
+    (status === "succeeded" || status === "failed")
+  ) {
+    const capabilityForGuards = capabilityIdRaw?.trim() || "text.generate";
+    const controlPlaneWorkspaceId = resolveControlPlaneWorkspaceId(req.workspaceId);
+    const guardMeta = {
+      ...(req.metadata ?? {}),
+      ...(workingMetadata ?? {}),
+    } as Readonly<Record<string, unknown>>;
+
+    continuityPostGuardReport = runContinuityPostGuards({
+      organizationId: trustedOrganizationId,
+      executionId,
+      capabilityId: capabilityForGuards,
+      preview: previewFromJobSummary(jobSummary),
+      metadata: guardMeta,
+      mediaArtifactIds,
+      retryCount: 0,
+    });
+
+    if (continuityPostGuardReport?.hardRetryRecommended) {
+      logOsExecutionEvent("continuity.post_guards.hard_retry", {
         requestId: correlationId,
         executionId,
         organizationId: trustedOrganizationId,
-        status: "skipped",
-        errorCode: err instanceof Error ? err.message : String(err),
+        capabilityId: capabilityForGuards,
+        status: "retrying",
       });
+      const retryRun = await runDirectProviderExecution({
+        integration: host.deps.integration,
+        request: {
+          requestId: `${executionId}_guard_retry`,
+          rawPrompt: providerPrompt,
+          organizationId: asOrganizationId(trustedOrganizationId),
+          workspaceId: asWorkspaceId(controlPlaneWorkspaceId),
+          budgetLimit: req.budgetLimit,
+          tokenBudgetLimit: req.tokenBudgetLimit,
+          correlationId,
+          mode: CANONICAL_INTEGRATION_MODE,
+          scenarioHint: undefined,
+          metadata: {
+            ...guardMeta,
+            ...(req.toolNames ? { toolNames: req.toolNames } : {}),
+            ...(req.structuredOutput
+              ? { structuredOutput: req.structuredOutput }
+              : {}),
+            ...(req.capabilityId
+              ? {
+                  capabilityHint: req.capabilityId,
+                  capabilityId: req.capabilityId,
+                }
+              : {}),
+            apiExecutionId: executionId,
+            executionId,
+            continuityHardGuardRetry: 1,
+            userId: principal.userId,
+            roles: principal.roles,
+            projectId: req.projectId,
+            brandId: executionBrandId,
+            campaignId:
+              typeof req.metadata?.campaignId === "string"
+                ? req.metadata.campaignId
+                : undefined,
+          },
+        },
+        capabilityId: capabilityForGuards,
+        organizationId: trustedOrganizationId,
+        workspaceId: controlPlaneWorkspaceId,
+        apiExecutionId: executionId,
+      });
+
+      if (retryRun.ok) {
+        const runtime = retryRun.value.artifacts.runtime;
+        const awaitingToolApproval =
+          runtime?.error?.code === "TOOL_APPROVAL_REQUIRED";
+        approvalRequired = awaitingToolApproval;
+        status = awaitingToolApproval
+          ? "awaiting_approval"
+          : retryRun.value.success
+            ? "succeeded"
+            : "failed";
+        completedAt = awaitingToolApproval ? undefined : host.deps.nowIso();
+        errorMessage = awaitingToolApproval
+          ? runtime?.error?.message
+          : retryRun.value.success
+            ? undefined
+            : "integration failed after continuity hard-guard retry";
+        const runtimeOutput = (runtime?.response?.output ?? {}) as Readonly<
+          Record<string, unknown>
+        >;
+        runtimeOutputForMedia = runtimeOutput;
+        jobSummary = buildIntegrationJobSummary({
+          report: retryRun.value,
+          executionMode: apiExecutionMode === "live" ? "live" : "simulated",
+          durationMs: retryRun.value.durationMs,
+        });
+        result = buildExecutionResultPayload({
+          status,
+          jobSummary,
+          runtimeOutput: runtimeOutputForMedia,
+        });
+
+        // Re-materialize sync images after hard retry when possible.
+        if (
+          status === "succeeded" &&
+          isImageGenerationCapability(capabilityIdRaw) &&
+          host.deps.asyncMedia
+        ) {
+          const materialized = await materializeSyncImageArtifacts({
+            asyncMedia: host.deps.asyncMedia,
+            executionId,
+            organizationId: trustedOrganizationId,
+            providerId: String(
+              jobSummary.providerId ??
+                jobSummary.routedProviderId ??
+                jobSummary.provider ??
+                req.providerId ??
+                workingMetadata?.preferredProviderId ??
+                "provider.unknown"
+            ),
+            modelId: String(
+              jobSummary.modelId ??
+                jobSummary.routedModelId ??
+                jobSummary.model ??
+                req.modelId ??
+                workingMetadata?.preferredModelId ??
+                "unknown"
+            ),
+            capabilityId: capabilityIdRaw || "image.generate",
+            runtimeOutput: runtimeOutputForMedia,
+            createId: host.deps.createId,
+          });
+          if (materialized.ok && materialized.value.length > 0) {
+            mediaArtifactIds = materialized.value;
+            result = {
+              kind: "artifact",
+              data: { artifactIds: [...materialized.value] },
+            };
+          }
+        }
+
+        continuityPostGuardReport = runContinuityPostGuards({
+          organizationId: trustedOrganizationId,
+          executionId,
+          capabilityId: capabilityForGuards,
+          preview: previewFromJobSummary(jobSummary),
+          metadata: guardMeta,
+          mediaArtifactIds,
+          retryCount: 1,
+        });
+      }
     }
   }
 
@@ -969,6 +1462,8 @@ export async function runCreateDispatch(
     toolInvocationKey,
     pendingApprovals,
     artifactIds: mediaArtifactIds,
+    ...(executionBrandId ? { brandId: executionBrandId } : {}),
+    ...conversationFieldsFromMetadata(req.metadata),
     result:
       status === "awaiting_approval"
         ? {
@@ -1024,26 +1519,114 @@ export async function runCreateDispatch(
       artifactRefs
     );
   }
+  const stillInFlight =
+    deferredLongRunning &&
+    (status === "queued" || status === "running" || status === "retrying");
   const providerSucceeded =
     status === "succeeded" || status === "awaiting_approval";
-  const phase6Governance = finalizeExecutionGovernanceExtras({
-    governanceFinalize: host.governanceFinalize,
-    organizationId: trustedOrganizationId,
-    executionId,
-    capabilityId: capabilityIdRaw || "text.generate",
-    objective:
-      structuredBrief?.objective?.trim() ||
-      req.prompt.slice(0, 500),
-    preview: previewFromJobSummary(jobSummary),
-    brandTone: structuredBrandContext?.tone?.tone,
-    planId: structuredExecutionPlan?.id,
-    planVersion: structuredExecutionPlan?.planVersion,
-    providerSuccess: providerSucceeded,
-    fallbackEvaluationScore: evaluationScore ?? null,
-    productMode: resolvedProductMode,
-    nowIso: host.deps.nowIso,
-    createId: host.deps.createId,
+  const continuityGuardCtx = extractContinuityGuardContext({
+    ...(req.metadata ?? {}),
+    ...(workingMetadata ?? {}),
   });
+  // Never run Phase-6 REJECT while the deferred job is still queued/running —
+  // that falsely marks long website/deck/doc creates as provider failures.
+  const phase6Governance = stillInFlight
+    ? {
+        governance: defaultGovernanceEngine.decide({
+          evaluationScore: null,
+          evaluationPlaceholder: true,
+          humanReviewFlag: false,
+          providerSuccess: true,
+          nowIso: host.deps.nowIso,
+        }),
+        evaluation: {
+          executionId,
+          score: null,
+          humanReviewRequired: false,
+        } as ExecutionEvaluationSummary,
+        humanReview: undefined,
+        creativeQaExtras: undefined,
+      }
+    : finalizeExecutionGovernanceExtras({
+        governanceFinalize: host.governanceFinalize,
+        organizationId: trustedOrganizationId,
+        executionId,
+        capabilityId: capabilityIdRaw || "text.generate",
+        objective: req.prompt.slice(0, 500),
+        preview: previewFromJobSummary(jobSummary),
+        brandTone: continuityGuardCtx.brandTone,
+        brandVoice: continuityGuardCtx.brandVoice,
+        brandAvoidTerms: continuityGuardCtx.brandAvoidTerms,
+        continuityBound: continuityGuardCtx.continuityBound,
+        boundLogoAssetId: continuityGuardCtx.boundLogoAssetId,
+        mediaOutputCount: mediaArtifactIds?.length ?? 0,
+        isImageCapability: isImageGenerationCapability(capabilityIdRaw),
+        service:
+          typeof workingMetadata?.service === "string"
+            ? workingMetadata.service
+            : undefined,
+        territory:
+          typeof workingMetadata?.routeTerritory === "string"
+            ? workingMetadata.routeTerritory
+            : undefined,
+        planId: undefined,
+        planVersion: undefined,
+        providerSuccess: providerSucceeded,
+        fallbackEvaluationScore: evaluationScore ?? null,
+        productMode: resolvedProductMode,
+        outputKind:
+          typeof workingMetadata?.outputKind === "string"
+            ? workingMetadata.outputKind
+            : undefined,
+        structuredOutputName:
+          req.structuredOutput &&
+          typeof req.structuredOutput === "object" &&
+          typeof req.structuredOutput.name === "string"
+            ? req.structuredOutput.name
+            : typeof workingMetadata?.structuredOutput === "object" &&
+                workingMetadata.structuredOutput &&
+                typeof (workingMetadata.structuredOutput as { name?: unknown })
+                  .name === "string"
+              ? String(
+                  (workingMetadata.structuredOutput as { name: string }).name
+                )
+              : undefined,
+        ...validationContextFromExecution({
+          metadata: workingMetadata,
+          jobSummary,
+          mediaArtifactIds,
+        }),
+        nowIso: host.deps.nowIso,
+        createId: host.deps.createId,
+      });
+  const postGuardExtras = continuityPostGuardExtras(continuityPostGuardReport);
+  const continuitySnapExtras = continuitySnapshotForExtras({
+    ...(req.metadata ?? {}),
+    ...(workingMetadata ?? {}),
+    preferredProviderId:
+      workingMetadata?.preferredProviderId ?? req.providerId,
+    preferredModelId: workingMetadata?.preferredModelId ?? req.modelId,
+    capabilityId: capabilityIdRaw || req.capabilityId,
+  });
+  const packExtras =
+    workingMetadata?.packPlan && typeof workingMetadata.packPlan === "object"
+      ? { packPlan: workingMetadata.packPlan, continuityPack: true }
+      : workingMetadata?.packPlanShadow
+        ? { packPlanShadow: workingMetadata.packPlanShadow }
+        : undefined;
+  const continuityObs = buildContinuityObservabilitySummary({
+    metadata: {
+      ...(req.metadata ?? {}),
+      ...(workingMetadata ?? {}),
+    },
+    extras: {
+      ...(continuitySnapExtras ?? {}),
+      ...(postGuardExtras ?? {}),
+    },
+  });
+  const continuityObsExtras = {
+    continuityObservability: continuityObs,
+  };
 
   const workflowFromMeta = workingMetadata?.serviceContextWorkflow as
     | ServiceContextWorkflow
@@ -1053,18 +1636,16 @@ export async function runCreateDispatch(
         executionId,
         prompt: req.prompt,
         workflow: workflowFromMeta,
-        brandId:
-          typeof workingMetadata?.brandId === "string"
-            ? workingMetadata.brandId
-            : typeof req.metadata?.brandId === "string"
-              ? req.metadata.brandId
-              : undefined,
+        brandId: executionBrandId,
         nowIso: host.deps.nowIso,
       })
     : undefined;
 
   let autoDelivery: { deliveryId?: string; error?: string } | undefined;
-  if (status === "succeeded" && artifactRefs.length > 0) {
+  const releaseBlocked =
+    phase6Governance.evaluation.releaseBlocked === true ||
+    phase6Governance.governance.blocking === true;
+  if (status === "succeeded" && artifactRefs.length > 0 && !releaseBlocked) {
     autoDelivery = await maybeAutoDeliverOnSuccess({
       deliveryService: host.deliveryService,
       organizationId: trustedOrganizationId,
@@ -1073,7 +1654,16 @@ export async function runCreateDispatch(
       nowIso: host.deps.nowIso,
       createId: host.deps.createId,
     });
+  } else if (status === "succeeded" && releaseBlocked) {
+    autoDelivery = {
+      error:
+        phase6Governance.evaluation.creativeScore != null
+          ? `Release blocked — creative score ${phase6Governance.evaluation.creativeScore}/100 (gate 80)`
+          : "Release blocked — creative QA gate failed",
+    };
   }
+
+  const derivedCost = await deriveFinalizeExecutionCost(executionId);
 
   const extras = {
     diagnostics: diagnosticsFromJobSummary(
@@ -1097,14 +1687,7 @@ export async function runCreateDispatch(
       stages: ["gateway", "queue", "worker", "integration"],
       durationMs: host.deps.clockMs() % 1000,
     },
-    cost: {
-      executionId,
-      amount: cost ?? null,
-      currency: cost != null ? "USD" : null,
-      status: (cost != null ? "calculated" : "unknown") as
-        | "calculated"
-        | "unknown",
-    },
+    cost: derivedCost,
     evaluation: phase6Governance.evaluation,
     experience: experienceSummaryFromJobSummary(executionId, jobSummary),
     osLifecycle: osLifecycleFromApiStatus(status),
@@ -1120,10 +1703,14 @@ export async function runCreateDispatch(
         }
       : {}),
     ...(autoDelivery ? { autoDelivery } : {}),
-    ...(structuredBrief ? { structuredBrief } : {}),
-    ...(structuredBrandContext ? { structuredBrandContext } : {}),
-    ...(structuredKnowledgeContext ? { structuredKnowledgeContext } : {}),
-    ...(structuredExecutionPlan ? { structuredExecutionPlan } : {}),
+    ...(postGuardExtras ?? {}),
+    ...(continuitySnapExtras ?? {}),
+    ...(packExtras ?? {}),
+    ...continuityObsExtras,
+    ...(phase6Governance.creativeQaExtras ?? {}),
+    ...(readExecutionSpecSnapshot(workingMetadata)
+      ? { executionSpecSnapshot: readExecutionSpecSnapshot(workingMetadata) }
+      : {}),
   };
   host.extrasStore.set(executionId, extras);
   logOsExecutionEvent("execution.finalize", {
@@ -1139,18 +1726,84 @@ export async function runCreateDispatch(
     await host.deps.persistence.extras.save(executionId, trustedOrganizationId, extras);
   }
 
-  if (host.deps.onIntelligenceSnapshot) {
-    host.deps.onIntelligenceSnapshot(
-      buildExecutionIntelligenceSnapshot({
-        execution: resource,
-        metadata: {
-          ...(req.metadata ?? {}),
-          budgetLimit: req.budgetLimit,
-          tokenBudgetLimit: req.tokenBudgetLimit,
-        },
-        nowIso: host.deps.nowIso,
-      })
-    );
+  if (!stillInFlight) {
+    hookProductionEvidenceAfterFinalize({
+      organizationId: trustedOrganizationId,
+      executionId,
+      requestId: correlationId,
+      capabilityId: capabilityIdRaw || "text.generate",
+      providerId: String(
+        jobSummary.actualProviderId ??
+          jobSummary.providerId ??
+          jobSummary.provider ??
+          jobSummary.routedProviderId ??
+          workingMetadata?.preferredProviderId ??
+          req.providerId ??
+          "provider.unknown",
+      ),
+      modelId: String(
+        jobSummary.actualModelId ??
+          jobSummary.modelId ??
+          jobSummary.model ??
+          jobSummary.routedModelId ??
+          workingMetadata?.preferredModelId ??
+          req.modelId ??
+          "unknown",
+      ),
+      service:
+        typeof workingMetadata?.service === "string"
+          ? workingMetadata.service
+          : undefined,
+      subtype:
+        typeof workingMetadata?.subtype === "string"
+          ? workingMetadata.subtype
+          : undefined,
+      outputKind:
+        typeof workingMetadata?.outputKind === "string"
+          ? workingMetadata.outputKind
+          : undefined,
+      industry:
+        typeof workingMetadata?.industry === "string"
+          ? workingMetadata.industry
+          : undefined,
+      platform:
+        typeof workingMetadata?.platform === "string"
+          ? workingMetadata.platform
+          : undefined,
+      format:
+        typeof workingMetadata?.format === "string"
+          ? workingMetadata.format
+          : undefined,
+      preview: previewFromJobSummary(jobSummary),
+      briefObjective: resolveBriefObjectiveFromMetadata(workingMetadata, req.prompt),
+      structuredData: jobSummary.structuredData,
+      mediaArtifactIds,
+      executionSpecSnapshot:
+        state.executionSpecSnapshot ?? readExecutionSpecSnapshot(workingMetadata),
+      generatedQuantity:
+        typeof jobSummary.routeCount === "number"
+          ? jobSummary.routeCount
+          : typeof workingMetadata?.executionSpecQuantity === "number"
+            ? workingMetadata.executionSpecQuantity
+            : undefined,
+      providerSuccess: providerSucceeded,
+      latencyMs: Number(jobSummary.durationMs ?? jobSummary.latencyMs ?? 0),
+      inputTokens:
+        Number(jobSummary.inputTokens ?? jobSummary.promptTokens ?? 0) || undefined,
+      outputTokens:
+        Number(jobSummary.outputTokens ?? jobSummary.completionTokens ?? 0) || undefined,
+      totalTokens: tokensUsed > 0 ? tokensUsed : undefined,
+      estimatedCost: cost ?? null,
+      metadata: workingMetadata,
+      artifactEvaluationDeps: resolveProductionArtifactEvaluationDeps(host),
+      fallbackUsed: jobSummary.fallbackUsed === true,
+      fallbackReason:
+        typeof jobSummary.fallbackReason === "string"
+          ? jobSummary.fallbackReason
+          : undefined,
+      createId: host.deps.createId,
+      nowIso: host.deps.nowIso,
+    });
   }
 
   if (req.stream && host.deps.streaming) {
@@ -1181,4 +1834,543 @@ export async function runCreateDispatch(
 
   return success(resource);
 
+}
+
+function isTerminalJobStatus(status: string): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "dead_letter"
+  );
+}
+
+function resolveProductionArtifactEvaluationDeps(
+  host: ExecutionCreateHost,
+): { readonly asyncMedia: NonNullable<ExecutionCreateHost["deps"]["asyncMedia"]>; readonly artifactsRepo: NonNullable<NonNullable<ExecutionCreateHost["deps"]["persistence"]>["artifacts"]> } | undefined {
+  const asyncMedia = host.deps.asyncMedia;
+  const artifactsRepo = host.deps.persistence?.artifacts;
+  if (!asyncMedia || !artifactsRepo) return undefined;
+  return Object.freeze({ asyncMedia, artifactsRepo });
+}
+
+function jobMediaArtifactIds(
+  summary: Readonly<Record<string, unknown>>
+): string[] {
+  return Array.isArray(summary.mediaArtifactIds)
+    ? summary.mediaArtifactIds.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0
+      )
+    : [];
+}
+
+/**
+ * After a deferred background tick, copy terminal job state onto the execution
+ * and run real Phase-6 governance (create returned with a placeholder).
+ */
+async function finalizeDeferredDistributedJob(input: {
+  host: ExecutionCreateHost;
+  executionId: string;
+  jobId: JobId;
+  organizationId: string;
+  correlationId: string;
+  capabilityId: string;
+  workingMetadata: Record<string, unknown> | undefined;
+  reqMetadata: Readonly<Record<string, unknown>> | undefined;
+  structuredOutputName?: string;
+}): Promise<void> {
+  const {
+    host,
+    executionId,
+    jobId,
+    organizationId,
+    correlationId,
+    capabilityId,
+    workingMetadata,
+    reqMetadata,
+    structuredOutputName,
+  } = input;
+  if (!host.deps.distributed) return;
+
+  const existing = await host.loadExecution(executionId);
+  if (!existing) return;
+  if (
+    existing.status === "succeeded" ||
+    existing.status === "failed" ||
+    existing.status === "cancelled"
+  ) {
+    return;
+  }
+
+  const job = host.deps.distributed.getJob(asJobId(String(jobId)));
+  if (!job.ok || !job.value) return;
+
+  const summary = job.value.resultSummary ?? {};
+  const awaitingToolApproval = summary.awaitingToolApproval === true;
+  if (!isTerminalJobStatus(job.value.status) && !awaitingToolApproval) {
+    logOsExecutionEvent("execution.background_tick.partial", {
+      requestId: correlationId,
+      executionId,
+      organizationId,
+      status: mapJobStatus(job.value.status, summary),
+      errorCode: String(job.value.status),
+    });
+    return;
+  }
+
+  let status = mapJobStatus(job.value.status, summary);
+  const mediaArtifactIds = jobMediaArtifactIds(summary);
+  let nextResult = mergeExportArtifactsIntoResult({
+    status,
+    result: buildExecutionResultPayload({
+      status,
+      jobSummary: summary,
+    }),
+    jobSummary: summary,
+    mediaArtifactIds,
+  });
+  let nextError =
+    (typeof summary.errorMessage === "string"
+      ? summary.errorMessage
+      : undefined) ?? job.value.lastError;
+
+  if (awaitingToolApproval) {
+    status = "awaiting_approval";
+    nextError =
+      typeof summary.errorMessage === "string"
+        ? summary.errorMessage
+        : "tool approval required";
+  } else if (summary.success === false) {
+    status = "failed";
+    nextError =
+      typeof summary.errorMessage === "string"
+        ? summary.errorMessage
+        : "integration context resolution failed";
+  }
+
+  recordProviderDispatchFromSummary({
+    executionId,
+    status,
+    jobSummary: summary,
+    workingMetadata,
+    errorMessage: nextError,
+  });
+
+  const meta = {
+    ...(reqMetadata ?? {}),
+    ...(workingMetadata ?? {}),
+    ...(job.value.payload?.metadata ?? {}),
+  } as Record<string, unknown>;
+
+  const exported = await applyWebsiteExportToExecution({
+    asyncMedia: host.deps.asyncMedia,
+    executionId,
+    organizationId,
+    status,
+    jobSummary: summary,
+    metadata: meta,
+    createId: host.deps.createId,
+    currentResult: nextResult,
+    currentArtifactIds:
+      mediaArtifactIds.length > 0
+        ? mediaArtifactIds
+        : existing.artifactIds,
+  });
+  nextResult = exported.result;
+  const nextArtifactIds = exported.artifactIds ?? existing.artifactIds;
+
+  if (
+    exported.errorCode &&
+    !exported.exported &&
+    status === "succeeded"
+  ) {
+    const websiteRequired =
+      (typeof meta.service === "string" &&
+        meta.service.toLowerCase() === "website") ||
+      (typeof meta.outputKind === "string" &&
+        /^(deferred_)?website$/i.test(meta.outputKind)) ||
+      (meta.structuredOutput &&
+        typeof meta.structuredOutput === "object" &&
+        /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
+          String(
+            (meta.structuredOutput as { name?: unknown }).name ?? ""
+          )
+        ));
+    if (websiteRequired) {
+      status = "failed";
+      nextError =
+        exported.errorCode ||
+        "Could not build the website deliverable from the model output.";
+    }
+  }
+
+  const deferredWebsiteRequired =
+    (typeof meta.service === "string" && meta.service.toLowerCase() === "website") ||
+    (typeof meta.outputKind === "string" &&
+      /^(deferred_)?website$/i.test(meta.outputKind)) ||
+    (meta.structuredOutput &&
+      typeof meta.structuredOutput === "object" &&
+      /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
+        String((meta.structuredOutput as { name?: unknown }).name ?? ""),
+      ));
+  recordWebsiteMaterializationTrace({
+    executionId,
+    exported: exported.exported,
+    websiteRequired: deferredWebsiteRequired,
+    artifactIds: nextArtifactIds,
+    errorCode: exported.errorCode,
+    finalProviderId: String(
+      summary.providerId ??
+        summary.routedProviderId ??
+        meta.preferredProviderId ??
+        "unknown",
+    ),
+    finalModelId: String(
+      summary.modelId ??
+        summary.routedModelId ??
+        meta.preferredModelId ??
+        "unknown",
+    ),
+  });
+
+  const evaluationScore =
+    typeof summary.evaluationScore === "number" &&
+    Number.isFinite(summary.evaluationScore)
+      ? Number(summary.evaluationScore)
+      : typeof summary.qualityScore === "number" &&
+          Number.isFinite(summary.qualityScore)
+        ? Number(summary.qualityScore)
+        : existing.evaluationScore;
+
+  const updated: ExecutionResource = {
+    ...existing,
+    status,
+    completedAt:
+      status === "awaiting_approval"
+        ? undefined
+        : (job.value.completedAt ?? host.deps.nowIso()),
+    errorMessage: nextError,
+    artifactIds: nextArtifactIds,
+    result: nextResult,
+    cost: Number(summary.cost ?? existing.cost ?? 0) || existing.cost,
+    evaluationScore,
+    updatedAt: host.deps.nowIso(),
+  };
+  host.executionStore.set(executionId, updated);
+  if (host.deps.persistence) {
+    await host.deps.persistence.executions.update(updated);
+  }
+
+  const continuityGuardCtx = extractContinuityGuardContext(meta);
+  const providerSucceeded =
+    status === "succeeded" || status === "awaiting_approval";
+  const phase6 = finalizeExecutionGovernanceExtras({
+    governanceFinalize: host.governanceFinalize,
+    organizationId,
+    executionId,
+    capabilityId,
+    objective:
+      typeof existing.promptPreview === "string"
+        ? existing.promptPreview.slice(0, 500)
+        : "",
+    preview: previewFromJobSummary(summary),
+    brandTone: continuityGuardCtx.brandTone,
+    brandVoice: continuityGuardCtx.brandVoice,
+    brandAvoidTerms: continuityGuardCtx.brandAvoidTerms,
+    continuityBound: continuityGuardCtx.continuityBound,
+    boundLogoAssetId: continuityGuardCtx.boundLogoAssetId,
+    mediaOutputCount: mediaArtifactIds.length,
+    isImageCapability: isImageGenerationCapability(capabilityId),
+    service: typeof meta.service === "string" ? meta.service : undefined,
+    territory:
+      typeof meta.routeTerritory === "string"
+        ? meta.routeTerritory
+        : undefined,
+    planId: undefined,
+    planVersion: undefined,
+    providerSuccess: providerSucceeded,
+    fallbackEvaluationScore: evaluationScore ?? null,
+    productMode: resolveProductMode(meta),
+    outputKind:
+      typeof meta.outputKind === "string" ? meta.outputKind : undefined,
+    structuredOutputName:
+      structuredOutputName ??
+      (typeof meta.structuredOutput === "object" &&
+      meta.structuredOutput &&
+      typeof (meta.structuredOutput as { name?: unknown }).name === "string"
+        ? String((meta.structuredOutput as { name: string }).name)
+        : undefined),
+    ...validationContextFromExecution({
+      metadata: meta,
+      jobSummary: summary,
+      mediaArtifactIds,
+    }),
+    nowIso: host.deps.nowIso,
+    createId: host.deps.createId,
+  });
+
+  const prevExtras = host.extrasStore.get(executionId);
+  const extras: ExecutionExtrasRecord = {
+    diagnostics: diagnosticsFromJobSummary(
+      executionId,
+      nextError,
+      {
+        ...summary,
+        executionMode:
+          summary.executionMode ?? host.deps.executionMode ?? "stub",
+        providerMode:
+          summary.providerMode ??
+          ((host.deps.executionMode ?? "stub") === "stub"
+            ? "stub"
+            : "simulated"),
+      },
+      host.deps.nowIso(),
+      String(jobId),
+      status
+    ),
+    trace: prevExtras?.trace ?? {
+      executionId,
+      correlationId,
+      stages: ["gateway", "queue", "worker", "integration", "background_finalize"],
+      durationMs: 0,
+    },
+    cost: prevExtras?.cost ?? {
+      executionId,
+      amount: updated.cost ?? null,
+      currency: updated.cost != null ? "USD" : null,
+      status: updated.cost != null ? "calculated" : "unknown",
+    },
+    evaluation: phase6.evaluation,
+    experience: experienceSummaryFromJobSummary(executionId, summary),
+    osLifecycle: osLifecycleFromApiStatus(status),
+    governance: phase6.governance,
+    ...(prevExtras?.asyncLane ? { asyncLane: prevExtras.asyncLane } : {}),
+    ...(prevExtras?.workflowFollowUp
+      ? { workflowFollowUp: prevExtras.workflowFollowUp }
+      : {}),
+    ...(prevExtras?.continuitySnapshot
+      ? { continuitySnapshot: prevExtras.continuitySnapshot }
+      : {}),
+    ...(prevExtras?.continuityPostGuards
+      ? { continuityPostGuards: prevExtras.continuityPostGuards }
+      : {}),
+    ...(prevExtras?.packPlan ? { packPlan: prevExtras.packPlan } : {}),
+    ...(prevExtras?.packPlanShadow
+      ? { packPlanShadow: prevExtras.packPlanShadow }
+      : {}),
+    ...(prevExtras?.continuityPack
+      ? { continuityPack: prevExtras.continuityPack }
+      : {}),
+    ...(prevExtras?.continuityObservability
+      ? { continuityObservability: prevExtras.continuityObservability }
+      : {}),
+    ...(phase6.humanReview
+      ? {
+          pendingHumanReview: {
+            reviewId: phase6.humanReview.reviewId,
+            reason: phase6.humanReview.reason,
+            requestedAt: phase6.humanReview.requestedAt,
+          },
+        }
+      : {}),
+    ...(phase6.creativeQaExtras ?? {}),
+  };
+  host.extrasStore.set(executionId, extras);
+  if (host.deps.persistence) {
+    await host.deps.persistence.extras.save(
+      executionId,
+      organizationId,
+      extras
+    );
+  }
+
+  hookProductionEvidenceAfterFinalize({
+    organizationId,
+    executionId,
+    requestId: correlationId,
+    capabilityId,
+    providerId: String(
+      summary.actualProviderId ??
+        summary.providerId ??
+        summary.provider ??
+        summary.routedProviderId ??
+        meta.preferredProviderId ??
+        "provider.unknown",
+    ),
+    modelId: String(
+      summary.actualModelId ??
+        summary.modelId ??
+        summary.model ??
+        summary.routedModelId ??
+        meta.preferredModelId ??
+        "unknown",
+    ),
+    service: typeof meta.service === "string" ? meta.service : undefined,
+    subtype: typeof meta.subtype === "string" ? meta.subtype : undefined,
+    outputKind: typeof meta.outputKind === "string" ? meta.outputKind : undefined,
+    industry: typeof meta.industry === "string" ? meta.industry : undefined,
+    platform: typeof meta.platform === "string" ? meta.platform : undefined,
+    format: typeof meta.format === "string" ? meta.format : undefined,
+    preview: previewFromJobSummary(summary),
+    briefObjective: resolveBriefObjectiveFromMetadata(
+      meta,
+      typeof existing.promptPreview === "string" ? existing.promptPreview : undefined,
+    ),
+    structuredData: summary.structuredData,
+    mediaArtifactIds,
+    executionSpecSnapshot: readExecutionSpecSnapshot(meta),
+    generatedQuantity:
+      typeof summary.routeCount === "number"
+        ? summary.routeCount
+        : typeof meta.executionSpecQuantity === "number"
+          ? meta.executionSpecQuantity
+          : undefined,
+    providerSuccess: providerSucceeded,
+    latencyMs: Number(summary.durationMs ?? summary.latencyMs ?? 0),
+    estimatedCost: updated.cost ?? null,
+    metadata: meta,
+    artifactEvaluationDeps: resolveProductionArtifactEvaluationDeps(host),
+    fallbackUsed: summary.fallbackUsed === true,
+    fallbackReason:
+      typeof summary.fallbackReason === "string" ? summary.fallbackReason : undefined,
+    createId: host.deps.createId,
+    nowIso: host.deps.nowIso,
+  });
+
+  logOsExecutionEvent("execution.background_finalize", {
+    requestId: correlationId,
+    executionId,
+    organizationId,
+    capabilityId,
+    status,
+    lifecycle: extras.osLifecycle,
+    errorCode: nextError ? "execution_failed" : undefined,
+  });
+
+  if (host.deps.streaming) {
+    const sub = host.deps.streaming.subscribe(executionId, "sse");
+    if (sub.ok) {
+      host.deps.streaming.push({
+        subscriptionId: sub.value.subscriptionId,
+        executionId,
+        kind: "status",
+        payload: { status },
+      });
+      if (status === "succeeded" || status === "failed") {
+        host.deps.streaming.push({
+          subscriptionId: sub.value.subscriptionId,
+          executionId,
+          kind: "done",
+          payload: { status },
+        });
+      }
+    }
+  }
+}
+
+async function markExecutionFailedFromBackground(input: {
+  host: ExecutionCreateHost;
+  executionId: string;
+  organizationId: string;
+  errorMessage: string;
+}): Promise<void> {
+  const { host, executionId, organizationId, errorMessage } = input;
+  const existing = await host.loadExecution(executionId);
+  if (!existing) return;
+  if (
+    existing.status === "succeeded" ||
+    existing.status === "failed" ||
+    existing.status === "cancelled"
+  ) {
+    return;
+  }
+
+  const updated: ExecutionResource = {
+    ...existing,
+    status: "failed",
+    errorMessage,
+    completedAt: host.deps.nowIso(),
+    updatedAt: host.deps.nowIso(),
+  };
+  host.executionStore.set(executionId, updated);
+  if (host.deps.persistence) {
+    await host.deps.persistence.executions.update(updated);
+  }
+
+  const prevExtras = host.extrasStore.get(executionId);
+  const governance = defaultGovernanceEngine.decide({
+    evaluationScore: null,
+    evaluationPlaceholder: false,
+    humanReviewFlag: false,
+    providerSuccess: false,
+    nowIso: host.deps.nowIso,
+  });
+  const extras: ExecutionExtrasRecord = {
+    diagnostics: prevExtras?.diagnostics ?? {
+      executionId,
+      stages: [{ stage: "background_tick", status: "failed" }],
+      generatedAt: host.deps.nowIso(),
+      rootCause: errorMessage,
+    },
+    trace: prevExtras?.trace ?? {
+      executionId,
+      correlationId: existing.correlationId,
+      stages: ["gateway", "queue", "background_tick"],
+      durationMs: 0,
+    },
+    cost: prevExtras?.cost ?? {
+      executionId,
+      amount: null,
+      currency: null,
+      status: "unknown",
+    },
+    evaluation: {
+      executionId,
+      score: null,
+      humanReviewRequired: false,
+    },
+    experience: prevExtras?.experience ?? {
+      executionId,
+      experienceIds: [],
+      applied: false,
+    },
+    osLifecycle: osLifecycleFromApiStatus("failed"),
+    governance,
+    ...(prevExtras?.asyncLane ? { asyncLane: prevExtras.asyncLane } : {}),
+    ...(prevExtras?.workflowFollowUp
+      ? { workflowFollowUp: prevExtras.workflowFollowUp }
+      : {}),
+    ...(prevExtras?.continuitySnapshot
+      ? { continuitySnapshot: prevExtras.continuitySnapshot }
+      : {}),
+    ...(prevExtras?.continuityObservability
+      ? { continuityObservability: prevExtras.continuityObservability }
+      : {}),
+  };
+  host.extrasStore.set(executionId, extras);
+  if (host.deps.persistence) {
+    await host.deps.persistence.extras.save(
+      executionId,
+      organizationId,
+      extras
+    );
+  }
+
+  if (host.deps.streaming) {
+    const sub = host.deps.streaming.subscribe(executionId, "sse");
+    if (sub.ok) {
+      host.deps.streaming.push({
+        subscriptionId: sub.value.subscriptionId,
+        executionId,
+        kind: "status",
+        payload: { status: "failed" },
+      });
+      host.deps.streaming.push({
+        subscriptionId: sub.value.subscriptionId,
+        executionId,
+        kind: "done",
+        payload: { status: "failed" },
+      });
+    }
+  }
 }

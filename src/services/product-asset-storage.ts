@@ -9,9 +9,9 @@ import { blobStorageConfigFromEnv } from "../platform/persistence/storage/blob-s
 import { S3BlobStorage } from "../platform/persistence/storage/s3-blob-storage";
 import { InMemoryBlobStorage } from "../platform/persistence/storage/in-memory-blob-storage";
 import type { IBlobStorage } from "../platform/persistence/interfaces/persistence";
-import type { Result } from "../platform/intelligence/shared/result";
-import { failure, success } from "../platform/intelligence/shared/result";
-import { ValidationError } from "../platform/intelligence/shared/errors";
+import type { Result } from "../platform/core/result";
+import { failure, success } from "../platform/core/result";
+import { ValidationError } from "../platform/core/errors";
 
 export type ProductAssetStorageMode = "s3" | "memory" | "unavailable";
 

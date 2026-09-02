@@ -5,6 +5,7 @@ import { ApiError } from "../utils/apiError";
 import { asyncHandler } from "../utils/asyncHandler";
 import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
+import Projects from "../models/projects.model";
 import {
   createDistincChatRoom,
   createUserUpster,
@@ -16,6 +17,7 @@ import StripeCustomers from "../models/customer.model";
 import Subscriptions from "../models/subscription.model";
 import Invoices from "../models/invoices.model";
 import Packages from "../models/packages.model";
+import { PlansModel } from "../models/plan.model";
 import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
@@ -128,10 +130,34 @@ const FetchCustomers = asyncHandler(async (req: RequestUser, res) => {
     query = {
       role: "customer",
     };
+  } else if (req.user?.role == "resource") {
+    const staffId = req.user?.staff?._id;
+    if (!staffId) {
+      return new ApiResponse(
+        200,
+        {
+          users: [],
+          pagination: { total: 0, page, pageSize: limit, totalPages: 0 },
+        },
+        "Customer fetched successfully"
+      );
+    }
+    const projectOwners = await Projects.find({ resource: staffId }).distinct(
+      "userId"
+    );
+    query = {
+      role: "customer",
+      _id: { $in: projectOwners },
+    };
   } else {
     query = {
       role: "customer",
-      relationship_manager: req.user?.staff,
+      relationship_manager:
+        (req.user?.staff &&
+          typeof req.user.staff === "object" &&
+          "_id" in req.user.staff
+          ? req.user.staff._id
+          : req.user?.staff) || null,
     };
   }
 
@@ -191,41 +217,74 @@ const FetchCustomerPlan = asyncHandler(async (req, res) => {
 
   if (!customer) return new ApiResponse(200, null, "Customer not found");
 
-  const stripe_customer = await StripeCustomers.findOne({
-    email: customer?.email,
-  });
-
-  if (!stripe_customer)
-    return new ApiResponse(200, null, "Stripe Customer not found");
-
-  const subscription = await Subscriptions.find({
-    customerId: stripe_customer?.stripeCustomerId,
-  }).sort({ createdAt: -1 });
-
-  const currentSubscription = await Subscriptions.findOne({
-    customerId: stripe_customer?.stripeCustomerId,
+  const activeByUser = await Subscriptions.findOne({
+    userId: String(customer._id),
     status: "active",
   });
 
-  const invoice = await Invoices.find({
-    customerId: stripe_customer?.stripeCustomerId,
-  }).sort({ createdAt: -1 });
+  const stripe_customer = customer.email
+    ? await StripeCustomers.findOne({ email: customer.email })
+    : null;
 
-  const plan = await Packages.findOne({
-    duration: {
-      $elemMatch: {
-        stripe_price_id: currentSubscription?.planId,
-      },
-    },
-  });
+  const subscription = stripe_customer
+    ? await Subscriptions.find({
+        customerId: stripe_customer.stripeCustomerId,
+      }).sort({ createdAt: -1 })
+    : activeByUser
+      ? [activeByUser]
+      : await Subscriptions.find({ userId: String(customer._id) }).sort({ createdAt: -1 });
+
+  const currentSubscription =
+    activeByUser ??
+    (stripe_customer
+      ? await Subscriptions.findOne({
+          customerId: stripe_customer.stripeCustomerId,
+          status: "active",
+        })
+      : null) ??
+    (await Subscriptions.findOne({
+      userId: String(customer._id),
+      status: "active",
+    }));
+
+  const invoice = stripe_customer
+    ? await Invoices.find({
+        customerId: stripe_customer.stripeCustomerId,
+      }).sort({ createdAt: -1 })
+    : [];
+
+  let plan = currentSubscription?.planId
+    ? await Packages.findOne({
+        duration: {
+          $elemMatch: {
+            stripe_price_id: currentSubscription.planId,
+          },
+        },
+      })
+    : null;
+
+  if (!plan && currentSubscription?.planId) {
+    const razorpayPlan = await PlansModel.findOne({
+      plan_id: currentSubscription.planId,
+    }).lean();
+    if (razorpayPlan) {
+      plan = {
+        title: razorpayPlan.razorpayPlanItem?.item?.name ?? razorpayPlan.tag,
+        name: razorpayPlan.razorpayPlanItem?.item?.name,
+        planName: razorpayPlan.razorpayPlanItem?.item?.name,
+        tag: razorpayPlan.tag,
+        currency: razorpayPlan.razorpayPlanItem?.item?.currency ?? "INR",
+      } as typeof plan;
+    }
+  }
 
   return new ApiResponse(
     200,
     {
-      subscription: subscription,
-      currentSubscription: currentSubscription,
+      subscription,
+      currentSubscription,
       currentPlan: plan,
-      invoice: invoice,
+      invoice,
     },
     "Customer Plan fetched successfully"
   );

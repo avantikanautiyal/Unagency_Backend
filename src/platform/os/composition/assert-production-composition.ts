@@ -3,7 +3,7 @@
  */
 
 import type { EnterpriseApiExecutionMode } from "../../api/runtime/execution-mode";
-import type { IProviderDispatcher } from "../../intelligence/providers/runtime/interfaces/provider-dispatcher";
+import type { IProviderDispatcher } from "../../providers/runtime/interfaces/provider-dispatcher";
 import { isFakeCapabilityRegistry } from "./create-production-negotiation";
 
 export class ProductionCompositionError extends Error {

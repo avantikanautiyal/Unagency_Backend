@@ -7,17 +7,15 @@ import {
   type DistributedExecutionEngineDeps,
 } from "../engine/distributed-execution-engine";
 import type { IDistributedExecutionEngine, IJobExecutor } from "../interfaces/execution";
-import type { IExecutionContextStores } from "../../../business/execution-context";
-import type { IIntelligenceOsIntegrationEngine } from "../../../intelligence/integration/interfaces/integration";
-import type { IProviderDispatcher } from "../../../intelligence/providers/runtime/interfaces/provider-dispatcher";
+import type { IDirectExecutionEngine } from "../../../direct/contracts";
+import type { IProviderDispatcher } from "../../../providers/runtime/interfaces/provider-dispatcher";
 import type { EnterpriseApiExecutionMode } from "../../../api/runtime/execution-mode";
 import { composeEnterpriseExecution } from "../../../api/runtime/compose-enterprise-execution";
 
 export interface DistributedExecutionPlatform {
   readonly engine: IDistributedExecutionEngine;
   readonly rawEngine: DistributedExecutionEngine;
-  readonly intelligenceGatewayHolder?: import("../workers/job-executors").IntelligenceGatewayHolder;
-  readonly integration?: IIntelligenceOsIntegrationEngine;
+  readonly integration?: IDirectExecutionEngine;
 }
 
 export interface CreateDistributedExecutionOptions
@@ -26,13 +24,10 @@ export interface CreateDistributedExecutionOptions
   /** @deprecated Prefer executionMode */
   readonly useIntegrationLayer?: boolean;
   readonly executionMode?: EnterpriseApiExecutionMode;
-  readonly integration?: IIntelligenceOsIntegrationEngine;
+  readonly integration?: IDirectExecutionEngine;
   readonly runtimeDispatcher?: IProviderDispatcher;
-  readonly executionContextStores?: IExecutionContextStores;
-  readonly useLiveBusinessContext?: boolean;
-  readonly brandBrainRepository?: import("../../durability/interfaces/brand-brain-repository").IBrandBrainRepository;
   readonly jobStore?: import("../interfaces/execution").IJobStore;
-  readonly toolRuntime?: import("../../../intelligence/providers/tools/composition/tool-runtime-platform").ToolRuntimePlatform;
+  readonly toolRuntime?: import("../../../providers/tools/composition/tool-runtime-platform").ToolRuntimePlatform;
   readonly asyncMedia?: import("../../durability/create-async-media-platform").AsyncMediaPlatform;
 }
 
@@ -46,9 +41,6 @@ export function createDistributedExecutionPlatform(
     options.createId ?? ((p: string) => `${p}_${++seq}_${clockMs()}`);
 
   let executor = options.executor;
-  let intelligenceGatewayHolder:
-    | import("../workers/job-executors").IntelligenceGatewayHolder
-    | undefined;
   let integration = options.integration;
   if (!executor) {
     const mode: EnterpriseApiExecutionMode =
@@ -62,14 +54,10 @@ export function createDistributedExecutionPlatform(
       createId,
       integration: options.integration,
       runtimeDispatcher: options.runtimeDispatcher,
-      executionContextStores: options.executionContextStores,
-      useLiveBusinessContext: options.useLiveBusinessContext,
-      brandBrainRepository: options.brandBrainRepository,
       toolRuntime: options.toolRuntime,
       asyncMedia: options.asyncMedia,
     });
     executor = composed.executor;
-    intelligenceGatewayHolder = composed.intelligenceGatewayHolder;
     integration = composed.integration ?? integration;
   }
 
@@ -82,5 +70,5 @@ export function createDistributedExecutionPlatform(
     createId,
   });
 
-  return { engine: rawEngine, rawEngine, intelligenceGatewayHolder, integration };
+  return { engine: rawEngine, rawEngine, integration };
 }

@@ -2,24 +2,24 @@
  * Text provider environment configuration — credential and enable flags.
  */
 
-import type { TextProviderConfig } from "../../intelligence/providers/compat/contracts/text-provider-config";
-import { COMPAT_TEXT_PROVIDER_CONFIGS } from "../../intelligence/providers/compat/configs/text-provider-configs";
+import type { TextProviderConfig } from "../../providers/compat/contracts/text-provider-config";
+import { COMPAT_TEXT_PROVIDER_CONFIGS } from "../../providers/compat/configs/text-provider-configs";
 import {
   ANTHROPIC_CREDENTIAL_ENV,
   ANTHROPIC_ENABLE_ENV,
   ANTHROPIC_PROVIDER_ID,
-} from "../../intelligence/providers/anthropic/constants";
+} from "../../providers/anthropic/constants";
 import {
   GEMINI_CREDENTIAL_ENV,
   GEMINI_ENABLE_ENV,
   GEMINI_PROVIDER_ID,
-} from "../../intelligence/providers/gemini/constants";
+} from "../../providers/gemini/constants";
 import {
   COHERE_CREDENTIAL_ENV,
   COHERE_ENABLE_ENV,
   COHERE_PROVIDER_ID,
-} from "../../intelligence/providers/cohere/constants";
-import { OPENAI_PROVIDER_ID } from "../../intelligence/providers/openai/constants";
+} from "../../providers/cohere/constants";
+import { OPENAI_PROVIDER_ID } from "../../providers/openai/constants";
 import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export interface NativeTextProviderEnvSpec {
@@ -96,8 +96,7 @@ export interface TextProviderEnvStatus {
 
 export function evaluateTextProviderEnv(env: NodeJS.ProcessEnv = process.env): TextProviderEnvStatus[] {
   return ALL_TEXT_PROVIDER_ENV_SPECS.map((spec) => {
-    const providerId =
-      "canonicalProviderId" in spec ? spec.canonicalProviderId : spec.canonicalProviderId;
+    const providerId = spec.canonicalProviderId;
     const credentialEnvVar = spec.credentialEnvVar;
     const enableEnvVar = spec.enableEnvVar;
     const credential = resolveTextProviderCredential(env, credentialEnvVar);

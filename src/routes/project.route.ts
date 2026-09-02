@@ -10,6 +10,7 @@ import {
   FetchMyProjects,
   upsertCreativeProject,
   updateMyProjectStatus,
+  deleteMyProject,
 } from "../controllers/project.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 import { fileUpload } from "../middlewares/multers3.middleware";
@@ -37,11 +38,16 @@ router.patch(
   VerifyRole(["customer"]),
   updateMyProjectStatus
 );
+router.delete(
+  "/:projectId",
+  VerifyRole(["customer"]),
+  deleteMyProject
+);
 
 //Desc: It allows to fetch a project using Project id
 router.get(
   "/:projectId",
-  VerifyRole(["servicing", "customer"]),
+  VerifyRole(["superadmin", "admin", "servicing", "customer"]),
   fetchProjectById
 );
 //It allows servicing to update basic information of project

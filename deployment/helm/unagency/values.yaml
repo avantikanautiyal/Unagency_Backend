@@ -2,7 +2,7 @@ replicaCount:
   api: 3
   worker: 2
   business: 2
-  intelligence: 2
+  direct: 2
   background: 1
 
 image:

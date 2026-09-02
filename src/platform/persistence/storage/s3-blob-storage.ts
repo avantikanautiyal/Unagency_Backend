@@ -3,7 +3,6 @@
  */
 
 import { createHash } from "crypto";
-import { PassThrough } from "stream";
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
@@ -16,8 +15,8 @@ import {
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { NotFoundError, ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { NotFoundError, ValidationError } from "../../core/errors";
 import type { IBlobStorage } from "../interfaces/persistence";
 import type { BlobStorageEnvConfig } from "./blob-storage-config";
 import type {
@@ -82,38 +81,28 @@ export class S3BlobStorage implements IBlobStorage, IMultipartBlobStorage {
     const maxBytes = options?.maxBytes ?? 512 * 1024 * 1024;
     const hash = createHash("sha256");
     let size = 0;
-    const pass = new PassThrough();
-
-    void (async () => {
-      try {
-        for await (const chunk of stream) {
-          const buf = Buffer.from(chunk);
-          size += buf.byteLength;
-          if (size > maxBytes) {
-            pass.destroy(new ValidationError("Stream exceeds max upload size"));
-            return;
-          }
-          hash.update(buf);
-          if (!pass.write(buf)) {
-            await new Promise<void>((resolve) => pass.once("drain", resolve));
-          }
-        }
-        pass.end();
-      } catch (err) {
-        pass.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    })();
-
+    const chunks: Buffer[] = [];
     try {
+      for await (const chunk of stream) {
+        const buf = Buffer.from(chunk);
+        size += buf.byteLength;
+        if (size > maxBytes) {
+          return failure(new ValidationError("Stream exceeds max upload size"));
+        }
+        hash.update(buf);
+        chunks.push(buf);
+      }
+      const body = Buffer.concat(chunks);
       await this.client.send(
         new PutObjectCommand({
           Bucket: this.config.bucket,
           Key: key,
-          Body: pass,
+          Body: body,
           ContentType: options?.contentType,
+          ContentLength: body.byteLength,
         })
       );
-      return success({ key, size, checksum: hash.digest("hex") });
+      return success({ key, size: body.byteLength, checksum: hash.digest("hex") });
     } catch (err) {
       return failure(
         new ValidationError(

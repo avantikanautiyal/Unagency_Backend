@@ -19,6 +19,33 @@ export const productAssetUpload = multer({
   },
 });
 
+function parseTagsBody(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    const tags = raw.map(String).map((t) => t.trim()).filter(Boolean);
+    return tags.length ? tags : undefined;
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (Array.isArray(parsed)) {
+          const tags = parsed.map(String).map((t) => t.trim()).filter(Boolean);
+          return tags.length ? tags : undefined;
+        }
+      } catch {
+        // fall through to comma-split
+      }
+    }
+    const tags = trimmed
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return tags.length ? tags : undefined;
+  }
+  return undefined;
+}
+
 export const uploadProductAsset = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const file = req.file;
@@ -36,7 +63,7 @@ export const uploadProductAsset = asyncHandler(
       briefId: req.body?.briefId as string | undefined,
       brandId: req.body?.brandId as string | undefined,
       folder: req.body?.folder as string | undefined,
-      tags: Array.isArray(req.body?.tags) ? req.body.tags.map(String) : undefined,
+      tags: parseTagsBody(req.body?.tags ?? req.body?.tagsJson),
       tag: (req.body?.tag as string | undefined) || "product_asset",
       lifecycle: req.body?.lifecycle as
         | "temporary"
@@ -51,6 +78,7 @@ export const uploadProductAsset = asyncHandler(
         | "rejected"
         | undefined,
       parentAssetId: req.body?.parentAssetId as string | undefined,
+      executionId: req.body?.executionId as string | undefined,
     });
     return new ApiResponse(200, dto, "Asset uploaded");
   }

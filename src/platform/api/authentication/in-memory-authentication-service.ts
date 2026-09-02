@@ -3,8 +3,8 @@
  * No external IdP SDK in this milestone.
  */
 
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type {
   ApiKeyRecord,
   AuthCredential,

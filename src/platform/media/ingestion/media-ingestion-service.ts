@@ -3,8 +3,8 @@
  */
 
 import { createHash } from "crypto";
-import { failure, success, type Result } from "../../intelligence/shared/result";
-import { ValidationError } from "../../intelligence/shared/errors";
+import { failure, success, type Result } from "../../core/result";
+import { ValidationError } from "../../core/errors";
 import type { IBlobStorage } from "../../persistence/interfaces/persistence";
 import type { DurableBlobRef } from "../contracts/durable-blob-ref";
 import { validateIngestionUrl, validateRedirectUrl } from "./ssrf-guard";
@@ -364,6 +364,4 @@ export class FakeMediaDownloadClient implements MediaDownloadClient {
   }
 }
 
-export type { MediaDownloadClient } from "./media-ingestion-service";
-export { FakeMediaDownloadClient } from "./media-ingestion-service";
 export { FetchMediaDownloadClient } from "./fetch-media-download-client";

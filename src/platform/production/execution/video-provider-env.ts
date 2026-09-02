@@ -6,18 +6,21 @@
 import {
   ALL_VIDEO_PROVIDER_SPECS,
   type VerifiedVideoProviderSpec,
-} from "../../intelligence/providers/video/configs/verified-video-provider-specs";
+} from "../../providers/video/configs/verified-video-provider-specs";
 import { isProviderEnableFlagOn } from "./provider-enable-flag";
 
 export function resolveVideoApiKey(
   env: NodeJS.ProcessEnv,
   credentialEnvVar: string
 ): string | undefined {
-  // Google Veo may use GOOGLE_API_KEY or GEMINI_API_KEY
   const primary = env[credentialEnvVar]?.trim();
   if (primary) return primary;
   if (credentialEnvVar === "GOOGLE_API_KEY") {
     return env.GEMINI_API_KEY?.trim() || undefined;
+  }
+  // Kling: KLING_API_KEY is canonical; KLING_ACCESS_KEY kept for older .env files.
+  if (credentialEnvVar === "KLING_API_KEY") {
+    return env.KLING_ACCESS_KEY?.trim() || undefined;
   }
   return undefined;
 }
@@ -26,12 +29,6 @@ export function isVideoProviderConfigured(
   env: NodeJS.ProcessEnv,
   spec: VerifiedVideoProviderSpec
 ): boolean {
-  if (spec.secretEnvVar) {
-    const ak = env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim();
-    // Single-key Kling dashboards issue one access token; reuse as JWT secret when SK is absent.
-    const sk = env[spec.secretEnvVar]?.trim() || ak;
-    return Boolean(ak && sk) && isProviderEnableFlagOn(env, spec.enableEnvVar, true);
-  }
   const credential = resolveVideoApiKey(env, spec.credentialEnvVar);
   return isProviderEnableFlagOn(env, spec.enableEnvVar, Boolean(credential));
 }
@@ -62,14 +59,7 @@ export function evaluateVideoProviderEnv(
   env: NodeJS.ProcessEnv = process.env
 ): VideoProviderEnvStatus[] {
   return ALL_VIDEO_PROVIDER_SPECS.map((spec) => {
-    const configured = (() => {
-      if (spec.secretEnvVar) {
-        const ak = env[spec.accessKeyEnvVar ?? spec.credentialEnvVar]?.trim();
-        const sk = env[spec.secretEnvVar]?.trim() || ak;
-        return Boolean(ak && sk);
-      }
-      return Boolean(resolveVideoApiKey(env, spec.credentialEnvVar));
-    })();
+    const configured = Boolean(resolveVideoApiKey(env, spec.credentialEnvVar));
     const enabled = isProviderEnableFlagOn(env, spec.enableEnvVar, configured);
     const verified = spec.vendorApiVerified;
     const executable = verified && enabled && configured;

@@ -37,7 +37,7 @@ router.post(
 //Desc: It allows superadmin, admin, and servicing to fetch their assigned customers
 router.get(
   "/fetch-customers",
-  VerifyRole(["admin", "superadmin", "servicing"]),
+  VerifyRole(["admin", "superadmin", "servicing", "resource"]),
   FetchCustomers
 );
 //Desc: It allows superadmin, admin and servicing to get a customer's information
@@ -53,7 +53,11 @@ router.get(
   FetchCustomerPlan
 );
 //Desc:  It allows to give a list of resource while creating a project for a customer.
-router.get("/fetch-resource", VerifyRole(["servicing"]), FetchResource);
+router.get(
+  "/fetch-resource",
+  VerifyRole(["servicing", "admin", "superadmin"]),
+  FetchResource
+);
 //Desc: It allows to give a list of users except customer and superadmin.
 router.get(
   "/fetch-internal-team",

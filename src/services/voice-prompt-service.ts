@@ -7,7 +7,7 @@
 
 import { ApiError } from "../utils/apiError";
 import { productAssetService } from "./product-asset-service";
-import { enrichExecutionMetadataWithProductAssets } from "./product-asset-intelligence-bridge";
+import { attachProductAssetsToExecutionMetadata } from "./product-asset-input-bridge";
 import { getEnterpriseApiRuntime } from "../platform/api/runtime/bootstrap-enterprise-api";
 import type { AuthPrincipal } from "../platform/api/contracts";
 import type { ExecutionResource } from "../platform/api/contracts";
@@ -149,7 +149,7 @@ export class VoicePromptService {
       );
     }
 
-    const metadata = await enrichExecutionMetadataWithProductAssets({
+    const metadata = await attachProductAssetsToExecutionMetadata({
       userId: input.userId,
       organizationId: input.organizationId,
       metadata: {

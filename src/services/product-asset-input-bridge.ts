@@ -78,6 +78,12 @@ export async function attachProductAssetsToExecutionMetadata(input: {
   if (firstImage && !meta.image) {
     meta.image = firstImage;
   }
+  if (firstImage) {
+    meta.referenceInputPresent = true;
+    if (!meta.referenceInputType) {
+      meta.referenceInputType = "brand_vault_asset";
+    }
+  }
   meta.productAssetIds = assetIds;
   return meta;
 }

@@ -18,6 +18,8 @@ import {
 import { PRESENTATION_ROUTE_CONCEPTS_SCHEMA } from "../../os/delivery/presentation-schemas";
 import { stampPresentationCreateMetadata } from "../../direct/presentation-direct-metadata";
 import { stampDocumentCreateMetadata } from "../../direct/document-direct-metadata";
+import { stampEmailCreateMetadata } from "../../direct/email-direct-metadata";
+import { shouldOmitCdfStructuredStamp } from "../../cdf/phase-scoped-create";
 import { WEBSITE_ROUTES_STRUCTURED_SCHEMA } from "../../os/delivery/website-generation";
 import {
   isAudioTranscribeCapability,
@@ -76,6 +78,7 @@ import {
   recordExecutionTraceStage,
   updateExecutionTrace,
 } from "../../os/observability/execution-trace";
+import { logOsExecutionEvent } from "../../os/observability/execution-log";
 import { readExecutionSpecSnapshot } from "../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
 import {
   applyVisualModificationPrepass,
@@ -249,13 +252,30 @@ export async function runCreatePrepass(
     typeof workingMetadata?.productAction === "string" &&
     (workingMetadata.productAction.trim().toLowerCase() === "route_visual" ||
       workingMetadata.productAction.trim().toLowerCase() === "route_visual_refine");
+  const isCdfPhaseRun =
+    workingMetadata?.cdfSkipHeavyPrepass === true ||
+    (typeof workingMetadata?.cdfPhaseId === "string" &&
+      workingMetadata.cdfPhaseId.trim().length > 0);
   try {
     const channelId =
       typeof workingMetadata?.channelId === "string"
         ? workingMetadata.channelId.trim()
         : "";
     const userId = principal.userId?.trim();
-    if (channelId && userId) {
+    const { readClientExecutionSpecHandoff, readInheritedExecutionSpec } =
+      await import(
+        "../../collaboration/conversational-task-intelligence/execution-spec-handoff"
+      );
+    const clientHandoffSpec = readClientExecutionSpecHandoff(workingMetadata);
+    conversationExecutionSpec =
+      clientHandoffSpec ??
+      (await readInheritedExecutionSpec({
+        host,
+        metadata: workingMetadata,
+      }));
+    const hasClientConversationHandoff = conversationExecutionSpec != null;
+    // CDF phase creates already know service/phase — skip CTI semantic classify tax.
+    if (channelId && userId && !hasClientConversationHandoff && !isCdfPhaseRun) {
       const { serviceConversationService } = await import(
         "../../collaboration/service-conversation-service"
       );
@@ -290,10 +310,14 @@ export async function runCreatePrepass(
           new ValidationError(ctx.clarificationQuestion, {
             reason: "CONVERSATIONAL_CLARIFICATION_REQUIRED",
             clarificationQuestion: ctx.clarificationQuestion,
+            clarification: ctx.clarification,
           }),
         );
       }
-      if (ctx.executionSpec?.resolutionState === "UNSUPPORTED_DELIVERABLE") {
+      if (
+        ctx.executionSpec?.resolutionState === "UNSUPPORTED_DELIVERABLE" &&
+        !isRouteVisualFanout
+      ) {
         return failure(
           new ValidationError(
             `Requested deliverable format is not supported for this service: ${(ctx.executionSpec.unsupportedDeliverables ?? []).join(", ")}`,
@@ -361,6 +385,24 @@ export async function runCreatePrepass(
           : {}),
       });
       // Snapshot stamping deferred until executionId is assigned (P4.8.1).
+    } else if (hasClientConversationHandoff && conversationExecutionSpec) {
+      if (
+        conversationExecutionSpec.resolutionState === "UNSUPPORTED_DELIVERABLE" &&
+        conversationExecutionSpec.unsupportedDeliverables?.length &&
+        !isRouteVisualFanout
+      ) {
+        return failure(
+          new ValidationError(
+            `Requested deliverable format is not supported for this service: ${conversationExecutionSpec.unsupportedDeliverables.join(", ")}`,
+            {
+              reason: "UNSUPPORTED_DELIVERABLE",
+              unsupportedDeliverables:
+                conversationExecutionSpec.unsupportedDeliverables,
+              executionSpec: conversationExecutionSpec,
+            },
+          ),
+        );
+      }
     }
   } catch {
     // Conversation context must never block generation.
@@ -485,7 +527,14 @@ export async function runCreatePrepass(
     typeof workingMetadata?.brandId === "string"
       ? workingMetadata.brandId.trim()
       : brandIdForUx;
-  if (brandIdForUx && prompt.trim() && !logoRoleFromMetadata(workingMetadata)) {
+  if (
+    brandIdForUx &&
+    prompt.trim() &&
+    !logoRoleFromMetadata(workingMetadata) &&
+    !conversationExecutionSpec &&
+    !readExecutionSpecSnapshot(workingMetadata) &&
+    !isCdfPhaseRun
+  ) {
     try {
       const profile = await resolveBrandProfileContext({
         brandId: brandIdForUx,
@@ -525,8 +574,11 @@ export async function runCreatePrepass(
 
   // Multilingual brand colour / fact extraction — regex + optional LLM before continuity bind.
   // Uses confirmed brandId only — never invents / switches ownership from prompt text.
+  // CDF: skip heavy CTI, but still run light brand extract when flagged.
   let prepassBrandExtract: EnrichedBrandPreferences | undefined;
-  if (brandIdForUx && prompt.trim()) {
+  const allowLightBrandExtract =
+    !isCdfPhaseRun || workingMetadata?.cdfLightBrandExtract === true;
+  if (brandIdForUx && prompt.trim() && allowLightBrandExtract) {
     try {
       prepassBrandExtract = await enrichBrandPreferencesFromBrief({
         prompt,
@@ -549,6 +601,9 @@ export async function runCreatePrepass(
           ...colorExtras,
           ...(prepassBrandExtract.extractionSource
             ? { brandExtractSource: prepassBrandExtract.extractionSource }
+            : {}),
+          ...(prepassBrandExtract.brandName?.trim()
+            ? { brandName: prepassBrandExtract.brandName.trim().slice(0, 120) }
             : {}),
         });
       }
@@ -636,10 +691,29 @@ export async function runCreatePrepass(
           continuitySlotCheckApplies(workingMetadata) &&
           (continuity.rollout === "on" || continuity.rollout === "canary")
         ) {
-          const missingSlots = [...continuity.packet.missingRequiredSlots];
-          if (
-            missingSlots.length === 1 &&
-            missingSlots[0] === "logo"
+          const { filterBlockingMissingBrandSlots } = await import(
+            "../../execution/execution-input-policy"
+          );
+          const blockingSlots = filterBlockingMissingBrandSlots({
+            missingSlots: continuity.packet.missingRequiredSlots,
+            service:
+              typeof workingMetadata?.service === "string"
+                ? workingMetadata.service
+                : undefined,
+            brief: prompt,
+            metadata: workingMetadata,
+            executionSpec: conversationExecutionSpec,
+          });
+          if (blockingSlots.length === 0) {
+            workingMetadata = applyDirectPassthroughMetadata({
+              ...continuity.metadata,
+              logoAvailable: false,
+              optionalContextAvailable: false,
+              continuityNeedsAsk: false,
+            });
+          } else if (
+            blockingSlots.length === 1 &&
+            blockingSlots[0] === "logo"
           ) {
             const brandName = brandDisplayName(workingMetadata);
             return failure(
@@ -652,17 +726,16 @@ export async function runCreatePrepass(
                 }
               )
             );
+          } else {
+            const missing = blockingSlots.join(", ");
+            return failure(
+              new ValidationError(
+                `Approved brand assets required but missing: ${missing}. Upload or approve them first — Unagency will not invent brand identity.`,
+                { reason: "CONTINUITY_SLOT_MISSING", missingRequiredSlots: missing }
+              )
+            );
           }
-          const missing = missingSlots.join(", ");
-          return failure(
-            new ValidationError(
-              `Approved brand assets required but missing: ${missing}. Upload or approve them first — Unagency will not invent brand identity.`,
-              { reason: "CONTINUITY_SLOT_MISSING", missingRequiredSlots: missing }
-            )
-          );
-        }
-        // Refine reuse: prefer already-bound packet/assets if binder did not apply.
-        if (
+        } else if (
           workingMetadata.continuityRefineReuse === true &&
           workingMetadata.brandContextPacket &&
           !continuity.applied
@@ -717,7 +790,13 @@ export async function runCreatePrepass(
     typeof workingMetadata?.brandId === "string"
       ? workingMetadata.brandId.trim()
       : "";
-  if (brandIdForLogo && prompt.trim()) {
+  const skipVaultLogoBind =
+    workingMetadata?.skipVaultLogoBind === true ||
+    (typeof workingMetadata?.cdfVisualIntent === "string" &&
+      /^(pack_3d|pack_flat|environment_3d|merch_mockup|merch_artwork|product_mockup|posm|illustration|storyboard_frame|ui_screen)$/i.test(
+        workingMetadata.cdfVisualIntent.trim()
+      ));
+  if (brandIdForLogo && prompt.trim() && !skipVaultLogoBind) {
     try {
       workingMetadata = applyDirectPassthroughMetadata(
         await ensureBrandLogoInExecutionMetadata({
@@ -735,6 +814,69 @@ export async function runCreatePrepass(
       );
     } catch {
       // Logo attach must never break create.
+    }
+
+    if (workingMetadata?.logoChoiceRequired === true) {
+      const candidates = Array.isArray(workingMetadata.logoChoiceCandidates)
+        ? workingMetadata.logoChoiceCandidates
+        : [];
+      const brandName =
+        typeof workingMetadata.brandName === "string"
+          ? workingMetadata.brandName.trim()
+          : "Brand";
+      return failure(
+        new ValidationError(
+          `${brandName} has ${candidates.length || "multiple"} logos. Which one should we use?`,
+          {
+            reason: "CONTINUITY_LOGO_CHOICE",
+            slotKey: "logo",
+            choices: candidates.map(
+              (candidate: { assetId?: string; name?: string; folder?: string }) => ({
+                id: `vault_logo:${String(candidate.assetId ?? "")}`,
+                label: candidate.folder
+                  ? `${candidate.name ?? "Logo"} (${candidate.folder})`
+                  : String(candidate.name ?? "Logo"),
+              }),
+            ),
+            details: { candidates },
+          },
+        ),
+      );
+    }
+
+    const logoAssetId =
+      typeof workingMetadata?.brandLogoAssetId === "string"
+        ? workingMetadata.brandLogoAssetId.trim()
+        : typeof workingMetadata?.logoAssetId === "string"
+          ? workingMetadata.logoAssetId.trim()
+          : "";
+    if (conversationExecutionSpec && logoAssetId) {
+      const { enrichExecutionSpecWithAuthoritativeLogo, stampAuthoritativeLogoMetadata } =
+        await import(
+        "../../collaboration/conversational-task-intelligence/authoritative-logo-resolver"
+      );
+      const logoSource =
+        Array.isArray(workingMetadata?.attachmentLogoAssetIds) &&
+        (workingMetadata.attachmentLogoAssetIds as unknown[]).some(
+          (id) => String(id).trim() === logoAssetId,
+        )
+          ? ("ATTACHMENT" as const)
+          : ("VAULT" as const);
+      conversationExecutionSpec = enrichExecutionSpecWithAuthoritativeLogo(
+        conversationExecutionSpec,
+        {
+          mode: "USE_EXISTING",
+          assetId: logoAssetId,
+          source: logoSource,
+          authoritative: true,
+        },
+      );
+      workingMetadata = stampAuthoritativeLogoMetadata(workingMetadata, {
+        mode: "USE_EXISTING",
+        assetId: logoAssetId,
+        source: logoSource,
+        authoritative: true,
+      });
     }
   }
 
@@ -815,7 +957,12 @@ export async function runCreatePrepass(
       const { executionSpecOutputKindOverride } = await import(
         "../../collaboration/conversational-task-intelligence"
       );
-      const kindOverride = executionSpecOutputKindOverride(conversationExecutionSpec);
+      const kindOverride = executionSpecOutputKindOverride(conversationExecutionSpec, {
+        service:
+          typeof workingMetadata?.service === "string"
+            ? workingMetadata.service
+            : undefined,
+      });
       if (kindOverride) {
         workingMetadata = {
           ...workingMetadata,
@@ -851,13 +998,16 @@ export async function runCreatePrepass(
       !isVisualDeliverableKind &&
       (outputSpec.kind === "presentation" ||
         clientStructuredName === "PresentationRouteConcepts");
-    if (needsPresentationExpand) {
+    const omitCdfStructured = shouldOmitCdfStructuredStamp(workingMetadata);
+    if (needsPresentationExpand && !omitCdfStructured) {
       const subtype =
         typeof workingMetadata?.subtype === "string"
           ? workingMetadata.subtype.trim().toLowerCase()
           : "";
       // Never honor stale client "lazy" for pitch decks — concepts-only is not
       // a completed presentation deliverable (PDF/PPTX require full slide decks).
+      // CDF early phases set cdfOmitStructuredOutput / early cdfPhaseId and skip
+      // this block entirely.
         workingMetadata = {
           ...workingMetadata,
           presentationExpandMode: subtype === "gifs" ? "lazy" : "full",
@@ -886,7 +1036,8 @@ export async function runCreatePrepass(
     }
 
     // Web Tech — always 3 WebsiteRoutes (content-fill); server expands scaffolds.
-    if (outputSpec.kind === "deferred_website") {
+    // Early CDF phases (sitemap / page-structure) stay text-only.
+    if (outputSpec.kind === "deferred_website" && !omitCdfStructured) {
       const structuredOutput = {
         name: "WebsiteRoutes",
         schema: WEBSITE_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
@@ -938,6 +1089,14 @@ export async function runCreatePrepass(
         : typeof workingMetadata?.routeVisualSlot === "string"
           ? Number.parseInt(workingMetadata.routeVisualSlot, 10)
           : undefined;
+    const logoBound =
+      workingMetadata?.referenceInputPresent === true ||
+      (typeof workingMetadata?.brandLogoAssetId === "string" &&
+        workingMetadata.brandLogoAssetId.trim().length > 0) ||
+      (typeof workingMetadata?.logoAssetId === "string" &&
+        workingMetadata.logoAssetId.trim().length > 0) ||
+      (Array.isArray(workingMetadata?.assetIds) &&
+        workingMetadata.assetIds.length > 0);
     const routed = await routeImageWithReferenceSupport({
       metadata: workingMetadata ?? {},
       prompt,
@@ -945,7 +1104,10 @@ export async function runCreatePrepass(
       imageRouter: host.deps.imageRouter,
       preferredProviderId: clientRoutingPin.providerId,
       preferredModelId: clientRoutingPin.modelId,
-      ...(Number.isFinite(routeVisualSlot) ? { routeVisualSlot } : {}),
+      // Slot fan-out reintroduces OpenAI/Recraft — skip when a logo is bound.
+      ...(!logoBound && Number.isFinite(routeVisualSlot)
+        ? { routeVisualSlot }
+        : {}),
       ...(typeof workingMetadata?.service === "string"
         ? { service: workingMetadata.service }
         : {}),
@@ -971,7 +1133,9 @@ export async function runCreatePrepass(
       capabilityId: capabilityIdRaw || "image.generate",
       preferredProviderId: routed.value.providerId,
       preferredModelId: routed.value.modelId,
-      ...(Number.isFinite(routeVisualSlot) ? { routeVisualSlot } : {}),
+      ...(!logoBound && Number.isFinite(routeVisualSlot)
+        ? { routeVisualSlot }
+        : {}),
       ...(typeof workingMetadata?.service === "string"
         ? { service: workingMetadata.service }
         : {}),
@@ -983,15 +1147,24 @@ export async function runCreatePrepass(
         : {}),
     });
     if (matrixRoute.ok) {
+      const { listReferenceImageProviderIds } = await import(
+        "../../providers/image/configs/image-provider-capabilities"
+      );
+      const refCapable = new Set(listReferenceImageProviderIds());
+      const failoverChain = logoBound
+        ? matrixRoute.value.failoverChain.filter((step) =>
+            refCapable.has(step.providerId)
+          )
+        : matrixRoute.value.failoverChain;
       workingMetadata = {
         ...workingMetadata,
         preferredProviderId: routed.value.providerId,
         preferredModelId: routed.value.modelId,
         imageUseCase: matrixRoute.value.useCase,
         imageProviderLabel: matrixRoute.value.label,
-        ...(matrixRoute.value.failoverChain.length
-          ? { imageFailoverChain: matrixRoute.value.failoverChain }
-          : {}),
+        ...(failoverChain.length
+          ? { imageFailoverChain: failoverChain }
+          : { imageFailoverChain: [] }),
       };
     }
   } else if (
@@ -1050,6 +1223,22 @@ export async function runCreatePrepass(
         audioProviderLabel: routed.value.label,
       };
     }
+  } else if (isAudioTranscribeCapability(capabilityIdRaw)) {
+    // No matrix STT router yet — pin OpenAI Whisper (only verified audio.transcribe leaf).
+    const existingProvider =
+      typeof workingMetadata?.preferredProviderId === "string"
+        ? workingMetadata.preferredProviderId.trim()
+        : "";
+    const existingModel =
+      typeof workingMetadata?.preferredModelId === "string"
+        ? workingMetadata.preferredModelId.trim()
+        : "";
+    workingMetadata = {
+      ...workingMetadata,
+      preferredProviderId:
+        clientRoutingPin.providerId || existingProvider || "provider.openai",
+      preferredModelId: clientRoutingPin.modelId || existingModel || "whisper-1",
+    };
   } else if (
     host.deps.textRouter &&
     !isImageGenerationCapability(capabilityIdRaw) &&
@@ -1071,6 +1260,9 @@ export async function runCreatePrepass(
         preferredModelId: routed.value.modelId,
         textUseCase: routed.value.useCase,
         textProviderLabel: routed.value.label,
+        ...(routed.value.failoverChain.length
+          ? { failoverChain: routed.value.failoverChain.slice(0, 4) }
+          : {}),
       };
     }
   }
@@ -1088,8 +1280,8 @@ export async function runCreatePrepass(
     );
   }
 
-  workingMetadata = stampDocumentCreateMetadata(
-    stampPresentationCreateMetadata(workingMetadata)
+  workingMetadata = stampEmailCreateMetadata(
+    stampDocumentCreateMetadata(stampPresentationCreateMetadata(workingMetadata))
   );
 
   const mediaSanitized = sanitizeMediaGenerationCreateMetadata({
@@ -1189,11 +1381,117 @@ export async function runCreatePrepass(
     // Spec handoff must never block generation.
   }
 
+  // Phase 1 — Format & Production Spec instruct: stamp binding + inject into provider prompt.
+  let providerPromptAfterSpec = providerPrompt;
+  try {
+    const { ensureProviderPromptHasProductionSpec } = await import(
+      "../../config/format-production-spec"
+    );
+    const { shouldSkipEffectiveInstructionPromptReplace } = await import(
+      "../../collaboration/conversational-task-intelligence/execution-spec-handoff"
+    );
+    const applied = ensureProviderPromptHasProductionSpec({
+      prompt: providerPrompt,
+      metadata: workingMetadata,
+      boundAt: now,
+    });
+    workingMetadata = applied.metadata;
+    providerPromptAfterSpec = applied.prompt;
+
+    // Prefer stamped effective instruction when Spec handoff enriched it and
+    // we are not on a route-visual passthrough that must keep the leaf prompt.
+    if (!shouldSkipEffectiveInstructionPromptReplace(workingMetadata)) {
+      const effective =
+        typeof workingMetadata.conversationalEffectiveInstruction === "string"
+          ? workingMetadata.conversationalEffectiveInstruction.trim()
+          : "";
+      if (
+        effective &&
+        effective !== providerPromptAfterSpec &&
+        effective.includes("[UNAGENCY Production Spec]")
+      ) {
+        providerPromptAfterSpec = effective;
+      }
+    }
+
+    if (providerPromptAfterSpec !== providerPrompt) {
+      providerPromptAfterSpec = sanitizePassthroughPrompt(providerPromptAfterSpec);
+      req = { ...req, prompt: providerPromptAfterSpec, metadata: workingMetadata };
+    } else {
+      req = { ...req, metadata: workingMetadata };
+    }
+  } catch {
+    // Production Spec instruct must never block generation.
+  }
+
+  // Phase 5 — R/H pre-gen hold (blocks spend when enforce rollout is active).
+  try {
+    const {
+      evaluateProductionPregenHold,
+      readConfirmedOverrideFromMetadata,
+      resolveProductionInstructInputFromMetadata,
+    } = await import("../../config/format-production-spec");
+    const pregen = evaluateProductionPregenHold({
+      ...resolveProductionInstructInputFromMetadata(workingMetadata),
+      confirmedOverride: readConfirmedOverrideFromMetadata(workingMetadata),
+      organizationId: trustedOrganizationId,
+      executionId,
+      requestId: executionId,
+    });
+    if (pregen.blocked) {
+      return failure(
+        new ValidationError(
+          pregen.reason ??
+            "Production Spec pre-gen hold: confirmedOverride required for R/H placement",
+        ),
+      );
+    }
+  } catch {
+    // Pregen evaluation errors must not block generation.
+  }
+
+  // P4.9.4 — canonical website brief on execution metadata for materialization relevance.
+  try {
+    const { isWebsiteGenerationMetadata } = await import("./execution-thin-path");
+    const { resolveBriefObjectiveFromMetadata } = await import(
+      "../../collaboration/conversational-task-intelligence/execution-spec-snapshot"
+    );
+    const { extractWebsiteBrandName } = await import(
+      "../../os/delivery/website-generation"
+    );
+    if (isWebsiteGenerationMetadata(workingMetadata)) {
+      const websiteBrief =
+        (typeof workingMetadata?.websiteUserBrief === "string" &&
+          workingMetadata.websiteUserBrief.trim()) ||
+        resolveBriefObjectiveFromMetadata(workingMetadata, prompt) ||
+        prompt.trim();
+      if (websiteBrief) {
+        const brandFromBrief = extractWebsiteBrandName(websiteBrief);
+        workingMetadata = {
+          ...workingMetadata,
+          websiteUserBrief: websiteBrief,
+          ...(brandFromBrief && !workingMetadata?.requiredBrandName
+            ? {
+                requiredBrandName: brandFromBrief,
+                brandName:
+                  typeof workingMetadata?.brandName === "string" &&
+                  workingMetadata.brandName.trim()
+                    ? workingMetadata.brandName
+                    : brandFromBrief,
+              }
+            : {}),
+        };
+      }
+    }
+  } catch {
+    // Website brief stamping must never block generation.
+  }
+
   const brandIdForLearn =
     typeof workingMetadata?.brandId === "string"
       ? workingMetadata.brandId.trim()
       : "";
-  if (brandIdForLearn && prompt.trim()) {
+  if (brandIdForLearn && prompt.trim() && !isCdfPhaseRun) {
     let learnPrefs: ProductBrandPreferences | undefined;
     if (prepassBrandExtract) {
       const { extractionSource: _ignored, ...rest } = prepassBrandExtract as ProductBrandPreferences & {
@@ -1255,11 +1553,47 @@ export async function runCreatePrepass(
     const { executionSpecObservabilitySummary } = await import(
       "../../collaboration/conversational-task-intelligence/execution-spec-snapshot"
     );
+    const { executionSpecProvenanceObservability } = await import(
+      "../../collaboration/conversational-task-intelligence/execution-spec-provenance"
+    );
     recordExecutionTraceStage({
       executionId,
       stage: "requirement_resolution",
       status: "COMPLETED",
-      details: executionSpecObservabilitySummary(conversationExecutionSpec),
+      details: executionSpecProvenanceObservability({
+        metadata: workingMetadata,
+        conversationSpec: conversationExecutionSpec,
+      }),
+    });
+    logOsExecutionEvent("execution.spec.provenance", {
+      executionId,
+      correlationId,
+      ...executionSpecProvenanceObservability({
+        metadata: workingMetadata,
+        conversationSpec: conversationExecutionSpec,
+      }),
+    });
+  } else if (
+    readExecutionSpecSnapshot(
+      workingMetadata as Record<string, unknown> | undefined,
+    )
+  ) {
+    const { executionSpecProvenanceObservability } = await import(
+      "../../collaboration/conversational-task-intelligence/execution-spec-provenance"
+    );
+    const { resolveParentExecutionIdFromMetadata } = await import(
+      "../../collaboration/conversational-task-intelligence/execution-spec-handoff"
+    );
+    const inheritedFromParent = Boolean(
+      resolveParentExecutionIdFromMetadata(workingMetadata),
+    );
+    logOsExecutionEvent("execution.spec.provenance", {
+      executionId,
+      correlationId,
+      ...executionSpecProvenanceObservability({
+        metadata: workingMetadata,
+        inheritedFromParent,
+      }),
     });
   } else if (
     typeof workingMetadata?.channelId === "string" &&
@@ -1346,7 +1680,7 @@ export async function runCreatePrepass(
       workingMetadata,
       executionSpecSnapshot: readExecutionSpecSnapshot(workingMetadata),
       executionSpec: conversationExecutionSpec,
-      providerPrompt,
+      providerPrompt: providerPromptAfterSpec,
       requestFingerprint,
       executionId,
       correlationId,

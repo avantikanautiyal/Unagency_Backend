@@ -7,7 +7,7 @@ import type {
   ExecutionApiStatus,
   ExecutionResultPayload,
 } from "../contracts";
-import { recoverWebProjectPlan, webProjectToLegacyPage } from "../../os/delivery/website-generation";
+import { recoverWebProjectPlan, recoverWebsiteRoutesPlan, webProjectToLegacyPage } from "../../os/delivery/website-generation";
 
 const MAX_TEXT = 8_000;
 
@@ -41,7 +41,9 @@ export function buildExecutionResultPayload(input: {
       ? runtimeOutput.data
       : undefined);
 
+  const websiteRoutes = recoverWebsiteRoutesPlan(structured);
   const websiteProject =
+    websiteRoutes?.[0] ??
     recoverWebProjectPlan(structured) ??
     recoverWebProjectPlan(
       typeof jobSummary?.resultText === "string" ? jobSummary.resultText : undefined
@@ -56,6 +58,18 @@ export function buildExecutionResultPayload(input: {
         ? (structured as Record<string, unknown>)
         : {};
     const legacy = webProjectToLegacyPage(websiteProject);
+    const materializedRoutes =
+      websiteRoutes && websiteRoutes.length > 1
+        ? websiteRoutes.map((route) => {
+            const routeLegacy = webProjectToLegacyPage(route);
+            return {
+              ...route,
+              techStack: route.stack,
+              html: routeLegacy.html,
+              exportKind: "website" as const,
+            };
+          })
+        : undefined;
     return {
       kind: "structured",
       data: {
@@ -71,6 +85,7 @@ export function buildExecutionResultPayload(input: {
         ...(typeof extra.projectArtifactId === "string"
           ? { projectArtifactId: extra.projectArtifactId }
           : {}),
+        ...(materializedRoutes ? { routes: materializedRoutes } : {}),
         ...(runtimeOutput?.presentationMeta != null
           ? { presentationMeta: runtimeOutput.presentationMeta }
           : {}),
@@ -145,6 +160,13 @@ export function mergeExportArtifactsIntoResult(input: {
     };
   }
 
+  const websiteStamped = stampWebsiteExportPreview({
+    result: input.result,
+    mediaArtifactIds: input.mediaArtifactIds,
+    jobSummary: input.jobSummary,
+  });
+  if (websiteStamped) return websiteStamped;
+
   if (input.result.kind === "structured" && input.result.data != null) {
     const base =
       typeof input.result.data === "object" && !Array.isArray(input.result.data)
@@ -162,6 +184,111 @@ export function mergeExportArtifactsIntoResult(input: {
   return {
     kind: "artifact",
     data: { artifactIds: [...input.mediaArtifactIds] },
+  };
+}
+
+function looksLikeWebsiteExportArtifacts(ids: readonly string[]): boolean {
+  return ids.some((id) => /webexport/i.test(id));
+}
+
+function pairWebsiteExportArtifacts(
+  ids: readonly string[],
+): { projectArtifactId: string; htmlArtifactId?: string }[] {
+  const pairs: { projectArtifactId: string; htmlArtifactId?: string }[] = [];
+  for (let i = 0; i < ids.length; i += 2) {
+    const projectArtifactId = ids[i];
+    if (!projectArtifactId) continue;
+    const htmlArtifactId = ids[i + 1];
+    pairs.push({
+      projectArtifactId,
+      ...(htmlArtifactId ? { htmlArtifactId } : {}),
+    });
+  }
+  return pairs;
+}
+
+/**
+ * Zip/HTML pairs from the website materializer are enough for the client preview
+ * even when job summary HTML was too large to round-trip through poll hydrate.
+ */
+export function stampWebsiteExportPreview(input: {
+  readonly result: ExecutionResultPayload;
+  readonly mediaArtifactIds: readonly string[];
+  readonly jobSummary?: Readonly<Record<string, unknown>>;
+}): ExecutionResultPayload | undefined {
+  const ids = input.mediaArtifactIds.filter(
+    (id) => typeof id === "string" && id.trim().length > 0,
+  );
+  if (ids.length === 0) return undefined;
+
+  const structured = input.jobSummary?.structuredData;
+  const routes = recoverWebsiteRoutesPlan(structured);
+  const structuredRecord =
+    structured && typeof structured === "object" && !Array.isArray(structured)
+      ? (structured as Record<string, unknown>)
+      : undefined;
+  const looksWebsite =
+    looksLikeWebsiteExportArtifacts(ids) ||
+    structuredRecord?.exportKind === "website" ||
+    Boolean(routes?.length);
+
+  if (!looksWebsite) return undefined;
+
+  const pairs = pairWebsiteExportArtifacts(ids);
+  const existing =
+    input.result.kind === "structured" &&
+    input.result.data &&
+    typeof input.result.data === "object" &&
+    !Array.isArray(input.result.data)
+      ? (input.result.data as Record<string, unknown>)
+      : {};
+  const fromStructured = structuredRecord ?? {};
+  const htmlArtifactId =
+    (typeof existing.htmlArtifactId === "string" && existing.htmlArtifactId.trim()) ||
+    (typeof fromStructured.htmlArtifactId === "string" &&
+      fromStructured.htmlArtifactId.trim()) ||
+    pairs[0]?.htmlArtifactId;
+  const projectArtifactId =
+    (typeof existing.projectArtifactId === "string" &&
+      existing.projectArtifactId.trim()) ||
+    (typeof fromStructured.projectArtifactId === "string" &&
+      fromStructured.projectArtifactId.trim()) ||
+    pairs[0]?.projectArtifactId;
+
+  const existingRoutes = Array.isArray(existing.routes)
+    ? (existing.routes as Record<string, unknown>[])
+    : Array.isArray(fromStructured.routes)
+      ? (fromStructured.routes as Record<string, unknown>[])
+      : [];
+  const stampedRoutes =
+    existingRoutes.length > 0
+      ? existingRoutes.map((route, i) => ({
+          ...route,
+          ...(pairs[i]?.projectArtifactId
+            ? { projectArtifactId: pairs[i]!.projectArtifactId }
+            : {}),
+          ...(pairs[i]?.htmlArtifactId
+            ? { htmlArtifactId: pairs[i]!.htmlArtifactId }
+            : {}),
+        }))
+      : pairs.map((pair, i) => ({
+          title: `Route ${i + 1}`,
+          exportKind: "website",
+          projectArtifactId: pair.projectArtifactId,
+          ...(pair.htmlArtifactId ? { htmlArtifactId: pair.htmlArtifactId } : {}),
+        }));
+
+  return {
+    kind: "structured",
+    data: {
+      ...fromStructured,
+      ...existing,
+      exportKind: "website",
+      ...(htmlArtifactId ? { htmlArtifactId } : {}),
+      ...(projectArtifactId ? { projectArtifactId } : {}),
+      artifactIds: ids,
+      ...(stampedRoutes.length > 0 ? { routes: stampedRoutes } : {}),
+    },
   };
 }
 

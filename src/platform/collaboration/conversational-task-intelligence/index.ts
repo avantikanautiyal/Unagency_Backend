@@ -21,6 +21,16 @@ export { extractSemanticSignals } from "./semantic-signals";
 export type { SemanticSignals } from "./semantic-signals";
 
 export {
+  classifySemanticSignals,
+  resolveSemanticLlmRollout,
+} from "./semantic-signals-classifier";
+export type {
+  ClassifiedSemanticSignals,
+  SemanticLlmRollout,
+  SemanticSignalsSource,
+} from "./semantic-signals-classifier";
+
+export {
   resolveReferences,
   isAmbiguousReference,
 } from "./reference-resolution";
@@ -64,6 +74,10 @@ export type {
   SpecFieldProvenance,
   NegativeConstraintSpec,
   BrandAssetRequirementSpec,
+  AuthoritativeLogoMode,
+  AuthoritativeLogoSource,
+  AuthoritativeLogoCandidate,
+  AuthoritativeLogoSpec,
 } from "./execution-specification";
 export {
   EXECUTION_RESOLUTION_PLANE_VERSION,
@@ -216,3 +230,27 @@ export {
   resetVisualRequirementJudgeForTests,
   VISUAL_REQUIREMENT_EVALUATOR_VERSION,
 } from "./visual-requirement-evaluator";
+
+export type {
+  AuthoritativeLogoMode,
+  AuthoritativeLogoSource,
+  AuthoritativeLogoCandidate,
+  AuthoritativeLogoSpec,
+} from "./execution-specification";
+export type { AuthoritativeLogoResolution } from "./authoritative-logo-resolver";
+export {
+  resolveAuthoritativeLogo,
+  resolveLogoFollowUpFromMessage,
+  buildLogoClarificationQuestion,
+  buildLogoSelectionClarification,
+  logoCandidatesToClarificationChoices,
+  authoritativeLogoFromMetadata,
+  stampAuthoritativeLogoMetadata,
+  enrichExecutionSpecWithAuthoritativeLogo,
+} from "./authoritative-logo-resolver";
+
+export {
+  deliverableFormatsFromMime,
+  inferPresentDeliverableFormats,
+  inferPresentDeliverableFormatsFromExecution,
+} from "./present-deliverable-formats";

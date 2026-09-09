@@ -42,6 +42,29 @@ export type BrandAssetRequirementSpec = {
   readonly source?: RequirementSource;
 };
 
+/** P4.9.7 — Authoritative logo requirement (generation integrity). */
+export type AuthoritativeLogoMode =
+  | "USE_EXISTING"
+  | "NEEDS_SELECTION"
+  | "GENERATE_IF_ABSENT";
+
+export type AuthoritativeLogoSource = "VAULT" | "ATTACHMENT";
+
+export type AuthoritativeLogoCandidate = {
+  readonly assetId: string;
+  readonly source: AuthoritativeLogoSource;
+  readonly name?: string;
+  readonly folder?: string;
+};
+
+export type AuthoritativeLogoSpec = {
+  readonly mode: AuthoritativeLogoMode;
+  readonly assetId?: string;
+  readonly source?: AuthoritativeLogoSource;
+  readonly authoritative: boolean;
+  readonly candidates?: readonly AuthoritativeLogoCandidate[];
+};
+
 export type ResolvedField<T> = {
   readonly value: T;
   readonly provenance: SpecFieldProvenance;
@@ -117,6 +140,10 @@ export type CanonicalExecutionSpecification = {
   };
   readonly brandAssets?: {
     readonly requirements?: readonly ResolvedField<BrandAssetRequirementSpec>[];
+  };
+  /** P4.9.7 — Canonical authoritative logo resolution state. */
+  readonly referenceAssets?: {
+    readonly logo?: ResolvedField<AuthoritativeLogoSpec>;
   };
   readonly technical: {
     readonly width?: ResolvedField<number>;

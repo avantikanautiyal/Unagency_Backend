@@ -14,7 +14,11 @@ export class SimulatedImageHttpClient implements IImageHttpClient {
   async send(request: ImageHttpRequest): Promise<Result<ImageHttpResponse>> {
     const start = this.clockMs();
     const prompt =
-      typeof request.body?.prompt === "string" ? request.body.prompt : "simulated";
+      typeof request.body?.prompt === "string"
+        ? request.body.prompt
+        : typeof request.form?.fields?.prompt === "string"
+          ? request.form.fields.prompt
+          : "simulated";
 
     if (this.vendor === "blackforestlabs" && request.method === "POST") {
       return success({

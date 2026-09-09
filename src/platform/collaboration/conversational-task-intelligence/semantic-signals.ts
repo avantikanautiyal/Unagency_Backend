@@ -1,5 +1,8 @@
 /**
- * Priority 4.5 — Semantic signal extraction (contextual, not phrase-command mapping).
+ * Priority 4.5 — Semantic signal types + English heuristic fallback.
+ *
+ * Production authority is `classifySemanticSignals` (LLM, multilingual).
+ * `extractSemanticSignals` remains for offline/tests and LLM failure only.
  */
 
 export type SemanticSignals = {
@@ -23,6 +26,8 @@ export type SemanticSignals = {
   readonly isSelection: boolean;
   readonly isCreation: boolean;
   readonly isExport: boolean;
+  /** Explicit regenerate / retry of an existing deliverable. */
+  readonly isRegeneration?: boolean;
   readonly exportFormat?: "pdf" | "pptx" | "docx" | "html" | "zip";
   readonly hasDeicticReference: boolean;
   readonly referencesExistingResult: boolean;
@@ -198,6 +203,7 @@ export function extractSemanticSignals(text: string): SemanticSignals {
     isReset: RESET_MARKERS.test(trimmed),
     isSelection: SELECTION_MARKERS.test(trimmed),
     isCreation,
+    isRegeneration: /\b(regenerate|redo|retry|try again|generate again)\b/i.test(trimmed),
     isExport: EXPORT_MARKERS.test(trimmed) || (isDeliveryRequest && /\b(svg|png|pdf|zip)\b/i.test(trimmed)),
     exportFormat: parseExportFormat(trimmed),
     hasDeicticReference,
@@ -212,4 +218,37 @@ export function extractSemanticSignals(text: string): SemanticSignals {
     mentionsArtifactType: detectArtifactType(trimmed),
     quantityHint: detectQuantityHint(trimmed),
   });
+}
+
+/** P4.9.7.1 — Descriptive new briefs must not trigger deictic ambiguous-reference ASKs. */
+export function isSubstantiveNewGenerationBrief(message: string): boolean {
+  const trimmed = message.trim();
+  if (trimmed.length < 48) return false;
+  if (
+    /\bBrand:\s*\S+/i.test(trimmed) &&
+    /\b(Deliverable:|Platform:|Size:|Create)\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (CREATION_MARKERS.test(trimmed) && trimmed.length >= 96) {
+    return true;
+  }
+  if (
+    CREATION_MARKERS.test(trimmed) &&
+    /\b(Deliverable:|Platform:|px|story|landing|mockup|packaging|ad)\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+  // UI-selected product paths often omit "create/make"; a long brief that already
+  // names the deliverable type is still a new generation, not a vague edit.
+  if (
+    trimmed.length >= 96 &&
+    Boolean(detectArtifactType(trimmed)) &&
+    !EXPORT_MARKERS.test(trimmed) &&
+    !EXPLANATION_MARKERS.test(trimmed) &&
+    !SUMMARY_MARKERS.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
 }

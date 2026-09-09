@@ -56,10 +56,19 @@ export type ReferenceImagePayload = {
 export function extractReferenceImage(
   payload: Readonly<Record<string, unknown>>
 ): ReferenceImagePayload | undefined {
+  return extractReferenceImages(payload)[0];
+}
+
+/** All image assets / image fields on a payload (multi-reference future). */
+export function extractReferenceImages(
+  payload: Readonly<Record<string, unknown>>
+): readonly ReferenceImagePayload[] {
   const candidates: unknown[] = [];
   if (payload.image) candidates.push(payload.image);
   if (Array.isArray(payload.assets)) candidates.push(...payload.assets);
 
+  const out: ReferenceImagePayload[] = [];
+  const seen = new Set<string>();
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const rec = candidate as Record<string, unknown>;
@@ -70,24 +79,46 @@ export function extractReferenceImage(
           ? rec.mime_type
           : undefined;
     const url = typeof rec.url === "string" ? rec.url.trim() : "";
+    let resolved: ReferenceImagePayload | undefined;
     if (url.startsWith("data:")) {
       const match = url.match(/^data:([^;]+);base64,(.+)$/i);
       if (match?.[1] && match[2]) {
-        return { mimeType: mimeType ?? match[1], base64: match[2], url };
+        resolved = { mimeType: mimeType ?? match[1], base64: match[2], url };
+      }
+    } else {
+      const b64 =
+        typeof rec.base64 === "string"
+          ? rec.base64
+          : typeof rec.data === "string" && !String(rec.data).startsWith("http")
+            ? rec.data
+            : undefined;
+      if (b64 && (mimeType || url.startsWith("http"))) {
+        resolved = {
+          mimeType: mimeType ?? "image/png",
+          base64: b64,
+          url: url || undefined,
+        };
+      } else if (url.startsWith("http") && (mimeType || !rec.mimeType)) {
+        resolved = { mimeType: mimeType ?? "image/png", url };
       }
     }
-    const b64 =
-      typeof rec.base64 === "string"
-        ? rec.base64
-        : typeof rec.data === "string" && !String(rec.data).startsWith("http")
-          ? rec.data
-          : undefined;
-    if (b64 && (mimeType || url.startsWith("http"))) {
-      return { mimeType: mimeType ?? "image/png", base64: b64, url: url || undefined };
-    }
-    if (url.startsWith("http") && (mimeType || !rec.mimeType)) {
-      return { mimeType: mimeType ?? "image/png", url };
-    }
+    if (!resolved) continue;
+    const key = resolved.base64?.slice(0, 64) || resolved.url || "";
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(resolved);
+  }
+  return Object.freeze(out);
+}
+
+/** Data URL suitable for vendor JSON bodies (OpenAI edits, Recraft style refs). */
+export function referenceImageToDataUrl(
+  image: ReferenceImagePayload
+): string | undefined {
+  if (image.url?.startsWith("data:")) return image.url;
+  if (image.url?.startsWith("http")) return image.url;
+  if (image.base64?.trim()) {
+    return `data:${image.mimeType || "image/png"};base64,${image.base64.trim()}`;
   }
   return undefined;
 }

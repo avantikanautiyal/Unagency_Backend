@@ -50,10 +50,50 @@ const INK_SOFT = "F7F4F0";
 const MUTED = "6B7280";
 const WHITE = "FFFFFF";
 
+export type PresentationSlideImage = {
+  /** Base64 image bytes (no data: prefix). */
+  readonly data: string;
+  readonly ext?: string;
+};
+
 export type PresentationExportOptions = {
   readonly brandName?: string;
   readonly brandColors?: readonly string[];
+  /**
+   * Best-effort per-slide image from visualCue. Must never throw —
+   * return undefined on failure so export still ships.
+   */
+  readonly resolveSlideImage?: (
+    cue: string,
+    slide: PresentationSlide
+  ) => Promise<PresentationSlideImage | undefined>;
 };
+
+async function resolveSlideImagesSafe(
+  slides: readonly PresentationSlide[],
+  resolve?: PresentationExportOptions["resolveSlideImage"]
+): Promise<(PresentationSlideImage | undefined)[]> {
+  if (!resolve) return slides.map(() => undefined);
+  const out: (PresentationSlideImage | undefined)[] = [];
+  for (const slide of slides) {
+    const cue = slide.visualCue?.trim();
+    if (!cue) {
+      out.push(undefined);
+      continue;
+    }
+    try {
+      out.push(await resolve(cue, slide));
+    } catch (err) {
+      console.warn(
+        `[presentation-export] slide image failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+      out.push(undefined);
+    }
+  }
+  return out;
+}
 
 function pptxColor(raw: string | undefined, fallback: string): string {
   if (!raw?.trim()) return fallback;
@@ -89,6 +129,32 @@ function resolvePresentationExportTheme(options?: PresentationExportOptions) {
     pdfInk: pdfHex(colors[1], `#${INK}`),
     pdfInkSoft: pdfHex(colors[2], `#${INK_SOFT}`),
   };
+}
+
+function addPptxSlideImage(
+  slide: { addImage: (opts: Record<string, unknown>) => void },
+  image: PresentationSlideImage | undefined,
+  box: { x: number; y: number; w: number; h: number }
+): boolean {
+  if (!image?.data?.trim()) return false;
+  try {
+    slide.addImage({
+      data: image.data,
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+      ...(image.ext ? { extn: image.ext } : {}),
+    });
+    return true;
+  } catch (err) {
+    console.warn(
+      `[presentation-export] pptx addImage failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    return false;
+  }
 }
 
 const LAYOUTS = new Set<string>([
@@ -399,6 +465,10 @@ export async function buildPresentationPptx(
   const MUTED = theme.muted;
   const WHITE = theme.white;
   const brandFooter = options?.brandName?.trim() || "UNAGENCY";
+  const slideImages = await resolveSlideImagesSafe(
+    plan.slides,
+    options?.resolveSlideImage
+  );
   const pptx = new PptxGenJS();
   pptx.author = "Unagency";
   pptx.title = plan.title;
@@ -467,15 +537,25 @@ export async function buildPresentationPptx(
     });
   }
 
-  for (const slide of plan.slides) {
+  for (let slideIndex = 0; slideIndex < plan.slides.length; slideIndex += 1) {
+    const slide = plan.slides[slideIndex]!;
     const layout = slide.layout ?? "content_bullets";
     const s = pptx.addSlide();
+    const image = slideImages[slideIndex];
+    const hasImage =
+      layout === "content_bullets"
+        ? addPptxSlideImage(s, image, { x: 5.4, y: 0.4, w: 4.3, h: 4.8 })
+        : layout === "key_message"
+          ? addPptxSlideImage(s, image, { x: 5.5, y: 0.5, w: 4.2, h: 4.6 })
+          : layout === "section_divider"
+            ? addPptxSlideImage(s, image, { x: 0, y: 0, w: 10, h: 5.625 })
+            : addPptxSlideImage(s, image, { x: 5.2, y: 0, w: 4.8, h: 5.625 });
 
     if (layout === "title_hero" || layout === "closing") {
       s.addShape("rect", {
         x: 0,
         y: 0,
-        w: 10,
+        w: hasImage ? 5.2 : 10,
         h: 5.625,
         fill: { color: INK },
         line: { color: INK },
@@ -484,9 +564,9 @@ export async function buildPresentationPptx(
       s.addText(slide.title, {
         x: 0.7,
         y: layout === "closing" ? 1.8 : 1.5,
-        w: 8.5,
+        w: hasImage ? 4.2 : 8.5,
         h: 1.2,
-        fontSize: 32,
+        fontSize: hasImage ? 26 : 32,
         bold: true,
         color: WHITE,
         fontFace: "Arial",
@@ -495,7 +575,7 @@ export async function buildPresentationPptx(
         s.addText(slide.bullets.join("\n"), {
           x: 0.7,
           y: 3.0,
-          w: 8.2,
+          w: hasImage ? 4.0 : 8.2,
           h: 1.6,
           fontSize: 16,
           color: "C4C4CC",
@@ -504,14 +584,25 @@ export async function buildPresentationPptx(
         });
       }
     } else if (layout === "section_divider") {
-      s.addShape("rect", {
-        x: 0,
-        y: 0,
-        w: 10,
-        h: 5.625,
-        fill: { color: "14141A" },
-        line: { color: "14141A" },
-      });
+      if (!hasImage) {
+        s.addShape("rect", {
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 5.625,
+          fill: { color: "14141A" },
+          line: { color: "14141A" },
+        });
+      } else {
+        s.addShape("rect", {
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 5.625,
+          fill: { color: "000000", transparency: 45 },
+          line: { color: "000000", transparency: 45 },
+        } as never);
+      }
       s.addShape("rect", {
         x: 0.6,
         y: 2.4,
@@ -545,7 +636,7 @@ export async function buildPresentationPptx(
       s.addShape("rect", {
         x: 0,
         y: 0,
-        w: 10,
+        w: hasImage ? 5.5 : 10,
         h: 5.625,
         fill: { color: INK_SOFT },
         line: { color: INK_SOFT },
@@ -554,7 +645,7 @@ export async function buildPresentationPptx(
       s.addText(slide.title, {
         x: 0.7,
         y: 1.4,
-        w: 8.5,
+        w: hasImage ? 4.5 : 8.5,
         h: 0.6,
         fontSize: 14,
         bold: true,
@@ -565,9 +656,9 @@ export async function buildPresentationPptx(
       s.addText(slide.bullets[0] ?? "", {
         x: 0.7,
         y: 2.1,
-        w: 8.5,
+        w: hasImage ? 4.5 : 8.5,
         h: 2.2,
-        fontSize: 28,
+        fontSize: hasImage ? 22 : 28,
         bold: true,
         color: INK,
         fontFace: "Arial",
@@ -577,7 +668,7 @@ export async function buildPresentationPptx(
         s.addText(slide.bullets.slice(1).join(" · "), {
           x: 0.7,
           y: 4.5,
-          w: 8.5,
+          w: hasImage ? 4.5 : 8.5,
           h: 0.5,
           fontSize: 13,
           color: MUTED,
@@ -589,7 +680,7 @@ export async function buildPresentationPptx(
       s.addShape("rect", {
         x: 0,
         y: 0,
-        w: 10,
+        w: hasImage ? 5.4 : 10,
         h: 5.625,
         fill: { color: WHITE },
         line: { color: WHITE },
@@ -606,9 +697,9 @@ export async function buildPresentationPptx(
       s.addText(slide.title, {
         x: 0.7,
         y: 0.7,
-        w: 8.6,
+        w: hasImage ? 4.4 : 8.6,
         h: 0.7,
-        fontSize: 26,
+        fontSize: hasImage ? 22 : 26,
         bold: true,
         color: INK,
         fontFace: "Arial",
@@ -618,7 +709,7 @@ export async function buildPresentationPptx(
         {
           x: 0.85,
           y: 1.6,
-          w: 8.3,
+          w: hasImage ? 4.2 : 8.3,
           h: 3.4,
           fontSize: 16,
           color: "1F2937",
@@ -627,7 +718,7 @@ export async function buildPresentationPptx(
           paraSpaceAfter: 10,
         }
       );
-      if (slide.visualCue) {
+      if (slide.visualCue && !hasImage) {
         s.addText(slide.visualCue, {
           x: 0.7,
           y: 5.15,
@@ -657,6 +748,11 @@ export async function buildPresentationPdf(
   const ACCENT = theme.accent;
   const INK_SOFT = theme.inkSoft;
   const brandFooter = options?.brandName?.trim() || "UNAGENCY";
+  const slideImages = await resolveSlideImagesSafe(
+    plan.slides,
+    options?.resolveSlideImage
+  );
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       margin: 0,
@@ -669,6 +765,28 @@ export async function buildPresentationPdf(
 
     const pageW = 842;
     const pageH = 595;
+
+    const tryDrawImage = (
+      image: PresentationSlideImage | undefined,
+      x: number,
+      y: number,
+      w: number,
+      h: number
+    ): boolean => {
+      if (!image?.data?.trim()) return false;
+      try {
+        const buf = Buffer.from(image.data, "base64");
+        doc.image(buf, x, y, { width: w, height: h, cover: [w, h] } as never);
+        return true;
+      } catch (err) {
+        console.warn(
+          `[presentation-export] pdf image failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+        return false;
+      }
+    };
 
     const drawCover = () => {
       doc.rect(0, 0, pageW, pageH).fill(`#${INK}`);
@@ -694,51 +812,88 @@ export async function buildPresentationPdf(
 
     drawCover();
 
-    for (const slide of plan.slides) {
+    for (let slideIndex = 0; slideIndex < plan.slides.length; slideIndex += 1) {
+      const slide = plan.slides[slideIndex]!;
       doc.addPage({ size: [pageW, pageH], margin: 0 });
       const layout = slide.layout ?? "content_bullets";
+      const image = slideImages[slideIndex];
+
       if (
         layout === "title_hero" ||
         layout === "closing" ||
         layout === "section_divider"
       ) {
-        doc.rect(0, 0, pageW, pageH).fill(`#${INK}`);
+        const hasImage =
+          layout === "section_divider"
+            ? tryDrawImage(image, 0, 0, pageW, pageH)
+            : tryDrawImage(image, pageW * 0.52, 0, pageW * 0.48, pageH);
+        if (layout === "section_divider" && hasImage) {
+          doc.save();
+          doc.rect(0, 0, pageW, pageH).fillOpacity(0.45).fill("#000000");
+          doc.restore();
+        }
+        if (!hasImage || layout !== "section_divider") {
+          doc
+            .rect(0, 0, hasImage ? pageW * 0.52 : pageW, pageH)
+            .fill(`#${INK}`);
+        }
         doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
+        const textW = hasImage && layout !== "section_divider" ? 380 : 720;
         doc
           .fillColor("#FFFFFF")
           .fontSize(26)
           .font("Helvetica-Bold")
-          .text(slide.title, 48, 200, { width: 720 });
+          .text(slide.title, 48, 200, { width: textW });
         doc
           .fillColor("#C4C4CC")
           .fontSize(13)
           .font("Helvetica")
-          .text(slide.bullets.join("\n\n"), 48, 280, { width: 700 });
+          .text(slide.bullets.join("\n\n"), 48, 280, { width: textW - 20 });
       } else if (layout === "key_message") {
-        doc.rect(0, 0, pageW, pageH).fill(`#${INK_SOFT}`);
+        const hasImage = tryDrawImage(
+          image,
+          pageW * 0.55,
+          24,
+          pageW * 0.42,
+          pageH - 48
+        );
+        doc
+          .rect(0, 0, hasImage ? pageW * 0.55 : pageW, pageH)
+          .fill(`#${INK_SOFT}`);
         doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
+        const textW = hasImage ? 400 : 720;
         doc
           .fillColor(`#${ACCENT}`)
           .fontSize(12)
           .font("Helvetica-Bold")
-          .text(slide.title.toUpperCase(), 48, 160, { width: 720 });
+          .text(slide.title.toUpperCase(), 48, 160, { width: textW });
         doc
           .fillColor(`#${INK}`)
-          .fontSize(24)
+          .fontSize(hasImage ? 20 : 24)
           .font("Helvetica-Bold")
-          .text(slide.bullets[0] ?? "", 48, 220, { width: 720 });
+          .text(slide.bullets[0] ?? "", 48, 220, { width: textW });
       } else {
-        doc.rect(0, 0, pageW, pageH).fill("#FFFFFF");
+        const hasImage = tryDrawImage(
+          image,
+          pageW * 0.54,
+          24,
+          pageW * 0.43,
+          pageH - 48
+        );
+        doc
+          .rect(0, 0, hasImage ? pageW * 0.54 : pageW, pageH)
+          .fill("#FFFFFF");
         doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
+        const textW = hasImage ? 400 : 720;
         doc
           .fillColor(`#${INK}`)
           .fontSize(22)
           .font("Helvetica-Bold")
-          .text(slide.title, 48, 48, { width: 720 });
+          .text(slide.title, 48, 48, { width: textW });
         doc.fillColor("#1F2937").fontSize(13).font("Helvetica");
         let y = 110;
         for (const bullet of slide.bullets) {
-          doc.text(`•  ${bullet}`, 56, y, { width: 700 });
+          doc.text(`•  ${bullet}`, 56, y, { width: textW - 20 });
           y += 28;
         }
       }

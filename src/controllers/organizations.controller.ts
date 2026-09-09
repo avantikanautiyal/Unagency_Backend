@@ -157,6 +157,72 @@ const OrganizationByUserId = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, null, "");
 });
 
+/**
+ * Batch org lookup by owner user ids — one query for CS/admin dashboards.
+ * Body: { userIds: string[] }
+ */
+const OrganizationsByOwners = asyncHandler(async (req: RequestUser) => {
+  const raw = (req.body as { userIds?: unknown })?.userIds;
+  const userIds = Array.isArray(raw)
+    ? [...new Set(raw.map((id) => String(id ?? "").trim()).filter(Boolean))]
+    : [];
+
+  if (!userIds.length) {
+    return new ApiResponse(200, {}, "Organizations fetched");
+  }
+
+  const objectIds = userIds
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  const ownerOrgs = objectIds.length
+    ? await Organizations.find({ owner: { $in: objectIds } })
+        .select("_id owner companyName industry contactPerson contactEmail")
+        .lean()
+    : [];
+
+  const byOwner = new Map(
+    ownerOrgs.map((org) => [String(org.owner), org])
+  );
+
+  const missing = userIds.filter((id) => !byOwner.has(id));
+  if (missing.length) {
+    const memberObjectIds = missing
+      .filter((id) => mongoose.Types.ObjectId.isValid(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+    if (memberObjectIds.length) {
+      const memberships = await Teams.find({
+        userId: { $in: memberObjectIds },
+        invitationStatus: "accepted",
+      })
+        .select("userId Organization")
+        .lean();
+      const orgIds = memberships
+        .map((m) => m.Organization)
+        .filter(Boolean);
+      const memberOrgs = orgIds.length
+        ? await Organizations.find({ _id: { $in: orgIds } })
+            .select("_id owner companyName industry contactPerson contactEmail")
+            .lean()
+        : [];
+      const orgById = new Map(memberOrgs.map((org) => [String(org._id), org]));
+      for (const membership of memberships) {
+        const userId = String(membership.userId);
+        if (byOwner.has(userId)) continue;
+        const org = orgById.get(String(membership.Organization));
+        if (org) byOwner.set(userId, org);
+      }
+    }
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const userId of userIds) {
+    result[userId] = byOwner.get(userId) ?? null;
+  }
+
+  return new ApiResponse(200, result, "Organizations fetched");
+});
+
 //TESTED OK = TODO - Remove params
 const UpdateUserOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
@@ -211,4 +277,5 @@ export {
   UserOrganization,
   UpdateUserOrganization,
   OrganizationByUserId,
+  OrganizationsByOwners,
 };

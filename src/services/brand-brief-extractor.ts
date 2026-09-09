@@ -1,11 +1,12 @@
 /**
- * Extract durable brand facts from free-text prompts — server mirror of FE extractor.
+ * Extract durable brand facts from free-text prompts — English heuristic fallback.
+ * Production path uses LLM-primary `enrichBrandPreferencesFromBrief`.
  */
 
 import type { ProductBrandPreferences } from "./brand-preference-writer";
 import { extractBriefColors } from "./brand-color-extraction";
 
-export { extractBriefColors, briefSpecifiesColorPalette } from "./brand-color-extraction";
+export { extractBriefColors, extractHexColors, briefSpecifiesColorPalette } from "./brand-color-extraction";
 
 const TONE_WORDS = [
   "professional", "playful", "bold", "minimal", "minimalist", "luxury",

@@ -13,7 +13,7 @@ export type EphemeralMediaTokenRecord = {
   readonly contentType: string;
   readonly expiresAtMs: number;
   /** When set, content endpoint converts raster bytes to this format. */
-  readonly requestedFormat?: RasterDownloadFormat;
+  readonly requestedFormat?: RasterDownloadFormat | "pdf";
 };
 
 export class EphemeralMediaTokenStore {
@@ -25,7 +25,7 @@ export class EphemeralMediaTokenStore {
     storageRef: string;
     contentType: string;
     ttlSeconds: number;
-    requestedFormat?: RasterDownloadFormat;
+    requestedFormat?: RasterDownloadFormat | "pdf";
   }): EphemeralMediaTokenRecord {
     this.prune();
     const token = randomBytes(24).toString("base64url");

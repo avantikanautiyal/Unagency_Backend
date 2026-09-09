@@ -156,6 +156,13 @@ export class BrandService {
       await this.assertAssetInOrg(input.logoAssetId, organizationId);
     }
 
+    const activeCount = await Brands.countDocuments({
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      status: "active",
+    });
+    const { assertBrandLimit } = await import("../billing/entitlement-service");
+    await assertBrandLimit(input.userId, organizationId, activeCount);
+
     const doc = await Brands.create({
       organizationId: new mongoose.Types.ObjectId(organizationId),
       ownerUserId: new mongoose.Types.ObjectId(input.userId),

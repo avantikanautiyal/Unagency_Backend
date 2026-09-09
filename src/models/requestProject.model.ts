@@ -13,6 +13,8 @@ export interface IRequirement {
   creationMode?: string;
   brandId?: mongoose.Types.ObjectId;
   productPath?: string;
+  /** CS staff assigned to this Human/Hybrid request (per-request routing). */
+  assignedCs?: mongoose.Types.ObjectId;
 }
 
 const RequirementSchema = new Schema<IRequirement>(
@@ -32,11 +34,13 @@ const RequirementSchema = new Schema<IRequirement>(
     creationMode: { type: String },
     brandId: { type: Schema.Types.ObjectId, ref: "Brands" },
     productPath: { type: String },
+    assignedCs: { type: Schema.Types.ObjectId, ref: "Staff" },
   },
   { collection: "requirements", timestamps: true }
 );
 
 RequirementSchema.index({ userId: 1, brandId: 1, productPath: 1, creationMode: 1 });
+RequirementSchema.index({ assignedCs: 1, creationMode: 1, status: 1 });
 
 const Requirement = mongoose.model<IRequirement>("requirements", RequirementSchema);
 export default Requirement;

@@ -97,12 +97,12 @@ describe("backend rejects unsupported format requests", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects PDF for raster PNG artifacts", () => {
+  it("allows PDF export for raster PNG artifacts (print-ready packaging)", () => {
     const result = validateRequestedDownloadFormat({
       sourceMime: "image/png",
       requested: "pdf",
     });
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
   });
 
   it("rejects JPG for PDF artifacts (no silent substitute)", () => {

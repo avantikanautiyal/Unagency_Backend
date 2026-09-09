@@ -12,6 +12,7 @@ import {
   type IntegrationLayerJobExecutorOptions,
   type SyncImageMaterializer,
   type DocumentExportMaterializer,
+  type WebsiteExportMaterializer,
 } from "../../infrastructure/execution/workers/job-executors";
 import type { IJobExecutor } from "../../infrastructure/execution/interfaces/execution";
 import type { EnterpriseApiExecutionMode } from "./execution-mode";
@@ -22,6 +23,10 @@ import {
   resolveDocumentExportKind,
   isRequiredDocumentOrPresentationExport,
 } from "../services/document-export-materializer";
+import {
+  materializeWebsiteExport,
+  resolveWebsiteExport,
+} from "../services/website-export-materializer";
 import { recoverPresentationRoutesPayload } from "../../os/delivery/document-export-service";
 import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
 import { assertProductionComposition } from "../../os";
@@ -156,11 +161,69 @@ export function composeEnterpriseExecution(
         }
       : undefined;
 
+  const materializeWebsiteExportWorker: WebsiteExportMaterializer | undefined =
+    input.asyncMedia
+      ? async (args) => {
+          const structuredName =
+            args.metadata?.structuredOutput &&
+            typeof args.metadata.structuredOutput === "object"
+              ? String(
+                  (args.metadata.structuredOutput as { name?: unknown }).name ??
+                    ""
+                )
+              : "";
+          const structuredCandidate =
+            args.jobSummary.structuredData ??
+            args.runtimeOutput?.structured ??
+            args.runtimeOutput?.structuredOutput ??
+            args.runtimeOutput?.data;
+          const shouldExport = resolveWebsiteExport({
+            outputKind:
+              typeof args.metadata?.outputKind === "string"
+                ? args.metadata.outputKind
+                : undefined,
+            service:
+              typeof args.metadata?.service === "string"
+                ? args.metadata.service
+                : undefined,
+            structuredName,
+            data: structuredCandidate,
+          });
+          if (!shouldExport) {
+            return failure(
+              new ValidationError("No website export requested")
+            );
+          }
+          const exported = await materializeWebsiteExport({
+            asyncMedia: input.asyncMedia!,
+            executionId: args.executionId,
+            organizationId: args.organizationId,
+            runtimeOutput: args.runtimeOutput,
+            jobSummary: {
+              ...args.jobSummary,
+              ...(structuredCandidate != null
+                ? { structuredData: structuredCandidate }
+                : {}),
+            },
+            metadata: args.metadata,
+            createId: clocks.createId,
+            providerId: args.providerId,
+            modelId: args.modelId,
+          });
+          if (!exported.ok) return exported;
+          return success({
+            artifactIds: exported.value.artifactIds,
+            structuredData: exported.value.plan,
+          });
+        }
+      : undefined;
+
   const integrationJobOptions: IntegrationLayerJobExecutorOptions = {
     integrationMode: integrationPipelineModeFor(input.executionMode),
     executionMode: input.executionMode === "live" ? "live" : "simulated",
     materializeSyncImage,
     materializeDocumentExport,
+    materializeWebsiteExport: materializeWebsiteExportWorker,
   };
 
   if (input.executionMode === "stub") {

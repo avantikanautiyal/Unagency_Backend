@@ -19,6 +19,9 @@ import {
   isRequiredDocumentOrPresentationExport,
   isSoftDocumentExportMiss,
 } from "../../../api/services/document-export-materializer";
+import {
+  resolveWebsiteExport,
+} from "../../../api/services/website-export-materializer";
 
 export type SyncImageMaterializer = (input: {
   readonly executionId: string;
@@ -45,11 +48,27 @@ export type DocumentExportMaterializer = (input: {
   }>
 >;
 
+export type WebsiteExportMaterializer = (input: {
+  readonly executionId: string;
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly jobSummary: Readonly<Record<string, unknown>>;
+  readonly runtimeOutput: Readonly<Record<string, unknown>> | undefined;
+  readonly metadata: Readonly<Record<string, unknown>> | undefined;
+}) => Promise<
+  Result<{
+    readonly artifactIds: readonly string[];
+    readonly structuredData?: unknown;
+  }>
+>;
+
 export interface IntegrationLayerJobExecutorOptions {
   readonly integrationMode?: "full" | "planning_through_routing";
   readonly executionMode?: "simulated" | "live";
   readonly materializeSyncImage?: SyncImageMaterializer;
   readonly materializeDocumentExport?: DocumentExportMaterializer;
+  readonly materializeWebsiteExport?: WebsiteExportMaterializer;
 }
 
 /**
@@ -320,6 +339,116 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
         } else if (softMiss) {
           console.warn(
             `📄 [Direct] document export skipped | executionId=${executionId} | ${exported.error.message}`
+          );
+        }
+      }
+    }
+
+    const meta = job.payload.metadata as
+      | Readonly<Record<string, unknown>>
+      | undefined;
+    const likelyWebsiteExport = resolveWebsiteExport({
+      outputKind:
+        typeof meta?.outputKind === "string" ? meta.outputKind : undefined,
+      service: typeof meta?.service === "string" ? meta.service : undefined,
+      structuredName: structuredNameHint,
+      data:
+        summary.structuredData ??
+        report.artifacts.runtime?.response?.output?.structured ??
+        report.artifacts.runtime?.response?.output?.structuredOutput,
+    });
+    if (
+      report.success &&
+      likelyWebsiteExport &&
+      this.options.materializeWebsiteExport
+    ) {
+      const executionId = String(
+        job.payload.metadata?.apiExecutionId ??
+          job.payload.metadata?.executionId ??
+          job.jobId
+      );
+      const organizationId = String(job.payload.organizationId ?? "org_unknown");
+      const runtimeOutput = report.artifacts.runtime?.response?.output as
+        | Readonly<Record<string, unknown>>
+        | undefined;
+      const providerId = String(
+        report.artifacts.runtime?.finalProviderId ??
+          report.artifacts.runtime?.response?.providerId ??
+          summary.routedProviderId ??
+          summary.provider ??
+          "provider.unknown"
+      );
+      const modelId = String(
+        report.artifacts.runtime?.finalModelId ??
+          summary.routedModelId ??
+          summary.model ??
+          "unknown"
+      );
+      const exported = await this.options.materializeWebsiteExport({
+        executionId,
+        organizationId,
+        providerId,
+        modelId,
+        jobSummary: summary,
+        runtimeOutput,
+        metadata: meta,
+      });
+      if (exported.ok && exported.value.artifactIds.length > 0) {
+        summary = {
+          ...summary,
+          mediaArtifactIds: [...exported.value.artifactIds],
+          ...(exported.value.structuredData != null
+            ? { structuredData: exported.value.structuredData }
+            : {}),
+          providerId,
+          modelId,
+        };
+        console.log(
+          `🌐 [Direct] website export materialized | executionId=${executionId} | artifacts=${exported.value.artifactIds.join(", ")}`
+        );
+      } else {
+        const websiteRequired =
+          (typeof meta?.service === "string" &&
+            meta.service.toLowerCase() === "website") ||
+          (typeof meta?.outputKind === "string" &&
+            /^(deferred_)?website$/i.test(meta.outputKind)) ||
+          structuredNameHint === "websitepage" ||
+          structuredNameHint === "webproject" ||
+          structuredNameHint === "websiteroutes";
+        const reason = !exported.ok
+          ? exported.error.message
+          : "no website artifact ids";
+        const materializationErrorCode =
+          !exported.ok && exported.error instanceof ValidationError
+            ? (() => {
+                const details = exported.error.details as {
+                  errorCode?: string;
+                  websiteRelevance?: unknown;
+                };
+                if (details?.websiteRelevance) return "WEBSITE_BRIEF_RELEVANCE";
+                if (details?.errorCode) return details.errorCode;
+                const msg = exported.error.message.toLowerCase();
+                if (msg.includes("not grounded") || msg.includes("relevance")) {
+                  return "WEBSITE_BRIEF_RELEVANCE";
+                }
+                return "WEBSITE_MATERIALIZATION_FAILURE";
+              })()
+            : "WEBSITE_MATERIALIZATION_FAILURE";
+        if (websiteRequired) {
+          summary = {
+            ...summary,
+            success: false,
+            errorMessage: reason,
+            websiteMaterializationError: reason,
+            websiteMaterializationErrorCode: materializationErrorCode,
+            websiteMaterializationSettled: true,
+          };
+          console.warn(
+            `🌐 [Direct] website export failed | executionId=${executionId} | ${reason}`
+          );
+        } else {
+          console.warn(
+            `🌐 [Direct] website export skipped | executionId=${executionId} | ${reason}`
           );
         }
       }

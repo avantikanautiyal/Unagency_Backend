@@ -186,14 +186,14 @@ export class ProviderOperationReconciler {
         const request = buildRequest(record);
         const accounting = getUsageAccountingService();
         void accounting
-          .recordProviderInvocation({
+          .reconcileLateCompletion({
             request,
             response: {
               requestId: request.requestId,
               providerId: request.providerId as ProviderId,
               output: {},
               usage: record.usage as Readonly<Record<string, unknown>>,
-              providerRequestId: record.providerJobId,
+              providerRequestId: record.providerJobId ?? undefined,
               streamed: false,
               finishedAt: this.nowIso(),
             },
@@ -201,6 +201,7 @@ export class ProviderOperationReconciler {
             completedAt: this.nowIso(),
             operationId: record.operationId,
             attemptId: record.attemptId,
+            providerJobId: record.providerJobId ?? null,
             retryCount: record.pollCount,
           })
           .catch(() => {

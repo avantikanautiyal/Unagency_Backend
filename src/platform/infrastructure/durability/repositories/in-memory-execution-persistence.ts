@@ -96,9 +96,7 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       cost: ExecutionCostSummary;
       evaluation: ExecutionEvaluationSummary;
       experience: ExecutionExperienceSummary;
-      osLifecycle?: string;
-      governance?: unknown;
-      asyncLane?: unknown;
+      [key: string]: unknown;
     }
   >();
 
@@ -111,9 +109,7 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
       cost: ExecutionCostSummary;
       evaluation: ExecutionEvaluationSummary;
       experience: ExecutionExperienceSummary;
-      osLifecycle?: string;
-      governance?: unknown;
-      asyncLane?: unknown;
+      [key: string]: unknown;
     }
   ): Promise<void> {
     this.store.set(executionId, { organizationId, ...extras });
@@ -122,18 +118,8 @@ export class InMemoryExecutionExtrasRepository implements IExecutionExtrasReposi
   async get(executionId: string) {
     const row = this.store.get(executionId);
     if (!row) return undefined;
-    const { diagnostics, trace, cost, evaluation, experience, osLifecycle, governance, asyncLane } =
-      row;
-    return {
-      diagnostics,
-      trace,
-      cost,
-      evaluation,
-      experience,
-      ...(osLifecycle != null ? { osLifecycle } : {}),
-      ...(governance != null ? { governance } : {}),
-      ...(asyncLane != null ? { asyncLane } : {}),
-    };
+    const { organizationId: _organizationId, ...extras } = row;
+    return extras;
   }
 
   /** Test helper — organizationId that owns extras (tenant isolation). */

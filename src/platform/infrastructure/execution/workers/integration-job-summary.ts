@@ -3,8 +3,9 @@
  */
 
 import {
+  explicitPreferredStackFromMetadata,
   recoverWebProjectPlan,
-  websiteContextFromMetadata,
+  recoverWebsiteRoutesPlan,
   websiteIncompleteErrorMessage,
 } from "../../../os/delivery/website-generation";
 import { synthesizeDocumentPlanFromText } from "../../../os/delivery/document-generation";
@@ -47,10 +48,11 @@ export function buildIntegrationJobSummary(input: {
   const metaEarly = report.request?.metadata as
     | Readonly<Record<string, unknown>>
     | undefined;
-  const preferredStack = websiteContextFromMetadata(metaEarly, "").stack;
-  const recoverOpts = { preferredStack };
+  const preferredStack = explicitPreferredStackFromMetadata(metaEarly);
+  const recoverOpts = preferredStack ? { preferredStack } : {};
   if (!parseWebsiteLike(structuredData, recoverOpts)) {
     const recovered =
+      recoverWebsiteRoutesPlan(structuredData, recoverOpts)?.[0] ??
       recoverWebProjectPlan(structuredData, recoverOpts) ??
       recoverWebProjectPlan(extractFullResultText(response?.output), recoverOpts);
     if (recovered) structuredData = recovered;
@@ -74,7 +76,8 @@ export function buildIntegrationJobSummary(input: {
     (typeof meta?.outputKind === "string" &&
       /^(deferred_)?website$/i.test(meta.outputKind.trim())) ||
     structuredName === "websitepage" ||
-    structuredName === "webproject";
+    structuredName === "webproject" ||
+    structuredName === "websiteroutes";
   const isDocumentJob =
     structuredName === "documentplan" ||
     (typeof meta?.outputKind === "string" &&
@@ -255,7 +258,10 @@ function parseWebsiteLike(
   data: unknown,
   options?: { readonly preferredStack?: string }
 ): boolean {
-  return Boolean(recoverWebProjectPlan(data, options));
+  return Boolean(
+    recoverWebsiteRoutesPlan(data, options)?.length ||
+      recoverWebProjectPlan(data, options),
+  );
 }
 
 function looksLikeDocumentPlan(data: unknown): boolean {

@@ -81,20 +81,27 @@ export async function dispatchController(
     const { buildAdminBillingSummary, resolveAdminMetricsFilter } = await import(
       "../services/admin-billing-analytics-service"
     );
+    // Resolve org first (handles display suffixes), then bill only that org.
+    const resolved = await buildAdminOrganizationDetail({
+      lookupId: params.organizationId,
+      billingByOrganization: [],
+    });
+    if (!resolved) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Organization not found" } };
+    }
     const filter = resolveAdminMetricsFilter({
       roles,
       tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId: resolved.organizationId,
       period: "mtd",
     });
     const billing = await buildAdminBillingSummary(filter);
-    const detail = await buildAdminOrganizationDetail({
-      lookupId: params.organizationId,
-      billingByOrganization: billing.byOrganization ?? [],
+    return success({
+      ...resolved,
+      revenueMtd: billing.revenue,
+      aiCostMtd: billing.aiCost,
+      humanCostMtd: billing.humanCost,
     });
-    if (!detail) {
-      return { ok: false, error: { code: "NOT_FOUND", message: "Organization not found" } };
-    }
-    return success(detail);
   }
   if (params.organizationId && request.method === "GET" && routeId.includes("organizations")) {
     return deps.tenants.getOrganization(params.organizationId);
@@ -354,20 +361,11 @@ export async function dispatchController(
   }
   if (routeId.includes("_analytics")) {
     const roles = principal?.roles ?? [];
-    const crossTenant =
-      roles.includes("admin") ||
-      roles.includes("owner") ||
-      (roles.includes("owner") && !tenant?.organizationId);
-    const pending = await deps.executions.listOsReviews(
-      tenant,
-      { status: "PENDING", limit: 500 },
-      { crossTenant }
-    );
-    const pendingRows = pending.ok && Array.isArray(pending.value) ? pending.value : [];
-    const openEscalations = pendingRows.length;
-
     const { buildAdminAnalyticsSummary, resolveAdminMetricsFilter } = await import(
       "../services/admin-billing-analytics-service"
+    );
+    const { EnterpriseOsHumanReview } = await import(
+      "../../infrastructure/durability/repositories/mongo-os-ledgers"
     );
     const q = request.query ?? {};
     const filter = resolveAdminMetricsFilter({
@@ -377,27 +375,96 @@ export async function dispatchController(
         typeof q.organizationId === "string" ? q.organizationId : undefined,
       period: typeof q.period === "string" ? q.period : undefined,
     });
+    const pendingFilter: Record<string, unknown> = { status: "PENDING" };
+    if (!filter.crossTenant) {
+      if (!filter.organizationId) {
+        return success(await buildAdminAnalyticsSummary(filter, 0));
+      }
+      pendingFilter.organizationId = filter.organizationId;
+    }
+    const openEscalations = await EnterpriseOsHumanReview.countDocuments(pendingFilter).catch(
+      () => 0
+    );
     const summary = await buildAdminAnalyticsSummary(filter, openEscalations);
     return success(summary);
   }
+  if (routeId.includes("_admin_ai-costs_overview")) {
+    const roles = principal?.roles ?? [];
+    const q = request.query ?? {};
+    const { buildAdminAiCostsOverview } = await import("../services/admin-ai-costs-service");
+    const payload = await buildAdminAiCostsOverview({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId: typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: typeof q.period === "string" ? q.period : undefined,
+      start: typeof q.start === "string" ? q.start : undefined,
+      end: typeof q.end === "string" ? q.end : undefined,
+    });
+    return success(payload);
+  }
+  if (routeId.includes("_admin_ai-costs_providers")) {
+    const roles = principal?.roles ?? [];
+    const q = request.query ?? {};
+    const { buildAdminAiCostsByProvider } = await import("../services/admin-ai-costs-service");
+    const payload = await buildAdminAiCostsByProvider({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId: typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: typeof q.period === "string" ? q.period : undefined,
+      start: typeof q.start === "string" ? q.start : undefined,
+      end: typeof q.end === "string" ? q.end : undefined,
+    });
+    return success(payload);
+  }
+  if (routeId.includes("_admin_ai-costs_models")) {
+    const roles = principal?.roles ?? [];
+    const q = request.query ?? {};
+    const { buildAdminAiCostsByModel } = await import("../services/admin-ai-costs-service");
+    const payload = await buildAdminAiCostsByModel({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId: typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: typeof q.period === "string" ? q.period : undefined,
+      start: typeof q.start === "string" ? q.start : undefined,
+      end: typeof q.end === "string" ? q.end : undefined,
+    });
+    return success(payload);
+  }
+  if (routeId.includes("_admin_ai-costs_services")) {
+    const roles = principal?.roles ?? [];
+    const q = request.query ?? {};
+    const { buildAdminAiCostsByService } = await import("../services/admin-ai-costs-service");
+    const payload = await buildAdminAiCostsByService({
+      roles,
+      tenantOrganizationId: tenant?.organizationId,
+      queryOrganizationId: typeof q.organizationId === "string" ? q.organizationId : undefined,
+      period: typeof q.period === "string" ? q.period : undefined,
+      start: typeof q.start === "string" ? q.start : undefined,
+      end: typeof q.end === "string" ? q.end : undefined,
+    });
+    return success(payload);
+  }
+  if (routeId.includes("_admin_ai-costs_executions_") && params.executionId) {
+    const { buildAdminAiCostsForExecution } = await import("../services/admin-ai-costs-service");
+    const payload = await buildAdminAiCostsForExecution(params.executionId);
+    return success(payload);
+  }
+  if (routeId.includes("_admin_ai-costs_usage_") && params.usageRecordId) {
+    const { buildAdminAiCostsForUsageRecord } = await import("../services/admin-ai-costs-service");
+    const payload = await buildAdminAiCostsForUsageRecord(params.usageRecordId);
+    if (!payload) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Usage record not found" } };
+    }
+    return success(payload);
+  }
   if (routeId.includes("_admin_dashboard")) {
     const roles = principal?.roles ?? [];
-    const crossTenant =
-      roles.includes("admin") ||
-      roles.includes("owner") ||
-      (roles.includes("owner") && !tenant?.organizationId);
-    const pending = await deps.executions.listOsReviews(
-      tenant,
-      { status: "PENDING", limit: 500 },
-      { crossTenant }
-    );
-    const pendingRows = pending.ok && Array.isArray(pending.value) ? pending.value : [];
     const { buildAdminDashboard } = await import("../services/admin-dashboard-service");
     const q = request.query ?? {};
     const payload = await buildAdminDashboard({
       roles,
       period: typeof q.period === "string" ? q.period : undefined,
-      openEscalations: pendingRows.length,
+      tenantOrganizationId: tenant?.organizationId,
     });
     return success(payload);
   }
@@ -573,6 +640,91 @@ export async function dispatchController(
     }
     if (request.method === "POST") {
       return deps.executions.createOsDelivery(tenant, body, idem);
+    }
+  }
+
+  if (routeId.includes("_cdf_") && tenant) {
+    const {
+      applyCdfTransition,
+      getCdfSessionResult,
+      listCdfServiceIds,
+      resolveCdfServiceConfig,
+      CDF_CONFIG_BY_ID,
+      ensureCdfSessionLoaded,
+      persistCdfSession,
+    } = await import("../../cdf");
+
+    if (routeId.includes("_cdf_services") && request.method === "GET") {
+      if (params.serviceId) {
+        const config = resolveCdfServiceConfig(params.serviceId);
+        if (!config) {
+          return failure(new ValidationError(`Unknown CDF service: ${params.serviceId}`));
+        }
+        return success(config);
+      }
+      return success({
+        serviceIds: listCdfServiceIds(),
+        services: Object.values(CDF_CONFIG_BY_ID).map((c) => ({
+          serviceId: c.serviceId,
+          service: c.service,
+          outputMapService: c.outputMapService,
+          phaseIds: c.phases.map((p) => p.id),
+          studioHandoffAfterPhaseId: c.studioHandoffAfterPhaseId,
+        })),
+      });
+    }
+
+    if (routeId.includes("_cdf_sessions") && request.method === "POST") {
+      const started = applyCdfTransition({
+        action: "start",
+        serviceId: String(body.serviceId ?? ""),
+        productMode: body.productMode as "ai" | "hybrid" | "human" | undefined,
+        projectId: body.projectId ? String(body.projectId) : undefined,
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        userId: principal?.principalId,
+      });
+      if (started.ok) {
+        await persistCdfSession(started.value.session);
+      }
+      return started;
+    }
+
+    if (routeId.includes("_cdf_sessions") && params.sessionId && request.method === "GET") {
+      await ensureCdfSessionLoaded(params.sessionId);
+      return getCdfSessionResult(params.sessionId);
+    }
+
+    if (routeId.includes("_cdf_transition") && request.method === "POST") {
+      const sessionId = body.sessionId ? String(body.sessionId) : undefined;
+      if (sessionId) {
+        await ensureCdfSessionLoaded(sessionId);
+      }
+      const transitioned = applyCdfTransition({
+        sessionId,
+        serviceId: body.serviceId ? String(body.serviceId) : undefined,
+        action: body.action as never,
+        brief: body.brief ? String(body.brief) : undefined,
+        phaseId: body.phaseId ? String(body.phaseId) : undefined,
+        routeIndex:
+          body.routeIndex != null && Number.isFinite(Number(body.routeIndex))
+            ? Number(body.routeIndex)
+            : undefined,
+        refinePrompt: body.refinePrompt ? String(body.refinePrompt) : undefined,
+        finalAction: body.finalAction ? String(body.finalAction) : undefined,
+        artifactId: body.artifactId ? String(body.artifactId) : undefined,
+        executionId: body.executionId ? String(body.executionId) : undefined,
+        note: body.note ? String(body.note) : undefined,
+        projectId: body.projectId ? String(body.projectId) : undefined,
+        productMode: body.productMode as "ai" | "hybrid" | "human" | undefined,
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        userId: principal?.principalId,
+      });
+      if (transitioned.ok) {
+        await persistCdfSession(transitioned.value.session);
+      }
+      return transitioned;
     }
   }
 

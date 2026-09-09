@@ -367,6 +367,10 @@ export class CollaborationChannelService {
     serviceLabel?: string;
     /** Admin oversight — load brand by id if customer membership lookup fails */
     allowOversightBrandLoad?: boolean;
+    /** Per-request CS staff id — overrides customer relationship_manager */
+    assignedCsStaffId?: string;
+    /** Assigned designers (etc.) who need read access to the client brief */
+    extraViewerUserIds?: string[];
   }): Promise<CollaborationChannelDto> {
     const crypto = await import("crypto");
     const { brandService } = await import("../brand-service");
@@ -408,11 +412,23 @@ export class CollaborationChannelService {
       input.userId,
       ...(brandMemberUserIds.length > 0 ? brandMemberUserIds : [input.userId]),
     ]);
+    const extraViewers = new Set(
+      (input.extraViewerUserIds ?? []).map(String).map((id) => id.trim()).filter(Boolean)
+    );
+    for (const viewerId of extraViewers) {
+      memberUserIds.add(viewerId);
+    }
 
     const customer = await Users.findById(input.userId).select(
       "relationship_manager name"
     );
-    if (customer?.relationship_manager) {
+    const csStaffId = input.assignedCsStaffId?.trim();
+    if (csStaffId) {
+      const staff = await Staff.findById(csStaffId).select("userId");
+      if (staff?.userId) {
+        memberUserIds.add(String(staff.userId));
+      }
+    } else if (customer?.relationship_manager) {
       const staff = await Staff.findById(customer.relationship_manager).select(
         "userId"
       );
@@ -460,9 +476,10 @@ export class CollaborationChannelService {
               const oversight = oversightUsers.some(
                 (user) => String(user._id) === id
               );
+              const isExtraViewer = extraViewers.has(id);
               return [
                 id,
-                oversight
+                oversight || isExtraViewer
                   ? ("viewer" as CollaborationMemberRole)
                   : ("manager" as CollaborationMemberRole),
               ];

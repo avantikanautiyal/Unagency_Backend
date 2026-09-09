@@ -11,11 +11,19 @@ export class MongoJobStore implements IJobStore {
 
   save(job: ExecutionJob): void {
     this.cache.set(String(job.jobId), job);
-    void EnterpriseJob.updateOne(
+    void this.persist(job).catch((err) => {
+      console.warn(
+        `[Direct] job persist failed | jobId=${String(job.jobId)} | status=${job.status} | ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
+  async persist(job: ExecutionJob): Promise<void> {
+    await EnterpriseJob.updateOne(
       { jobId: String(job.jobId) },
       { $set: job },
-      { upsert: true }
-    ).catch(() => undefined);
+      { upsert: true, maxTimeMS: 15_000 },
+    );
   }
 
   get(jobId: JobId): ExecutionJob | undefined {
@@ -153,5 +161,34 @@ export class MongoJobStore implements IJobStore {
       recovered.push(job);
     }
     return recovered;
+  }
+
+  async renewLease(
+    jobId: JobId,
+    ttlMs: number,
+    nowIso: string,
+    workerId?: WorkerId
+  ): Promise<boolean> {
+    const leaseExpiresAt = new Date(Date.now() + ttlMs).toISOString();
+    const existing = this.cache.get(String(jobId));
+    const filter: Record<string, unknown> = {
+      jobId: String(jobId),
+      status: { $in: ["reserved", "running"] },
+    };
+    if (workerId) filter.reservedBy = String(workerId);
+    const doc = await EnterpriseJob.findOneAndUpdate(
+      filter,
+      { $set: { leaseExpiresAt, updatedAt: nowIso } },
+      { new: true, maxTimeMS: 5_000 },
+    ).lean();
+    if (!doc) return false;
+    const job = {
+      ...(existing ?? (doc as unknown as ExecutionJob)),
+      ...(doc as unknown as ExecutionJob),
+      leaseExpiresAt,
+      updatedAt: nowIso,
+    };
+    this.cache.set(String(jobId), job);
+    return true;
   }
 }

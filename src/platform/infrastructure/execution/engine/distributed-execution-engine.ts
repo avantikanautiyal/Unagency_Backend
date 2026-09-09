@@ -14,6 +14,8 @@ import type {
   ExecutionMetricsSnapshot,
   JobId,
   JobProgressUpdate,
+  LeaseId,
+  WorkerId,
   WorkerRecord,
 } from "../contracts/job";
 import { asJobId } from "../contracts/job";
@@ -69,6 +71,10 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
   private shutDown = false;
   /** retryAtMs by jobId for scheduled retries */
   private readonly retryAt = new Map<string, number>();
+  /** Jobs already handed to the in-memory queue this process (avoid duplicate recovery). */
+  private readonly recoveryDispatched = new Set<string>();
+  /** Jobs this process is currently executing — never reclaim/re-claim them. */
+  private readonly inFlightJobIds = new Set<string>();
 
   constructor(private readonly deps: DistributedExecutionEngineDeps) {
     this.nowIso = deps.nowIso ?? (() => new Date().toISOString());
@@ -267,9 +273,22 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           this.clockMs()
         );
         for (const job of recovered) {
-          if (!this.queues.get("immediate").list().includes(job.jobId)) {
+          if (this.inFlightJobIds.has(String(job.jobId))) {
+            console.log(
+              `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight`,
+            );
+            continue;
+          }
+          if (
+            !this.queues.get("immediate").list().includes(job.jobId) &&
+            !this.recoveryDispatched.has(String(job.jobId))
+          ) {
+            this.recoveryDispatched.add(String(job.jobId));
             this.queues.get("immediate").enqueue(job.jobId);
           }
+          console.log(
+            `[Direct] job recovery reclaimed | jobId=${String(job.jobId)} | reason=stale`,
+          );
         }
       } catch (err) {
         // Reclaim must not abort the tick — new jobs still need to run.
@@ -282,29 +301,59 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     const completed: ExecutionJob[] = [];
     for (let i = 0; i < maxJobs; i += 1) {
       if (!this.concurrency.tryAcquire()) break;
-      const worker = this.workers.pickAvailable();
+      const worker =
+        this.workers.pickAvailable("execution") ?? this.workers.pickAvailable();
       if (!worker) {
         this.concurrency.release();
         break;
       }
 
-      const next = this.dispatcher.next();
-      if (!next) {
+      const candidate = this.dispatcher.peekNext();
+      if (!candidate) {
         this.concurrency.release();
         break;
       }
 
-      let job = this.store.get(next.jobId);
+      let job = this.store.get(candidate.jobId);
       if (!job && typeof this.store.hydrate === "function") {
-        job = await this.store.hydrate(next.jobId);
+        job = await this.store.hydrate(candidate.jobId);
       }
-      if (!job || job.status === "cancelled" || job.status === "paused") {
-        if (job && (job.status === "queued" || job.status === "retrying")) {
-          this.enqueueToQueue(job);
-        }
+      if (!job) {
+        this.dispatcher.drop(candidate.jobId, candidate.queueKind);
+        this.recoveryDispatched.delete(String(candidate.jobId));
+        console.log(
+          `[Direct] job recovery skipped | jobId=${String(candidate.jobId)} | reason=missing_from_store`,
+        );
         this.concurrency.release();
         continue;
       }
+      if (
+        job.status === "cancelled" ||
+        job.status === "paused" ||
+        job.status === "completed" ||
+        job.status === "failed" ||
+        job.status === "dead_letter"
+      ) {
+        this.dispatcher.drop(candidate.jobId, candidate.queueKind);
+        this.recoveryDispatched.delete(String(candidate.jobId));
+        console.log(
+          `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=already_${job.status}`,
+        );
+        this.concurrency.release();
+        continue;
+      }
+      if (this.inFlightJobIds.has(String(job.jobId))) {
+        this.dispatcher.drop(candidate.jobId, candidate.queueKind);
+        this.concurrency.release();
+        continue;
+      }
+
+      if (!this.dispatcher.take(candidate.jobId, candidate.queueKind)) {
+        this.concurrency.release();
+        continue;
+      }
+
+      const next = { jobId: candidate.jobId, queueKind: candidate.queueKind };
 
       const limits = {
         organizationId: job.payload.organizationId,
@@ -313,178 +362,268 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         maxPerMinute: 120,
       };
       if (!this.throttle.tryEnter(limits)) {
-        // backpressure — requeue
         this.queues.get(next.queueKind).enqueue(next.jobId);
         this.concurrency.release();
         break;
       }
 
-      // M9.4A: atomic claim BEFORE execute when store supports it
-      let reservation;
-      let lease;
-      let running: ExecutionJob;
+      let reservation:
+        | ReturnType<ReservationManager["reserve"]>
+        | undefined;
+      let lease: ReturnType<LeaseManager["acquire"]> | undefined;
+      let running: ExecutionJob | undefined;
 
-      if (typeof this.store.tryClaim === "function") {
-        const claimed = await this.store.tryClaim(
-          job.jobId,
-          worker.workerId,
-          DEFAULT_LEASE_TTL_MS,
-          this.nowIso()
-        );
-        if (!claimed) {
-          // Lost race — another worker claimed this job; put it back if still runnable.
-          if (job.status === "queued" || job.status === "retrying") {
-            this.enqueueToQueue(job);
+      try {
+        if (typeof this.store.tryClaim === "function") {
+          const claimed = await this.store.tryClaim(
+            job.jobId,
+            worker.workerId,
+            DEFAULT_LEASE_TTL_MS,
+            this.nowIso(),
+          );
+          if (!claimed) {
+            const fresh =
+              typeof this.store.hydrate === "function"
+                ? await this.store.hydrate(job.jobId)
+                : this.store.get(job.jobId);
+            if (
+              fresh &&
+              (fresh.status === "queued" || fresh.status === "retrying")
+            ) {
+              this.enqueueToQueue({ ...fresh, queueKind: next.queueKind });
+            } else {
+              this.recoveryDispatched.delete(String(job.jobId));
+              console.log(
+                `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=already_claimed`,
+              );
+            }
+            continue;
           }
-          this.throttle.exit(limits);
-          this.concurrency.release();
-          continue;
-        }
-        reservation = this.reservations.reserve(worker.workerId, claimed.jobId);
-        lease = this.leases.acquire(
-          worker.workerId,
-          claimed.jobId,
-          DEFAULT_LEASE_TTL_MS
-        );
-        running = {
-          ...claimed,
-          status: "reserved",
-          reservedBy: worker.workerId,
-          reservationId: reservation.reservationId,
-          leaseId: lease.leaseId,
-          leaseExpiresAt:
-            claimed.leaseExpiresAt ?? new Date(lease.expiresAtMs).toISOString(),
-          updatedAt: this.nowIso(),
-        };
-        this.store.save(running);
-      } else {
-        reservation = this.reservations.reserve(worker.workerId, job.jobId);
-        lease = this.leases.acquire(
-          worker.workerId,
-          job.jobId,
-          DEFAULT_LEASE_TTL_MS
-        );
-        running = {
-          ...job,
-          status: "reserved",
-          reservedBy: worker.workerId,
-          reservationId: reservation.reservationId,
-          leaseId: lease.leaseId,
-          leaseExpiresAt: new Date(lease.expiresAtMs).toISOString(),
-          updatedAt: this.nowIso(),
-          attempt: job.attempt + 1,
-        };
-        this.store.save(running);
-      }
-
-      this.workers.adjustActive(worker.workerId, 1);
-      this.publishProgress(running, "reserved", 5, "reserved");
-
-      running = {
-        ...running,
-        status: "running",
-        startedAt: this.nowIso(),
-        progressPercent: 10,
-        updatedAt: this.nowIso(),
-      };
-      this.store.save(running);
-      this.publishProgress(running, "running", 10, "running");
-
-      if (running.cancelRequested) {
-        const advanced = advanceCancellation(running, this.nowIso());
-        if (advanced.ok) {
-          this.store.save(advanced.value);
-          completed.push(advanced.value);
-        }
-        this.cleanupSlot(worker.workerId, reservation.reservationId, lease.leaseId, limits);
-        continue;
-      }
-
-      const signal: { cancelled: boolean } = { cancelled: running.cancelRequested };
-      // Mid-run cancel check via store
-      const latest = this.store.get(running.jobId);
-      if (latest?.cancelRequested) signal.cancelled = true;
-
-      const result = await this.deps.executor.execute(running, signal);
-
-      // Re-read for cancel
-      const after = this.store.get(running.jobId);
-      if (after?.cancelRequested || after?.status === "cancel_requested") {
-        const advanced = advanceCancellation(
-          { ...running, cancelRequested: true, status: "cancel_requested" },
-          this.nowIso()
-        );
-        if (advanced.ok) {
-          this.store.save({ ...advanced.value, status: "cancelled", completedAt: this.nowIso() });
-          completed.push(this.store.get(running.jobId)!);
-          this.monitor.recordCancellation();
-        }
-        this.cleanupSlot(worker.workerId, reservation.reservationId, lease.leaseId, limits);
-        continue;
-      }
-
-      const queueMs = Date.parse(running.startedAt ?? running.createdAt) - Date.parse(running.createdAt);
-
-      if (result.ok) {
-        const done: ExecutionJob = {
-          ...running,
-          status: "completed",
-          progressPercent: 100,
-          currentStage: result.value.stages?.slice(-1)[0],
-          currentProvider: result.value.currentProvider,
-          resultSummary: result.value.summary,
-          completedAt: this.nowIso(),
-          updatedAt: this.nowIso(),
-        };
-        this.store.save(done);
-        this.publishProgress(done, "completed", 100, "completed");
-        this.monitor.recordCompletion(result.value.durationMs, Math.max(0, queueMs), result.value.durationMs);
-        completed.push(done);
-        this.refreshBatch(done.batchId);
-      } else {
-        const errMsg = result.error.message;
-        const failureClass = classifyError(errMsg);
-        const failedBase: ExecutionJob = {
-          ...running,
-          status: "failed",
-          lastError: errMsg,
-          updatedAt: this.nowIso(),
-        };
-
-        if (
-          isRetryable(running.retryPolicy, failureClass) &&
-          running.attempt < running.maxAttempts
-        ) {
-          const delay = computeRetryDelayMs(running.retryPolicy, running.attempt);
-          const retrying: ExecutionJob = {
-            ...failedBase,
-            status: "retrying",
+          console.log(
+            `[Direct] job claimed | jobId=${String(claimed.jobId)} | attempt=${claimed.attempt}`,
+          );
+          reservation = this.reservations.reserve(worker.workerId, claimed.jobId);
+          lease = this.leases.acquire(
+            worker.workerId,
+            claimed.jobId,
+            DEFAULT_LEASE_TTL_MS,
+          );
+          running = {
+            ...claimed,
+            status: "reserved",
+            reservedBy: worker.workerId,
+            reservationId: reservation.reservationId,
+            leaseId: lease.leaseId,
+            leaseExpiresAt:
+              claimed.leaseExpiresAt ??
+              new Date(lease.expiresAtMs).toISOString(),
             updatedAt: this.nowIso(),
           };
-          this.store.save(retrying);
-          this.retryAt.set(String(retrying.jobId), this.clockMs() + delay);
-          this.queues.get("scheduled").enqueue(retrying.jobId, this.clockMs() + delay);
-          this.monitor.recordRetry();
-          this.publishProgress(retrying, "retrying", 20, "retrying");
-          completed.push(retrying);
+          this.store.save(running);
         } else {
-          const dead = this.deadLetters.move(failedBase, errMsg, this.nowIso());
-          const dlq: ExecutionJob = {
-            ...failedBase,
-            status: "dead_letter",
-            queueKind: "dead_letter",
-            completedAt: this.nowIso(),
+          reservation = this.reservations.reserve(worker.workerId, job.jobId);
+          lease = this.leases.acquire(
+            worker.workerId,
+            job.jobId,
+            DEFAULT_LEASE_TTL_MS,
+          );
+          running = {
+            ...job,
+            status: "reserved",
+            reservedBy: worker.workerId,
+            reservationId: reservation.reservationId,
+            leaseId: lease.leaseId,
+            leaseExpiresAt: new Date(lease.expiresAtMs).toISOString(),
+            updatedAt: this.nowIso(),
+            attempt: job.attempt + 1,
           };
-          this.store.save(dlq);
-          this.queues.get("dead_letter").enqueue(dlq.jobId);
-          this.monitor.recordFailure(0);
-          this.publishProgress(dlq, "dead_letter", 100, dead.reason);
-          completed.push(dlq);
-          this.refreshBatch(dlq.batchId);
+          this.store.save(running);
+          console.log(
+            `[Direct] job claimed | jobId=${String(running.jobId)} | attempt=${running.attempt}`,
+          );
+        }
+
+        this.workers.adjustActive(worker.workerId, 1);
+        this.publishProgress(running, "reserved", 5, "reserved");
+
+        running = {
+          ...running,
+          status: "running",
+          startedAt: this.nowIso(),
+          progressPercent: 10,
+          updatedAt: this.nowIso(),
+        };
+        this.store.save(running);
+        await this.persistJobIfSupported(running);
+        this.publishProgress(running, "running", 10, "running");
+        console.log(
+          `[Direct] job execution started | jobId=${String(running.jobId)}`,
+        );
+
+        if (running.cancelRequested) {
+          const advanced = advanceCancellation(running, this.nowIso());
+          if (advanced.ok) {
+            this.store.save(advanced.value);
+            await this.persistJobIfSupported(advanced.value);
+            completed.push(advanced.value);
+          }
+          continue;
+        }
+
+        const signal: { cancelled: boolean } = {
+          cancelled: running.cancelRequested,
+        };
+        const latest = this.store.get(running.jobId);
+        if (latest?.cancelRequested) signal.cancelled = true;
+
+        this.inFlightJobIds.add(String(running.jobId));
+        const heartbeatMs = Math.max(5_000, Math.floor(DEFAULT_LEASE_TTL_MS / 3));
+        const leaseId = lease?.leaseId;
+        const heartbeat = leaseId
+          ? setInterval(() => {
+              void this.renewInFlightLease(running, worker.workerId, leaseId);
+            }, heartbeatMs)
+          : undefined;
+        if (heartbeat && typeof heartbeat.unref === "function") heartbeat.unref();
+        let result: Awaited<ReturnType<IJobExecutor["execute"]>>;
+        try {
+          result = await this.deps.executor.execute(running, signal);
+        } finally {
+          if (heartbeat) clearInterval(heartbeat);
+          this.inFlightJobIds.delete(String(running.jobId));
+        }
+
+        const owner = this.store.get(running.jobId);
+        if (owner && owner.attempt > running.attempt) {
+          console.log(
+            `[Direct] job execution discarded | jobId=${String(running.jobId)} | reason=superseded_attempt | attempt=${running.attempt} current=${owner.attempt}`,
+          );
+          continue;
+        }
+
+        const after = this.store.get(running.jobId);
+        if (after?.cancelRequested || after?.status === "cancel_requested") {
+          const advanced = advanceCancellation(
+            { ...running, cancelRequested: true, status: "cancel_requested" },
+            this.nowIso(),
+          );
+          if (advanced.ok) {
+            const cancelled = {
+              ...advanced.value,
+              status: "cancelled" as const,
+              completedAt: this.nowIso(),
+            };
+            this.store.save(cancelled);
+            await this.persistJobIfSupported(cancelled);
+            completed.push(this.store.get(running.jobId)!);
+            this.monitor.recordCancellation();
+          }
+          continue;
+        }
+
+        const queueMs =
+          Date.parse(running.startedAt ?? running.createdAt) -
+          Date.parse(running.createdAt);
+
+        if (result.ok) {
+          const done: ExecutionJob = {
+            ...running,
+            status: "completed",
+            progressPercent: 100,
+            currentStage: result.value.stages?.slice(-1)[0],
+            currentProvider: result.value.currentProvider,
+            resultSummary: result.value.summary,
+            completedAt: this.nowIso(),
+            updatedAt: this.nowIso(),
+          };
+          this.store.save(done);
+          await this.persistJobIfSupported(done);
+          this.recoveryDispatched.delete(String(done.jobId));
+          this.publishProgress(done, "completed", 100, "completed");
+          this.monitor.recordCompletion(
+            result.value.durationMs,
+            Math.max(0, queueMs),
+            result.value.durationMs,
+          );
+          completed.push(done);
+          this.refreshBatch(done.batchId);
+          console.log(
+            `[Direct] job execution completed | jobId=${String(done.jobId)} | status=completed`,
+          );
+        } else {
+          const errMsg = result.error.message;
+          const failureClass = classifyError(errMsg);
+          const failedBase: ExecutionJob = {
+            ...running,
+            status: "failed",
+            lastError: errMsg,
+            updatedAt: this.nowIso(),
+          };
+
+          if (
+            isRetryable(running.retryPolicy, failureClass) &&
+            running.attempt < running.maxAttempts
+          ) {
+            const delay = computeRetryDelayMs(
+              running.retryPolicy,
+              running.attempt,
+            );
+            const retrying: ExecutionJob = {
+              ...failedBase,
+              status: "retrying",
+              updatedAt: this.nowIso(),
+            };
+            this.store.save(retrying);
+            await this.persistJobIfSupported(retrying);
+            this.retryAt.set(String(retrying.jobId), this.clockMs() + delay);
+            this.queues.get("scheduled").enqueue(
+              retrying.jobId,
+              this.clockMs() + delay,
+            );
+            this.monitor.recordRetry();
+            this.publishProgress(retrying, "retrying", 20, "retrying");
+            completed.push(retrying);
+            console.log(
+              `[Direct] job execution completed | jobId=${String(retrying.jobId)} | status=retrying`,
+            );
+          } else {
+            const dead = this.deadLetters.move(
+              failedBase,
+              errMsg,
+              this.nowIso(),
+            );
+            const dlq: ExecutionJob = {
+              ...failedBase,
+              status: "dead_letter",
+              queueKind: "dead_letter",
+              completedAt: this.nowIso(),
+            };
+            this.store.save(dlq);
+            await this.persistJobIfSupported(dlq);
+            this.recoveryDispatched.delete(String(dlq.jobId));
+            this.queues.get("dead_letter").enqueue(dlq.jobId);
+            this.monitor.recordFailure(0);
+            this.publishProgress(dlq, "dead_letter", 100, dead.reason);
+            completed.push(dlq);
+            this.refreshBatch(dlq.batchId);
+            console.log(
+              `[Direct] job execution completed | jobId=${String(dlq.jobId)} | status=dead_letter`,
+            );
+          }
+        }
+      } finally {
+        if (reservation && lease) {
+          this.cleanupSlot(
+            worker.workerId,
+            reservation.reservationId,
+            lease.leaseId,
+            limits,
+          );
+        } else {
+          this.throttle.exit(limits);
+          this.concurrency.release();
         }
       }
-
-      this.cleanupSlot(worker.workerId, reservation.reservationId, lease.leaseId, limits);
     }
 
     return success(completed);
@@ -583,32 +722,97 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     if (typeof this.store.listRunnableFromDatabase !== "function") return;
     try {
       const jobs = await this.store.listRunnableFromDatabase();
-      if (jobs.length > 0) {
-        console.log(
-          `⚙️  [Direct] recovering ${jobs.length} queued job(s) into worker queue`
-        );
-      }
+      let enqueued = 0;
+      let skipped = 0;
       for (const job of jobs) {
-        if (job.status !== "queued" && job.status !== "retrying") continue;
-        if (this.isJobEnqueued(job.jobId)) continue;
+        let fresh = job;
+        if (typeof this.store.hydrate === "function") {
+          const hydrated = await this.store.hydrate(job.jobId);
+          if (hydrated) fresh = hydrated;
+        }
+        if (fresh.status !== "queued" && fresh.status !== "retrying") {
+          skipped += 1;
+          this.recoveryDispatched.delete(String(fresh.jobId));
+          continue;
+        }
+        if (
+          this.isJobEnqueued(fresh.jobId) ||
+          this.recoveryDispatched.has(String(fresh.jobId))
+        ) {
+          skipped += 1;
+          continue;
+        }
+        if (!fresh.payload?.rawPrompt?.trim()) {
+          skipped += 1;
+          console.log(
+            `[Direct] job recovery skipped | jobId=${String(fresh.jobId)} | reason=invalid_payload`,
+          );
+          continue;
+        }
+        this.recoveryDispatched.add(String(fresh.jobId));
         this.enqueueToQueue({
-          ...job,
+          ...fresh,
           queueKind:
-            job.queueKind === "dead_letter" || job.queueKind === "scheduled"
+            fresh.queueKind === "dead_letter" || fresh.queueKind === "scheduled"
               ? "immediate"
-              : job.queueKind,
+              : fresh.queueKind,
         });
+        enqueued += 1;
       }
       if (jobs.length > 0) {
         console.log(
-          `⚙️  [Direct] recovered ${jobs.length} queued job(s) into worker queue`
+          `[Direct] recovery scan | queued=${jobs.length} | reclaimable=${enqueued} | skipped=${skipped}`,
         );
       }
     } catch (err) {
       console.warn(
-        `⚙️  [Direct] queued job recovery failed | ${err instanceof Error ? err.message : String(err)}`
+        `[Direct] queued job recovery failed | ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  private async persistJobIfSupported(job: ExecutionJob): Promise<void> {
+    if (typeof this.store.persist === "function") {
+      try {
+        await this.store.persist(job);
+      } catch (err) {
+        console.warn(
+          `[Direct] job persist failed | jobId=${String(job.jobId)} | status=${job.status} | ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  private async renewInFlightLease(
+    running: ExecutionJob,
+    workerId: WorkerId,
+    leaseId: LeaseId,
+  ): Promise<void> {
+    if (!this.inFlightJobIds.has(String(running.jobId))) return;
+    const latest = this.store.get(running.jobId);
+    if (
+      !latest ||
+      (latest.status !== "running" && latest.status !== "reserved") ||
+      latest.attempt !== running.attempt
+    ) {
+      return;
+    }
+    this.leases.renew(leaseId, DEFAULT_LEASE_TTL_MS);
+    if (typeof this.store.renewLease === "function") {
+      await this.store.renewLease(
+        running.jobId,
+        DEFAULT_LEASE_TTL_MS,
+        this.nowIso(),
+        workerId,
+      );
+      return;
+    }
+    const leaseExpiresAt = new Date(
+      this.clockMs() + DEFAULT_LEASE_TTL_MS,
+    ).toISOString();
+    const next = { ...latest, leaseExpiresAt, updatedAt: this.nowIso() };
+    this.store.save(next);
+    await this.persistJobIfSupported(next);
   }
 
   private isJobEnqueued(jobId: JobId): boolean {

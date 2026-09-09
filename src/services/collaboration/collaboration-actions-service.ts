@@ -20,6 +20,17 @@ export class CollaborationActionsService {
       userId: input.userId,
       assetId: input.assetId,
     });
+    let mediaUrl = "";
+    try {
+      const media = await productAssetService.getMedia({
+        userId: input.userId,
+        assetId: input.assetId,
+        disposition: "inline",
+      });
+      mediaUrl = media.mediaUrl;
+    } catch {
+      // Link enrichment is best-effort; text + assetId still land in chat.
+    }
     const messageType =
       asset.kind === "image"
         ? "image"
@@ -42,6 +53,8 @@ export class CollaborationActionsService {
         sizeBytes: asset.sizeBytes,
         kind: asset.kind,
         brandId: asset.brandId,
+        fileName: asset.name,
+        ...(mediaUrl ? { url: mediaUrl } : {}),
       },
     });
   }

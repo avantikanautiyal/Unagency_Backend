@@ -1,48 +1,59 @@
 import mongoose, { Schema } from "mongoose";
+import type { PlanCode } from "../billing/plan-codes";
 
 export interface ISubscription {
   _id: mongoose.Types.ObjectId;
-  customerId: string; // Stripe customer ID
-  subscriptionId: string; // Stripe subscription ID
-  planId: string; // Plan associated with the subscription
+  customerId: string;
+  subscriptionId: string;
+  planId: string;
+  planCode?: PlanCode;
   userId: string;
-  status: string; // Subscription status ('active', 'canceled', etc.)
-  current_start?: string | null;
-  current_end?: string | null;
-
-  cancelledByUser: boolean,
-  cancelledAt: Date,
-  razorpayCancelRequested: boolean,
-  renewalReminderSentAt?: Date,
-  expiredNotificationSent?: boolean,
-  // currentPeriodStart: Date; // Subscription start
-  // currentPeriodEnd: Date; // Subscription renewal/cancellation date
+  organizationId?: string;
+  status: string;
+  current_start?: number | string | null;
+  current_end?: number | string | null;
+  next_charge_at?: number | null;
+  quantity?: number;
+  total_count?: number;
+  paid_count?: number;
+  remaining_count?: number;
+  cancelledByUser: boolean;
+  cancelledAt?: Date;
+  razorpayCancelRequested: boolean;
+  renewalReminderSentAt?: Date;
+  expiredNotificationSent?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-const SubscriptionSchema = new Schema<ISubscription>({
-  _id: { type: Schema.Types.ObjectId, auto: true },
-  customerId: { type: String }, // Razorpay customer ID
-  userId: { type: String, required: true },
-  subscriptionId: { type: String, required: true }, // Razorpay subscription ID
-  planId: { type: String, required: true, ref: "Plans" }, // Plan associated with the subscription
-  status: {
-    type: String,
-    required: true,
-    // enum: ["active", "canceled", "pending", "incomplete", "incomplete_expired", "trialing", "past_due", "unpaid"],
+const SubscriptionSchema = new Schema<ISubscription>(
+  {
+    _id: { type: Schema.Types.ObjectId, auto: true },
+    customerId: { type: String },
+    userId: { type: String, required: true, index: true },
+    organizationId: { type: String, index: true },
+    subscriptionId: { type: String, required: true, unique: true },
+    planId: { type: String, required: true, ref: "Plans" },
+    planCode: { type: String, index: true },
+    status: {
+      type: String,
+      required: true,
+    },
+    current_start: { type: Schema.Types.Mixed },
+    current_end: { type: Schema.Types.Mixed },
+    next_charge_at: { type: Number },
+    quantity: { type: Number, default: 1 },
+    total_count: { type: Number },
+    paid_count: { type: Number },
+    remaining_count: { type: Number },
+    cancelledByUser: { type: Boolean, default: false },
+    cancelledAt: { type: Date },
+    razorpayCancelRequested: { type: Boolean, default: false },
+    renewalReminderSentAt: { type: Date },
+    expiredNotificationSent: { type: Boolean, default: false },
   },
-  current_start: { type: Object },
-  current_end: { type: Object },
-  cancelledByUser: { type: Boolean, default: false },
-  cancelledAt: { type: Date },
-  razorpayCancelRequested: { type: Boolean, default: false },
-  renewalReminderSentAt: { type: Date },
-  expiredNotificationSent: { type: Boolean, default: false },
-
-  // Subscription status ('active', 'canceled', etc.)
-  // currentPeriodStart: { type: Date, required: true }, // Subscription start
-  // currentPeriodEnd: { type: Date, required: true }, // Subscription renewal/cancellation date
-});
-
+  { timestamps: true }
+);
 
 const Subscriptions = mongoose.model<ISubscription>(
   "Subscriptions",

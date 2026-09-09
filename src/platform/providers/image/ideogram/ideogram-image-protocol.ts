@@ -9,13 +9,21 @@ import type {
   VendorImageNormalizedResult,
   VendorImageWirePlan,
 } from "../common/vendor-image-protocol";
-import { extractPrompt } from "../common/vendor-image-protocol";
+import { extractPrompt, extractReferenceImage } from "../common/vendor-image-protocol";
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import {
   attachMediaOutputs,
   type CanonicalMediaOutput,
 } from "../../common/media-output";
+
+function extensionForMime(mimeType: string): string {
+  const mime = mimeType.toLowerCase();
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("svg")) return "svg";
+  return "png";
+}
 
 export class IdeogramImageProtocol implements IVendorImageProtocol {
   readonly vendor = "ideogram";
@@ -35,6 +43,31 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
     wireModelId: string;
   }): VendorImageWirePlan {
     const prompt = extractPrompt(input.request.payload);
+    const reference = extractReferenceImage(input.request.payload);
+    const base64 = reference?.base64?.trim();
+    if (base64) {
+      const mimeType = reference?.mimeType || "image/png";
+      return {
+        request: {
+          method: "POST",
+          path: "/v1/ideogram-v3/generate",
+          form: {
+            fields: {
+              prompt,
+              rendering_speed: "DEFAULT",
+            },
+            files: [
+              {
+                fieldName: "style_reference_images",
+                filename: `brand-logo.${extensionForMime(mimeType)}`,
+                mimeType,
+                base64,
+              },
+            ],
+          },
+        },
+      };
+    }
     return {
       request: {
         method: "POST",

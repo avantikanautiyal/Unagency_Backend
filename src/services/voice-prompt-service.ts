@@ -156,6 +156,9 @@ export class VoicePromptService {
         assetIds: [input.assetId],
         frontendIntent: "TRANSCRIBE_AUDIO",
         source: "voice_prompt",
+        // Pin Whisper — Direct bag defaults to gpt-4o, which OpenAI rejects for STT.
+        preferredProviderId: "provider.openai",
+        preferredModelId: "whisper-1",
         ...(input.language ? { language: input.language } : {}),
       },
     });

@@ -677,7 +677,7 @@ export function buildPresentationExpansionInstructionBlock(input: {
     "Use ONLY facts from the client brief and brand profile — never generic mock or placeholder content.",
     deckGuidanceForSubtype(input.subtype),
     locked ? `\n${locked}` : "",
-    "Use varied slide layouts. Every slide needs visualCue tied to the brand colours and brief.",
+    "Use varied slide layouts. Every slide needs visualCue as a concrete image brief (subject, setting, lighting, style, palette) tied to the brand colours and client brief — written so an image model can render it.",
   ];
   const mustUse = buildPresentationMustUseBlock(input.mustUseFacts);
   if (mustUse) lines.push(mustUse);
@@ -799,7 +799,7 @@ export function buildPresentationRoutesInstructionBlock(input: {
   lines.push(
     "Use varied slide layouts (title_hero, section_divider, content_bullets, key_message, closing).",
     "Write punchy slide titles and short bullets — never dump paragraphs onto slides.",
-    "Every slide needs a visualCue describing imagery/composition tied to this brand and brief.",
+    "Every slide needs a visualCue that is a concrete image brief (subject, setting, composition, style, colours) matching this brand and brief — not a layout label.",
   );
 
   if (input.isRetry) {

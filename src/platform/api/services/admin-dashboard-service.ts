@@ -18,6 +18,7 @@ import {
   readAdminCache,
   writeAdminCache,
 } from "./admin-metrics-cache";
+import { EnterpriseOsHumanReview } from "../../infrastructure/durability/repositories/mongo-os-ledgers";
 
 export type AdminDashboardPayload = {
   organizations: AdminOrganizationRow[];
@@ -25,10 +26,27 @@ export type AdminDashboardPayload = {
   analytics: AdminAnalyticsSummary;
 };
 
+async function countOpenEscalations(input: {
+  crossTenant: boolean;
+  organizationId?: string;
+}): Promise<number> {
+  const filter: Record<string, unknown> = { status: "PENDING" };
+  if (!input.crossTenant) {
+    if (!input.organizationId) return 0;
+    filter.organizationId = input.organizationId;
+  }
+  try {
+    return await EnterpriseOsHumanReview.countDocuments(filter);
+  } catch {
+    return 0;
+  }
+}
+
 export async function buildAdminDashboard(input: {
   roles: readonly string[];
   period?: string;
-  openEscalations: number;
+  openEscalations?: number;
+  tenantOrganizationId?: string;
 }): Promise<AdminDashboardPayload> {
   const cacheKey = adminCacheKey({
     scope: "dashboard",
@@ -41,11 +59,22 @@ export async function buildAdminDashboard(input: {
   const filter = resolveAdminMetricsFilter({
     roles: input.roles,
     period: input.period,
+    tenantOrganizationId: input.tenantOrganizationId,
   });
 
+  // Count pending reviews cheaply (avoid loading up to 500 review documents).
+  const openEscalations =
+    typeof input.openEscalations === "number"
+      ? input.openEscalations
+      : await countOpenEscalations({
+          crossTenant: filter.crossTenant,
+          organizationId: filter.organizationId,
+        });
+
+  // Billing first warms shared execution/task caches that analytics reuses.
   const billing = await buildAdminBillingSummary(filter);
   const [analytics, organizations] = await Promise.all([
-    buildAdminAnalyticsSummary(filter, input.openEscalations),
+    buildAdminAnalyticsSummary(filter, openEscalations),
     buildAdminOrganizationsList({
       roles: input.roles,
       billingByOrganization: billing.byOrganization,

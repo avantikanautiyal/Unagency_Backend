@@ -139,6 +139,22 @@ export function buildForensicRequirementRecords(
   );
 }
 
+function contentsHaveInlineImage(body: Readonly<Record<string, unknown>>): boolean {
+  const contents = body.contents;
+  if (!Array.isArray(contents)) return false;
+  for (const content of contents) {
+    if (!content || typeof content !== "object") continue;
+    const parts = (content as { parts?: unknown }).parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (!part || typeof part !== "object") continue;
+      const rec = part as Record<string, unknown>;
+      if (rec.inlineData || rec.inline_data) return true;
+    }
+  }
+  return false;
+}
+
 export function sanitizeProviderWireBody(
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
@@ -162,7 +178,16 @@ export function sanitizeProviderWireBody(
       : {}),
     ...(typeof body.quality === "string" ? { quality: body.quality } : {}),
     ...(typeof body.size === "string" ? { size: body.size } : {}),
-    hasReferenceImage: Boolean(body.image ?? body.image_url ?? body.reference),
+    hasReferenceImage: Boolean(
+      body.image ??
+        body.image_url ??
+        body.images ??
+        body.reference ??
+        body.input_image ??
+        body.style_reference_images ??
+        body.style_reference_urls ??
+        contentsHaveInlineImage(body),
+    ),
   });
 }
 

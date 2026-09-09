@@ -62,10 +62,22 @@ export interface IJobStore {
    * Returns requeued jobs (status → queued).
    */
   reclaimExpired?(nowIso: string, nowMs: number): Promise<readonly ExecutionJob[]>;
+  /**
+   * Extend the claim lease for a still-running job so long website/document
+   * generations are not reclaimed as stale mid-execute.
+   */
+  renewLease?(
+    jobId: JobId,
+    ttlMs: number,
+    nowIso: string,
+    workerId?: WorkerId
+  ): Promise<boolean>;
   /** Reload queued/retrying jobs from durable storage (Mongo) into the local cache. */
   listRunnableFromDatabase?(): Promise<readonly ExecutionJob[]>;
   /** Load one job from durable storage when the in-memory cache misses. */
   hydrate?(jobId: JobId): Promise<ExecutionJob | undefined>;
+  /** Await durable persistence for terminal or in-flight transitions (optional). */
+  persist?(job: ExecutionJob): Promise<void>;
 }
 
 export interface IQueueBackend {

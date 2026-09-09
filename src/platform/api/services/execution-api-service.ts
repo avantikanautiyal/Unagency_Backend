@@ -43,6 +43,11 @@ import {
 } from "../../os";
 import { RefinementError } from "../../os/refinement/contracts/errors";
 import { DeliveryError } from "../../os/delivery/contracts/errors";
+import {
+  buildProductionExportFilename,
+  buildProductionGateFromExecutionContext,
+  sizeTokenFromCanvas,
+} from "../../config/format-production-spec";
 import type { OsDurableBundle } from "../../infrastructure/durability/create-os-durable-bundle";
 import type {
   IArtifactRepository,
@@ -61,6 +66,7 @@ import {
   mergeExportArtifactsIntoResult,
 } from "./execution-result-payload";
 import { applyWebsiteExportToExecution } from "./website-export-materializer";
+import { isWebsiteGenerationMetadata } from "./execution-thin-path";
 import { buildPendingApprovals } from "./tool-approval-presentation";
 import {
   approveToolInvocation,
@@ -74,6 +80,10 @@ import {
 import { executeCanonicalStream } from "./execution-canonical-stream";
 import { runCreateExecution } from "./execution-create-pipeline";
 import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
+import {
+  buildContinuationCreateRequest,
+  pickRetryableCreateMetadata,
+} from "./execution-retry-handoff";
 import {
   buildRefineContinuityMetadata,
   extractContinuitySnapshot,
@@ -148,6 +158,7 @@ export class ExecutionApiService implements IExecutionApiService {
       asyncMedia?: AsyncMediaPlatform;
       videoRouter?: import("../../providers/video/routing/video-execution-router").VideoExecutionRouter;
       imageRouter?: import("../../providers/image/routing/image-execution-router").ImageExecutionRouter;
+      providerRuntimeRegistry?: import("../../providers/runtime/registry/in-memory-provider-runtime-registry").IProviderRuntimeRegistry;
       audioRouter?: import("../../providers/audio/routing/audio-execution-router").AudioExecutionRouter;
       textRouter?: import("../../providers/routing/text/text-execution-router").TextExecutionRouter;
       toolRuntime?: ToolRuntimePlatform;
@@ -245,8 +256,20 @@ export class ExecutionApiService implements IExecutionApiService {
         : resource.pendingApprovals ?? [];
     const approvalRequired =
       resource.status === "awaiting_approval" || pendingApprovals.length > 0;
+    const createMeta = await this.loadExecutionCreateMetadata(executionId);
+    const executionSpecDeliverables = Array.isArray(
+      createMeta?.executionSpecDeliverables,
+    )
+      ? createMeta.executionSpecDeliverables.filter(
+          (format): format is string =>
+            typeof format === "string" && format.trim().length > 0,
+        )
+      : undefined;
     return success({
       ...resource,
+      ...(executionSpecDeliverables?.length
+        ? { executionSpecDeliverables }
+        : {}),
       approvalRequired: approvalRequired || undefined,
       toolInvocationKey: pendingApprovals[0]?.invocationId ?? (
         approvalRequired ? resource.toolInvocationKey : undefined
@@ -382,27 +405,25 @@ export class ExecutionApiService implements IExecutionApiService {
   ): Promise<Result<ExecutionResource>> {
     const got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
-    return this.create(
-      {
-        prompt: got.value.promptPreview,
-        organizationId: tenant.organizationId,
-        workspaceId: tenant.workspaceId ?? got.value.workspaceId,
-        capabilityId: got.value.capabilityId,
-        providerId: got.value.providerId,
-        modelId: got.value.modelId,
-        metadata: got.value.brandId
-          ? { brandId: got.value.brandId, retriedFrom: executionId }
-          : { retriedFrom: executionId },
-      },
-      {
-        principalId: tenant.userId ?? "retry",
-        kind: "user",
-        organizationId: tenant.organizationId,
-        workspaceId: tenant.workspaceId,
-        roles: ["member"],
-        userId: tenant.userId,
-      }
-    );
+    const parent = got.value;
+    const parentCreateMetadata = await this.loadExecutionCreateMetadata(executionId);
+    const parentJobMetadata = await this.loadExecutionJobMetadata(parent);
+    const req = buildContinuationCreateRequest({
+      parentExecution: parent,
+      parentCreateMetadata,
+      parentJobMetadata,
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId ?? parent.workspaceId,
+      reason: "retry",
+    });
+    return this.create(req, {
+      principalId: tenant.userId ?? "retry",
+      kind: "user",
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      roles: ["member"],
+      userId: tenant.userId,
+    });
   }
 
   async duplicate(
@@ -411,29 +432,25 @@ export class ExecutionApiService implements IExecutionApiService {
   ): Promise<Result<ExecutionResource>> {
     const got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
-    const src = got.value;
-    return this.create(
-      {
-        prompt: src.promptPreview,
-        organizationId: tenant.organizationId,
-        workspaceId: tenant.workspaceId ?? src.workspaceId,
-        capabilityId: src.capabilityId,
-        providerId: src.providerId,
-        modelId: src.modelId,
-        metadata: {
-          ...(src.brandId ? { brandId: src.brandId } : {}),
-          duplicatedFrom: executionId,
-        },
-      },
-      {
-        principalId: tenant.userId ?? "duplicate",
-        kind: "user",
-        organizationId: tenant.organizationId,
-        workspaceId: tenant.workspaceId,
-        roles: ["member"],
-        userId: tenant.userId,
-      }
-    );
+    const parent = got.value;
+    const parentCreateMetadata = await this.loadExecutionCreateMetadata(executionId);
+    const parentJobMetadata = await this.loadExecutionJobMetadata(parent);
+    const req = buildContinuationCreateRequest({
+      parentExecution: parent,
+      parentCreateMetadata,
+      parentJobMetadata,
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId ?? parent.workspaceId,
+      reason: "duplicate",
+    });
+    return this.create(req, {
+      principalId: tenant.userId ?? "duplicate",
+      kind: "user",
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      roles: ["member"],
+      userId: tenant.userId,
+    });
   }
 
   async softDelete(
@@ -767,7 +784,57 @@ export class ExecutionApiService implements IExecutionApiService {
       governanceFinalize: this.governanceFinalize,
       deliveryService: this.deliveryService,
       loadExecution: (executionId) => this.loadExecution(executionId),
+      loadExecutionCreateMetadata: (executionId) =>
+        this.loadExecutionCreateMetadata(executionId),
+      loadExecutionJobMetadata: (executionId) =>
+        this.loadExecutionJobMetadataById(executionId),
     };
+  }
+
+  private async loadExecutionCreateMetadata(
+    executionId: string,
+  ): Promise<Readonly<Record<string, unknown>> | undefined> {
+    const extras = this.deps.persistence
+      ? await this.deps.persistence.extras.get(executionId)
+      : this.extrasStore.get(executionId);
+    if (!extras || typeof extras !== "object") {
+      return pickRetryableCreateMetadata(
+        await this.loadExecutionJobMetadataById(executionId),
+      );
+    }
+    const rec = extras as ExecutionExtrasRecord & {
+      createMetadataSnapshot?: Readonly<Record<string, unknown>>;
+      executionSpecSnapshot?: unknown;
+    };
+    const fromSnapshot = pickRetryableCreateMetadata(rec.createMetadataSnapshot);
+    const fromExtrasSpec = pickRetryableCreateMetadata({
+      ...(rec.executionSpecSnapshot
+        ? { executionSpecSnapshot: rec.executionSpecSnapshot }
+        : {}),
+    });
+    const fromJob = pickRetryableCreateMetadata(
+      await this.loadExecutionJobMetadataById(executionId),
+    );
+    const merged = { ...fromJob, ...fromExtrasSpec, ...fromSnapshot };
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  }
+
+  private async loadExecutionJobMetadataById(
+    executionId: string,
+  ): Promise<Readonly<Record<string, unknown>> | undefined> {
+    const exec = await this.loadExecution(executionId);
+    if (!exec?.jobId || !this.deps.distributed) return undefined;
+    const job = this.deps.distributed.getJob(asJobId(String(exec.jobId)));
+    if (!job.ok || !job.value?.payload?.metadata) return undefined;
+    const meta = job.value.payload.metadata;
+    return typeof meta === "object" ? (meta as Record<string, unknown>) : undefined;
+  }
+
+  private async loadExecutionJobMetadata(
+    exec: ExecutionResource,
+  ): Promise<Readonly<Record<string, unknown>> | undefined> {
+    if (!exec.jobId || !this.deps.distributed) return undefined;
+    return this.loadExecutionJobMetadataById(exec.executionId);
   }
 
   private async rememberOsIdempotent<T>(
@@ -1097,13 +1164,49 @@ export class ExecutionApiService implements IExecutionApiService {
     body: Record<string, unknown>
   ): Promise<Result<unknown>> {
     try {
+      const executionId = String(body.executionId ?? "");
+      const metadata = executionId
+        ? await this.loadExecutionJobMetadataById(executionId)
+        : undefined;
+      const productionGate = buildProductionGateFromExecutionContext(metadata, {
+        confirmedOverride:
+          body.confirmedOverride === true ||
+          body.productionConfirmedOverride === true
+            ? true
+            : body.confirmedOverride === false ||
+                body.productionConfirmedOverride === false
+              ? false
+              : undefined,
+        generatedWidth:
+          typeof body.generatedWidth === "number"
+            ? body.generatedWidth
+            : undefined,
+        generatedHeight:
+          typeof body.generatedHeight === "number"
+            ? body.generatedHeight
+            : undefined,
+        platform:
+          typeof body.platform === "string" ? body.platform : undefined,
+        formatId:
+          typeof body.formatId === "string"
+            ? body.formatId
+            : typeof body.format === "string"
+              ? body.format
+              : undefined,
+        placementId:
+          typeof body.placementId === "string" ? body.placementId : undefined,
+        service: typeof body.service === "string" ? body.service : undefined,
+        subtype: typeof body.subtype === "string" ? body.subtype : undefined,
+      });
       const auth = await this.deliveryService.authorize({
         organizationId: tenant.organizationId,
         artifactId: String(body.artifactId ?? ""),
         artifactVersion: Number(body.artifactVersion ?? 0),
-        executionId: String(body.executionId ?? ""),
+        executionId,
         planVersion: body.planVersion != null ? Number(body.planVersion) : undefined,
         destination: (body.destination as never) ?? "export",
+        executionMetadata: metadata,
+        ...(productionGate ? { productionGate } : {}),
       });
       return success(auth);
     } catch (err) {
@@ -1118,16 +1221,69 @@ export class ExecutionApiService implements IExecutionApiService {
   ): Promise<Result<unknown>> {
     return this.rememberOsIdempotent(tenant.organizationId, idempotencyKey, async () => {
       try {
+        const executionId = String(body.executionId ?? "");
+        const metadata = executionId
+          ? await this.loadExecutionJobMetadataById(executionId)
+          : undefined;
+        const productionGate = buildProductionGateFromExecutionContext(metadata, {
+          confirmedOverride:
+            body.confirmedOverride === true ||
+            body.productionConfirmedOverride === true
+              ? true
+              : body.confirmedOverride === false ||
+                  body.productionConfirmedOverride === false
+                ? false
+                : undefined,
+          generatedWidth:
+            typeof body.generatedWidth === "number"
+              ? body.generatedWidth
+              : undefined,
+          generatedHeight:
+            typeof body.generatedHeight === "number"
+              ? body.generatedHeight
+              : undefined,
+          platform:
+            typeof body.platform === "string" ? body.platform : undefined,
+          formatId:
+            typeof body.formatId === "string"
+              ? body.formatId
+              : typeof body.format === "string"
+                ? body.format
+                : undefined,
+          placementId:
+            typeof body.placementId === "string" ? body.placementId : undefined,
+          service: typeof body.service === "string" ? body.service : undefined,
+          subtype: typeof body.subtype === "string" ? body.subtype : undefined,
+        });
+        const suggestedFilename =
+          typeof body.suggestedFilename === "string" && body.suggestedFilename.trim()
+            ? body.suggestedFilename.trim()
+            : productionGate
+              ? buildProductionExportFilename({
+                  service: productionGate.service,
+                  placement:
+                    productionGate.formatId ?? productionGate.placementId,
+                  size: sizeTokenFromCanvas(
+                    productionGate.generatedWidth,
+                    productionGate.generatedHeight,
+                  ),
+                  extension: "bin",
+                  date: this.deps.nowIso(),
+                })
+              : undefined;
         const receipt = await this.deliveryService.createDelivery({
           organizationId: tenant.organizationId,
           artifactId: String(body.artifactId ?? ""),
           artifactVersion: Number(body.artifactVersion ?? 0),
-          executionId: String(body.executionId ?? ""),
+          executionId,
           planVersion: body.planVersion != null ? Number(body.planVersion) : undefined,
           destination: (body.destination as never) ?? "export",
           deliveryIntent: body.deliveryIntent ? String(body.deliveryIntent) : undefined,
           nowIso: this.deps.nowIso,
           createId: this.deps.createId,
+          executionMetadata: metadata,
+          ...(productionGate ? { productionGate } : {}),
+          ...(suggestedFilename ? { suggestedFilename } : {}),
         });
         return success(this.toDeliveryDto(receipt));
       } catch (err) {
@@ -1249,6 +1405,7 @@ export class ExecutionApiService implements IExecutionApiService {
     externalReference?: string;
     failureReason?: string;
     approvalReference?: string;
+    suggestedFilename?: string;
   }) {
     return {
       deliveryId: r.deliveryId,
@@ -1263,6 +1420,9 @@ export class ExecutionApiService implements IExecutionApiService {
       externalReference: r.externalReference,
       failureReason: r.failureReason,
       approvalReference: r.approvalReference,
+      ...(r.suggestedFilename
+        ? { suggestedFilename: r.suggestedFilename }
+        : {}),
     };
   }
 
@@ -1325,6 +1485,12 @@ export class ExecutionApiService implements IExecutionApiService {
   private async hydrateFromDistributedJob(
     resource: ExecutionResource
   ): Promise<ExecutionResource> {
+    const emptyStructured =
+      resource.result?.kind === "structured" &&
+      (resource.result.data == null ||
+        (typeof resource.result.data === "object" &&
+          !Array.isArray(resource.result.data) &&
+          Object.keys(resource.result.data as object).length === 0));
     const needsHydrate =
       resource.status === "queued" ||
       resource.status === "running" ||
@@ -1333,6 +1499,7 @@ export class ExecutionApiService implements IExecutionApiService {
         (resource.result?.kind === "pending" ||
           resource.result?.kind === "empty" ||
           resource.result == null ||
+          emptyStructured ||
           missingWebsitePreview(resource)));
     if (!needsHydrate) return resource;
 
@@ -1340,8 +1507,12 @@ export class ExecutionApiService implements IExecutionApiService {
       const readJob = () =>
         this.deps.distributed!.getJob(asJobId(resource.jobId!));
       let job = readJob();
+      const jobNeedsWorker =
+        job.ok &&
+        job.value &&
+        (job.value.status === "queued" || job.value.status === "retrying");
       if (
-        (!job.ok || !job.value || !isTerminalJobStatus(job.value.status)) &&
+        (!job.ok || !job.value || jobNeedsWorker) &&
         this.deps.autoTick !== false
       ) {
         this.deps.distributed.registerWorker("execution", 4);
@@ -1349,6 +1520,9 @@ export class ExecutionApiService implements IExecutionApiService {
         job = readJob();
       }
       if (job.ok && job.value) {
+        if (!isTerminalJobStatus(job.value.status)) {
+          return resource;
+        }
         const summary = job.value.resultSummary ?? {};
         const status = mapJobStatus(job.value.status, summary);
         const mediaArtifactIds = jobMediaArtifactIds(summary);
@@ -1361,19 +1535,40 @@ export class ExecutionApiService implements IExecutionApiService {
           jobSummary: summary,
           mediaArtifactIds,
         });
+        const createMeta = await this.loadExecutionCreateMetadata(
+          resource.executionId,
+        );
+        const pollMetadata = {
+          ...(createMeta ?? {}),
+          ...(job.value.payload?.metadata ?? {}),
+        };
         const exported = await applyWebsiteExportToExecution({
           asyncMedia: this.deps.asyncMedia,
           executionId: resource.executionId,
           organizationId: resource.organizationId,
           status,
           jobSummary: summary,
-          metadata: job.value.payload?.metadata,
+          metadata: pollMetadata,
           createId: this.deps.createId,
           currentResult: nextResult,
           currentArtifactIds:
             mediaArtifactIds.length > 0
               ? mediaArtifactIds
               : resource.artifactIds,
+          path: "poll_hydrate",
+          executionKind: "idempotent_replay",
+          visualImageDeps:
+            this.deps.imageRouter && this.deps.providerRuntimeRegistry
+              ? {
+                  imageRouter: this.deps.imageRouter,
+                  registry: this.deps.providerRuntimeRegistry,
+                  createId: this.deps.createId,
+                  nowIso: this.deps.nowIso,
+                  organizationId: resource.organizationId,
+                  workspaceId: resource.workspaceId,
+                  executionId: resource.executionId,
+                }
+              : undefined,
         });
         nextResult = exported.result;
         const nextArtifactIds = exported.artifactIds ?? resource.artifactIds;
@@ -1384,32 +1579,24 @@ export class ExecutionApiService implements IExecutionApiService {
             : undefined) ??
           job.value.lastError ??
           resource.errorMessage;
+        const websiteRequired = isWebsiteGenerationMetadata(pollMetadata);
         if (
           exported.errorCode &&
           !exported.exported &&
-          status === "succeeded"
+          status === "succeeded" &&
+          websiteRequired
         ) {
-          const meta = job.value.payload?.metadata as
-            | Readonly<Record<string, unknown>>
-            | undefined;
-          const websiteRequired =
-            (typeof meta?.service === "string" &&
-              meta.service.toLowerCase() === "website") ||
-            (typeof meta?.outputKind === "string" &&
-              /^(deferred_)?website$/i.test(meta.outputKind)) ||
-            (meta?.structuredOutput &&
-              typeof meta.structuredOutput === "object" &&
-              /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
-                String(
-                  (meta.structuredOutput as { name?: unknown }).name ?? "",
-                ),
-              ));
-          if (websiteRequired) {
-            nextStatus = "failed";
-            nextError =
-              exported.errorCode ||
-              "Could not build the website deliverable from the model output.";
-          }
+          nextStatus = "failed";
+          nextError =
+            exported.errorCode ||
+            "Could not build the website deliverable from the model output.";
+        } else if (
+          websiteRequired &&
+          status === "succeeded" &&
+          missingWebsitePreview({ ...resource, result: nextResult }) &&
+          (nextArtifactIds?.length ?? 0) === 0
+        ) {
+          return resource;
         }
         const unchanged =
           nextStatus === resource.status &&
@@ -1445,7 +1632,13 @@ export class ExecutionApiService implements IExecutionApiService {
       (row) => row.kind === "media" || row.label?.startsWith("blob:")
     );
     if (media.length === 0) return resource;
-    if (resource.result?.kind === "structured") return resource;
+    const structuredHasPreview =
+      resource.result?.kind === "structured" &&
+      !missingWebsitePreview(resource) &&
+      resource.result.data != null &&
+      typeof resource.result.data === "object" &&
+      Object.keys(resource.result.data as object).length > 0;
+    if (structuredHasPreview) return resource;
     const artifactIds = media.map((row) => row.artifactId);
     const jobId = resource.jobId;
     if (jobId && this.deps.distributed) {
@@ -1531,7 +1724,21 @@ function missingWebsitePreview(resource: ExecutionResource): boolean {
       ? data.projectArtifactId.trim()
       : "";
   const hasFiles = Array.isArray(data?.files) && data.files.length > 0;
-  if (html || htmlArtifactId || projectArtifactId || hasFiles) return false;
+  const routes = Array.isArray(data?.routes) ? data.routes : [];
+  const hasWebsiteRoute =
+    routes.some((row) => {
+      if (!row || typeof row !== "object") return false;
+      const r = row as Record<string, unknown>;
+      return (
+        (typeof r.projectArtifactId === "string" && r.projectArtifactId.trim()) ||
+        (typeof r.htmlArtifactId === "string" && r.htmlArtifactId.trim()) ||
+        (typeof r.stack === "string" && r.stack.trim()) ||
+        (Array.isArray(r.files) && r.files.length > 0)
+      );
+    });
+  if (html || htmlArtifactId || projectArtifactId || hasFiles || hasWebsiteRoute) {
+    return false;
+  }
   const text =
     typeof resource.result?.text === "string" ? resource.result.text : "";
   if (/<!DOCTYPE\s+html|<html[\s>]/i.test(text)) return true;

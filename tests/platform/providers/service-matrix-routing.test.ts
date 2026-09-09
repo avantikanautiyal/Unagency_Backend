@@ -8,6 +8,7 @@ import {
   resolveImageCreativeUseCaseFromContext,
   resolveTextCreativeUseCaseFromMetadata,
   resolveVideoCreativeUseCase,
+  TEXT_USE_CASE_PREFERENCES,
 } from "../../../src/platform/providers/routing/matrix/matrix-use-case-routing";
 
 describe("service-matrix-routing", () => {
@@ -69,6 +70,13 @@ describe("service-matrix-routing", () => {
         subtype: "landing-page",
       })
     ).toBe("website");
+  });
+
+  it("prefers OpenAI Codex / GPT-5.5 first for website generation", () => {
+    const prefs = TEXT_USE_CASE_PREFERENCES.website;
+    expect(prefs[0]?.providerId).toBe("provider.openai");
+    expect(prefs[0]?.modelId).toBe("gpt-5.5");
+    expect(prefs.some((p) => p.providerId === "provider.anthropic")).toBe(true);
   });
 });
 

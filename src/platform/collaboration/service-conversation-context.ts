@@ -10,6 +10,7 @@ import type {
   ServiceFollowUpIntent,
 } from "./service-conversation-types";
 import { resolveConversationalTurn } from "./conversational-task-intelligence";
+import type { ConversationalTurnResolution } from "./conversational-task-intelligence/conversational-task-contract";
 
 const EXPORT_PATTERNS =
   /\b(export|download|save as|get as|convert to|give me)\b.*\b(pdf|pptx|docx|html|zip|powerpoint|word|slide deck)\b/i;
@@ -50,6 +51,10 @@ export function visibleUserText(text?: string | null): string {
   return "";
 }
 
+/**
+ * Legacy English follow-up classifier — kept for tests / offline callers only.
+ * Production conversation control uses LLM `classifySemanticSignals` → CTI turn resolver.
+ */
 export function classifyFollowUpIntent(
   message: string,
   state: ServiceAiConversationState
@@ -131,6 +136,8 @@ export function buildExecutionContextFromConversation(input: {
   messages: ServiceAiMessageRecord[];
   state: ServiceAiConversationState;
   latestUserMessage: string;
+  /** When provided, skips a second conversational turn resolution (P4.9.1). */
+  turn?: ConversationalTurnResolution;
 }): ServiceExecutionContext {
   const visibleInstruction = visibleUserText(input.latestUserMessage);
   const userMessages = input.messages
@@ -143,21 +150,21 @@ export function buildExecutionContextFromConversation(input: {
   );
   const originalUserBrief = userMessages[0];
 
-  const turn = resolveConversationalTurn({
-    conversationId: input.conversationId,
-    channelId: input.channelId,
-    latestUserMessage: input.latestUserMessage,
-    messages: input.messages,
-    state: input.state,
-  });
+  const turn =
+    input.turn ??
+    resolveConversationalTurn({
+      conversationId: input.conversationId,
+      channelId: input.channelId,
+      latestUserMessage: input.latestUserMessage,
+      messages: input.messages,
+      state: input.state,
+    });
 
   const intent: ServiceFollowUpIntent = turn.clarification
     ? "clarification"
-    : visibleInstruction && EXPORT_PATTERNS.test(visibleInstruction)
-      ? "export"
-      : turn.action === "EXTRACT_ASSETS"
-        ? "modification"
-        : turn.legacyIntent;
+    : turn.action === "EXTRACT_ASSETS"
+      ? "modification"
+      : turn.legacyIntent;
   const routeRef = parseRouteReference(visibleInstruction, input.messages);
 
   const executionIds = [
@@ -209,6 +216,7 @@ export function buildExecutionContextFromConversation(input: {
     requiresExecution: turn.requiresExecution,
     clarificationRequired: Boolean(turn.clarification),
     clarificationQuestion: turn.clarification?.question,
+    clarification: turn.clarification,
     effectiveRequirements: turn.effectiveRequirements,
     effectiveInstruction: turn.effectiveInstruction,
     executionSpec: turn.executionSpec,

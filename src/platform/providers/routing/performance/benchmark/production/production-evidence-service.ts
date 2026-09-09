@@ -81,6 +81,7 @@ export type ProductionExecutionEvidenceContext = {
   readonly generatedHeight?: number;
   readonly generatedPageCount?: number;
   readonly previewContainsCta?: boolean;
+  readonly metadata?: Readonly<Record<string, unknown>>;
   readonly routingMode?: "static" | "adaptive";
   readonly routingPolicyId?: string;
   readonly routingPolicyVersion?: string;

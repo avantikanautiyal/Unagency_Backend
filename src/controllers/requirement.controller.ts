@@ -15,6 +15,61 @@ import { parseNotificationContent } from "../utils/notificationUtils";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 import { checkPlanLimit } from "../services/planLimit.service";
+import {
+  assignCsToRequirement,
+  isHumanHybridCreationMode,
+  servicingCanAccessCustomer,
+} from "../services/cs-assignment-service";
+
+async function notifyAssignedCs(input: {
+  requirementId: string;
+  staffId: mongoose.Types.ObjectId | string;
+  title: string;
+  description?: string;
+}) {
+  const staff = await Staff.findById(input.staffId).populate("userId");
+  const csUser = staff?.userId as
+    | { _id?: { toString(): string }; name?: string; email?: string }
+    | null
+    | undefined;
+  if (!csUser?.email || !staff?.userId) return;
+
+  EmailQueue.add(`NEW_SERVICE_REQ_${csUser.email}`, {
+    action: "REQUIRMENT",
+    data: commonTemplate({
+      title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
+      content: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_body,
+      name: csUser.name!,
+      buttonText: "View Inbox",
+      buttonLink: `${FRONTEND_URL}/cs/inbox`,
+    }),
+    email: csUser.email,
+    userId: csUser._id?.toString?.() ?? String(staff.userId),
+    notification: new Notification({
+      title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_title,
+      description: input.description ?? NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_body,
+      type: "REQUIRMENT",
+      _id: input.requirementId,
+      symbol: "📋",
+      action: `${FRONTEND_URL}/cs/inbox`,
+      actionText: "view inbox",
+    }),
+    subject: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
+  });
+}
+
+async function ensureServiceChannel(input: {
+  userId: string;
+  brandId: string;
+  productPath: string;
+  serviceLabel?: string;
+  assignedCsStaffId?: string;
+}) {
+  const { collaborationChannelService } = await import(
+    "../services/collaboration/collaboration-channel-service"
+  );
+  await collaborationChannelService.ensureForService(input);
+}
 
 // TESTED OK
 export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
@@ -90,38 +145,49 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   // console.log(requirementBody) ;
   // return new ApiResponse(200,null,"");
   const newRequirement = await Requirement.create(requirementBody);
-  const rm = await Staff.findOne({
-    _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + ""),
-  }).populate("userId");
 
+  if (creationMode && isHumanHybridCreationMode(creationMode)) {
+    const assigned = await assignCsToRequirement(newRequirement._id);
+    if (assigned) {
+      void notifyAssignedCs({
+        requirementId: newRequirement._id.toString(),
+        staffId: assigned.staffId,
+        title: body.title,
+      });
+    }
+  } else {
+    const rm = await Staff.findOne({
+      _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + ""),
+    }).populate("userId");
 
-  const rmUser = await Users.findOne({
-    _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
-  });
-  // sending email to relationship manager
-  // sending email to relationship manager
-  EmailQueue.add(`NEW_RQUIREMENT_${rmUser?.email}`, {
-    action: "REQUIRMENT",
-    data: commonTemplate({
-      title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
-      content: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_body,
-      name: rmUser?.name!,
-      buttonText: "View Brief",
-      buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
-    }),
-    email: rmUser?.email!,
-    userId: rm?.userId?._id.toString()!,
-    notification: new Notification({
-      title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_title,
-      description: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_body,
-      type: "REQUIRMENT",
-      _id: newRequirement._id.toString(),
-      symbol: "📋",
-      action: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
-      actionText: "view brief",
-    }),
-    subject: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
-  });
+    const rmUser = await Users.findOne({
+      _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
+    });
+    if (rmUser?.email && rm?.userId) {
+      EmailQueue.add(`NEW_RQUIREMENT_${rmUser.email}`, {
+        action: "REQUIRMENT",
+        data: commonTemplate({
+          title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
+          content: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_body,
+          name: rmUser.name!,
+          buttonText: "View Brief",
+          buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
+        }),
+        email: rmUser.email,
+        userId: rm.userId._id.toString(),
+        notification: new Notification({
+          title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_title,
+          description: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_body,
+          type: "REQUIRMENT",
+          _id: newRequirement._id.toString(),
+          symbol: "📋",
+          action: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
+          actionText: "view brief",
+        }),
+        subject: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
+      });
+    }
+  }
 
   // sending email to customer
   const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_body, { Name: req.user?.name || "User" });
@@ -159,7 +225,27 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
         (req.user?.organization as { _id?: { toString(): string } } | null)?._id?.toString() ||
         "";
       const members = [String(req.user?.userId)];
-      if (rmUser?._id) members.push(String(rmUser._id));
+
+      let assignedCsStaffId: string | undefined;
+      if (creationMode && isHumanHybridCreationMode(creationMode)) {
+        const assignedReq = await Requirement.findById(newRequirement._id).select(
+          "assignedCs"
+        );
+        assignedCsStaffId = assignedReq?.assignedCs
+          ? String(assignedReq.assignedCs)
+          : undefined;
+        if (assignedCsStaffId) {
+          const staff = await Staff.findById(assignedCsStaffId).select("userId");
+          if (staff?.userId) members.push(String(staff.userId));
+        }
+      } else {
+        const rm = await Staff.findOne({
+          _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + ""),
+        }).populate("userId");
+        const rmUser = rm?.userId as { _id?: unknown } | null | undefined;
+        if (rmUser?._id) members.push(String(rmUser._id));
+      }
+
       await collaborationChannelService.provisionForBrief({
         briefId: newRequirement._id.toString(),
         name: String(newRequirement.title || "Brief"),
@@ -174,6 +260,7 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
           brandId: brandIdRaw,
           productPath,
           serviceLabel: String(newRequirement.title || ""),
+          assignedCsStaffId,
         });
       }
     } catch (err) {
@@ -207,30 +294,92 @@ export const getCustomerRequirement = asyncHandler(
       "_id" in req.user.staff
         ? req.user.staff._id
         : req.user?.staff;
-    const checkMyCustomer = await Users.exists({
-      relationship_manager: staffId,
-      _id: userId,
+
+    const canAccess = await servicingCanAccessCustomer({
+      staffId,
+      customerId: userId,
+      role: req.user?.role,
     });
 
-    if (
-      !checkMyCustomer &&
-      req.user?.role !== "superadmin" &&
-      req.user?.role !== "admin"
-    ) {
+    if (!canAccess) {
       return new ApiResponse(
         401,
         null,
         "Customer is not associated with your ID"
       );
     }
-    const requirement = await Requirement.find({
+
+    const requirementQuery: Record<string, unknown> = {
       userId: new mongoose.Types.ObjectId(userId),
-    }).populate("category");
+    };
+    if (req.user?.role === "servicing") {
+      requirementQuery.creationMode = { $in: ["human", "hybrid"] };
+    }
+
+    const requirement = await Requirement.find(requirementQuery).populate(
+      "category"
+    );
     return new ApiResponse(
       200,
       requirement,
       "Requirement fetched successfully"
     );
+  }
+);
+
+export const getCsInboxRequirements = asyncHandler(
+  async (req: RequestUser, res) => {
+    const staffId =
+      req.user?.staff &&
+      typeof req.user.staff === "object" &&
+      "_id" in req.user.staff
+        ? req.user.staff._id
+        : req.user?.staff;
+
+    if (!staffId) {
+      throw new ApiError("CS staff profile is required", 401);
+    }
+
+    const staffObjectId = new mongoose.Types.ObjectId(String(staffId));
+
+    const legacyCustomerIds = await Users.find({
+      role: "customer",
+      relationship_manager: staffObjectId,
+    }).distinct("_id");
+
+    const requirements = await Requirement.find({
+      $and: [
+        { creationMode: { $in: ["human", "hybrid"] } },
+        {
+          $or: [
+            { assignedCs: staffObjectId },
+            {
+              $or: [{ assignedCs: { $exists: false } }, { assignedCs: null }],
+              userId: { $in: legacyCustomerIds },
+            },
+          ],
+        },
+      ],
+    })
+      .sort({ updatedAt: -1 })
+      .populate("category")
+      .populate({
+        path: "assignedCs",
+        select: "userId",
+        populate: { path: "userId", select: ["name", "email"] },
+      });
+
+    const unassignedIds = requirements
+      .filter((row) => !row.assignedCs)
+      .map((row) => row._id);
+    if (unassignedIds.length) {
+      void Requirement.updateMany(
+        { _id: { $in: unassignedIds } },
+        { $set: { assignedCs: staffObjectId } }
+      ).catch(() => undefined);
+    }
+
+    return new ApiResponse(200, requirements, "CS inbox fetched successfully");
   }
 );
 
@@ -240,9 +389,17 @@ export const updateCustomerRequirement = asyncHandler(
     const userId: string = req.params.userId;
     const reqId: string = req.params.reqId;
     const status: string = req.params.status;
-    const checkMyCustomer = await Users.exists({
-      relationship_manager: req.user?.staff,
-      _id: userId,
+    const staffId =
+      req.user?.staff &&
+      typeof req.user.staff === "object" &&
+      "_id" in req.user.staff
+        ? req.user.staff._id
+        : req.user?.staff;
+
+    const checkMyCustomer = await servicingCanAccessCustomer({
+      staffId,
+      customerId: userId,
+      role: req.user?.role,
     });
 
     if (!checkMyCustomer) {
@@ -369,7 +526,39 @@ export const openServiceRequirement = asyncHandler(
         existing.creationMode = creationMode;
         await existing.save();
       }
-      return new ApiResponse(200, existing, "Service requirement ready");
+
+      let assignedStaffId = existing.assignedCs
+        ? String(existing.assignedCs)
+        : "";
+      if (!assignedStaffId) {
+        const assigned = await assignCsToRequirement(existing._id);
+        if (assigned) {
+          assignedStaffId = String(assigned.staffId);
+          existing.assignedCs = assigned.staffId;
+        }
+      }
+
+      void ensureServiceChannel({
+        userId,
+        brandId,
+        productPath,
+        serviceLabel: serviceLabel || undefined,
+        assignedCsStaffId: assignedStaffId || undefined,
+      }).catch((err) => {
+        console.warn(
+          "[requirement] open-service channel ensure failed (non-fatal):",
+          err instanceof Error ? err.message : err
+        );
+      });
+
+      const populatedExisting = await Requirement.findById(existing._id).populate(
+        "category"
+      );
+      return new ApiResponse(
+        200,
+        populatedExisting ?? existing,
+        "Service requirement ready"
+      );
     }
 
     const { brandService } = await import("../services/brand-service");
@@ -414,65 +603,30 @@ export const openServiceRequirement = asyncHandler(
       productPath,
     });
 
-    // Notify relationship manager (same path as formal briefs)
-    void (async () => {
-      try {
-        const rm = await Staff.findOne({
-          _id: new mongoose.Types.ObjectId(req.user?.relationship_manager + ""),
-        }).populate("userId");
-        const rmUser = await Users.findOne({
-          _id: new mongoose.Types.ObjectId(rm?.userId?._id + ""),
-        });
-        if (rmUser?.email && rm?.userId) {
-          EmailQueue.add(`NEW_SERVICE_REQ_${rmUser.email}`, {
-            action: "REQUIRMENT",
-            data: commonTemplate({
-              title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
-              content: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_body,
-              name: rmUser.name!,
-              buttonText: "View Inbox",
-              buttonLink: `${FRONTEND_URL}/requirement-logs/${created._id}`,
-            }),
-            email: rmUser.email,
-            userId: rm.userId._id.toString(),
-            notification: new Notification({
-              title: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.in_app_title,
-              description: `${title} — human/hybrid servicing request`,
-              type: "REQUIRMENT",
-              _id: created._id.toString(),
-              symbol: "📋",
-              action: `${FRONTEND_URL}/requirement-logs/${created._id}`,
-              actionText: "view brief",
-            }),
-            subject: NOTIFICATION_CONFIG.CS_BRIEF_SUBMITTED.email_subject,
-          });
-        }
-      } catch (err) {
-        console.warn(
-          "[requirement] open-service RM notify failed (non-fatal):",
-          err instanceof Error ? err.message : err
-        );
-      }
-    })();
+    const assigned = await assignCsToRequirement(created._id);
+    const assignedStaffId = assigned ? String(assigned.staffId) : "";
 
-    void (async () => {
-      try {
-        const { collaborationChannelService } = await import(
-          "../services/collaboration/collaboration-channel-service"
-        );
-        await collaborationChannelService.ensureForService({
-          userId,
-          brandId,
-          productPath,
-          serviceLabel: label,
-        });
-      } catch (err) {
-        console.warn(
-          "[requirement] open-service channel ensure failed (non-fatal):",
-          err instanceof Error ? err.message : err
-        );
-      }
-    })();
+    if (assigned) {
+      void notifyAssignedCs({
+        requirementId: created._id.toString(),
+        staffId: assigned.staffId,
+        title,
+        description: `${title} — human/hybrid servicing request`,
+      });
+    }
+
+    void ensureServiceChannel({
+      userId,
+      brandId,
+      productPath,
+      serviceLabel: label,
+      assignedCsStaffId: assignedStaffId || undefined,
+    }).catch((err) => {
+      console.warn(
+        "[requirement] open-service channel ensure failed (non-fatal):",
+        err instanceof Error ? err.message : err
+      );
+    });
 
     const populated = await Requirement.findById(created._id).populate(
       "category"

@@ -68,6 +68,9 @@ export type ExecutionExtrasRecord = {
   packPlanShadow?: unknown;
   continuityPack?: boolean;
   continuityObservability?: unknown;
+  /** P4.9.5 — immutable create metadata for retry/duplicate continuation. */
+  createMetadataSnapshot?: Readonly<Record<string, unknown>>;
+  executionSpecSnapshot?: unknown;
 };
 
 export type ExecutionServiceDeps = {
@@ -90,6 +93,8 @@ export type ExecutionServiceDeps = {
   asyncMedia?: AsyncMediaPlatform;
   videoRouter?: import("../../providers/video/routing/video-execution-router").VideoExecutionRouter;
   imageRouter?: import("../../providers/image/routing/image-execution-router").ImageExecutionRouter;
+  /** LIVE provider registry — used for best-effort slide/hero image.generate. */
+  providerRuntimeRegistry?: import("../../providers/runtime/registry/in-memory-provider-runtime-registry").IProviderRuntimeRegistry;
   audioRouter?: import("../../providers/audio/routing/audio-execution-router").AudioExecutionRouter;
   textRouter?: import("../../providers/routing/text/text-execution-router").TextExecutionRouter;
   toolRuntime?: ToolRuntimePlatform;
@@ -112,4 +117,12 @@ export type ExecutionCreateHost = {
   readonly governanceFinalize: GovernanceFinalizeService;
   readonly deliveryService: OsDeliveryService;
   loadExecution(executionId: string): Promise<ExecutionResource | undefined>;
+  /** P4.9.5 — persisted create metadata + executionSpec for retry inheritance. */
+  loadExecutionCreateMetadata?(
+    executionId: string,
+  ): Promise<Readonly<Record<string, unknown>> | undefined>;
+  /** Optional distributed job metadata for continuation handoff. */
+  loadExecutionJobMetadata?(
+    executionId: string,
+  ): Promise<Readonly<Record<string, unknown>> | undefined>;
 };

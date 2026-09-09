@@ -56,7 +56,7 @@ export class SimulatedOpenAIHttpClient implements IOpenAIHttpClient {
       });
     }
 
-    if (request.path.includes("/images/generations")) {
+    if (request.path.includes("/images/generations") || request.path.includes("/images/edits")) {
       return success({
         status: 200,
         headers: {},

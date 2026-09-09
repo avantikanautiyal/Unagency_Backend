@@ -28,6 +28,12 @@ import {
   websiteIncompleteErrorMessage,
 } from "../os/delivery/website-generation";
 import { appendOutputRequirementsToPrompt } from "./append-output-requirements";
+import {
+  ensureProviderPromptHasProductionSpec,
+  evaluateProductionPregenHold,
+  readConfirmedOverrideFromMetadata,
+  resolveProductionInstructInputFromMetadata,
+} from "../config/format-production-spec";
 import { readExecutionSpecFromMetadata } from "../collaboration/conversational-task-intelligence/execution-spec-snapshot";
 import { logRequirementConstraintTrace } from "../collaboration/conversational-task-intelligence/requirement-constraint-trace";
 import {
@@ -39,7 +45,10 @@ import {
   pickReferenceCapableCandidate,
   reorderImageCandidatesForReferenceEdit,
 } from "../collaboration/conversational-task-intelligence/visual-modification-plan";
-import { providerSupportsReferenceImageEdit } from "../providers/image/configs/image-provider-capabilities";
+import {
+  providerSupportsReferenceImage,
+  providerSupportsReferenceImageEdit,
+} from "../providers/image/configs/image-provider-capabilities";
 import {
   stampDocumentCreateMetadata,
   isDocumentDirectCreate,
@@ -48,6 +57,10 @@ import {
   isPresentationDirectCreate,
   stampPresentationCreateMetadata,
 } from "./presentation-direct-metadata";
+import {
+  isEmailDirectCreate,
+  stampEmailCreateMetadata,
+} from "./email-direct-metadata";
 import { buildDirectProviderBag } from "./build-direct-provider-bag";
 import {
   ensurePresentationExpandedForDeliverable,
@@ -153,7 +166,9 @@ const DOCUMENT_DIRECT_TIMEOUT_MS = 300_000;
 function stampDirectCreateMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> {
-  return stampDocumentCreateMetadata(stampPresentationCreateMetadata(metadata));
+  return stampEmailCreateMetadata(
+    stampDocumentCreateMetadata(stampPresentationCreateMetadata(metadata))
+  );
 }
 
 function isWebsiteDirectRequest(
@@ -180,7 +195,8 @@ function isWebsiteDirectRequest(
     outputKind === "deferred_website" ||
     outputKind === "website" ||
     structuredName === "websitepage" ||
-    structuredName === "webproject"
+    structuredName === "webproject" ||
+    structuredName === "websiteroutes"
   );
 }
 
@@ -190,6 +206,7 @@ function resolveDirectTimeoutMs(
   if (isWebsiteDirectRequest(metadata)) return WEBSITE_DIRECT_TIMEOUT_MS;
   if (isPresentationDirectCreate(metadata)) return PRESENTATION_DIRECT_TIMEOUT_MS;
   if (isDocumentDirectCreate(metadata)) return DOCUMENT_DIRECT_TIMEOUT_MS;
+  if (isEmailDirectCreate(metadata)) return DOCUMENT_DIRECT_TIMEOUT_MS;
   return DEFAULT_DIRECT_TIMEOUT_MS;
 }
 
@@ -289,6 +306,47 @@ function presentationTextFailoverChain(
     if (out.length >= 2) break;
   }
   return out;
+}
+
+/** General text — failover across vendors when primary hits 429 / circuit / runtime errors. */
+function generalTextFailoverChain(
+  primary?: { providerId: string; modelId: string },
+  useCase?: string
+): readonly { providerId: string; modelId: string }[] {
+  const primaryKey = primary
+    ? `${primary.providerId}::${primary.modelId}`
+    : "";
+  const primaryProvider = primary?.providerId ?? "";
+  const out: { providerId: string; modelId: string }[] = [];
+  const seenProviders = new Set<string>(
+    primaryProvider ? [primaryProvider] : []
+  );
+
+  const prefsKey =
+    useCase && useCase in TEXT_USE_CASE_PREFERENCES
+      ? (useCase as keyof typeof TEXT_USE_CASE_PREFERENCES)
+      : "general";
+  const prefs = TEXT_USE_CASE_PREFERENCES[prefsKey] ?? TEXT_USE_CASE_PREFERENCES.general;
+
+  for (const pref of prefs) {
+    const key = `${pref.providerId}::${pref.modelId}`;
+    if (key === primaryKey) continue;
+    if (seenProviders.has(pref.providerId)) continue;
+    seenProviders.add(pref.providerId);
+    out.push({ providerId: pref.providerId, modelId: pref.modelId });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function isRateLimitFailureMessage(message: string | undefined): boolean {
+  const m = (message ?? "").toLowerCase();
+  return (
+    m.includes("http 429") ||
+    m.includes("rate limit") ||
+    m.includes("too many requests") ||
+    m.includes("429")
+  );
 }
 
 function isCircuitOpenFailureMessage(message: string | undefined): boolean {
@@ -449,7 +507,9 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       return failure(new ValidationError("rawPrompt is required"));
     }
 
-    const stampedMetadata = stampDirectCreateMetadata(request.metadata);
+    let stampedMetadata: Record<string, unknown> = {
+      ...stampDirectCreateMetadata(request.metadata),
+    };
     const executionSpec = readExecutionSpecFromMetadata(stampedMetadata);
     logRequirementConstraintTrace({
       phase: "EXECUTION_SPEC",
@@ -466,8 +526,41 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       metadata: stampedMetadata,
       spec: executionSpec,
     });
-    const promptWithOutputRequirements = appendOutputRequirementsToPrompt({
+    const productionInstruct = ensureProviderPromptHasProductionSpec({
       prompt: request.rawPrompt,
+      metadata: stampedMetadata,
+    });
+    stampedMetadata = {
+      ...stampedMetadata,
+      ...productionInstruct.metadata,
+    };
+
+    // Phase 5 — do not spend provider budget on unconfirmed R/H placements.
+    {
+      const pregen = evaluateProductionPregenHold({
+        ...resolveProductionInstructInputFromMetadata(stampedMetadata),
+        confirmedOverride: readConfirmedOverrideFromMetadata(stampedMetadata),
+        organizationId: String(
+          request.organizationId ?? stampedMetadata.organizationId ?? "",
+        ),
+        executionId:
+          typeof stampedMetadata.executionId === "string"
+            ? stampedMetadata.executionId
+            : request.requestId,
+        requestId: request.requestId,
+      });
+      if (pregen.blocked) {
+        return failure(
+          new ValidationError(
+            pregen.reason ??
+              "Production Spec pre-gen hold: confirmedOverride required for R/H placement",
+          ),
+        );
+      }
+    }
+
+    const promptWithOutputRequirements = appendOutputRequirementsToPrompt({
+      prompt: productionInstruct.prompt,
       metadata: stampedMetadata,
     });
     logRequirementConstraintTrace({
@@ -565,11 +658,13 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     const primary = bag.routing!.plan.primary;
     const failover = parseImageFailoverChain(request.metadata);
     const isImage = isImageGenerationCapability(primaryCap);
+    const visualOperationKind = String(
+      stampedMetadata?.visualOperationKind ?? ""
+    ).toUpperCase();
     const referenceEditRequired =
-      stampedMetadata?.referenceInputPresent === true ||
       String(stampedMetadata?.capabilityId ?? "").toLowerCase() === "image.edit" ||
-      String(stampedMetadata?.visualOperationKind ?? "").toUpperCase() === "MODIFY" ||
-      String(stampedMetadata?.visualOperationKind ?? "").toUpperCase() === "REGENERATE";
+      visualOperationKind === "MODIFY" ||
+      visualOperationKind === "REGENERATE";
     const primaryCandidate = {
       providerId: String(primary.providerId ?? "provider.openai"),
       modelId: String(primary.modelId ?? "gpt-4o"),
@@ -582,7 +677,18 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       stampedMetadata,
       primaryCandidate
     );
-    const textFailover = [...websiteFailover, ...presentationFailover];
+    const textUseCase =
+      typeof stampedMetadata?.textUseCase === "string"
+        ? stampedMetadata.textUseCase.trim()
+        : undefined;
+    let textFailover = [...websiteFailover, ...presentationFailover];
+    if (!isImage && textFailover.length === 0) {
+      // Prefer matrix failoverChain from prepass; else vendor-diverse general chain.
+      textFailover =
+        failover.length > 0
+          ? [...failover]
+          : [...generalTextFailoverChain(primaryCandidate, textUseCase)];
+    }
     const candidates: { providerId: string; modelId: string }[] = isImage
       ? [primaryCandidate, ...failover]
       : [primaryCandidate, ...textFailover];
@@ -613,10 +719,34 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
           ),
         );
       }
+    } else if (
+      isImage &&
+      (stampedMetadata?.referenceInputPresent === true ||
+        (typeof stampedMetadata?.brandLogoAssetId === "string" &&
+          stampedMetadata.brandLogoAssetId.trim()) ||
+        (typeof stampedMetadata?.logoAssetId === "string" &&
+          stampedMetadata.logoAssetId.trim()) ||
+        (Array.isArray(stampedMetadata?.assetIds) &&
+          stampedMetadata.assetIds.length > 0))
+    ) {
+      // Vault/attached logo on generate — never fall through to OpenAI/Recraft
+      // (they drop the reference image and invent a new mark).
+      const refCapable = uniqueCandidates.filter((c) =>
+        providerSupportsReferenceImage(c.providerId)
+      );
+      if (refCapable.length > 0) {
+        uniqueCandidates = refCapable;
+      }
     }
 
-    // Pitch decks: prefer OpenAI for structured JSON — Anthropic is failover.
-    if (presentationDeliverableRequired && !isImage && uniqueCandidates.length > 1) {
+    // Pitch decks + websites: prefer OpenAI (Codex / GPT-5.5) for structured code/JSON;
+    // Anthropic remains in the failover chain for quality/design recovery.
+    if (
+      (presentationDeliverableRequired ||
+        isWebsiteDirectRequest(request.metadata)) &&
+      !isImage &&
+      uniqueCandidates.length > 1
+    ) {
       uniqueCandidates = [
         ...uniqueCandidates.filter((c) => c.providerId === "provider.openai"),
         ...uniqueCandidates.filter((c) => c.providerId !== "provider.openai"),
@@ -684,20 +814,39 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
               ? stampedMetadata.visualOperationKind
               : undefined,
         });
+        const logoBoundOnGenerate =
+          !referenceEditRequired &&
+          (stampedMetadata?.referenceInputPresent === true ||
+            (typeof stampedMetadata?.brandLogoAssetId === "string" &&
+              Boolean(stampedMetadata.brandLogoAssetId.trim())) ||
+            (typeof stampedMetadata?.logoAssetId === "string" &&
+              Boolean(stampedMetadata.logoAssetId.trim())) ||
+            (Array.isArray(stampedMetadata?.assetIds) &&
+              stampedMetadata.assetIds.length > 0));
         if (
-          referenceEditRequired &&
-          !providerSupportsReferenceImageEdit(candidate.providerId)
+          (referenceEditRequired &&
+            !providerSupportsReferenceImageEdit(candidate.providerId)) ||
+          (logoBoundOnGenerate &&
+            !providerSupportsReferenceImage(candidate.providerId))
         ) {
-          lastFailureMessage = "Provider does not support reference-image modification";
+          lastFailureMessage =
+            "Provider does not support reference-image input for brand logo continuity";
           continue;
         }
       }
       if (
-        presentationDeliverableRequired &&
-        candidate.providerId !== primaryCandidate.providerId
+        candidate.providerId !== primaryCandidate.providerId &&
+        (presentationDeliverableRequired ||
+          isWebsiteDirectRequest(request.metadata) ||
+          !isImage)
       ) {
+        const kind = presentationDeliverableRequired
+          ? "Presentation"
+          : isWebsiteDirectRequest(request.metadata)
+            ? "Website"
+            : "Text";
         console.log(
-          `📑 [Presentation] provider failover | requestId=${request.requestId} | provider=${candidate.providerId} | model=${candidate.modelId}`
+          `📑 [${kind}] provider failover | requestId=${request.requestId} | provider=${candidate.providerId} | model=${candidate.modelId}`
         );
       }
       const execStart = this.clockMs();
@@ -726,7 +875,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
 
       if (!result.ok) {
         lastFailureMessage = String(result.error.message);
-        if (isCircuitOpenFailureMessage(lastFailureMessage)) {
+        if (
+          isCircuitOpenFailureMessage(lastFailureMessage) ||
+          isRateLimitFailureMessage(lastFailureMessage)
+        ) {
           circuitOpenProviders.add(candidate.providerId);
         }
         continue;
@@ -734,7 +886,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       if (result.value.success === false) {
         lastFailureMessage =
           result.value.error?.message ?? "Provider execution failed";
-        if (isCircuitOpenFailureMessage(lastFailureMessage)) {
+        if (
+          isCircuitOpenFailureMessage(lastFailureMessage) ||
+          isRateLimitFailureMessage(lastFailureMessage)
+        ) {
           circuitOpenProviders.add(candidate.providerId);
         }
         // Concepts may have succeeded — do not re-run the whole pipeline on Mistral etc.

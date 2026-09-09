@@ -20,6 +20,8 @@ import {
 } from "../../collaboration/conversational-task-intelligence/visual-modification-plan";
 import {
   listReferenceCapableImageProviderIds,
+  listReferenceImageProviderIds,
+  providerSupportsReferenceImage,
   providerSupportsReferenceImageEdit,
 } from "../../providers/image/configs/image-provider-capabilities";
 import type { ImageExecutionRouter } from "../../providers/image/routing/image-execution-router";
@@ -138,7 +140,18 @@ export function resolveReferenceCapableImageRouting(input: {
   readonly modelId: string;
   readonly fallbackUsed: boolean;
 }> {
-  if (!input.metadata.referenceInputPresent) {
+  const logoBound =
+    input.metadata.referenceInputPresent === true ||
+    (typeof input.metadata.brandLogoAssetId === "string" &&
+      input.metadata.brandLogoAssetId.trim().length > 0) ||
+    (typeof input.metadata.logoAssetId === "string" &&
+      input.metadata.logoAssetId.trim().length > 0) ||
+    (typeof input.metadata.vaultLogoChoice === "string" &&
+      input.metadata.vaultLogoChoice.trim().length > 0) ||
+    (Array.isArray(input.metadata.assetIds) &&
+      input.metadata.assetIds.length > 0);
+
+  if (!logoBound) {
     return success({
       providerId: input.routedProviderId,
       modelId: input.routedModelId,
@@ -160,18 +173,46 @@ export function resolveReferenceCapableImageRouting(input: {
         ? input.metadata.conversationalAction
         : undefined;
 
+  const capability =
+    typeof input.metadata.capabilityId === "string"
+      ? input.metadata.capabilityId.trim().toLowerCase()
+      : typeof input.metadata.capabilityHint === "string"
+        ? input.metadata.capabilityHint.trim().toLowerCase()
+        : "";
+
+  const isArtifactEdit =
+    capability === "image.edit" ||
+    operationKind === "MODIFY" ||
+    operationKind === "REGENERATE";
+
   const candidates = [
     { providerId: input.routedProviderId, modelId: input.routedModelId },
     ...input.failoverChain,
   ];
 
-  const capable = pickReferenceCapableCandidate(candidates);
+  // Logo continuity on generate needs REFERENCE_IMAGE only; artifact edits need edit+ref.
+  const capable = isArtifactEdit
+    ? pickReferenceCapableCandidate(candidates)
+    : candidates.find((c) => providerSupportsReferenceImage(c.providerId));
+
   if (capable) {
     return success({
       providerId: capable.providerId,
       modelId: capable.modelId,
       fallbackUsed: capable.providerId !== input.routedProviderId,
     });
+  }
+
+  // Brand-logo bind: prefer any verified reference-image provider as last resort.
+  if (!isArtifactEdit) {
+    const logoFallbackId = listReferenceImageProviderIds()[0];
+    if (logoFallbackId) {
+      return success({
+        providerId: logoFallbackId,
+        modelId: "default",
+        fallbackUsed: true,
+      });
+    }
   }
 
   const unsupported = assertReferenceCapableProviderOrUnsupported({
@@ -205,8 +246,10 @@ export function pinReferenceCapableProviderOnMetadata(input: {
     ...input.metadata,
     preferredProviderId: input.providerId,
     preferredModelId: input.modelId,
-    providerCapability: providerSupportsReferenceImageEdit(input.providerId)
-      ? "REFERENCE_IMAGE_EDIT"
+    providerCapability: providerSupportsReferenceImage(input.providerId)
+      ? providerSupportsReferenceImageEdit(input.providerId)
+        ? "REFERENCE_IMAGE_EDIT"
+        : "REFERENCE_IMAGE"
       : "TEXT_TO_IMAGE",
     providerReferenceFallbackUsed: input.fallbackUsed === true,
   };

@@ -78,10 +78,11 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
     },
   ],
   website: [
+    // Prefer OpenAI Codex / GPT-5.5 for production-quality site code; Anthropic for design failover.
+    { providerId: "provider.openai", modelId: "gpt-5.5", label: "Codex / GPT-5.5" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
-    { providerId: "provider.openai", modelId: "gpt-5.5", label: "GPT-5.5" },
-    { providerId: "provider.gemini", modelId: "gemini-pro-latest", label: "Gemini 2.5 Pro" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+    { providerId: "provider.gemini", modelId: "gemini-pro-latest", label: "Gemini 2.5 Pro" },
     { providerId: "provider.deepseek", modelId: "deepseek-reasoner", label: "DeepSeek R1" },
     { providerId: "provider.moonshot", modelId: "kimi-k2", label: "Kimi K2" },
     { providerId: "provider.anthropic", modelId: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
@@ -232,6 +233,14 @@ export const AUDIO_USE_CASE_PREFERENCES: Record<
 
 export function resolveTextCreativeUseCase(prompt: string): TextCreativeUseCase {
   const hay = prompt.toLowerCase();
+  // Non-Latin / mixed-script briefs → multilingual model lane (not English keyword sniffing).
+  if (
+    /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/.test(
+      prompt
+    )
+  ) {
+    return "multilingual";
+  }
   if (
     /\b(code|coding|programming|typescript|python|refactor|bug|website|landing\s*page|web\s*app|frontend|next\.?js|react)\b/.test(
       hay
@@ -249,7 +258,7 @@ export function resolveTextCreativeUseCase(prompt: string): TextCreativeUseCase 
   ) {
     return "strategy";
   }
-  if (/\b(multilingual|translate|localization|arabic|hindi|chinese)\b/.test(hay)) {
+  if (/\b(multilingual|translate|localization|arabic|hindi|chinese|hinglish)\b/.test(hay)) {
     return "multilingual";
   }
   if (/\b(creative|trending|campaign\s*idea|brainstorm)\b/.test(hay)) {

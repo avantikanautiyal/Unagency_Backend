@@ -1,5 +1,6 @@
 /**
  * Priority 4.6 — Deliverable compliance validation (extends Step 2 / Evaluation Plane).
+ * Phase B — Format & Production Spec release authority + canvas enforcement.
  */
 
 import type { ContractRequirement } from "../../os/contracts/output-contracts/evaluation-methods";
@@ -16,6 +17,14 @@ import {
   evaluateVisualNegativeConstraint,
   mapVisualRequirementToComplianceStatus,
 } from "./visual-requirement-evaluator";
+import {
+  dimensionsAreHardConstraint,
+  evaluateProductionComplianceChecks,
+  isHardComplianceFailure,
+  type ProductionComplianceContext,
+} from "./production-compliance";
+
+export type { ProductionComplianceContext };
 
 export type ComplianceMeasurementMethod =
   | "MEASURED"
@@ -30,6 +39,8 @@ export type DeliverableComplianceResult = {
   readonly evidence: readonly string[];
   readonly evaluationMode?: ComplianceMeasurementMethod;
   readonly evaluatorProvenance?: Readonly<Record<string, string>>;
+  /** Soft Spec D canvas drift — FAIL for observability, does not hard-block. */
+  readonly softFailure?: boolean;
 };
 
 export type RequirementComplianceStatus =
@@ -42,10 +53,15 @@ export type DeliverableComplianceReport = {
   readonly overallStatus: "COMPLIANT" | "DELIVERABLE_COMPLIANCE_FAILURE" | "NOT_EVALUATED";
   readonly requirementComplianceStatus: RequirementComplianceStatus;
   readonly results: readonly DeliverableComplianceResult[];
+  readonly productionReleaseBlocked?: boolean;
+  readonly productionReleaseReasons?: readonly string[];
+  /** Hygiene Reference PASS / REVISE / REVIEW / HOLD. */
+  readonly productionReleaseDecision?: import("../../config/format-production-spec").ProductionReleaseDecision;
 };
 
 export function userTaskRequirementsFromExecutionSpec(
   spec: CanonicalExecutionSpecification,
+  production?: ProductionComplianceContext,
 ): readonly ContractRequirement[] {
   const reqs: ContractRequirement[] = [];
 
@@ -110,6 +126,7 @@ export function userTaskRequirementsFromExecutionSpec(
   }
 
   if (spec.technical.width?.value && spec.technical.height?.value) {
+    const hardDims = dimensionsAreHardConstraint(spec, production);
     reqs.push({
       id: "user_task.technical.dimensions",
       class: "hard",
@@ -118,8 +135,8 @@ export function userTaskRequirementsFromExecutionSpec(
       evaluation: {
         method: "deterministic_validation",
         expectedResult: `${spec.technical.width.value}x${spec.technical.height.value}`,
-        severity: "high",
-        blocksCompletion: false,
+        severity: hardDims ? "critical" : "high",
+        blocksCompletion: hardDims,
       },
     });
   }
@@ -218,6 +235,45 @@ export function userTaskRequirementsFromExecutionSpec(
     });
   }
 
+  const logo = spec.referenceAssets?.logo?.value;
+  if (logo?.mode === "USE_EXISTING" && logo.assetId) {
+    reqs.push({
+      id: "user_task.authoritative_logo",
+      class: "hard",
+      category: "brand",
+      description: `Authoritative logo ${logo.assetId} must be used exactly`,
+      evaluation: {
+        method: "deterministic_validation",
+        expectedResult: `authoritative logo ${logo.assetId} attached to execution`,
+        severity: "critical",
+        blocksCompletion: true,
+      },
+    });
+  }
+
+  const releasePreview = evaluateProductionComplianceChecks({
+    spec,
+    production,
+  });
+  if (
+    releasePreview.gate.rule &&
+    (releasePreview.gate.rule.status === "R" ||
+      releasePreview.gate.rule.status === "H")
+  ) {
+    reqs.push({
+      id: "user_task.production.release_authority",
+      class: "hard",
+      category: "format",
+      description: `Placement ${releasePreview.gate.rule.id} status ${releasePreview.gate.rule.status} requires confirmation before release`,
+      evaluation: {
+        method: "human_approval",
+        expectedResult: "confirmed_override_or_verified_spec",
+        severity: "critical",
+        blocksCompletion: true,
+      },
+    });
+  }
+
   return Object.freeze(reqs);
 }
 
@@ -245,6 +301,7 @@ export function evaluateDeliverableCompliance(input: {
   readonly attachedBrandAssetIds?: readonly string[];
   readonly imageArtifactBytes?: Buffer;
   readonly imageArtifactMimeType?: string;
+  readonly production?: ProductionComplianceContext;
 }): DeliverableComplianceReport {
   const spec = input.spec;
   if (!spec) {
@@ -295,7 +352,21 @@ export function evaluateDeliverableCompliance(input: {
     );
   }
 
+  const productionEval = evaluateProductionComplianceChecks({
+    spec,
+    production: input.production,
+    generatedWidth: input.generatedWidth,
+    generatedHeight: input.generatedHeight,
+  });
+  for (const check of productionEval.results) {
+    results.push(Object.freeze({ ...check }));
+  }
+
+  const gateCoveredCanvas = productionEval.results.some(
+    (r) => r.checkId === "production.canvas_dimensions",
+  );
   if (
+    !gateCoveredCanvas &&
     spec.technical.width?.value &&
     spec.technical.height?.value &&
     input.generatedWidth !== undefined &&
@@ -304,11 +375,13 @@ export function evaluateDeliverableCompliance(input: {
     const pass =
       input.generatedWidth === spec.technical.width.value &&
       input.generatedHeight === spec.technical.height.value;
+    const hard = dimensionsAreHardConstraint(spec, input.production);
     results.push(
       Object.freeze({
         checkId: "technical.dimensions",
         status: pass ? "PASS" : "FAIL",
         method: "MEASURED",
+        ...(pass || hard ? {} : { softFailure: true as const }),
         evidence: Object.freeze([
           pass
             ? `dimensions ${input.generatedWidth}×${input.generatedHeight} match`
@@ -414,16 +487,43 @@ export function evaluateDeliverableCompliance(input: {
     );
   }
 
+  const logo = spec.referenceAssets?.logo?.value;
+  if (logo?.mode === "USE_EXISTING" && logo.assetId) {
+    const attached = new Set(input.attachedBrandAssetIds ?? []);
+    const pass = attached.has(logo.assetId);
+    results.push(
+      Object.freeze({
+        checkId: "authoritative_logo.attached",
+        status: pass ? "PASS" : "FAIL",
+        method: "MEASURED",
+        evidence: Object.freeze([
+          pass
+            ? `Authoritative logo ${logo.assetId} (${logo.source ?? "unknown"}) attached to execution`
+            : `AUTHORITATIVE_LOGO_FAILURE: ${logo.assetId} not attached — silent substitution risk`,
+        ]),
+      }),
+    );
+    results.push(
+      Object.freeze({
+        checkId: "authoritative_logo.pixel_match",
+        status: "NOT_AUTOMATED",
+        method: "NOT_AUTOMATED",
+        evidence: Object.freeze([
+          "Exact logo pixel verification not automated for this modality; attachment presence verified only",
+        ]),
+      }),
+    );
+  }
+
   const failures = results.filter((r) => r.status === "FAIL");
-  const hardFailures = failures.filter((r) =>
-    r.checkId.startsWith("negative.") || r.checkId.startsWith("brand_asset."),
-  );
+  const hardFailures = failures.filter(isHardComplianceFailure);
+  const hasNonSoftFailure = failures.some((r) => !r.softFailure);
   return Object.freeze({
     planeVersion: "p4.6.0" as const,
     overallStatus:
       results.length === 0
         ? "NOT_EVALUATED"
-        : failures.length > 0
+        : hasNonSoftFailure
           ? "DELIVERABLE_COMPLIANCE_FAILURE"
           : "COMPLIANT",
     requirementComplianceStatus:
@@ -433,6 +533,11 @@ export function evaluateDeliverableCompliance(input: {
           ? "REQUIREMENT_COMPLIANCE_FAILURE"
           : "COMPLIANT",
     results: Object.freeze(results),
+    productionReleaseBlocked: !productionEval.gate.allowed,
+    productionReleaseDecision: productionEval.decision,
+    ...(productionEval.gate.reasons.length
+      ? { productionReleaseReasons: productionEval.gate.reasons }
+      : {}),
   });
 }
 
@@ -449,6 +554,7 @@ export async function evaluateDeliverableComplianceAsync(input: {
   readonly attachedBrandAssetIds?: readonly string[];
   readonly imageArtifactBytes?: Buffer;
   readonly imageArtifactMimeType?: string;
+  readonly production?: ProductionComplianceContext;
 }): Promise<DeliverableComplianceReport> {
   const base = evaluateDeliverableCompliance(input);
   if (!input.spec || !input.imageArtifactBytes?.length) return base;
@@ -497,14 +603,14 @@ export async function evaluateDeliverableComplianceAsync(input: {
     ...visualResults,
   ];
   const failures = merged.filter((r) => r.status === "FAIL");
-  const hardFailures = failures.filter(
-    (r) => r.checkId.startsWith("negative.") || r.checkId.startsWith("brand_asset."),
-  );
+  const hardFailures = failures.filter(isHardComplianceFailure);
+  const hasNonSoftFailure = failures.some((r) => !r.softFailure);
   return Object.freeze({
     ...base,
     results: Object.freeze(merged),
-    overallStatus:
-      failures.length > 0 ? "DELIVERABLE_COMPLIANCE_FAILURE" : "COMPLIANT",
+    overallStatus: hasNonSoftFailure
+      ? "DELIVERABLE_COMPLIANCE_FAILURE"
+      : "COMPLIANT",
     requirementComplianceStatus:
       hardFailures.length > 0 ? "REQUIREMENT_COMPLIANCE_FAILURE" : "COMPLIANT",
   });

@@ -193,17 +193,26 @@ export type {
 } from "./website-project-templates";
 
 export function defaultWebStackForSubtype(subtype?: string): WebStack {
-  const s = (subtype ?? "").trim().toLowerCase();
-  if (s === "app-development") return "next";
-  if (s === "ecom-website" || s === "corporate-website") return "next";
+  const s = (subtype ?? "").trim().toLowerCase().replace(/_/g, "-");
+  // App product scaffolds need a real framework tree.
+  if (s === "app-development" || s === "app-developments") return "next";
+  // Marketing / commerce / corporate / UI → design-first HTML (Claude/Codex quality).
+  // Explicit React/Next/MERN in the brief still wins via explicitWebStackFromPrompt.
   if (
     s === "landing-page" ||
+    s === "landing-pages" ||
     s === "ui-design" ||
-    s === "interactive-prototypes"
+    s === "ui-designs" ||
+    s === "interactive-prototypes" ||
+    s === "interactive-prototype" ||
+    s === "ecom-website" ||
+    s === "ecom-websites" ||
+    s === "corporate-website" ||
+    s === "corporate-websites"
   ) {
-    return "react-vite";
+    return "html-static";
   }
-  return "react-vite";
+  return "html-static";
 }
 
 export function explicitWebStackFromPrompt(prompt?: string): WebStack | null {
@@ -223,12 +232,15 @@ export function explicitWebStackFromPrompt(prompt?: string): WebStack | null {
   ) {
     return "html-static";
   }
+  if (/\boutput\s*:\s*html\b/.test(hay) || /\bhtml\s+file\b/.test(hay)) {
+    return "html-static";
+  }
   return null;
 }
 
 export function inferWebStackFromBrief(
   brief: string,
-  fallback: WebStack = "react-vite"
+  fallback: WebStack = "html-static"
 ): WebStack {
   return explicitWebStackFromPrompt(brief) ?? fallback;
 }
@@ -264,6 +276,21 @@ export function extractWebsiteBrandName(prompt: string): string | undefined {
     if (name && name.length >= 2) return name;
   }
   return undefined;
+}
+
+/** Metadata-declared stack only — never infer from brief (preserves provider stack). */
+export function explicitPreferredStackFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): WebStack | undefined {
+  const raw =
+    typeof metadata?.preferredWebStack === "string"
+      ? metadata.preferredWebStack
+      : typeof metadata?.webStack === "string"
+        ? metadata.webStack
+        : typeof metadata?.preferredStack === "string"
+          ? metadata.preferredStack
+          : undefined;
+  return raw ? normalizeStack(raw) ?? undefined : undefined;
 }
 
 export function websiteContextFromMetadata(
@@ -403,6 +430,62 @@ export function isCompleteWebsiteHtml(html: string): boolean {
   if (/[:,]\s*$/.test(trimmed)) return false;
   if (/<(?!\/)([a-zA-Z][\w:-]*)\b[^>]*$/.test(trimmed)) return false;
   return true;
+}
+
+/**
+ * Heuristic for Claude/Codex-level HTML: imagery, motion, multi-section structure, length.
+ * Used to trigger one design retry before accepting thin pages or falling back to scaffolds.
+ */
+export function isStrongHtmlStaticDesign(html: string): boolean {
+  if (!isCompleteWebsiteHtml(html)) return false;
+  const trimmed = html.trim();
+  const imgCount = (trimmed.match(/<img\b/gi) ?? []).length;
+  const hasCss = /<style[\s>]|\.css/i.test(trimmed);
+  const hasMotion = /@keyframes|animation\s*:|transition\s*:/i.test(trimmed);
+  const structureHits = (
+    trimmed.match(/<section\b|<article\b|<h2\b|<nav\b/gi) ?? []
+  ).length;
+  return (
+    trimmed.length >= 2800 &&
+    imgCount >= 1 &&
+    hasCss &&
+    hasMotion &&
+    structureHits >= 3
+  );
+}
+
+/** Inspect recovered WebsiteRoutes / WebProject fill for weak html-static design. */
+export function websiteOutputNeedsDesignRetry(
+  data: unknown,
+  stack: WebStack
+): boolean {
+  if (stack !== "html-static") return false;
+  const routes: unknown[] = [];
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const rec = data as Record<string, unknown>;
+    if (Array.isArray(rec.routes)) routes.push(...rec.routes);
+    else routes.push(data);
+  } else if (typeof data === "string") {
+    try {
+      return websiteOutputNeedsDesignRetry(JSON.parse(data), stack);
+    } catch {
+      return !isStrongHtmlStaticDesign(data);
+    }
+  }
+  if (routes.length === 0) return true;
+  let weak = 0;
+  for (const route of routes.slice(0, 3)) {
+    if (!route || typeof route !== "object") {
+      weak += 1;
+      continue;
+    }
+    const html =
+      typeof (route as Record<string, unknown>).html === "string"
+        ? String((route as Record<string, unknown>).html)
+        : "";
+    if (!html.trim() || !isStrongHtmlStaticDesign(html)) weak += 1;
+  }
+  return weak === Math.min(routes.length, 3);
 }
 
 function normalizeStack(raw: unknown): WebStack | null {
@@ -578,6 +661,8 @@ export function isProviderOutputTruncated(
 export type RecoverWebProjectOptions = {
   readonly preferredStack?: WebStack | string;
   readonly brandColors?: readonly string[];
+  /** Diversify React/Next/MERN scaffolds across WebsiteRoutes (0–2). */
+  readonly layoutRouteIndex?: number;
 };
 
 /** One expanded website direction (content-fill → scaffold). */
@@ -611,10 +696,15 @@ export function recoverWebsiteRoutesPlan(
 
   if (Array.isArray(rec.routes) && rec.routes.length > 0) {
     const out: WebsiteRoutePlan[] = [];
+    let routeIndex = 0;
     for (const item of rec.routes.slice(0, 3)) {
       if (!item || typeof item !== "object") continue;
       const routeRec = item as Record<string, unknown>;
-      const project = recoverWebProjectPlan(routeRec, options);
+      const project = recoverWebProjectPlan(routeRec, {
+        ...options,
+        layoutRouteIndex: options?.layoutRouteIndex ?? routeIndex,
+      });
+      routeIndex += 1;
       if (!project) continue;
       const description =
         (typeof routeRec.description === "string" &&
@@ -680,7 +770,13 @@ export function recoverWebProjectPlan(
         preferred
       );
       if (fill) {
-        const project = expandWebProjectFill({ ...fill, stack: preferred });
+        const project = expandWebProjectFill({
+          ...fill,
+          stack: preferred,
+          ...(typeof options?.layoutRouteIndex === "number"
+            ? { layoutRouteIndex: options.layoutRouteIndex }
+            : {}),
+        });
         return validateWebProjectShape(project) ? project : null;
       }
     }
@@ -730,8 +826,8 @@ export function recoverWebProjectPlan(
       inferred ||
       preferred ||
       "html-static";
-    // Always honor the user's chosen stack when provided.
-    if (preferred) {
+    // Honor metadata preferred stack only when the model did not declare one.
+    if (preferred && !normalizeStack(rec.stack) && !normalizeStack(rec.techStack)) {
       stack = preferred;
     }
     const entry =
@@ -771,11 +867,19 @@ export function recoverWebProjectPlan(
             },
           }
         : fill;
+    const explicitStack = normalizeStack(rec.stack);
     const stamped =
-      preferred && preferred !== withColors.stack
+      preferred &&
+      preferred !== withColors.stack &&
+      !explicitStack
         ? { ...withColors, stack: preferred }
         : withColors;
-    const project = expandWebProjectFill(stamped);
+    const project = expandWebProjectFill({
+      ...stamped,
+      ...(typeof options?.layoutRouteIndex === "number"
+        ? { layoutRouteIndex: options.layoutRouteIndex }
+        : {}),
+    });
     return validateWebProjectShape(project) ? project : null;
   }
 
@@ -783,7 +887,8 @@ export function recoverWebProjectPlan(
   if (typeof rec.html === "string" && rec.html.trim()) {
     const legacy = planFromHtml(rec.html, rec);
     if (!legacy) return null;
-    if (preferred && preferred !== "html-static") {
+    const explicitStack = normalizeStack(rec.stack);
+    if (preferred && preferred !== "html-static" && explicitStack !== "html-static") {
       const fillFromHtml = parseWebProjectFill(
         {
           title: legacy.title,
@@ -806,6 +911,9 @@ export function recoverWebProjectPlan(
         const project = expandWebProjectFill({
           ...fillFromHtml,
           stack: preferred,
+          ...(typeof options?.layoutRouteIndex === "number"
+            ? { layoutRouteIndex: options.layoutRouteIndex }
+            : {}),
         });
         return validateWebProjectShape(project) ? project : null;
       }
@@ -944,6 +1052,8 @@ export function buildWebProjectInstructionBlock(input: {
   readonly exampleDeliverable?: string;
   readonly stack: WebStack;
   readonly isRetry?: boolean;
+  /** Full-quality rewrite when prior HTML was incomplete or too basic. */
+  readonly isDesignRetry?: boolean;
   readonly brandColors?: readonly string[];
   /** When true, emit WebsiteRoutes with exactly 3 directions. */
   readonly multiRoute?: boolean;
@@ -952,10 +1062,10 @@ export function buildWebProjectInstructionBlock(input: {
   const stack = input.stack;
   const colorHints = (input.brandColors ?? []).filter(Boolean);
   const lines = [
-    "[Role — senior brand/web copywriter + art director]",
+    "[Role — world-class product designer + front-end engineer (Claude/Codex calibre)]",
     brand
-      ? `Create on-brief website CONTENT for ${brand} only (stack=${stack}).`
-      : `Create on-brief website CONTENT for the client in the brief (stack=${stack}).`,
+      ? `Create a production-quality website for ${brand} only (stack=${stack}).`
+      : `Create a production-quality website for the client in the brief (stack=${stack}).`,
     input.multiRoute
       ? "Respond with ONLY valid JSON matching schema WebsiteRoutes (3 content-fill routes)."
       : "Respond with ONLY valid JSON matching schema WebProject (content-fill).",
@@ -966,9 +1076,12 @@ export function buildWebProjectInstructionBlock(input: {
   if (input.multiRoute) {
     lines.push(
       "Return exactly 3 routes in routes[]. Each route is a DIFFERENT creative direction on the SAME brief and brand.",
-      "Route 1: bold hero-led. Route 2: editorial/minimal. Route 3: product-forward storytelling.",
+      "Route 1: bold hero-led impact. Route 2: editorial/minimal magazine. Route 3: product-forward storytelling.",
       "Each route keys: title, description, summary, stack, brandName, tagline, heroBody, sections[2-4]{heading,body}, ctaLabel, colors{primary,background,text,accent}, html.",
-      "titles/descriptions must be distinct angles — not duplicates."
+      "titles/descriptions must be distinct angles — not duplicates.",
+      stack !== "html-static"
+        ? "Vary copy tone to match those layout angles (server maps routes to distinct React/Next layouts)."
+        : "Each route.html must be a FULL distinct landing page design — not three near-identical templates."
     );
   } else {
     lines.push(
@@ -994,18 +1107,24 @@ export function buildWebProjectInstructionBlock(input: {
   }
 
   lines.push(
-    "Keep EVERY string short. Total JSON should stay well under 6k tokens."
+    "Write vivid on-brief copy. Prefer complete, expressive strings over truncated stubs."
   );
 
   if (stack === "html-static") {
     lines.push(
-      'html = COMPLETE tiny HTML5 page (<!DOCTYPE html> … </html>), ≤60 lines, embedded CSS, hero + 2 sections + footer.',
-      "Also fill brandName/tagline/sections/colors (used if html is incomplete)."
+      "html = COMPLETE HTML5 page (<!DOCTYPE html> … </html>) with embedded CSS — this IS the deliverable preview.",
+      "Design bar: equal to a strong Claude/ChatGPT landing page — NOT a thin single-column stub.",
+      "Required structure: sticky/top nav with brand + CTA, full-bleed or split hero with headline + lede + primary CTA, at least 3 content sections (features / proof / story), secondary CTA band, footer.",
+      "Visual system: distinctive typography pairing, atmospheric gradients from the brand palette, generous spacing, responsive layout (mobile + desktop), intentional CSS @keyframes / transitions (2–4 motions).",
+      "REQUIRED imagery: multiple real HTTPS <img> tags (hero + section images) using https://picsum.photos/seed/<topic>/… or https://images.unsplash.com/... — never leave image slots as text descriptions.",
+      "Avoid generic AI-template looks (purple gradients, cream+terracotta defaults, pill spam, card grids with no hierarchy).",
+      "Also fill brandName/tagline/sections/colors (used only if html is incomplete)."
     );
   } else {
     lines.push(
       'html MUST be an empty string "".',
-      "Put all marketing copy in brandName, tagline, heroBody, sections, ctaLabel — the server generates the React/Next/MERN scaffold."
+      "Put all marketing copy in brandName, tagline, heroBody, sections, ctaLabel — the server generates a multi-layout React/Next/MERN scaffold with motion, brand colours, and stock photo URLs.",
+      "Write section copy that supports a rich landing experience (benefit-led headings, concrete proof, clear CTA)."
     );
   }
 
@@ -1015,10 +1134,22 @@ export function buildWebProjectInstructionBlock(input: {
       ? `Deliverable: ${input.exampleDeliverable}`
       : "Deliverable: project preview + downloadable source."
   );
-  if (input.isRetry) {
+  if (input.isDesignRetry) {
+    lines.push(
+      `[DESIGN RETRY] Previous ${input.multiRoute ? "WebsiteRoutes" : "page"} was incomplete or too basic.`,
+      `Emit COMPLETE ${input.multiRoute ? "WebsiteRoutes" : "WebProject"} JSON with stack="${stack}".`,
+      stack === "html-static"
+        ? "Each html field must be a finished, visually rich landing page (nav, hero+image, ≥3 sections, motion, CTAs). Do NOT shrink design quality."
+        : "Strengthen copy and creative angles; keep html empty.",
+      "No markdown fences."
+    );
+  } else if (input.isRetry) {
     lines.push(
       `RETRY: Previous output was truncated. Emit SMALLER complete ${input.multiRoute ? "WebsiteRoutes" : "content-fill"} JSON with stack="${stack}".`,
-      "Shorten every string. sections: exactly 2. No files[]. html empty unless html-static."
+      "Shorten every string. sections: exactly 2. No files[].",
+      stack === "html-static"
+        ? "html may be shorter but MUST still be a complete </html> document with at least one <img> and basic motion CSS."
+        : "html empty."
     );
   }
   return lines.join("\n");
@@ -1091,6 +1222,8 @@ function websiteBlob(data: unknown): string {
   const rec = data as Record<string, unknown>;
   const title = typeof rec.title === "string" ? rec.title : "";
   const summary = typeof rec.summary === "string" ? rec.summary : "";
+  const description =
+    typeof rec.description === "string" ? rec.description : "";
   const html = typeof rec.html === "string" ? rec.html : "";
   const brandName = typeof rec.brandName === "string" ? rec.brandName : "";
   const tagline = typeof rec.tagline === "string" ? rec.tagline : "";
@@ -1108,7 +1241,37 @@ function websiteBlob(data: unknown): string {
   const files = parseFilesArray(rec.files)
     .map((f) => `${f.path}\n${f.content}`)
     .join("\n");
-  return `${title}\n${summary}\n${brandName}\n${tagline}\n${heroBody}\n${ctaLabel}\n${sections}\n${html}\n${files}`.toLowerCase();
+  return `${title}\n${summary}\n${description}\n${brandName}\n${tagline}\n${heroBody}\n${ctaLabel}\n${sections}\n${html}\n${files}`.toLowerCase();
+}
+
+/** Preserve content-fill fields when normalizing WebsiteRoutes for storage. */
+export function serializeWebsiteRouteForStorage(
+  route: WebsiteRoutePlan,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    title: route.title,
+    summary: route.summary,
+    stack: route.stack,
+    entry: route.entry,
+    files: route.files,
+  };
+  if (route.description?.trim()) {
+    base.description = route.description;
+  }
+  const rec = route as Record<string, unknown>;
+  for (const key of [
+    "brandName",
+    "tagline",
+    "heroBody",
+    "ctaLabel",
+    "sections",
+    "colors",
+    "html",
+  ] as const) {
+    const value = rec[key];
+    if (value != null) base[key] = value;
+  }
+  return base;
 }
 
 const OFF_TOPIC_SITE_MARKERS = [
@@ -1153,7 +1316,19 @@ export function validateWebsitePageRelevance(input: {
   readonly brandName?: string;
 }): WebsiteRelevanceResult {
   const project = recoverWebProjectPlan(input.data);
-  const blob = websiteBlob(project ?? input.data);
+  let blobSource: unknown = project ?? input.data;
+  if (
+    project &&
+    input.data &&
+    typeof input.data === "object" &&
+    typeof (input.data as { description?: unknown }).description === "string"
+  ) {
+    const description = (input.data as { description: string }).description.trim();
+    if (description) {
+      blobSource = { ...project, description };
+    }
+  }
+  const blob = websiteBlob(blobSource);
   if (!blob.trim()) {
     return {
       ok: false,

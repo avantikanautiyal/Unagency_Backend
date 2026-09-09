@@ -90,6 +90,8 @@ export interface ExecutionResource {
   /** Service AI conversation linkage (persistent service chat). */
   readonly conversationId?: string;
   readonly channelId?: string;
+  /** Denormalized deliverable formats from execution spec (e.g. PDF, PNG). */
+  readonly executionSpecDeliverables?: readonly string[];
 }
 
 export interface ExecutionArtifactRef {

@@ -30,7 +30,7 @@ export const getStreamChatToken = asyncHandler(async (req: RequestUser) => {
 
   const issued = await collaborationChannelService.issueToken({
     userId,
-    userRole: req.user?.userRole,
+    userRole: req.user?.role,
     name: (req.user as any)?.name,
     email: (req.user as any)?.email,
   });
@@ -77,8 +77,41 @@ export const ensureBrandChannel = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, channel, "brand channel ready");
 });
 
+/** Resource may open a client's service room only when assigned to matching work. */
+async function assertResourceAssignedToClientService(input: {
+  resourceUserId: string;
+  customerUserId: string;
+  brandId: string;
+  productPath: string;
+}): Promise<void> {
+  const Staff = (await import("../models/staff.model")).default;
+  const Projects = (await import("../models/projects.model")).default;
+  const Tasks = (await import("../models/tasks.model")).default;
+
+  const staff = await Staff.findOne({ userId: input.resourceUserId }).select("_id");
+  if (!staff?._id) throw new ApiError("Forbidden", 403);
+
+  const projectFilter: Record<string, unknown> = {
+    userId: input.customerUserId,
+    productPath: input.productPath,
+  };
+  if (mongoose.isValidObjectId(input.brandId)) {
+    projectFilter.brandId = input.brandId;
+  }
+
+  const projects = await Projects.find(projectFilter).select("_id").lean();
+  if (!projects.length) throw new ApiError("Forbidden", 403);
+
+  const assigned = await Tasks.findOne({
+    assignedTo: staff._id,
+    project: { $in: projects.map((p) => p._id) },
+  }).select("_id");
+  if (!assigned) throw new ApiError("Forbidden", 403);
+}
+
 export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
-  const callerRole = String(req.user?.userRole || "");
+  // Auth middleware attaches `role` (not `userRole`) — oversight depends on this.
+  const callerRole = String(req.user?.role || "").toLowerCase().trim();
   const callerUserId = String(req.user?.userId || "");
   const brandId = String(req.body?.brandId || "").trim();
   const productPath = String(req.body?.productPath || "").trim();
@@ -92,18 +125,32 @@ export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
   if (!productPath) throw new ApiError("productPath is required", 400);
 
   const isOversightRole = callerRole === "admin" || callerRole === "superadmin";
-  const clientUserId =
-    isOversightRole && requestedClientId ? requestedClientId : callerUserId;
-  if (isOversightRole && requestedClientId && !mongoose.isValidObjectId(clientUserId)) {
+  const isResourceRole = callerRole === "resource";
+  const canResolveClient =
+    Boolean(requestedClientId) && (isOversightRole || isResourceRole);
+
+  if (canResolveClient && !mongoose.isValidObjectId(requestedClientId!)) {
     throw new ApiError("customerUserId is invalid", 400);
   }
+
+  if (isResourceRole && requestedClientId) {
+    await assertResourceAssignedToClientService({
+      resourceUserId: callerUserId,
+      customerUserId: requestedClientId,
+      brandId,
+      productPath,
+    });
+  }
+
+  const clientUserId = canResolveClient ? requestedClientId! : callerUserId;
 
   const channel = await collaborationChannelService.ensureForService({
     userId: clientUserId,
     brandId,
     productPath,
     serviceLabel,
-    allowOversightBrandLoad: isOversightRole && Boolean(requestedClientId),
+    allowOversightBrandLoad: canResolveClient,
+    extraViewerUserIds: isResourceRole ? [callerUserId] : undefined,
   });
   return new ApiResponse(200, channel, "service channel ready");
 });
@@ -387,6 +434,13 @@ export const buildServiceExecutionContext = asyncHandler(
       userId,
       channelId,
       latestUserMessage,
+      attachmentLogoAssetIds: Array.isArray(req.body?.attachmentLogoAssetIds)
+        ? req.body.attachmentLogoAssetIds.map(String)
+        : undefined,
+      vaultLogoChoice:
+        typeof req.body?.vaultLogoChoice === "string"
+          ? req.body.vaultLogoChoice.trim()
+          : undefined,
     });
     return new ApiResponse(200, context, "execution context");
   }

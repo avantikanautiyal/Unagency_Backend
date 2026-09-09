@@ -169,8 +169,8 @@ Canonical path inventory. **Do not duplicate routes.** Source files cited.
 | GET | `/notification/` |
 | POST | `/notification/send` |
 | POST | `/notification/send/email` |
-| POST | `/razorpay/subscriptions/create` |
-| POST | `/razorpay/subscriptions/update` |
+| POST | `/razorpay/subscriptions/create` | Body: `{ planCode }` only |
+| POST | `/razorpay/subscriptions/update` | Body: `{ planCode }` only |
 | POST | `/razorpay/subscriptions/cancel-update` |
 | POST | `/razorpay/subscriptions/cancel` |
 | GET | `/razorpay/subscriptions` |

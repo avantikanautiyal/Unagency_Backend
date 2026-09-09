@@ -70,6 +70,23 @@ export function providerSupportsReferenceImageEdit(providerId: string): boolean 
   return Boolean(profile?.supportsReferenceImage && profile.supportsImageEdit);
 }
 
+/** True when the provider can accept a style/logo reference on generate (not necessarily edit). */
+export function providerSupportsReferenceImage(providerId: string): boolean {
+  const id = providerId.trim();
+  // OpenAI gpt-image-* uses /v1/images/edits with attached images (ChatGPT-class).
+  if (id === "provider.openai") return true;
+  return Boolean(capabilityProfileForProvider(id)?.supportsReferenceImage);
+}
+
+/** Providers that can take a reference mark on image.generate (logo continuity). */
+export function listReferenceImageProviderIds(): readonly string[] {
+  const fromSpecs = ALL_IMAGE_PROVIDER_SPECS.filter(
+    (spec) => spec.vendorApiVerified && spec.supportsReferenceImage,
+  ).map((spec) => spec.canonicalProviderId);
+  const ids = new Set<string>([...fromSpecs, "provider.openai"]);
+  return Object.freeze([...ids]);
+}
+
 export function listReferenceCapableImageProviderIds(): readonly string[] {
   return Object.freeze(
     ALL_IMAGE_PROVIDER_SPECS.filter(

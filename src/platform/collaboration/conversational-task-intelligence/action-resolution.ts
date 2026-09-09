@@ -51,7 +51,7 @@ function scoreAction(ctx: ActionResolutionContext): ScoredAction {
     if (s.isExport || s.isDeliveryRequest) {
       push("EXTRACT_ASSETS", s.isAssetExtraction ? 94 : 90);
     }
-    if (/\b(regenerate|redo|retry|try again)\b/i.test(ctx.message)) {
+    if (s.isRegeneration) {
       push("REGENERATE", 88);
     }
     if (s.isVariation) push("VARIATE", 90);
@@ -62,10 +62,7 @@ function scoreAction(ctx: ActionResolutionContext): ScoredAction {
   }
 
   if (s.isReset) push("CREATE", 100);
-  if (
-    s.isCreation &&
-    /\b(create a new|make a new|brand new|from scratch)\b/i.test(ctx.message)
-  ) {
+  if (s.isCreation && (s.isReset || (!existingRef && !ctx.hasActiveDeliverable))) {
     push("CREATE", 97);
   }
   if (s.isExplanation && !s.isCreation) {
@@ -87,7 +84,11 @@ function scoreAction(ctx: ActionResolutionContext): ScoredAction {
   if (s.isReversion) push("REVERT", 85);
   if (s.isRemoval) push("REMOVE", 82);
   if (s.isTransformation && ctx.hasActiveDeliverable) push("TRANSFORM", 86);
-  if (s.isTaskSwitch) push("MODIFY", 30);
+  // "focus on" / "work on" appear in new briefs ("focus on schools", "work on mobile").
+  // Only treat as task-switch when there is already something to switch from.
+  if (s.isTaskSwitch && (ctx.hasActiveDeliverable || existingRef)) {
+    push("MODIFY", 30);
+  }
   if (s.isSelection && ctx.hasAlternatives) push("MODIFY", 80);
   if (s.isVariation && ctx.hasActiveDeliverable) push("VARIATE", 88);
   if (s.isVariation && !ctx.hasActiveDeliverable) push("CREATE", 70);
@@ -100,11 +101,11 @@ function scoreAction(ctx: ActionResolutionContext): ScoredAction {
   ) {
     push("MODIFY", 78);
   }
-  if (s.isImperative && /\b(regenerate|redo|retry|try again)\b/i.test(ctx.message)) {
+  if (s.isImperative && s.isRegeneration) {
     push("REGENERATE", 70);
   }
   if (
-    (s.isVariation || /\b(regenerate|redo|retry|try again|generate again)\b/i.test(ctx.message)) &&
+    (s.isVariation || s.isRegeneration) &&
     ctx.hasActiveDeliverable
   ) {
     push("REGENERATE", s.isVariation ? 72 : 94);
@@ -140,14 +141,14 @@ export function resolveConversationalAction(
   const existingRef = hasConfidentExistingReference(ctx);
 
   if (existingRef && action === "CREATE") {
-    if (/\b(create a new|make a new|brand new|from scratch)\b/i.test(ctx.message)) {
+    if (ctx.signals.isCreation && (ctx.signals.isReset || !ctx.signals.referencesExistingResult)) {
       return "CREATE";
     }
     if (ctx.signals.isAssetExtraction || ctx.signals.isDeliveryRequest) {
       action = "EXTRACT_ASSETS";
     } else if (ctx.signals.isVariation) {
       action = "VARIATE";
-    } else if (/\b(regenerate|redo|retry|try again)\b/i.test(ctx.message)) {
+    } else if (ctx.signals.isRegeneration) {
       action = "REGENERATE";
     } else {
       action = "MODIFY";
@@ -172,7 +173,7 @@ export function resolveConversationalAction(
   }
   if (
     (action === "MODIFY" || action === "CREATE" || action === "REJECT") &&
-    /\b(regenerate|redo|retry|try again|generate again)\b/i.test(ctx.message) &&
+    ctx.signals.isRegeneration &&
     ctx.hasActiveDeliverable
   ) {
     return "REGENERATE";

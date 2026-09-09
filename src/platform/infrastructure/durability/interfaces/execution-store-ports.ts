@@ -71,6 +71,10 @@ export interface IExecutionExtrasRepository {
       workflowFollowUp?: unknown;
       pendingHumanReview?: unknown;
       autoDelivery?: unknown;
+      /** P4.9.5 — continuation metadata for retry/duplicate. */
+      createMetadataSnapshot?: Readonly<Record<string, unknown>>;
+      executionSpecSnapshot?: unknown;
+      [key: string]: unknown;
     }
   ): Promise<void>;
   get(executionId: string): Promise<
@@ -86,6 +90,9 @@ export interface IExecutionExtrasRepository {
         workflowFollowUp?: unknown;
         pendingHumanReview?: unknown;
         autoDelivery?: unknown;
+        createMetadataSnapshot?: Readonly<Record<string, unknown>>;
+        executionSpecSnapshot?: unknown;
+        [key: string]: unknown;
       }
     | undefined
   >;

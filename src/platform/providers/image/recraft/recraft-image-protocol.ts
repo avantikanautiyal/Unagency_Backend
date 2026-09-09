@@ -2,6 +2,9 @@
  * Recraft image generation — verified wire contract.
  * POST /v1/images/generations (OpenAI-compatible shape)
  * Auth: Bearer
+ *
+ * Reference images: style_reference_urls (data URLs / https) so attached logos
+ * and prompt references are applied on the wire — not prompt-only.
  */
 
 import type {
@@ -9,7 +12,11 @@ import type {
   VendorImageNormalizedResult,
   VendorImageWirePlan,
 } from "../common/vendor-image-protocol";
-import { extractPrompt } from "../common/vendor-image-protocol";
+import {
+  extractPrompt,
+  extractReferenceImages,
+  referenceImageToDataUrl,
+} from "../common/vendor-image-protocol";
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import {
@@ -34,17 +41,34 @@ export class RecraftImageProtocol implements IVendorImageProtocol {
     request: ProviderExecutionRequest;
     wireModelId: string;
   }): VendorImageWirePlan {
-    const prompt = extractPrompt(input.request.payload);
+    const basePrompt = extractPrompt(input.request.payload);
+    const refs = extractReferenceImages(input.request.payload ?? {});
+    const styleUrls = refs
+      .map((ref) => referenceImageToDataUrl(ref))
+      .filter((url): url is string => Boolean(url))
+      .slice(0, 10);
+
+    const prompt =
+      styleUrls.length > 0 &&
+      !/\breference\b|\battached\b|\blogo\b|\bbrand\s*mark\b/i.test(basePrompt)
+        ? `${basePrompt}\nUse the attached style/reference image(s) faithfully — keep the mark recognizable.`
+        : basePrompt;
+
+    const body: Record<string, unknown> = {
+      prompt,
+      model: input.spec.wireModelId,
+      n: 1,
+    };
+    if (styleUrls.length > 0) {
+      body.style_reference_urls = styleUrls;
+    }
+
     return {
       request: {
         method: "POST",
         path: "/v1/images/generations",
         headers: { "Content-Type": "application/json" },
-        body: {
-          prompt,
-          model: input.spec.wireModelId,
-          n: 1,
-        },
+        body,
       },
     };
   }

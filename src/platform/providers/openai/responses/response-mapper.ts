@@ -135,8 +135,10 @@ export function mapOpenAIResponseToCanonical(
 
   const isImageOperation =
     operation === "images.generations" ||
+    operation === "images.edits" ||
     request.modality === "image" ||
-    String(request.capabilityId ?? "").toLowerCase() === "image.generate";
+    String(request.capabilityId ?? "").toLowerCase() === "image.generate" ||
+    String(request.capabilityId ?? "").toLowerCase() === "image.edit";
 
   if (isImageOperation) {
     const mediaOutputs = mapOpenAIImageDataToOutputs(raw);

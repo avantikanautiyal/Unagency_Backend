@@ -1,8 +1,8 @@
 /**
  * Learn brand knowledge from user prompts — persists to Mongo brand document.
  * Platform-wide: any service / chat turn with brandId can contribute facts.
- * Extraction: regex first, then optional LLM via enrichBrandPreferencesFromBrief
- * when the enterprise integration engine is available (BRAND_EXTRACT_LLM).
+ * Extraction: LLM-primary via enrichBrandPreferencesFromBrief when integration
+ * is available; English/heuristic fallback only when offline (BRAND_EXTRACT_LLM).
  */
 
 import { brandService } from "./brand-service";
@@ -79,7 +79,7 @@ async function resolvePreferencesForLearn(input: {
 
   return {
     ...mergeBrandPreferencesFromPrompts(input.promptParts),
-    extractionSource: "regex",
+    extractionSource: "heuristic_fallback",
   };
 }
 
@@ -172,7 +172,7 @@ export async function learnBrandKnowledgeFromPromptUntrusted(input: {
         })
       : {
           ...extractBrandPreferencesFromPrompt(input.prompt),
-          extractionSource: "regex",
+          extractionSource: "heuristic_fallback",
         };
   }
 

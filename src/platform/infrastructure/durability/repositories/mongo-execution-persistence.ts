@@ -150,15 +150,29 @@ export class MongoExecutionExtrasRepository implements IExecutionExtrasRepositor
   async get(executionId: string) {
     const doc = await EnterpriseExecutionExtras.findOne({ executionId }).lean();
     if (!doc) return undefined;
+    const {
+      diagnostics,
+      trace,
+      cost,
+      evaluation,
+      experience,
+      osLifecycle,
+      governance,
+      asyncLane,
+      createMetadataSnapshot,
+      executionSpecSnapshot,
+    } = doc;
     return {
-      diagnostics: doc.diagnostics,
-      trace: doc.trace,
-      cost: doc.cost,
-      evaluation: doc.evaluation,
-      experience: doc.experience,
-      ...(doc.osLifecycle != null ? { osLifecycle: doc.osLifecycle } : {}),
-      ...(doc.governance != null ? { governance: doc.governance } : {}),
-      ...(doc.asyncLane != null ? { asyncLane: doc.asyncLane } : {}),
+      diagnostics,
+      trace,
+      cost,
+      evaluation,
+      experience,
+      ...(osLifecycle != null ? { osLifecycle } : {}),
+      ...(governance != null ? { governance } : {}),
+      ...(asyncLane != null ? { asyncLane } : {}),
+      ...(createMetadataSnapshot != null ? { createMetadataSnapshot } : {}),
+      ...(executionSpecSnapshot != null ? { executionSpecSnapshot } : {}),
     };
   }
 }

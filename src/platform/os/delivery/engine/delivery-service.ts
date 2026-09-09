@@ -87,6 +87,9 @@ export class OsDeliveryService {
     readonly executionId: string;
     readonly planVersion?: number;
     readonly destination: DeliveryDestination;
+    readonly productionGate?: import("../authorization/delivery-authorization").DeliveryProductionGateInput;
+    readonly executionMetadata?: Readonly<Record<string, unknown>>;
+    readonly enforceProductionSpec?: boolean;
   }) {
     return this.authz.authorizeAsync(input);
   }
@@ -101,6 +104,10 @@ export class OsDeliveryService {
     readonly deliveryIntent?: string;
     readonly nowIso?: () => string;
     readonly createId?: (prefix: string) => string;
+    readonly productionGate?: import("../authorization/delivery-authorization").DeliveryProductionGateInput;
+    readonly executionMetadata?: Readonly<Record<string, unknown>>;
+    readonly enforceProductionSpec?: boolean;
+    readonly suggestedFilename?: string;
   }): Promise<DeliveryReceipt> {
     const nowIso = input.nowIso ?? (() => new Date().toISOString());
     const createId = input.createId ?? ((p) => `${p}_${Date.now()}`);
@@ -119,6 +126,9 @@ export class OsDeliveryService {
       executionId: input.executionId,
       planVersion: input.planVersion,
       destination: input.destination,
+      productionGate: input.productionGate,
+      executionMetadata: input.executionMetadata,
+      enforceProductionSpec: input.enforceProductionSpec,
     });
 
     if (!auth.authorized) {
@@ -135,6 +145,9 @@ export class OsDeliveryService {
         failureReason: auth.reason,
         idempotencyKey: idem,
         approvalReference: auth.approvalReference,
+        ...(input.suggestedFilename
+          ? { suggestedFilename: input.suggestedFilename }
+          : {}),
       };
       return denied;
     }
@@ -151,6 +164,9 @@ export class OsDeliveryService {
       timestamp: nowIso(),
       idempotencyKey: idem,
       approvalReference: auth.approvalReference,
+      ...(input.suggestedFilename
+        ? { suggestedFilename: input.suggestedFilename }
+        : {}),
     };
     await this.receipts.save(queued);
 
@@ -236,6 +252,9 @@ export class OsDeliveryService {
       preview: art.preview,
       checksum: art.checksum,
       idempotencyKey: receipt.idempotencyKey,
+      ...(receipt.suggestedFilename
+        ? { suggestedFilename: receipt.suggestedFilename }
+        : {}),
     });
 
     const next: DeliveryReceipt = {

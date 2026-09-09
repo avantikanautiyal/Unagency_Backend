@@ -20,6 +20,7 @@ export type ProductBrandPreferences = {
   readonly photographyStyle?: string;
   readonly illustrationStyle?: string;
   readonly brandSummary?: string;
+  readonly brandName?: string;
 };
 
 function dedupe(arr: readonly string[], additions: readonly string[]): string[] {

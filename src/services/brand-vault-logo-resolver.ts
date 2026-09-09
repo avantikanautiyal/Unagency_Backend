@@ -39,10 +39,6 @@ function isLogoLikeAsset(doc: {
   kind?: string | null;
   mimeType?: string | null;
 }): boolean {
-  if (doc.kind && doc.kind !== "image") {
-    const mime = String(doc.mimeType ?? "").toLowerCase();
-    if (!mime.startsWith("image/")) return false;
-  }
   if (doc.folder && LOGO_FOLDERS.has(String(doc.folder))) return true;
   const tags = (doc.tags ?? []).map((t) => String(t).toLowerCase());
   if (
@@ -56,7 +52,28 @@ function isLogoLikeAsset(doc: {
   ) {
     return true;
   }
-  return /\blogo\b|\bwordmark\b/i.test(String(doc.fileName ?? ""));
+  if (tags.includes("subtype:logo-design")) {
+    return true;
+  }
+  if (
+    tags.some((t) => /^display:branding & logo · logo/i.test(t))
+  ) {
+    return true;
+  }
+  if (
+    tags.includes("service:branding") &&
+    (tags.includes("logo") || tags.includes("subtype:logo-design"))
+  ) {
+    return true;
+  }
+  if (/\blogo\b|\bwordmark\b/i.test(String(doc.fileName ?? ""))) {
+    return true;
+  }
+  if (doc.kind && doc.kind !== "image") {
+    const mime = String(doc.mimeType ?? "").toLowerCase();
+    if (!mime.startsWith("image/")) return false;
+  }
+  return false;
 }
 
 function toCandidate(doc: {
@@ -155,28 +172,21 @@ export async function resolveBrandVaultLogos(input: {
 
   const profileLogoId = input.profileLogoAssetId?.trim();
 
-  if (profileLogoId && mongoose.isValidObjectId(profileLogoId)) {
-    const profileDoc = await MediaFile.findOne({
-      _id: new mongoose.Types.ObjectId(profileLogoId),
-      organizationId: new mongoose.Types.ObjectId(input.organizationId),
-      status: { $ne: "deleted" },
-      storageKey: { $exists: true, $ne: null },
-    })
-      .select("fileName folder tags approvalStatus updatedAt uploadedAt kind mimeType")
-      .lean();
-    if (profileDoc) {
-      return {
-        candidates: [toCandidate(profileDoc)],
-        selectedAssetId: profileDoc._id.toString(),
-        needsChoice: false,
-      };
-    }
-  }
-
   const orFilters: Record<string, unknown>[] = [
     { folder: { $in: [...LOGO_FOLDERS] } },
-    { tags: { $in: ["logo", "wordmark", "brand-mark", "output:logo"] } },
+    {
+      tags: {
+        $in: [
+          "logo",
+          "wordmark",
+          "brand-mark",
+          "output:logo",
+          "subtype:logo-design",
+        ],
+      },
+    },
     { fileName: { $regex: /logo|wordmark/i } },
+    { tags: { $regex: /^display:Branding & Logo · Logo/i } },
   ];
   // Only fall back to generic brand images when profile logo is unset —
   // avoid treating every merchandise mockup as a logo candidate.
@@ -216,25 +226,7 @@ export async function resolveBrandVaultLogos(input: {
     };
   }
 
-  const approved = candidates.filter((c) => c.approvalStatus === "approved");
-  if (approved.length === 1) {
-    return {
-      candidates,
-      selectedAssetId: approved[0]!.assetId,
-      needsChoice: false,
-    };
-  }
-
-  if (profileLogoId) {
-    const profileMatch = candidates.find((c) => c.assetId === profileLogoId);
-    if (profileMatch) {
-      return {
-        candidates,
-        selectedAssetId: profileMatch.assetId,
-        needsChoice: false,
-      };
-    }
-  }
-
+  // Multiple logos always require explicit user selection — do not
+  // auto-pick a single approved mark when other vault logos exist.
   return { candidates, needsChoice: true };
 }

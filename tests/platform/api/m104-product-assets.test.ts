@@ -8,6 +8,8 @@ import mongoose from "mongoose";
 import {
   ProductAssetService,
   sanitizeFilename,
+  downloadFilenameForAsset,
+  extensionForProductMime,
   buildProductAssetStorageKey,
   assertUserBelongsToOrganization,
 } from "../../../src/services/product-asset-service";
@@ -135,6 +137,28 @@ describe("M10.4 product assets + category bootstrap", () => {
   it("sanitizes path traversal filenames", () => {
     expect(sanitizeFilename("../../etc/passwd")).toBe("passwd");
     expect(sanitizeFilename("a/b\\c.png")).toBe("c.png");
+  });
+
+  it("maps MIME types to download extensions", () => {
+    expect(extensionForProductMime("image/jpeg")).toBe("jpg");
+    expect(extensionForProductMime("image/png")).toBe("png");
+    expect(extensionForProductMime("video/mp4")).toBe("mp4");
+    expect(extensionForProductMime("application/pdf")).toBe("pdf");
+  });
+
+  it("appends a real extension when vault display names omit one", () => {
+    expect(
+      downloadFilenameForAsset("Branding & Logo · Logo design (JPG)", "image/jpeg")
+    ).toBe("Branding & Logo · Logo design (JPG).jpg");
+    expect(
+      downloadFilenameForAsset("Video & Motion · 2D animation (MP4)", "video/mp4")
+    ).toBe("Video & Motion · 2D animation (MP4).mp4");
+    expect(
+      downloadFilenameForAsset("Packaging Design · Wrapper", "image/png")
+    ).toBe("Packaging Design · Wrapper.png");
+    expect(downloadFilenameForAsset("already.jpg", "image/jpeg")).toBe(
+      "already.jpg"
+    );
   });
 
   it("builds tenant-scoped storage keys", () => {

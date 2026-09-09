@@ -15,9 +15,28 @@ import {
   razorpayWebhookEventId,
   verifyRazorpayWebhookSignature,
 } from "./razorpay-webhook-security";
+import { mongoWebhookIdempotencyStore } from "../models/webhook-event.model";
+import { syncLocalSubscriptionFromRazorpay } from "../billing/subscription-sync";
 
-const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET!;
+const webhookSecret =
+  process.env.RAZORPAY_WEBHOOK_SECRET?.trim() ||
+  process.env.RAZORPAY_SECRET?.trim() ||
+  "";
+
+async function claimWebhookEvent(
+  eventId: string,
+  eventType: string
+): Promise<"new" | "duplicate"> {
+  try {
+    return await mongoWebhookIdempotencyStore.tryClaim(eventId, eventType);
+  } catch (err) {
+    console.error("Mongo webhook idempotency unavailable, using memory store", err);
+    return defaultWebhookIdempotencyStore.tryClaim(eventId);
+  }
+}
+
 export const razorpayWebhook = async (req: Request, res: Response) => {
+  let eventIdForMark: string | undefined;
   try {
     console.log("webhook called....");
     const signature = req.headers["x-razorpay-signature"];
@@ -40,7 +59,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
     console.log("✅ Webhook verified");
     const event = JSON.parse(bodyString);
     const eventId = razorpayWebhookEventId(event);
-    const claim = await defaultWebhookIdempotencyStore.tryClaim(eventId);
+    eventIdForMark = eventId;
+    const claim = await claimWebhookEvent(eventId, String(event.event ?? "unknown"));
     if (claim === "duplicate") {
       console.log("♻️ Duplicate Razorpay webhook ignored:", eventId);
       return res.status(200).json({ status: "duplicate" });
@@ -99,15 +119,12 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           event.payload?.subscription?.entity?.id
         );
 
+        await syncLocalSubscriptionFromRazorpay({
+          entity: event.payload?.subscription?.entity ?? {},
+          allocateCredits: true,
+          allocationKey: `activated:${eventId}`,
+        });
 
-        await Subscriptions.findOneAndUpdate(
-          { subscriptionId: event.payload?.subscription?.entity?.id },
-          {
-            status: event.payload?.subscription?.entity?.status,
-            current_start: event.payload?.subscription?.entity?.current_start,
-            current_end: event.payload?.subscription?.entity?.current_end,
-          }
-        );
         var subs = await Subscriptions.findOne({
           subscriptionId: event.payload?.subscription?.entity?.id,
         }).populate({ path: "planId", foreignField: "plan_id" });
@@ -186,14 +203,12 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription Recurring Charge Done:",
           event.payload?.subscription?.entity?.id
         );
-        await Subscriptions.findOneAndUpdate(
-          { subscriptionId: event.payload?.subscription?.entity?.id },
-          {
-            status: event.payload?.subscription?.entity?.status,
-            current_start: event.payload?.subscription?.entity?.current_start,
-            current_end: event.payload?.subscription?.entity?.current_end,
-          }
-        );
+        await syncLocalSubscriptionFromRazorpay({
+          entity: event.payload?.subscription?.entity ?? {},
+          allocateCredits: true,
+          // Period-scoped key so renewals allocate once per billing period, not per retry
+          allocationKey: `charged:${event.payload?.subscription?.entity?.id}:${event.payload?.subscription?.entity?.current_start ?? event.created_at}`,
+        });
         var subs = await Subscriptions.findOne({
           subscriptionId: event.payload?.subscription?.entity?.id,
         });
@@ -676,15 +691,10 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           "Subscription Updated:",
           event.payload?.subscription?.entity?.id
         );
-        await Subscriptions.findOneAndUpdate(
-          { subscriptionId: event.payload?.subscription?.entity?.id },
-          {
-            status: event.payload?.subscription?.entity?.status,
-            planId: event.payload?.subscription?.entity?.plan_id,
-            current_start: event.payload?.subscription?.entity?.current_start,
-            current_end: event.payload?.subscription?.entity?.current_end,
-          }
-        );
+        await syncLocalSubscriptionFromRazorpay({
+          entity: event.payload?.subscription?.entity ?? {},
+          allocateCredits: false,
+        });
         var subs = await Subscriptions.findOne({
           subscriptionId: event.payload?.subscription?.entity?.id,
         }).populate({ path: "planId", foreignField: "plan_id" });
@@ -725,14 +735,38 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
         break;
 
+      case "subscription.expired":
+        console.log(
+          "Subscription Expired:",
+          event.payload?.subscription?.entity?.id
+        );
+        await syncLocalSubscriptionFromRazorpay({
+          entity: event.payload?.subscription?.entity ?? {},
+          allocateCredits: false,
+        });
+        break;
+
       default:
         console.log("🔔 Unhandled event:", event.event);
         console.log("🔔 Unhandled event object :", JSON.stringify(event));
     }
 
+    if (eventIdForMark) {
+      await mongoWebhookIdempotencyStore.markProcessed(eventIdForMark, {
+        event: event.event,
+      }).catch(() => undefined);
+    }
     res.status(200).json({ status: "ok" });
   } catch (error) {
     console.error("Error in Razorpay webhook handler:", error);
+    if (eventIdForMark) {
+      await mongoWebhookIdempotencyStore
+        .markFailed(
+          eventIdForMark,
+          error instanceof Error ? error.message : "webhook_error"
+        )
+        .catch(() => undefined);
+    }
     res.status(500).json({ error: "Internal server error" });
   }
 };

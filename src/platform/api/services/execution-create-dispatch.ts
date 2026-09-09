@@ -59,6 +59,29 @@ function resolveAsyncVideoPayloadFromMetadata(
     ...(resolution ? { resolution } : {}),
   };
 }
+
+/** Seed image wire aspectRatio from Spec / format when client omits it. */
+function resolveAsyncImagePayloadFromMetadata(
+  metadata?: Readonly<Record<string, unknown>>,
+): { aspectRatio?: string } {
+  if (!metadata) return {};
+  if (typeof metadata.aspectRatio === "string" && metadata.aspectRatio.trim()) {
+    return { aspectRatio: metadata.aspectRatio.trim() };
+  }
+  const payload =
+    metadata.payload && typeof metadata.payload === "object"
+      ? (metadata.payload as Record<string, unknown>)
+      : undefined;
+  if (typeof payload?.aspectRatio === "string" && payload.aspectRatio.trim()) {
+    return { aspectRatio: payload.aspectRatio.trim() };
+  }
+  const format =
+    typeof metadata.format === "string" ? metadata.format : undefined;
+  const fromFormat = aspectRatioForFormat(format);
+  if (fromFormat) return { aspectRatio: fromFormat };
+  return {};
+}
+
 import { runDirectProviderExecution, resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
 import {
   asOrganizationId,
@@ -114,6 +137,8 @@ import {
   readExecutionSpecSnapshot,
   resolveBriefObjectiveFromMetadata,
 } from "../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
+import { inferPresentDeliverableFormatsFromExecution } from "../../collaboration/conversational-task-intelligence/present-deliverable-formats";
+import { pickRetryableCreateMetadata } from "./execution-retry-handoff";
 import {
   recordProviderDispatchFromSummary,
   recordWebsiteMaterializationTrace,
@@ -128,10 +153,39 @@ import { continuitySnapshotForExtras } from "../../os/creative/refine-packet-con
 import { buildContinuityObservabilitySummary } from "../../os/creative/continuity-product-ux";
 import { buildWorkflowFollowUpFromMetadata } from "./workflow-follow-up";
 import { maybeAutoDeliverOnSuccess } from "./auto-delivery-on-success";
+import { applyVisualFieldGuideEvidenceAfterImage } from "../../config/format-production-spec";
 import { autoApprovePendingToolInvocations } from "./auto-approve-pending-tools";
 import { CANONICAL_INTEGRATION_MODE } from "./canonical-execution-spine";
 import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
 import type { CreatePipelineState } from "./execution-create-state";
+
+function metadataBrandAssetIds(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): string[] {
+  const raw = metadata?.assetIds;
+  if (Array.isArray(raw)) {
+    return raw.map(String).map((s) => s.trim()).filter(Boolean);
+  }
+  const logo =
+    typeof metadata?.brandLogoAssetId === "string"
+      ? metadata.brandLogoAssetId.trim()
+      : typeof metadata?.logoAssetId === "string"
+        ? metadata.logoAssetId.trim()
+        : "";
+  return logo ? [logo] : [];
+}
+
+function resolveProductionComplianceFormats(input: {
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly structuredData?: unknown;
+  readonly preview?: string;
+}) {
+  return inferPresentDeliverableFormatsFromExecution({
+    metadata: input.metadata,
+    structuredData: input.structuredData,
+    previewText: input.preview,
+  });
+}
 
 /** execution.brandId is the only creative ownership SoT (confirmed in prepass). */
 function resolveExecutionBrandId(
@@ -158,7 +212,7 @@ export async function runCreateDispatch(
   const principal = state.principal;
   const capabilityIdRaw = state.capabilityIdRaw;
   const trustedOrganizationId = state.trustedOrganizationId;
-  const workingMetadata = state.workingMetadata;
+  let workingMetadata = state.workingMetadata;
   const providerPrompt = state.providerPrompt;
   const requestFingerprint = state.requestFingerprint;
   const executionId = state.executionId;
@@ -391,6 +445,11 @@ export async function runCreateDispatch(
         ...(req.metadata?.audio ? { audio: req.metadata.audio } : {}),
         ...(req.metadata?.image ? { image: req.metadata.image } : {}),
         ...resolveAsyncVideoPayloadFromMetadata(req.metadata),
+        ...(isImageGenerationCapability(capabilityId)
+          ? resolveAsyncImagePayloadFromMetadata(
+              workingMetadata ?? req.metadata,
+            )
+          : {}),
         ...(routingDecisionId ? { routingDecisionId } : {}),
         ...(failoverChain.length ? { failoverChain } : {}),
       },
@@ -1080,6 +1139,18 @@ export async function runCreateDispatch(
               workingMetadata?.preferredModelId ??
               "document-export"
           ),
+          visualImageDeps:
+            host.deps.imageRouter && host.deps.providerRuntimeRegistry
+              ? {
+                  imageRouter: host.deps.imageRouter,
+                  registry: host.deps.providerRuntimeRegistry,
+                  createId: host.deps.createId,
+                  nowIso: host.deps.nowIso,
+                  organizationId: trustedOrganizationId,
+                  workspaceId: req.workspaceId,
+                  executionId,
+                }
+              : undefined,
         });
         if (exported.ok) {
           mediaArtifactIds = [
@@ -1114,9 +1185,15 @@ export async function runCreateDispatch(
               downloadFormats:
                 exportKind === "email"
                   ? ["html"]
-                  : exportKind === "document"
-                    ? ["pdf", "docx"]
-                    : ["pdf", "pptx"],
+                  : Array.isArray(
+                        (exported.value.plan as Record<string, unknown>)
+                          ?.downloadFormats,
+                      )
+                    ? ((exported.value.plan as Record<string, unknown>)
+                        .downloadFormats as string[])
+                    : exportKind === "document"
+                      ? ["pdf", "docx"]
+                      : ["pdf", "pptx"],
             },
           };
           logOsExecutionEvent("execution.document_export.materialized", {
@@ -1196,6 +1273,20 @@ export async function runCreateDispatch(
         createId: host.deps.createId,
         currentResult: result,
         currentArtifactIds: mediaArtifactIds,
+        path: "dispatch_sync",
+        executionKind: "fresh",
+        visualImageDeps:
+          host.deps.imageRouter && host.deps.providerRuntimeRegistry
+            ? {
+                imageRouter: host.deps.imageRouter,
+                registry: host.deps.providerRuntimeRegistry,
+                createId: host.deps.createId,
+                nowIso: host.deps.nowIso,
+                organizationId: trustedOrganizationId,
+                workspaceId: req.workspaceId,
+                executionId,
+              }
+            : undefined,
       });
       result = exported.result;
       if (exported.artifactIds?.length) {
@@ -1213,6 +1304,18 @@ export async function runCreateDispatch(
         errorMessage =
           exported.errorCode ||
           "Could not build the website deliverable from the model output.";
+        jobSummary = {
+          ...jobSummary,
+          providerJobSucceeded: jobSummary.success === true,
+          materializationFailureCode: exported.errorCode,
+          websiteMaterializationErrorCode: exported.errorCode,
+          websiteMaterializationSettled: true,
+        };
+        workingMetadata = {
+          ...(workingMetadata ?? {}),
+          materializationFailureCode: exported.errorCode,
+          providerJobSucceeded: jobSummary.providerJobSucceeded === true,
+        };
         logOsExecutionEvent("execution.website_export.failed", {
           requestId: correlationId,
           executionId,
@@ -1645,6 +1748,34 @@ export async function runCreateDispatch(
   const releaseBlocked =
     phase6Governance.evaluation.releaseBlocked === true ||
     phase6Governance.governance.blocking === true;
+
+  // Phase 6 — stamp measured (+ optional vision) Field Guide evidence before delivery.
+  if (
+    status === "succeeded" &&
+    isImageGenerationCapability(capabilityIdRaw) &&
+    runtimeOutputForMedia
+  ) {
+    try {
+      const vfg = await applyVisualFieldGuideEvidenceAfterImage({
+        metadata: workingMetadata,
+        runtimeOutput: runtimeOutputForMedia,
+        executionId,
+        organizationId: trustedOrganizationId,
+      });
+      workingMetadata = vfg.metadata;
+      state.workingMetadata = vfg.metadata;
+    } catch (err) {
+      logOsExecutionEvent("execution.visual_field_guide_evidence.failed", {
+        requestId: correlationId,
+        executionId,
+        organizationId: trustedOrganizationId,
+        status: "warning",
+        errorCode:
+          err instanceof Error ? err.message.slice(0, 120) : "vfg_stamp_failed",
+      });
+    }
+  }
+
   if (status === "succeeded" && artifactRefs.length > 0 && !releaseBlocked) {
     autoDelivery = await maybeAutoDeliverOnSuccess({
       deliveryService: host.deliveryService,
@@ -1653,6 +1784,7 @@ export async function runCreateDispatch(
       artifactRefs,
       nowIso: host.deps.nowIso,
       createId: host.deps.createId,
+      metadata: workingMetadata,
     });
   } else if (status === "succeeded" && releaseBlocked) {
     autoDelivery = {
@@ -1711,6 +1843,7 @@ export async function runCreateDispatch(
     ...(readExecutionSpecSnapshot(workingMetadata)
       ? { executionSpecSnapshot: readExecutionSpecSnapshot(workingMetadata) }
       : {}),
+    createMetadataSnapshot: pickRetryableCreateMetadata(workingMetadata),
   };
   host.extrasStore.set(executionId, extras);
   logOsExecutionEvent("execution.finalize", {
@@ -1780,13 +1913,20 @@ export async function runCreateDispatch(
       mediaArtifactIds,
       executionSpecSnapshot:
         state.executionSpecSnapshot ?? readExecutionSpecSnapshot(workingMetadata),
+      presentDeliverableFormats: resolveProductionComplianceFormats({
+        metadata: workingMetadata,
+        structuredData: jobSummary.structuredData,
+        preview: previewFromJobSummary(jobSummary),
+      }),
       generatedQuantity:
         typeof jobSummary.routeCount === "number"
           ? jobSummary.routeCount
           : typeof workingMetadata?.executionSpecQuantity === "number"
             ? workingMetadata.executionSpecQuantity
             : undefined,
-      providerSuccess: providerSucceeded,
+      providerSuccess:
+        workingMetadata?.providerJobSucceeded === true ||
+        providerSucceeded,
       latencyMs: Number(jobSummary.durationMs ?? jobSummary.latencyMs ?? 0),
       inputTokens:
         Number(jobSummary.inputTokens ?? jobSummary.promptTokens ?? 0) || undefined,
@@ -1975,6 +2115,19 @@ async function finalizeDeferredDistributedJob(input: {
       mediaArtifactIds.length > 0
         ? mediaArtifactIds
         : existing.artifactIds,
+    path: "dispatch_finalize",
+    executionKind: "recovered_job",
+    visualImageDeps:
+      host.deps.imageRouter && host.deps.providerRuntimeRegistry
+        ? {
+            imageRouter: host.deps.imageRouter,
+            registry: host.deps.providerRuntimeRegistry,
+            createId: host.deps.createId,
+            nowIso: host.deps.nowIso,
+            organizationId,
+            executionId,
+          }
+        : undefined,
   });
   nextResult = exported.result;
   const nextArtifactIds = exported.artifactIds ?? existing.artifactIds;
@@ -2110,6 +2263,7 @@ async function finalizeDeferredDistributedJob(input: {
   });
 
   const prevExtras = host.extrasStore.get(executionId);
+  const deferredContinuationMeta = pickRetryableCreateMetadata(meta);
   const extras: ExecutionExtrasRecord = {
     diagnostics: diagnosticsFromJobSummary(
       executionId,
@@ -2174,6 +2328,16 @@ async function finalizeDeferredDistributedJob(input: {
         }
       : {}),
     ...(phase6.creativeQaExtras ?? {}),
+    ...(readExecutionSpecSnapshot(meta)
+      ? { executionSpecSnapshot: readExecutionSpecSnapshot(meta) }
+      : prevExtras?.executionSpecSnapshot
+        ? { executionSpecSnapshot: prevExtras.executionSpecSnapshot }
+        : {}),
+    ...(Object.keys(deferredContinuationMeta).length > 0
+      ? { createMetadataSnapshot: deferredContinuationMeta }
+      : prevExtras?.createMetadataSnapshot
+        ? { createMetadataSnapshot: prevExtras.createMetadataSnapshot }
+        : {}),
   };
   host.extrasStore.set(executionId, extras);
   if (host.deps.persistence) {
@@ -2219,6 +2383,11 @@ async function finalizeDeferredDistributedJob(input: {
     structuredData: summary.structuredData,
     mediaArtifactIds,
     executionSpecSnapshot: readExecutionSpecSnapshot(meta),
+    presentDeliverableFormats: resolveProductionComplianceFormats({
+      metadata: meta,
+      structuredData: summary.structuredData,
+      preview: previewFromJobSummary(summary),
+    }),
     generatedQuantity:
       typeof summary.routeCount === "number"
         ? summary.routeCount

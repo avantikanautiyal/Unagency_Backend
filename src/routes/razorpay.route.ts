@@ -35,20 +35,36 @@ razorpayRouter.get("/subscriptions/current", VerifyUserHandler, getUserCurrentSu
 razorpayRouter.get("/subscriptions/customer/:userId", VerifyUserHandler, getCustomerCurrentSubscription);
 
 razorpayRouter.post("/paymentVerification", paymentVerification);
-razorpayRouter.post("/paymentVerificationapp", paymentVerificationApp);
+razorpayRouter.post(
+  "/paymentVerificationapp",
+  VerifyUserHandler,
+  paymentVerificationApp
+);
 razorpayRouter.get("/payment/history", VerifyUserHandler, getPaymentHistory)
 razorpayRouter.get("/payment/history/:userId", VerifyUserHandler, getCustomerPaymentHistory);
 razorpayRouter.get("/invoice/:paymentId", generateInvoice);
 // ###################### PLANS #########################
+// GET remains public for pricing UI. Mutations are admin-only and never create
+// Razorpay plans — they only link/sync existing Plan IDs into Mongo.
 
-//Desc: It allows servicing team to fetch their customer's project list
-razorpayRouter.get(
+razorpayRouter.get("/plans", getRazorPayPlans);
+
+razorpayRouter.post(
   "/plans",
-  getRazorPayPlans
-  //   VerifyRole(["servicing"]),
+  VerifyUserHandler,
+  VerifyRole(["admin", "superadmin"]),
+  createRazorPayPlan
 );
-
-razorpayRouter.post("/plans", createRazorPayPlan);
-razorpayRouter.delete("/plans/:plan_id", deleteRazorPayPlan);
-razorpayRouter.put("/plans/:plan_id", updateRazorPayPlan);
+razorpayRouter.delete(
+  "/plans/:plan_id",
+  VerifyUserHandler,
+  VerifyRole(["admin", "superadmin"]),
+  deleteRazorPayPlan
+);
+razorpayRouter.put(
+  "/plans/:plan_id",
+  VerifyUserHandler,
+  VerifyRole(["admin", "superadmin"]),
+  updateRazorPayPlan
+);
 export default razorpayRouter;

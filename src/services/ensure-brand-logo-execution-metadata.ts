@@ -2,16 +2,24 @@
  * Attach resolved brand logo assetIds to execution metadata for visual jobs.
  * Route-visual prompts often omit "use our logo" — continuity intent gate alone
  * is not enough to bind the vault mark to image providers.
+ *
+ * Selection rules mirror CTI `resolveAuthoritativeLogo` (P4.9.7.1):
+ * - explicit vaultLogoChoice → use it
+ * - 1 vault/attachment candidate → bind
+ * - 2+ candidates (vault and/or attachment) → logoChoiceRequired
+ * - brandLogoAssetId alone does not skip multi-logo ask
  */
 
 import {
-  applyVaultLogoSelection,
   resolveBrandVaultLogos,
 } from "./brand-vault-logo-resolver";
 import { resolveBrandProfileContext } from "../platform/os/creative/brand-profile-facts";
 import { detectIntentGateFromBrief } from "../platform/os/creative/intent-gate";
 import { logoRoleFromMetadata } from "../platform/os/creative/creative-intent-classifier";
 import { productActionFromMetadata } from "../platform/api/services/execution-thin-path";
+import { optionalBrandContextObservability } from "../platform/execution/execution-input-policy";
+import { resolveAuthoritativeLogo } from "../platform/collaboration/conversational-task-intelligence/authoritative-logo-resolver";
+import type { AuthoritativeLogoCandidate } from "../platform/collaboration/conversational-task-intelligence/execution-specification";
 
 const VISUAL_PRODUCT_ACTIONS = new Set([
   "route_visual",
@@ -29,6 +37,7 @@ const VISUAL_SERVICES = new Set([
   "pos",
   "social",
   "ads",
+  "website",
 ]);
 
 function metadataString(
@@ -50,9 +59,54 @@ function metadataAssetIds(
   return single ? [single] : [];
 }
 
+function attachmentLogoIdsFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): string[] {
+  const raw = metadata?.attachmentLogoAssetIds;
+  if (!Array.isArray(raw)) return [];
+  return [
+    ...new Set(
+      raw.map(String).map((s) => s.trim()).filter(Boolean)
+    ),
+  ];
+}
+
 function isImageCapability(capabilityId: string | undefined): boolean {
   const cap = (capabilityId ?? "").trim().toLowerCase();
   return cap === "image.generate" || cap === "image.edit";
+}
+
+function bindLogoToMetadata(input: {
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly existingIds: readonly string[];
+  readonly logoAssetId: string;
+  readonly provenance: string;
+  readonly brandId: string;
+}): Record<string, unknown> {
+  const { logoAssetId, provenance, brandId, existingIds } = input;
+  if (existingIds.includes(logoAssetId)) {
+    console.log(
+      `[brand] logo attached | brandId=${brandId} | logoAssetId=${logoAssetId} | provenance=${provenance} | alreadyInAssetIds=true`
+    );
+    return {
+      ...input.metadata,
+      brandLogoAssetId: logoAssetId,
+      logoAssetId,
+      brandLogoProvenance: provenance,
+      ...optionalBrandContextObservability({ logoAvailable: true }),
+    };
+  }
+  console.log(
+    `[brand] logo attached | brandId=${brandId} | logoAssetId=${logoAssetId} | provenance=${provenance}`
+  );
+  return {
+    ...input.metadata,
+    assetIds: [...new Set([...existingIds, logoAssetId])],
+    brandLogoAssetId: logoAssetId,
+    logoAssetId,
+    brandLogoProvenance: provenance,
+    ...optionalBrandContextObservability({ logoAvailable: true }),
+  };
 }
 
 export function shouldProactivelyAttachBrandLogo(input: {
@@ -129,117 +183,114 @@ export async function ensureBrandLogoInExecutionMetadata(input: {
   if (!brandId) return { ...input.metadata };
 
   const existingIds = metadataAssetIds(input.metadata);
+  const explicitChoice = metadataString(input.metadata, "vaultLogoChoice");
+  const attachmentLogoIds = attachmentLogoIdsFromMetadata(input.metadata);
+
+  // Explicit user selection always wins — no re-ask.
+  if (explicitChoice) {
+    const provenance =
+      attachmentLogoIds.includes(explicitChoice)
+        ? "Prompt attachment logo"
+        : "Brand vault logo";
+    return bindLogoToMetadata({
+      metadata: input.metadata,
+      existingIds,
+      logoAssetId: explicitChoice,
+      provenance,
+      brandId,
+    });
+  }
+
+  const profileContext = await resolveBrandProfileContext({
+    brandId,
+    organizationId: input.organizationId,
+  });
+
+  const vault = await resolveBrandVaultLogos({
+    organizationId: input.organizationId,
+    brandId,
+    metadata: input.metadata,
+    profileLogoAssetId: profileContext.logoAssetId,
+  });
+
+  const vaultCandidates: AuthoritativeLogoCandidate[] = vault.candidates.map(
+    (candidate) =>
+      Object.freeze({
+        assetId: candidate.assetId,
+        source: "VAULT" as const,
+        name: candidate.name,
+        folder: candidate.folder,
+      })
+  );
+
+  const resolution = resolveAuthoritativeLogo({
+    vaultCandidates,
+    attachmentLogoAssetIds: attachmentLogoIds,
+  });
+
+  if (resolution.mode === "NEEDS_SELECTION" && resolution.candidates?.length) {
+    console.log(
+      `[brand] logo choice required | brandId=${brandId} | candidates=${resolution.candidates.length}`
+    );
+    return {
+      ...input.metadata,
+      logoChoiceRequired: true,
+      logoChoiceCandidates: resolution.candidates.map((c) => ({
+        assetId: c.assetId,
+        name: c.name ?? (c.source === "ATTACHMENT" ? "Attached logo" : "Logo"),
+        folder: c.folder,
+        source: c.source,
+        approvalStatus: "none",
+      })),
+      ...optionalBrandContextObservability({ logoAvailable: false }),
+    };
+  }
+
+  if (resolution.mode === "USE_EXISTING" && resolution.assetId) {
+    const provenance =
+      resolution.source === "ATTACHMENT"
+        ? "Prompt attachment logo"
+        : "Brand vault logo";
+    return bindLogoToMetadata({
+      metadata: input.metadata,
+      existingIds,
+      logoAssetId: resolution.assetId,
+      provenance,
+      brandId,
+    });
+  }
+
+  // No vault/attachment candidate — fall back to profile canonical logo.
+  const profileLogo = profileContext.logoAssetId?.trim();
+  if (profileLogo) {
+    return bindLogoToMetadata({
+      metadata: input.metadata,
+      existingIds,
+      logoAssetId: profileLogo,
+      provenance: "Brand profile logo",
+      brandId,
+    });
+  }
+
+  // Prior metadata logo (e.g. carried from a previous turn) without vault hit.
   const metadataLogo =
     metadataString(input.metadata, "brandLogoAssetId") ||
     metadataString(input.metadata, "logoAssetId");
-
   if (metadataLogo) {
-    const provenance = "Brand profile logo (metadata)";
-    if (existingIds.includes(metadataLogo)) {
-      console.log(
-        `[brand] logo attached | brandId=${brandId} | logoAssetId=${metadataLogo} | provenance=${provenance} | alreadyInAssetIds=true`
-      );
-      return {
-        ...input.metadata,
-        brandLogoAssetId: metadataLogo,
-        logoAssetId: metadataLogo,
-      };
-    }
-    console.log(
-      `[brand] logo attached | brandId=${brandId} | logoAssetId=${metadataLogo} | provenance=${provenance}`
-    );
-    return {
-      ...input.metadata,
-      assetIds: [...new Set([...existingIds, metadataLogo])],
-      brandLogoAssetId: metadataLogo,
+    return bindLogoToMetadata({
+      metadata: input.metadata,
+      existingIds,
       logoAssetId: metadataLogo,
-      brandLogoProvenance: "Brand profile logo",
-    };
+      provenance: "Brand profile logo (metadata)",
+      brandId,
+    });
   }
 
-  const profileContext = await resolveBrandProfileContext({
-    brandId,
-    organizationId: input.organizationId,
-  });
-
-  const vault = await resolveBrandVaultLogos({
-    organizationId: input.organizationId,
-    brandId,
-    metadata: input.metadata,
-    profileLogoAssetId: profileContext.logoAssetId,
-  });
-
-  const logoAssetId =
-    vault.selectedAssetId ||
-    profileContext.logoAssetId?.trim();
-
-  if (!logoAssetId) {
-    console.log(
-      `[brand] logo missing | brandId=${brandId} | vaultCandidates=${vault.candidates.length} | profileLogo=${profileContext.logoAssetId ?? "none"}`
-    );
-    return { ...input.metadata };
-  }
-
-  const provenance = vault.selectedAssetId
-    ? "Brand vault logo"
-    : "Brand profile logo";
-
-  if (existingIds.includes(logoAssetId)) {
-    console.log(
-      `[brand] logo attached | brandId=${brandId} | logoAssetId=${logoAssetId} | provenance=${provenance} | alreadyInAssetIds=true`
-    );
-    return {
-      ...input.metadata,
-      brandLogoAssetId: logoAssetId,
-      logoAssetId,
-    };
-  }
-
-  const mergedIds = [...new Set([...existingIds, logoAssetId])];
   console.log(
-    `[brand] logo attached | brandId=${brandId} | logoAssetId=${logoAssetId} | provenance=${provenance}`
+    `[brand] logo missing | brandId=${brandId} | vaultCandidates=${vault.candidates.length} | profileLogo=none`
   );
   return {
     ...input.metadata,
-    assetIds: mergedIds,
-    brandLogoAssetId: logoAssetId,
-    logoAssetId,
-    brandLogoProvenance: provenance,
+    ...optionalBrandContextObservability({ logoAvailable: false }),
   };
-}
-
-export async function resolveBrandLogoAssetIdForBind(input: {
-  readonly organizationId: string;
-  readonly brandId: string;
-  readonly metadata?: Readonly<Record<string, unknown>>;
-}): Promise<string | undefined> {
-  const profileContext = await resolveBrandProfileContext({
-    brandId: input.brandId,
-    organizationId: input.organizationId,
-  });
-  const vault = await resolveBrandVaultLogos({
-    organizationId: input.organizationId,
-    brandId: input.brandId,
-    metadata: input.metadata,
-    profileLogoAssetId: profileContext.logoAssetId,
-  });
-  return (
-    vault.selectedAssetId ||
-    profileContext.logoAssetId?.trim() ||
-    metadataString(input.metadata, "brandLogoAssetId") ||
-    metadataString(input.metadata, "logoAssetId") ||
-    undefined
-  );
-}
-
-export function applyResolvedLogoToKnowledgeResolve(
-  resolve: Parameters<typeof applyVaultLogoSelection>[0]["resolve"],
-  assetId: string | undefined
-) {
-  if (!assetId?.trim()) return resolve;
-  return applyVaultLogoSelection({
-    resolve,
-    assetId,
-    provenance: "Brand vault logo",
-  });
 }

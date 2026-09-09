@@ -1,10 +1,14 @@
 import {
   buildWebsiteRelevanceRetrySuffix,
+  defaultWebStackForSubtype,
   extractWebsiteBrandName,
   isCompleteWebsiteHtml,
+  isStrongHtmlStaticDesign,
   recoverWebProjectPlan,
   recoverWebsitePagePlan,
+  resolveWebStack,
   validateWebsitePageRelevance,
+  websiteOutputNeedsDesignRetry,
 } from "../../../src/platform/os/delivery/website-generation";
 
 describe("website-generation (WebProject)", () => {
@@ -191,12 +195,42 @@ describe("website-generation (WebProject)", () => {
     expect(plan?.stack).toBe("react-vite");
   });
 
-  it("forces preferredStack react-vite over model html-static fill", () => {
+  it("preserves provider-declared html-static over metadata preferredStack", () => {
     const plan = recoverWebProjectPlan(
       {
         title: "Timeless",
         summary: "Watches",
         stack: "html-static",
+        brandName: "Timeless",
+        tagline: "Time, remade",
+        heroBody: "Designer watches",
+        sections: [
+          { heading: "Craft", body: "Precision" },
+          { heading: "Design", body: "Bold" },
+        ],
+        ctaLabel: "Explore",
+        colors: {
+          primary: "silver",
+          background: "black",
+          text: "white",
+          accent: "gold",
+        },
+        html: "",
+      },
+      {
+        preferredStack: "react-vite",
+        brandColors: ["chrome silver", "gold", "emerald green"],
+      }
+    );
+    expect(plan?.stack).toBe("html-static");
+    expect(plan?.entry).toBe("index.html");
+  });
+
+  it("applies preferredStack when model omits explicit stack", () => {
+    const plan = recoverWebProjectPlan(
+      {
+        title: "Timeless",
+        summary: "Watches",
         brandName: "Timeless",
         tagline: "Time, remade",
         heroBody: "Designer watches",
@@ -267,5 +301,57 @@ describe("website-generation (WebProject)", () => {
       },
     });
     expect(result.ok).toBe(true);
+  });
+
+  it("defaults marketing subtypes to html-static and apps to next", () => {
+    expect(defaultWebStackForSubtype("landing-page")).toBe("html-static");
+    expect(defaultWebStackForSubtype("landing-pages")).toBe("html-static");
+    expect(defaultWebStackForSubtype("ecom-website")).toBe("html-static");
+    expect(defaultWebStackForSubtype("corporate-website")).toBe("html-static");
+    expect(defaultWebStackForSubtype("ui-design")).toBe("html-static");
+    expect(defaultWebStackForSubtype("app-development")).toBe("next");
+    expect(
+      resolveWebStack({
+        subtype: "landing-page",
+        prompt: "Build a Next.js app for Nova",
+      })
+    ).toBe("next");
+    expect(
+      resolveWebStack({
+        subtype: "landing-page",
+        prompt: "React + Vite SPA for Nova",
+      })
+    ).toBe("react-vite");
+  });
+
+  it("flags thin html-static pages for design retry", () => {
+    const thin = `<!DOCTYPE html><html><head><title>X</title></head><body><h1>Hi</h1></body></html>`;
+    expect(isCompleteWebsiteHtml(thin)).toBe(true);
+    expect(isStrongHtmlStaticDesign(thin)).toBe(false);
+    expect(
+      websiteOutputNeedsDesignRetry(
+        {
+          title: "X",
+          summary: "Y",
+          stack: "html-static",
+          brandName: "Nova",
+          tagline: "Go",
+          heroBody: "Body",
+          sections: [
+            { heading: "A", body: "a" },
+            { heading: "B", body: "b" },
+          ],
+          ctaLabel: "Go",
+          colors: {
+            primary: "#111",
+            background: "#fff",
+            text: "#111",
+            accent: "#f00",
+          },
+          html: thin,
+        },
+        "html-static"
+      )
+    ).toBe(true);
   });
 });

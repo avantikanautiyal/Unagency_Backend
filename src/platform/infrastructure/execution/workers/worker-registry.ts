@@ -52,7 +52,7 @@ export class WorkerRegistry {
       (w) =>
         w.healthy &&
         w.activeJobs < w.capacity &&
-        (!kind || w.kind === kind || w.kind === "execution")
+        (!kind || w.kind === kind),
     );
   }
 

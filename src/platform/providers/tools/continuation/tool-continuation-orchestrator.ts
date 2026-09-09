@@ -46,6 +46,7 @@ import {
   buildWebProjectInstructionBlock,
   isProviderOutputTruncated,
   websiteContextFromMetadata,
+  websiteOutputNeedsDesignRetry,
 } from "../../../os/delivery/website-generation";
 import { sanitizeExecutionFeatures } from "../../adapters/capabilities/feature-catalog";
 import type { IToolInvocationStore } from "../idempotency/tool-invocation-store";
@@ -203,7 +204,7 @@ export class ToolContinuationOrchestrator {
         });
       }
 
-      const output = (lastResult.response?.output ?? {}) as Record<string, unknown>;
+      let output = (lastResult.response?.output ?? {}) as Record<string, unknown>;
       if (!outputHasToolCalls(output)) {
         if (input.structuredOutput) {
           const webCtx = websiteContextFromMetadata(
@@ -227,24 +228,31 @@ export class ToolContinuationOrchestrator {
                 "Website generation hit the output token limit (truncated).",
             };
           }
-          // Invalid/truncated WebProject: one compact rebuild (stack-aware — do not force HTML).
-          if (
-            !parsed.ok &&
-            ["websitepage", "webproject", "websiteroutes"].includes(
-              (input.structuredOutput.name ?? "").toLowerCase()
-            ) &&
-            (looksLikeIncompleteWebProject(content) || truncatedByLength) &&
-            enrichedProviderRequest.metadata?.websiteCompletenessRetried !== true
-          ) {
+          const websiteSchema = [
+            "websitepage",
+            "webproject",
+            "websiteroutes",
+          ].includes((input.structuredOutput.name ?? "").toLowerCase());
+          const multiRoute =
+            (input.structuredOutput.name ?? "").toLowerCase() ===
+            "websiteroutes";
+
+          // Design retry (html-static): one full-quality rewrite before shrinking or scaffolding.
+          const needsDesignRetry =
+            websiteSchema &&
+            webCtx.stack === "html-static" &&
+            !truncatedByLength &&
+            enrichedProviderRequest.metadata?.websiteDesignRetried !== true &&
+            ((!parsed.ok && looksLikeIncompleteWebProject(content)) ||
+              (parsed.ok &&
+                websiteOutputNeedsDesignRetry(parsed.value, webCtx.stack)));
+          if (needsDesignRetry) {
             const basePrompt =
               (typeof enrichedProviderRequest.payload.prompt === "string" &&
                 enrichedProviderRequest.payload.prompt) ||
               (typeof enrichedProviderRequest.payload.text === "string" &&
                 enrichedProviderRequest.payload.text) ||
               "";
-            const multiRoute =
-              (input.structuredOutput.name ?? "").toLowerCase() ===
-              "websiteroutes";
             const stackHint = buildWebProjectInstructionBlock({
               userBrief: webCtx.userBrief || basePrompt,
               brandName: webCtx.brandName,
@@ -252,20 +260,20 @@ export class ToolContinuationOrchestrator {
               stack: webCtx.stack,
               brandColors: webCtx.brandColors,
               multiRoute,
-              isRetry: true,
+              isDesignRetry: true,
             });
             const retryPrompt = `${basePrompt}
 
-[COMPLETENESS RETRY] Previous output was truncated or invalid. Emit a MINIMAL complete ${multiRoute ? "WebsiteRoutes" : "WebProject"} JSON now.
-stack MUST be "${webCtx.stack}". No markdown fences.
+[DESIGN RETRY] Previous output was incomplete or visually too basic. Emit a COMPLETE, production-quality ${multiRoute ? "WebsiteRoutes" : "WebProject"} JSON now.
+stack MUST be "${webCtx.stack}". Prefer rich html over short stubs. No markdown fences.
 
 ${stackHint}`.trim();
             const retryBase: ProviderExecutionRequest = {
               ...enrichedProviderRequest,
-              requestId: `${enrichedProviderRequest.requestId}_webcomplete`,
+              requestId: `${enrichedProviderRequest.requestId}_webdesign`,
               metadata: {
                 ...(enrichedProviderRequest.metadata ?? {}),
-                websiteCompletenessRetried: true,
+                websiteDesignRetried: true,
                 preferredWebStack: webCtx.stack,
                 webStack: webCtx.stack,
                 preferredStack: webCtx.stack,
@@ -305,7 +313,87 @@ ${stackHint}`.trim();
                 recoverOpts
               );
               if (parsed.ok) {
-                Object.assign(output, retryOutput);
+                output = { ...output, ...retryOutput };
+              }
+            }
+          }
+
+          // Invalid/truncated WebProject: one compact rebuild (stack-aware — do not force HTML).
+          if (
+            !parsed.ok &&
+            websiteSchema &&
+            (looksLikeIncompleteWebProject(content) || truncatedByLength) &&
+            enrichedProviderRequest.metadata?.websiteCompletenessRetried !== true
+          ) {
+            const basePrompt =
+              (typeof enrichedProviderRequest.payload.prompt === "string" &&
+                enrichedProviderRequest.payload.prompt) ||
+              (typeof enrichedProviderRequest.payload.text === "string" &&
+                enrichedProviderRequest.payload.text) ||
+              "";
+            const stackHint = buildWebProjectInstructionBlock({
+              userBrief: webCtx.userBrief || basePrompt,
+              brandName: webCtx.brandName,
+              exampleDeliverable: webCtx.exampleDeliverable,
+              stack: webCtx.stack,
+              brandColors: webCtx.brandColors,
+              multiRoute,
+              isRetry: true,
+            });
+            const retryPrompt = `${basePrompt}
+
+[COMPLETENESS RETRY] Previous output was truncated or invalid. Emit a MINIMAL complete ${multiRoute ? "WebsiteRoutes" : "WebProject"} JSON now.
+stack MUST be "${webCtx.stack}". No markdown fences.
+
+${stackHint}`.trim();
+            const retryBase: ProviderExecutionRequest = {
+              ...enrichedProviderRequest,
+              requestId: `${enrichedProviderRequest.requestId}_webcomplete`,
+              metadata: {
+                ...(enrichedProviderRequest.metadata ?? {}),
+                websiteCompletenessRetried: true,
+                websiteDesignRetried: true,
+                preferredWebStack: webCtx.stack,
+                webStack: webCtx.stack,
+                preferredStack: webCtx.stack,
+                ...(webCtx.brandColors.length
+                  ? { brandColors: webCtx.brandColors }
+                  : {}),
+              },
+              payload: {
+                ...enrichedProviderRequest.payload,
+                prompt: retryPrompt,
+                text: retryPrompt,
+                input: retryPrompt,
+              },
+            };
+            const retryReq = withStructuredOutputRequest(
+              retryBase,
+              input.structuredOutput
+            );
+            const reExecuted = await this.deps.runtime.execute({
+              ...retryReq,
+              requestId: retryBase.requestId,
+              options: {
+                ...(retryReq.options ?? {}),
+                features: mergeFeatures(retryReq, input.structuredOutput, false),
+              },
+            });
+            if (reExecuted.ok && reExecuted.value.success) {
+              modelRounds += 1;
+              lastResult = reExecuted.value;
+              accumulateUsage(aggregatedUsage, lastResult.response?.usage);
+              const retryOutput = (lastResult.response?.output ??
+                {}) as Record<string, unknown>;
+              content = extractContent(retryOutput);
+              parsed = parseOrRecoverStructuredOutput(
+                content,
+                input.structuredOutput,
+                recoverOpts
+              );
+              if (parsed.ok) {
+                // Anthropic (and others) freeze response.output — never mutate in place.
+                output = { ...output, ...retryOutput };
               }
             }
           }
@@ -377,7 +465,8 @@ Each body must be at least 2 sentences.`.trim();
                   );
                 }
                 if (parsed.ok) {
-                  Object.assign(output, retryOutput);
+                  // Anthropic (and others) freeze response.output — never mutate in place.
+                  output = { ...output, ...retryOutput };
                 }
               }
             }

@@ -3,6 +3,7 @@ import { VerifyRole } from "../middlewares/verifyUser.middleware";
 import { fileUpload } from "../middlewares/multers3.middleware";
 import {
   createRequirement,
+  getCsInboxRequirements,
   getCustomerRequirement,
   getRequirement,
   getRequirmentById,
@@ -30,6 +31,11 @@ router.get("/", VerifyRole(["customer"]), getRequirement);
 router.get("/get/:id", getRequirmentById);
 
 /* -------------------{ servicing }-----------------------*/
+router.get(
+  "/cs-inbox",
+  VerifyRole(["servicing"]),
+  getCsInboxRequirements
+);
 //Desc: It allows servicing to fetch their customer's requirements list
 router.get(
   "/:userId",

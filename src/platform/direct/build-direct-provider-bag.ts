@@ -27,11 +27,19 @@ function resolveCapabilityId(request: DirectExecutionRequest): string {
   return "text.generate";
 }
 
+function defaultModelForCapability(capabilityId: string): string {
+  const cap = capabilityId.trim().toLowerCase();
+  // OpenAI rejects gpt-4o for STT — Whisper is the only verified audio.transcribe leaf.
+  if (cap === "audio.transcribe" || cap === "speech.transcribe") return "whisper-1";
+  return "gpt-4o";
+}
+
 function resolveProviderModel(request: DirectExecutionRequest): {
   providerId: string;
   modelId: string;
 } {
   const meta = request.metadata ?? {};
+  const capabilityId = resolveCapabilityId(request);
   const providerId =
     (typeof meta.preferredProviderId === "string" && meta.preferredProviderId.trim()) ||
     (typeof meta.providerId === "string" && meta.providerId.trim()) ||
@@ -39,7 +47,7 @@ function resolveProviderModel(request: DirectExecutionRequest): {
   const modelId =
     (typeof meta.preferredModelId === "string" && meta.preferredModelId.trim()) ||
     (typeof meta.modelId === "string" && meta.modelId.trim()) ||
-    "gpt-4o";
+    defaultModelForCapability(capabilityId);
   return { providerId, modelId };
 }
 

@@ -4,6 +4,7 @@
  */
 
 import { PRESENTATION_ROUTE_CONCEPTS_SCHEMA } from "../os/delivery/presentation-schemas";
+import { shouldOmitCdfStructuredStamp } from "../cdf/phase-scoped-create";
 
 function structuredNameFrom(meta: Readonly<Record<string, unknown>>): string {
   const so = meta.structuredOutput;
@@ -75,6 +76,7 @@ export function stampPresentationCreateMetadata(
 ): Record<string, unknown> {
   const meta: Record<string, unknown> = { ...(metadata ?? {}) };
   if (!isPresentationDirectCreate(meta)) return meta;
+  if (shouldOmitCdfStructuredStamp(meta)) return meta;
 
   const subtype =
     typeof meta.subtype === "string" ? meta.subtype.trim().toLowerCase() : "";

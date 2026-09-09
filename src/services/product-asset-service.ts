@@ -113,6 +113,113 @@ export function sanitizeFilename(name: string): string {
   return cleaned.slice(0, 180);
 }
 
+/** Extensions macOS/Windows use to pick Kind / default app (not parenthetical tags like "(JPG)"). */
+const KNOWN_DOWNLOAD_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "svg",
+  "mp4",
+  "webm",
+  "mov",
+  "pdf",
+  "txt",
+  "md",
+  "html",
+  "htm",
+  "zip",
+  "pptx",
+  "ppt",
+  "docx",
+  "doc",
+  "json",
+  "csv",
+  "m4a",
+  "mp3",
+  "wav",
+]);
+
+export function extensionForProductMime(
+  mimeType?: string | null
+): string | undefined {
+  const mime = (mimeType || "").toLowerCase().split(";")[0]?.trim() || "";
+  switch (mime) {
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/svg+xml":
+      return "svg";
+    case "video/mp4":
+      return "mp4";
+    case "video/webm":
+      return "webm";
+    case "video/quicktime":
+      return "mov";
+    case "application/pdf":
+      return "pdf";
+    case "text/plain":
+      return "txt";
+    case "text/markdown":
+      return "md";
+    case "text/html":
+    case "application/xhtml+xml":
+      return "html";
+    case "application/zip":
+    case "application/x-zip-compressed":
+      return "zip";
+    case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+      return "pptx";
+    case "application/vnd.ms-powerpoint":
+      return "ppt";
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      return "docx";
+    case "application/msword":
+      return "doc";
+    default:
+      return undefined;
+  }
+}
+
+function hasKnownFileExtension(name: string): boolean {
+  const match = /\.([A-Za-z0-9]{1,8})$/.exec(name);
+  if (!match) return false;
+  return KNOWN_DOWNLOAD_EXTENSIONS.has(match[1].toLowerCase());
+}
+
+/**
+ * Content-Disposition download name. Vault display titles often omit a real
+ * extension (e.g. "Logo design (JPG)") after updateMeta — append from MIME so
+ * the OS does not save the bytes as a generic Document.
+ */
+export function downloadFilenameForAsset(
+  fileName: string | null | undefined,
+  mimeType?: string | null
+): string {
+  const raw = String(fileName || "file").trim() || "file";
+  // Keep vault display glyphs; only strip path / Content-Disposition breakers.
+  const base =
+    raw
+      .split(/[/\\]/)
+      .pop()!
+      .replace(/\0/g, "")
+      .replace(/\.\./g, "")
+      .replace(/["\\]/g, "_")
+      .trim()
+      .slice(0, 180) || "file";
+  if (hasKnownFileExtension(base)) return base;
+  const ext = extensionForProductMime(mimeType);
+  if (!ext) return base;
+  return `${base}.${ext}`.slice(0, 180);
+}
+
 export function buildProductAssetStorageKey(input: {
   organizationId: string;
   assetId: string;
@@ -229,6 +336,24 @@ export class ProductAssetService {
     const organizationId = await resolveCustomerOrganizationId(
       input.userId,
       input.organizationId
+    );
+
+    const usedAgg = await MediaFile.aggregate([
+      {
+        $match: {
+          organizationId: new mongoose.Types.ObjectId(organizationId),
+        },
+      },
+      { $group: { _id: null, total: { $sum: { $ifNull: ["$sizeBytes", 0] } } } },
+    ]);
+    const usedBytes = Number(usedAgg[0]?.total ?? 0);
+    const { assertStorageWithinLimit } = await import(
+      "../billing/entitlement-service"
+    );
+    await assertStorageWithinLimit(
+      input.userId,
+      usedBytes,
+      input.bytes.byteLength
     );
 
     const pipeline = await runUploadPipeline({
@@ -554,12 +679,24 @@ export class ProductAssetService {
       dispositionRaw === "attachment" ? "attachment" : "inline";
     const cacheControl = cacheControlForAsset("product");
 
+    const previewExt = extensionForProductMime(doc.mimeType || "");
     const signed = await this.storage.createSignedGetUrl(
       doc.storageKey,
       SIGNED_TTL_SECONDS,
       {
         disposition,
-        filename: doc.fileName || "file",
+        // Inline previews use a simple ASCII name — vault display titles often
+        // contain middots / ampersands that can break ResponseContentDisposition
+        // on browser media loads. Keep the full label for attachment downloads.
+        filename:
+          disposition === "attachment"
+            ? downloadFilenameForAsset(
+                doc.fileName,
+                doc.mimeType || "application/octet-stream"
+              )
+            : previewExt
+              ? `preview.${previewExt}`
+              : "preview",
         cacheControl,
       }
     );

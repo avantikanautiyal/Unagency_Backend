@@ -16,6 +16,7 @@ import {
   type ContinuityLayerRollout,
 } from "./continuity-layer-flags";
 import { detectIntentGateFromBrief } from "./intent-gate";
+import { logoRoleFromMetadata } from "./creative-intent-classifier";
 import { logOsExecutionEvent } from "../observability/execution-log";
 import { extractBriefColors } from "../../../services/brand-color-extraction";
 
@@ -108,12 +109,20 @@ function clientContradictionChoice(
   return undefined;
 }
 
-function briefMentionsLogo(brief: string): boolean {
-  return /\b(?:our\s+)?logo\b|\bwordmark\b|\bbrand\s+mark\b/i.test(brief);
+function briefTouchesLogoFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): boolean {
+  const role = logoRoleFromMetadata(metadata);
+  return (
+    role === "create_new" ||
+    role === "reuse_canonical" ||
+    role === "reuse_attached"
+  );
 }
 
 /**
  * Slot awareness: approved logo exists and brief touches logo / new mark.
+ * Logo touch comes from structured creative intent (LLM), not English word regex.
  */
 export async function evaluateSlotAwareness(input: {
   readonly brief: string;
@@ -137,7 +146,7 @@ export async function evaluateSlotAwareness(input: {
     intent.intentTags.includes("reuse_logo") ||
     intent.intentTags.includes("new_mark") ||
     intent.requiredSlots.includes("logo") ||
-    briefMentionsLogo(input.brief);
+    briefTouchesLogoFromMetadata(input.metadata);
 
   if (!touchesLogo) return null;
 

@@ -100,6 +100,8 @@ export type ServiceExecutionContext = {
   requiresExecution?: boolean;
   clarificationRequired?: boolean;
   clarificationQuestion?: string;
+  /** P4.9.7.1 — structured clarification payload (logo selection, etc.). */
+  clarification?: import("./conversational-task-intelligence/conversational-task-contract").ConversationalClarification;
   effectiveRequirements?: readonly ConversationalRequirement[];
   effectiveInstruction?: string;
   activeThreadId?: string;

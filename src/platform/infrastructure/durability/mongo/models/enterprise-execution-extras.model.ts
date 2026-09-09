@@ -18,6 +18,8 @@ export interface EnterpriseExecutionExtrasDoc extends Document {
   osLifecycle?: string;
   governance?: unknown;
   asyncLane?: unknown;
+  createMetadataSnapshot?: Readonly<Record<string, unknown>>;
+  executionSpecSnapshot?: unknown;
   updatedAt: string;
 }
 
@@ -33,6 +35,8 @@ const enterpriseExecutionExtrasSchema = new Schema<EnterpriseExecutionExtrasDoc>
     osLifecycle: { type: String, required: false },
     governance: { type: Schema.Types.Mixed, required: false },
     asyncLane: { type: Schema.Types.Mixed, required: false },
+    createMetadataSnapshot: { type: Schema.Types.Mixed, required: false },
+    executionSpecSnapshot: { type: Schema.Types.Mixed, required: false },
     updatedAt: { type: String, required: true },
   },
   { collection: "enterprise_execution_extras" }

@@ -45,7 +45,7 @@ export const IDEOGRAM_IMAGE_SPEC: VerifiedImageProviderSpec = {
   inventoryModelId: "ideogram-3",
   wireModelId: "V_3",
   supportsTextToImage: true,
-  supportsReferenceImage: false,
+  supportsReferenceImage: true,
   supportsImageEdit: false,
   createProtocol: () => new IdeogramImageProtocol(),
 };
@@ -63,7 +63,7 @@ export const RECRAFT_IMAGE_SPEC: VerifiedImageProviderSpec = {
   inventoryModelId: "recraft-v3",
   wireModelId: "recraftv3",
   supportsTextToImage: true,
-  supportsReferenceImage: false,
+  supportsReferenceImage: true,
   supportsImageEdit: false,
   createProtocol: () => new RecraftImageProtocol(),
 };

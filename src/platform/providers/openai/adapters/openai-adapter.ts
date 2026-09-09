@@ -119,7 +119,8 @@ export class OpenAIProviderAdapter extends AbstractMultimodalProviderAdapter {
 
     if (
       request.modality === "image" ||
-      String(request.capabilityId).toLowerCase() === "image.generate"
+      String(request.capabilityId).toLowerCase() === "image.generate" ||
+      String(request.capabilityId).toLowerCase() === "image.edit"
     ) {
       const isImageModel =
         wireModelId.includes("dall-e") || wireModelId.includes("gpt-image");
@@ -129,7 +130,7 @@ export class OpenAIProviderAdapter extends AbstractMultimodalProviderAdapter {
           issues: [
             {
               code: "model_capability_mismatch",
-              message: `Model '${request.modelId}' does not support image.generate`,
+              message: `Model '${request.modelId}' does not support image generation/edit`,
               severity: "error",
             },
           ],

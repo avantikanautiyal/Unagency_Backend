@@ -429,6 +429,7 @@ export function createEnterpriseApiPlatform(
     imageRouter: createImageExecutionRouter({
       registry: providerRuntimeRegistry,
     }),
+    providerRuntimeRegistry,
     audioRouter: createAudioExecutionRouter({
       registry: providerRuntimeRegistry,
     }),

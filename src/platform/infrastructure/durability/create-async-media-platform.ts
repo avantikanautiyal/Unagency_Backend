@@ -130,9 +130,13 @@ export function createAsyncMediaPlatform(
 
 export function isAsyncMediaEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.ENTERPRISE_ASYNC_MEDIA_ENABLED === "true") return true;
+  if (env.ENTERPRISE_ASYNC_MEDIA_ENABLED === "false") return false;
   // M10.6 — credential-free simulated mode enables in-memory async media for image/video UX.
   const mode = env.ENTERPRISE_API_EXECUTION_MODE?.trim().toLowerCase();
-  return mode === "simulated";
+  if (mode === "simulated") return true;
+  // P4.9.1 — LIVE durable production must persist website HTML and media artifacts.
+  if (isDurableRuntimeEnabled(env)) return true;
+  return false;
 }
 
 export async function pingAsyncMediaDependencies(

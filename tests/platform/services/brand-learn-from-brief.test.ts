@@ -60,7 +60,7 @@ describe("learnBrandKnowledgeFromBrief LLM wiring", () => {
 
     expect(enrichMock).not.toHaveBeenCalled();
     expect(result.updated).toBe(true);
-    expect(result.extractionSource).toBe("regex");
+    expect(result.extractionSource).toBe("heuristic_fallback");
     expect(result.extracted?.colors).toEqual(
       expect.arrayContaining(["red", "blue"])
     );
@@ -102,7 +102,7 @@ describe("learnBrandKnowledgeFromBrief LLM wiring", () => {
     } as never);
     enrichMock.mockResolvedValue({
       colors: ["green"],
-      extractionSource: "regex+llm",
+      extractionSource: "llm+hex",
     });
 
     const result = await learnBrandKnowledgeFromBrief({
@@ -113,6 +113,6 @@ describe("learnBrandKnowledgeFromBrief LLM wiring", () => {
     });
 
     expect(enrichMock).toHaveBeenCalled();
-    expect(result.extractionSource).toBe("regex+llm");
+    expect(result.extractionSource).toBe("llm+hex");
   });
 });

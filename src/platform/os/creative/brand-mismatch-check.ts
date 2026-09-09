@@ -14,6 +14,7 @@
 
 import mongoose from "mongoose";
 import Brands from "../../../models/brand.model";
+import { isKnownColorSurfaceForm } from "../../../services/brand-color-extraction";
 import { logOsExecutionEvent } from "../observability/execution-log";
 
 export type TenantBrandRef = {
@@ -64,6 +65,234 @@ const MIN_BRAND_NAME_LEN = 3;
 /** Phrases that mark a brand mention as comparison / example, not the job subject. */
 const COMPARISON_PREFIX =
   String.raw`(?:like|unlike|similar\s+to|similar\s+as|compared\s+to|compared\s+with|versus|vs\.?|inspired\s+by|in\s+the\s+style\s+of|in\s+the\s+vein\s+of|rather\s+than|instead\s+of|better\s+than|worse\s+than|e\.g\.|eg\.?|for\s+example|such\s+as|not\s+like|as\s+opposed\s+to)`;
+
+/** Brief cues that the matched token is a colour, not a tenant brand name. */
+const COLOR_MODIFIER_BEFORE = new Set([
+  "navy",
+  "sky",
+  "light",
+  "dark",
+  "deep",
+  "bright",
+  "royal",
+  "electric",
+  "midnight",
+  "powder",
+  "baby",
+  "teal",
+  "cyan",
+  "aqua",
+  "metallic",
+  "warm",
+  "cool",
+  "pastel",
+  "muted",
+  "vibrant",
+  "bold",
+  "earthy",
+]);
+
+const COLOR_PREPOSITION_BEFORE = new Set([
+  "in",
+  "using",
+  "use",
+  "with",
+  "featuring",
+  "incorporating",
+]);
+
+const COLOR_LABEL_BEFORE = new Set([
+  "color",
+  "colour",
+  "colored",
+  "coloured",
+  "colors",
+  "colours",
+  "palette",
+  "scheme",
+  "hue",
+  "tone",
+  "shade",
+  "tint",
+  "accent",
+  "background",
+  "primary",
+  "secondary",
+  "tertiary",
+  "dominant",
+  "main",
+  "base",
+  "highlight",
+  "gradient",
+]);
+
+const COLOR_DESCRIPTOR_AFTER = new Set([
+  "color",
+  "colour",
+  "colored",
+  "coloured",
+  "colors",
+  "colours",
+  "accent",
+  "background",
+  "tone",
+  "hue",
+  "shade",
+  "tint",
+  "palette",
+  "scheme",
+  "logo",
+  "icon",
+  "mark",
+  "wordmark",
+  "emblem",
+  "typography",
+  "text",
+  "fill",
+  "stroke",
+  "gradient",
+  "overlay",
+]);
+
+function immediateTokenBefore(
+  brief: string,
+  matchIndex: number
+): string | undefined {
+  const before = brief.slice(0, matchIndex).trimEnd();
+  const match = before.match(/([#A-Za-z][\w-]*)\s*$/);
+  return match?.[1]?.toLowerCase();
+}
+
+function immediateTokenAfter(
+  brief: string,
+  matchIndex: number,
+  matchLength: number
+): string | undefined {
+  const after = brief.slice(matchIndex + matchLength).trimStart();
+  const match = after.match(/^([#A-Za-z][\w-]*)/);
+  return match?.[1]?.toLowerCase();
+}
+
+function pairingColorAfter(
+  brief: string,
+  matchIndex: number,
+  matchLength: number
+): string | undefined {
+  const after = brief.slice(matchIndex + matchLength);
+  const match = after.match(
+    /^\s*(?:and|&|\+|with|or|,)\s+([#A-Za-z][\w-]*)/i
+  );
+  return match?.[1]?.toLowerCase();
+}
+
+function pairingColorBefore(
+  brief: string,
+  matchIndex: number
+): string | undefined {
+  const before = brief.slice(0, matchIndex);
+  const match = before.match(/(?:and|&|\+|with|or|,)\s+([#A-Za-z][\w-]*)$/i);
+  return match?.[1]?.toLowerCase();
+}
+
+/** Strong signals that a catalog brand whose name is also a colour word is the job subject. */
+const BRAND_SUBJECT_BEFORE =
+  String.raw`(?:for|create\s+for|design\s+for|make\s+for|build\s+for|generate\s+for|campaign\s+for|logo\s+for|identity\s+for|rebrand\s+for|work\s+for|client)\s+(?:the\s+)?$`;
+
+const BRAND_SUBJECT_AFTER =
+  String.raw`^\s+(?:brand|company|business|startup|product|campaign|client|logo|identity|rebrand|studio|store|shop|restaurant|cafe|coffee|app|platform|agency|group|team|inc|llc|ltd|co|corp|corporation)\b`;
+
+/**
+ * True when a tenant brand shares a name with a common colour word and the brief
+ * uses that token in a colour/palette sense (e.g. "blue and gold", "in navy blue").
+ */
+export function isColorWordUsedAsColour(
+  brief: string,
+  matchIndex: number,
+  matchLength: number,
+  brandName: string
+): boolean {
+  if (!isKnownColorSurfaceForm(brandName)) return false;
+
+  const matched = brief.slice(matchIndex, matchIndex + matchLength);
+  const prev = immediateTokenBefore(brief, matchIndex);
+  const next = immediateTokenAfter(brief, matchIndex, matchLength);
+
+  if (prev && COLOR_LABEL_BEFORE.has(prev)) return true;
+  if (prev && COLOR_PREPOSITION_BEFORE.has(prev)) return true;
+  if (next && COLOR_DESCRIPTOR_AFTER.has(next)) return true;
+
+  if (
+    matched.toLowerCase() === "blue" &&
+    prev &&
+    COLOR_MODIFIER_BEFORE.has(prev)
+  ) {
+    return true;
+  }
+
+  // Lowercase colour token in a brief that otherwise uses sentence case → colour, not brand.
+  if (matched === matched.toLowerCase() && brandName !== matched) {
+    return true;
+  }
+
+  const pairedAfter = pairingColorAfter(brief, matchIndex, matchLength);
+  if (pairedAfter && isKnownColorSurfaceForm(pairedAfter)) return true;
+
+  const pairedBefore = pairingColorBefore(brief, matchIndex);
+  if (pairedBefore && isKnownColorSurfaceForm(pairedBefore)) return true;
+
+  return false;
+}
+
+/** True when the brief clearly names this brand as the generation subject. */
+export function isBrandSubjectMention(
+  brief: string,
+  matchIndex: number,
+  matchLength: number
+): boolean {
+  const before = brief.slice(Math.max(0, matchIndex - 48), matchIndex);
+  const after = brief.slice(
+    matchIndex + matchLength,
+    matchIndex + matchLength + 32
+  );
+
+  if (new RegExp(BRAND_SUBJECT_BEFORE, "i").test(before)) return true;
+  if (new RegExp(BRAND_SUBJECT_AFTER, "i").test(after)) return true;
+  if (/^\s+'s\b/i.test(after)) return true;
+  if (/\bbrand\s+$/i.test(before)) return true;
+
+  return false;
+}
+
+/**
+ * Colour-word brand names need stronger subject evidence than unique brand names.
+ */
+export function shouldCountBrandMention(input: {
+  readonly brief: string;
+  readonly brandName: string;
+  readonly matchIndex: number;
+  readonly matchLength: number;
+  readonly comparison: boolean;
+}): boolean {
+  if (input.comparison) return false;
+
+  if (isKnownColorSurfaceForm(input.brandName)) {
+    if (isColorWordUsedAsColour(
+      input.brief,
+      input.matchIndex,
+      input.matchLength,
+      input.brandName
+    )) {
+      return false;
+    }
+    return isBrandSubjectMention(
+      input.brief,
+      input.matchIndex,
+      input.matchLength
+    );
+  }
+
+  return true;
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -168,7 +397,17 @@ export function detectBrandMismatchInBrief(input: {
   for (const brand of ordered) {
     const mentions = findBrandMentions(brief, brand.name);
     for (const hit of mentions) {
-      if (hit.comparison) continue;
+      if (
+        !shouldCountBrandMention({
+          brief,
+          brandName: brand.name,
+          matchIndex: hit.index,
+          matchLength: hit.length,
+          comparison: hit.comparison,
+        })
+      ) {
+        continue;
+      }
       const overlaps = claimedRanges.some(
         (r) => hit.index < r.end && hit.index + hit.length > r.start
       );

@@ -12,6 +12,7 @@ import {
   parsePresentationRoutes,
   recoverPresentationRoutesPayload,
 } from "../../../os/delivery/document-export-service";
+import { recoverWebsiteRoutesPlan } from "../../../os/delivery/website-generation";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -22,6 +23,18 @@ function toolInputHasExportableRoutes(input: unknown): boolean {
   if (input == null) return false;
   const recovered = recoverPresentationRoutesPayload(input);
   return parsePresentationRoutes(recovered) != null;
+}
+
+/** True when tool input is exportable WebsiteRoutes / WebProject. */
+function toolInputHasExportableWebsite(input: unknown): boolean {
+  if (input == null) return false;
+  return Boolean(recoverWebsiteRoutesPlan(input)?.length);
+}
+
+function toolInputHasExportableStructured(input: unknown): boolean {
+  return (
+    toolInputHasExportableRoutes(input) || toolInputHasExportableWebsite(input)
+  );
 }
 
 function textBlocksJoined(
@@ -42,7 +55,7 @@ function extractAnthropicText(
   const textFromBlocks = textBlocksJoined(contentBlocks);
   const toolBlock = contentBlocks.find((block) => block.type === "tool_use");
   if (toolBlock && toolBlock.input != null) {
-    if (toolInputHasExportableRoutes(toolBlock.input)) {
+    if (toolInputHasExportableStructured(toolBlock.input)) {
       return typeof toolBlock.input === "string"
         ? toolBlock.input
         : JSON.stringify(toolBlock.input);
@@ -70,7 +83,7 @@ export function mapAnthropicResponseToCanonical(
     toolBlock &&
     toolBlock.input != null &&
     isRecord(toolBlock.input) &&
-    toolInputHasExportableRoutes(toolBlock.input)
+    toolInputHasExportableStructured(toolBlock.input)
       ? (toolBlock.input as Record<string, unknown>)
       : undefined;
 
@@ -78,7 +91,7 @@ export function mapAnthropicResponseToCanonical(
     if (structuredFromTool || !text.trim()) return undefined;
     try {
       const parsed = JSON.parse(text) as unknown;
-      if (isRecord(parsed) && toolInputHasExportableRoutes(parsed)) {
+      if (isRecord(parsed) && toolInputHasExportableStructured(parsed)) {
         return parsed;
       }
     } catch {

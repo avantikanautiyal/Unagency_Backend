@@ -5,6 +5,7 @@
 import { randomUUID } from "crypto";
 import type { AIUsageRecord, CreateAIUsageRecordInput } from "../contracts/ai-usage-record";
 import { billingPeriodBoundsForDate } from "../contracts/billing-period";
+import { aggregateEligibleRecords } from "../eligibility/accounting-eligibility";
 import { AIUsageRecordModel } from "../../infrastructure/durability/mongo/models/ai-usage-record.model";
 
 export interface RecordUsageResult {
@@ -15,9 +16,28 @@ export interface RecordUsageResult {
 export interface IUsageLedger {
   recordUsage(input: CreateAIUsageRecordInput): Promise<RecordUsageResult>;
   findByIdempotencyKey(key: string): Promise<AIUsageRecord | null>;
+  findByProviderRequestId(providerId: string, providerRequestId: string): Promise<AIUsageRecord | null>;
+  findPendingByOperationId(operationId: string): Promise<AIUsageRecord | null>;
+  getByUsageRecordId(usageRecordId: string): Promise<AIUsageRecord | null>;
+  updateUsageRecord(
+    usageRecordId: string,
+    patch: UsageRecordUpdatePatch
+  ): Promise<boolean>;
   listByExecutionId(executionId: string): Promise<readonly AIUsageRecord[]>;
+  listRecords(filter: UsageAggregateFilter): Promise<readonly AIUsageRecord[]>;
   aggregateSpend(filter: UsageAggregateFilter): Promise<UsageAggregateResult>;
   lastUsageUpdateAt(): Promise<string | null>;
+}
+
+export interface UsageRecordUpdatePatch {
+  readonly usage?: AIUsageRecord["usage"];
+  readonly cost?: AIUsageRecord["cost"];
+  readonly invocationStatus?: AIUsageRecord["invocationStatus"];
+  readonly completedAt?: string;
+  readonly providerRequestId?: string | null;
+  readonly latencyMs?: number | null;
+  readonly providerJobId?: string | null;
+  readonly accountingState?: string;
 }
 
 export interface UsageAggregateFilter {
@@ -108,14 +128,57 @@ export class MongoUsageLedger implements IUsageLedger {
     return doc ? (doc as unknown as AIUsageRecord) : null;
   }
 
-  async listByExecutionId(executionId: string): Promise<readonly AIUsageRecord[]> {
-    const docs = await AIUsageRecordModel.find({ executionId })
-      .sort({ completedAt: 1 })
-      .lean();
-    return docs as unknown as AIUsageRecord[];
+  async findByProviderRequestId(
+    providerId: string,
+    providerRequestId: string
+  ): Promise<AIUsageRecord | null> {
+    const key = `${providerId}:${providerRequestId}`;
+    const byKey = await this.findByIdempotencyKey(key);
+    if (byKey) return byKey;
+    const doc = await AIUsageRecordModel.findOne({ providerId, providerRequestId }).lean();
+    return doc ? (doc as unknown as AIUsageRecord) : null;
   }
 
-  async aggregateSpend(filter: UsageAggregateFilter): Promise<UsageAggregateResult> {
+  async findPendingByOperationId(operationId: string): Promise<AIUsageRecord | null> {
+    const doc = await AIUsageRecordModel.findOne({
+      operationId,
+      "cost.costStatus": "PENDING_PROVIDER_USAGE",
+    }).lean();
+    return doc ? (doc as unknown as AIUsageRecord) : null;
+  }
+
+  async getByUsageRecordId(usageRecordId: string): Promise<AIUsageRecord | null> {
+    const doc = await AIUsageRecordModel.findOne({ usageRecordId }).lean();
+    return doc ? (doc as unknown as AIUsageRecord) : null;
+  }
+
+  async updateUsageRecord(
+    usageRecordId: string,
+    patch: UsageRecordUpdatePatch
+  ): Promise<boolean> {
+    const updatedAt = new Date().toISOString();
+    const result = await AIUsageRecordModel.updateOne(
+      { usageRecordId },
+      {
+        $set: {
+          ...(patch.usage ? { usage: patch.usage, rawProviderUsage: patch.usage.rawProviderUsage } : {}),
+          ...(patch.cost ? { cost: patch.cost } : {}),
+          ...(patch.invocationStatus ? { invocationStatus: patch.invocationStatus } : {}),
+          ...(patch.completedAt ? { completedAt: patch.completedAt } : {}),
+          ...(patch.providerRequestId !== undefined
+            ? { providerRequestId: patch.providerRequestId }
+            : {}),
+          ...(patch.latencyMs !== undefined ? { latencyMs: patch.latencyMs } : {}),
+          ...(patch.providerJobId !== undefined ? { providerJobId: patch.providerJobId } : {}),
+          ...(patch.accountingState ? { accountingState: patch.accountingState } : {}),
+          updatedAt,
+        },
+      }
+    );
+    return result.modifiedCount > 0;
+  }
+
+  async listRecords(filter: UsageAggregateFilter): Promise<readonly AIUsageRecord[]> {
     const match: Record<string, unknown> = {
       completedAt: {
         $gte: filter.start.toISOString(),
@@ -127,61 +190,50 @@ export class MongoUsageLedger implements IUsageLedger {
     if (filter.modelId) match.modelId = filter.modelId;
     if (filter.service) match.service = filter.service;
     if (filter.executionId) match.executionId = filter.executionId;
+    const docs = await AIUsageRecordModel.find(match).sort({ completedAt: -1 }).lean();
+    return docs as unknown as AIUsageRecord[];
+  }
 
-    const docs = await AIUsageRecordModel.find(match).lean();
-    const records = docs as unknown as AIUsageRecord[];
+  async listByExecutionId(executionId: string): Promise<readonly AIUsageRecord[]> {
+    const docs = await AIUsageRecordModel.find({ executionId })
+      .sort({ completedAt: 1 })
+      .lean();
+    return docs as unknown as AIUsageRecord[];
+  }
 
-    let liveMicro = BigInt(0);
-    let pendingMicro = BigInt(0);
-    let requestCount = 0;
-    let successfulRequestCount = 0;
-    let failedRequestCount = 0;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cachedTokens = 0;
-    let reasoningTokens = 0;
-
-    const { parseUsdToMicro, microToUsdString } = await import("../money/usd-money");
-    const { isCostKnown, isCostPending } = await import("../contracts/ai-usage-record");
-
-    for (const record of records) {
-      requestCount += 1;
-      if (record.invocationStatus === "SUCCEEDED") successfulRequestCount += 1;
-      else failedRequestCount += 1;
-
-      inputTokens += record.usage.inputTokens ?? 0;
-      outputTokens += record.usage.outputTokens ?? 0;
-      cachedTokens += (record.usage.cachedInputTokens ?? 0) + (record.usage.cachedOutputTokens ?? 0);
-      reasoningTokens += record.usage.reasoningTokens ?? 0;
-
-      const amount =
-        record.cost.reportingAmountUsd ?? record.cost.estimatedTotalCostUsd;
-      const micro = parseUsdToMicro(amount);
-      if (micro == null) continue;
-
-      if (isCostKnown(record.cost.costStatus)) {
-        liveMicro += micro;
-      } else if (isCostPending(record.cost.costStatus)) {
-        pendingMicro += micro;
-      }
-    }
-
+  async aggregateSpend(filter: UsageAggregateFilter): Promise<UsageAggregateResult> {
+    const records = await this.listRecords(filter);
+    const totals = aggregateEligibleRecords(records, filter);
     return {
-      liveInternalSpendUsd: requestCount > 0 && liveMicro > BigInt(0) ? microToUsdString(liveMicro) : liveMicro === BigInt(0) ? (requestCount > 0 ? "0" : null) : microToUsdString(liveMicro),
-      pendingSpendUsd: pendingMicro > BigInt(0) ? microToUsdString(pendingMicro) : null,
-      requestCount,
-      successfulRequestCount,
-      failedRequestCount,
-      inputTokens,
-      outputTokens,
-      cachedTokens,
-      reasoningTokens,
+      liveInternalSpendUsd: totals.liveInternalSpendUsd,
+      pendingSpendUsd: totals.pendingSpendUsd,
+      requestCount: totals.requestCount,
+      successfulRequestCount: totals.successfulRequestCount,
+      failedRequestCount: totals.failedRequestCount,
+      inputTokens: totals.inputTokens,
+      outputTokens: totals.outputTokens,
+      cachedTokens: totals.cachedTokens,
+      reasoningTokens: totals.reasoningTokens,
     };
   }
 
   async lastUsageUpdateAt(): Promise<string | null> {
-    const doc = await AIUsageRecordModel.findOne().sort({ createdAt: -1 }).lean();
-    return doc ? String((doc as { createdAt?: string }).createdAt ?? "") : null;
+    const [latestCreated, latestUpdated] = await Promise.all([
+      AIUsageRecordModel.findOne().sort({ createdAt: -1 }).lean(),
+      AIUsageRecordModel.findOne({ updatedAt: { $exists: true, $ne: null } })
+        .sort({ updatedAt: -1 })
+        .lean(),
+    ]);
+    const createdAt = latestCreated
+      ? String((latestCreated as { createdAt?: string }).createdAt ?? "")
+      : null;
+    const updatedAt = latestUpdated
+      ? String((latestUpdated as { updatedAt?: string }).updatedAt ?? "")
+      : null;
+    if (createdAt && updatedAt) {
+      return Date.parse(updatedAt) > Date.parse(createdAt) ? updatedAt : createdAt;
+    }
+    return updatedAt ?? createdAt;
   }
 }
 
@@ -234,13 +286,56 @@ export class InMemoryUsageLedger implements IUsageLedger {
     return this.records.get(key) ?? null;
   }
 
-  async listByExecutionId(executionId: string): Promise<readonly AIUsageRecord[]> {
-    return [...this.records.values()].filter((r) => r.executionId === executionId);
+  async findByProviderRequestId(
+    providerId: string,
+    providerRequestId: string
+  ): Promise<AIUsageRecord | null> {
+    const key = `${providerId}:${providerRequestId}`;
+    return this.findByIdempotencyKey(key).then(async (byKey) => {
+      if (byKey) return byKey;
+      return (
+        [...this.records.values()].find(
+          (r) => r.providerId === providerId && r.providerRequestId === providerRequestId
+        ) ?? null
+      );
+    });
   }
 
-  async aggregateSpend(filter: UsageAggregateFilter): Promise<UsageAggregateResult> {
-    const mongo = new MongoUsageLedger();
-    const records = [...this.records.values()].filter((record) => {
+  async findPendingByOperationId(operationId: string): Promise<AIUsageRecord | null> {
+    return (
+      [...this.records.values()].find(
+        (r) => r.operationId === operationId && r.cost.costStatus === "PENDING_PROVIDER_USAGE"
+      ) ?? null
+    );
+  }
+
+  async getByUsageRecordId(usageRecordId: string): Promise<AIUsageRecord | null> {
+    return [...this.records.values()].find((r) => r.usageRecordId === usageRecordId) ?? null;
+  }
+
+  async updateUsageRecord(
+    usageRecordId: string,
+    patch: UsageRecordUpdatePatch
+  ): Promise<boolean> {
+    const record = await this.getByUsageRecordId(usageRecordId);
+    if (!record) return false;
+    const updated: AIUsageRecord = {
+      ...record,
+      ...(patch.usage ? { usage: patch.usage, rawProviderUsage: patch.usage.rawProviderUsage } : {}),
+      ...(patch.cost ? { cost: patch.cost } : {}),
+      ...(patch.invocationStatus ? { invocationStatus: patch.invocationStatus } : {}),
+      ...(patch.completedAt ? { completedAt: patch.completedAt } : {}),
+      ...(patch.providerRequestId !== undefined
+        ? { providerRequestId: patch.providerRequestId }
+        : {}),
+      ...(patch.latencyMs !== undefined ? { latencyMs: patch.latencyMs } : {}),
+    };
+    this.records.set(record.idempotencyKey, updated);
+    return true;
+  }
+
+  async listRecords(filter: UsageAggregateFilter): Promise<readonly AIUsageRecord[]> {
+    return [...this.records.values()].filter((record) => {
       const completed = Date.parse(record.completedAt);
       if (completed < filter.start.getTime() || completed >= filter.end.getTime()) return false;
       if (filter.organizationId && record.organizationId !== filter.organizationId) return false;
@@ -250,57 +345,31 @@ export class InMemoryUsageLedger implements IUsageLedger {
       if (filter.executionId && record.executionId !== filter.executionId) return false;
       return true;
     });
+  }
 
-    const { parseUsdToMicro, microToUsdString } = await import("../money/usd-money");
-    const { isCostKnown, isCostPending } = await import("../contracts/ai-usage-record");
+  async listByExecutionId(executionId: string): Promise<readonly AIUsageRecord[]> {
+    return [...this.records.values()].filter((r) => r.executionId === executionId);
+  }
 
-    let liveMicro = BigInt(0);
-    let pendingMicro = BigInt(0);
-    let requestCount = records.length;
-    let successfulRequestCount = 0;
-    let failedRequestCount = 0;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cachedTokens = 0;
-    let reasoningTokens = 0;
-
-    for (const record of records) {
-      if (record.invocationStatus === "SUCCEEDED") successfulRequestCount += 1;
-      else failedRequestCount += 1;
-      inputTokens += record.usage.inputTokens ?? 0;
-      outputTokens += record.usage.outputTokens ?? 0;
-      cachedTokens += (record.usage.cachedInputTokens ?? 0) + (record.usage.cachedOutputTokens ?? 0);
-      reasoningTokens += record.usage.reasoningTokens ?? 0;
-      const amount = record.cost.reportingAmountUsd ?? record.cost.estimatedTotalCostUsd;
-      const micro = parseUsdToMicro(amount);
-      if (micro == null) continue;
-      if (isCostKnown(record.cost.costStatus)) liveMicro += micro;
-      else if (isCostPending(record.cost.costStatus)) pendingMicro += micro;
-    }
-
+  async aggregateSpend(filter: UsageAggregateFilter): Promise<UsageAggregateResult> {
+    const records = await this.listRecords(filter);
+    const totals = aggregateEligibleRecords(records, filter);
     return {
-      liveInternalSpendUsd:
-        requestCount > 0 && liveMicro > BigInt(0)
-          ? microToUsdString(liveMicro)
-          : liveMicro === BigInt(0)
-            ? requestCount > 0
-              ? "0"
-              : null
-            : microToUsdString(liveMicro),
-      pendingSpendUsd: pendingMicro > BigInt(0) ? microToUsdString(pendingMicro) : null,
-      requestCount,
-      successfulRequestCount,
-      failedRequestCount,
-      inputTokens,
-      outputTokens,
-      cachedTokens,
-      reasoningTokens,
+      liveInternalSpendUsd: totals.liveInternalSpendUsd,
+      pendingSpendUsd: totals.pendingSpendUsd,
+      requestCount: totals.requestCount,
+      successfulRequestCount: totals.successfulRequestCount,
+      failedRequestCount: totals.failedRequestCount,
+      inputTokens: totals.inputTokens,
+      outputTokens: totals.outputTokens,
+      cachedTokens: totals.cachedTokens,
+      reasoningTokens: totals.reasoningTokens,
     };
   }
 
   async lastUsageUpdateAt(): Promise<string | null> {
-    const sorted = [...this.records.values()].sort((a, b) =>
-      Date.parse(b.createdAt) - Date.parse(a.createdAt)
+    const sorted = [...this.records.values()].sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
     );
     return sorted[0]?.createdAt ?? null;
   }

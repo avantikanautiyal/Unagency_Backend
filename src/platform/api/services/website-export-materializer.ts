@@ -10,34 +10,57 @@ import type { ExecutionResultPayload } from "../contracts";
 import type { AsyncMediaPlatform } from "../../infrastructure/durability/create-async-media-platform";
 import {
   buildWebProjectZip,
-  extractWebsiteBrandName,
   isHtmlStaticPreviewable,
+  explicitPreferredStackFromMetadata,
   recoverWebProjectPlan,
   recoverWebsiteRoutesPlan,
   resolveWebsiteBrandColors,
   validateWebsitePageRelevance,
   webProjectToLegacyPage,
-  websiteContextFromMetadata,
   type WebProjectPlan,
   type WebsitePagePlan,
   type WebsiteRoutePlan,
   type WebStack,
+  type WebsiteRelevanceResult,
 } from "../../os/delivery/website-generation";
+import { stampHeroImageOntoWebProject } from "../../os/delivery/website-project-templates";
+import {
+  extractReferenceLogoFromMetadata,
+  generateBestEffortVisualImage,
+  toDataUrl,
+  type BestEffortVisualImageDeps,
+} from "../../os/delivery/best-effort-visual-image";
+import { stampWebsiteExportPreview } from "./execution-result-payload";
+import {
+  logWebsiteMaterializationDiagnostic,
+  readWebsiteMaterializationContext,
+  resolveWebsiteMaterializationBrief,
+  resolveWebsiteMaterializationBrand,
+  websiteRelevanceDiagnosticSummary,
+} from "./website-materialization-diagnostics";
 
 const HTML_MIME = "text/html; charset=utf-8";
 const ZIP_MIME = "application/zip";
+
+export const WEBSITE_BRIEF_RELEVANCE_ERROR = "WEBSITE_BRIEF_RELEVANCE";
+export const WEBSITE_MATERIALIZATION_FAILURE_ERROR =
+  "WEBSITE_MATERIALIZATION_FAILURE";
+
+function websiteMaterializationErrorCode(error: ValidationError): string {
+  const details = error.details as { websiteRelevance?: unknown } | undefined;
+  if (details?.websiteRelevance) return WEBSITE_BRIEF_RELEVANCE_ERROR;
+  const msg = (error.message ?? "").toLowerCase();
+  if (msg.includes("not grounded") || msg.includes("relevance")) {
+    return WEBSITE_BRIEF_RELEVANCE_ERROR;
+  }
+  return WEBSITE_MATERIALIZATION_FAILURE_ERROR;
+}
 
 export type { WebsitePagePlan, WebProjectPlan };
 
 export const normalizeWebsiteHtml = (
   raw: string
 ): string => recoverWebProjectPlan(raw)?.files[0]?.content ?? raw.trim();
-
-export function parseWebsitePage(data: unknown): WebsitePagePlan | null {
-  const project = recoverWebProjectPlan(data);
-  if (!project) return null;
-  return webProjectToLegacyPage(project);
-}
 
 export function parseWebProject(
   data: unknown,
@@ -56,19 +79,25 @@ function recoverOptsFromMetadata(
   preferredStack?: WebStack;
   brandColors?: string[];
 } {
-  const ctx = websiteContextFromMetadata(metadata, "");
+  const preferredStack = explicitPreferredStackFromMetadata(metadata);
+  const brandColors = resolveWebsiteBrandColors(
+    metadata,
+    typeof metadata?.websiteUserBrief === "string"
+      ? metadata.websiteUserBrief
+      : "",
+  );
   return {
-    preferredStack: ctx.stack,
-    brandColors: ctx.brandColors.length
-      ? ctx.brandColors
-      : resolveWebsiteBrandColors(metadata, ""),
+    ...(preferredStack ? { preferredStack } : {}),
+    ...(brandColors.length ? { brandColors } : {}),
   };
 }
 
 function pickStructuredData(
   runtimeOutput: Readonly<Record<string, unknown>> | undefined,
-  jobSummary: Readonly<Record<string, unknown>> | undefined
+  jobSummary: Readonly<Record<string, unknown>> | undefined,
+  metadata?: Readonly<Record<string, unknown>>,
 ): unknown {
+  const opts = recoverOptsFromMetadata(metadata);
   const fromJobStructured = jobSummary?.structuredData;
   const fromJobText =
     typeof jobSummary?.resultText === "string" ? jobSummary.resultText : undefined;
@@ -96,17 +125,49 @@ function pickStructuredData(
     fromRuntimeText,
   ];
   for (const candidate of candidates) {
-    if (candidate != null && parseWebProject(candidate)) return candidate;
+    if (candidate == null) continue;
+    if (recoverWebsiteRoutesPlan(candidate, opts)?.length) {
+      return candidate;
+    }
+    if (recoverWebProjectPlan(candidate, opts)) {
+      return candidate;
+    }
   }
-  return (
-    fromJobStructured ??
-    fromRuntimeStructured ??
-    fromRuntimeStructuredOutput ??
-    fromRuntimeData ??
-    fromJobText ??
-    fromRuntimeContent ??
-    fromRuntimeText
-  );
+  return undefined;
+}
+
+function materializationAlreadySettled(input: {
+  readonly jobSummary?: Readonly<Record<string, unknown>>;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}): string | undefined {
+  const fromJob =
+    typeof input.jobSummary?.websiteMaterializationErrorCode === "string"
+      ? input.jobSummary.websiteMaterializationErrorCode.trim()
+      : "";
+  if (fromJob) return fromJob;
+  const fromMeta =
+    typeof input.metadata?.websiteMaterializationErrorCode === "string"
+      ? input.metadata.websiteMaterializationErrorCode.trim()
+      : "";
+  return fromMeta || undefined;
+}
+
+function routeIdentifiers(
+  routes: readonly { title?: string; stack?: string }[],
+): string {
+  return routes
+    .slice(0, 3)
+    .map((r, i) => `${i}:${(r.title ?? "untitled").slice(0, 48)}:${r.stack ?? "?"}`)
+    .join("|");
+}
+
+function websiteExportAlreadyMaterialized(input: {
+  readonly currentResult?: ExecutionResultPayload;
+  readonly currentArtifactIds?: readonly string[];
+}): boolean {
+  if (existingHtmlArtifactId(input.currentResult)) return true;
+  if (existingProjectArtifactId(input.currentResult)) return true;
+  return (input.currentArtifactIds?.length ?? 0) > 0;
 }
 
 export function resolveWebsiteExport(input: {
@@ -262,6 +323,7 @@ export async function materializeWebsiteExport(input: {
   readonly createId: (prefix: string) => string;
   readonly providerId?: string;
   readonly modelId?: string;
+  readonly visualImageDeps?: BestEffortVisualImageDeps;
 }): Promise<
   Result<{
     artifactIds: string[];
@@ -272,7 +334,11 @@ export async function materializeWebsiteExport(input: {
     };
   }>
 > {
-  const data = pickStructuredData(input.runtimeOutput, input.jobSummary);
+  const data = pickStructuredData(
+    input.runtimeOutput,
+    input.jobSummary,
+    input.metadata,
+  );
   const recoveredFromRaw = typeof data === "string";
   const opts = recoverOptsFromMetadata(input.metadata);
   const routes =
@@ -286,42 +352,84 @@ export async function materializeWebsiteExport(input: {
     );
   }
 
-  const brief =
-    typeof input.metadata?.websiteUserBrief === "string"
-      ? input.metadata.websiteUserBrief
-      : typeof input.jobSummary?.websiteUserBrief === "string"
-        ? input.jobSummary.websiteUserBrief
-        : typeof input.runtimeOutput?.websiteUserBrief === "string"
-          ? input.runtimeOutput.websiteUserBrief
-          : "";
-  const brandName =
-    extractWebsiteBrandName(brief) ||
-    (typeof input.metadata?.requiredBrandName === "string"
-      ? input.metadata.requiredBrandName
-      : typeof input.metadata?.brandName === "string"
-        ? input.metadata.brandName
-        : undefined);
+  const briefResolution = resolveWebsiteMaterializationBrief({
+    metadata: input.metadata,
+    jobSummary: input.jobSummary,
+    runtimeOutput: input.runtimeOutput,
+  });
+  const brief = briefResolution.brief;
+  const brandResolution = resolveWebsiteMaterializationBrand({
+    brief,
+    metadata: input.metadata,
+  });
+  const brandName = brandResolution.brandName;
 
-  for (const project of routes) {
-    const relevance = validateWebsitePageRelevance({
-      data: project,
-      userBrief: brief,
-      brandName,
-    });
-    if (!relevance.ok && brief.trim() && !recoveredFromRaw) {
-      return failure(
-        new ValidationError(
-          "Website output was not grounded in your brief. Please try again with a clear brand name and requirements.",
-          { websiteRelevance: relevance }
-        )
-      );
-    }
+  // Provider relevance gate validates the primary route only; alternate creative
+  // directions may explore variants without repeating every brief anchor.
+  const primaryRoute = routes[0]!;
+  const relevance = validateWebsitePageRelevance({
+    data: primaryRoute,
+    userBrief: brief,
+    brandName,
+  });
+  if (!relevance.ok && brief.trim() && !recoveredFromRaw) {
+    return failure(
+      new ValidationError(
+        "Website output was not grounded in your brief. Please try again with a clear brand name and requirements.",
+        {
+          websiteRelevance: relevance,
+          errorCode: WEBSITE_BRIEF_RELEVANCE_ERROR,
+          briefObjectiveSource: briefResolution.source,
+          brandNameSource: brandResolution.source,
+          routeIdentifiers: routeIdentifiers(routes),
+        },
+      ),
+    );
   }
+
+  const visualDeps: BestEffortVisualImageDeps | undefined =
+    input.visualImageDeps
+      ? {
+          ...input.visualImageDeps,
+          organizationId: input.organizationId,
+          executionId: input.executionId,
+          createId: input.createId,
+        }
+      : undefined;
 
   const artifactIds: string[] = [];
   const materialized: MaterializedRoute[] = [];
   let outputOffset = 0;
   for (const project of routes.slice(0, 3)) {
+    let enriched: WebsiteRoutePlan = project;
+    try {
+      const heroPrompt = [
+        `Website hero visual for ${project.title || brandName || "brand"}`,
+        project.summary,
+        brief ? `Brief mood: ${brief.slice(0, 400)}` : "",
+      ]
+        .filter(Boolean)
+        .join(". ");
+      const hero = await generateBestEffortVisualImage({
+        prompt: heroPrompt,
+        brandColors: opts.brandColors,
+        referenceLogo: extractReferenceLogoFromMetadata(input.metadata),
+        deps: visualDeps,
+      });
+      if (hero) {
+        enriched = {
+          ...stampHeroImageOntoWebProject(project, toDataUrl(hero)),
+          ...(project.description ? { description: project.description } : {}),
+        };
+      }
+    } catch (err) {
+      console.warn(
+        `[website-export] hero image skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+
     const one = await materializeOneProject({
       asyncMedia: input.asyncMedia,
       executionId: input.executionId,
@@ -329,7 +437,7 @@ export async function materializeWebsiteExport(input: {
       createId: input.createId,
       providerId: input.providerId,
       modelId: input.modelId,
-      project,
+      project: enriched,
       outputOffset,
     });
     if (!one.ok) return one;
@@ -372,15 +480,6 @@ function existingProjectArtifactId(
   return typeof id === "string" && id.trim() ? id : undefined;
 }
 
-function existingWebsiteRoutes(
-  result?: ExecutionResultPayload
-): unknown[] | undefined {
-  const data = result?.data;
-  if (!data || typeof data !== "object") return undefined;
-  const routes = (data as { routes?: unknown }).routes;
-  return Array.isArray(routes) && routes.length > 0 ? routes : undefined;
-}
-
 /**
  * After a background website job completes, attach project + preview artifacts.
  * Safe to call on every poll — no-ops when already exported.
@@ -396,22 +495,118 @@ export async function applyWebsiteExportToExecution(input: {
   readonly createId: (prefix: string) => string;
   readonly currentResult?: ExecutionResultPayload;
   readonly currentArtifactIds?: readonly string[];
+  readonly path?: "worker" | "dispatch_sync" | "dispatch_finalize" | "poll_hydrate";
+  readonly executionKind?: "fresh" | "retry" | "recovered_job" | "idempotent_replay";
+  readonly visualImageDeps?: BestEffortVisualImageDeps;
 }): Promise<{
   result: ExecutionResultPayload;
   artifactIds?: string[];
   exported: boolean;
   errorCode?: string;
 }> {
-  const existingHtml = existingHtmlArtifactId(input.currentResult);
-  const existingProject = existingProjectArtifactId(input.currentResult);
-  const existingRoutes = existingWebsiteRoutes(input.currentResult);
-  if (existingHtml || existingProject || existingRoutes) {
+  const structuredData = pickStructuredData(
+    input.runtimeOutput,
+    input.jobSummary,
+    input.metadata,
+  );
+  const diagContext = readWebsiteMaterializationContext({
+    metadata: input.metadata,
+    structuredData,
+    asyncMediaPresent: Boolean(input.asyncMedia),
+  });
+  const briefResolution = resolveWebsiteMaterializationBrief({
+    metadata: input.metadata,
+    jobSummary: input.jobSummary,
+    runtimeOutput: input.runtimeOutput,
+  });
+  const brandResolution = resolveWebsiteMaterializationBrand({
+    brief: briefResolution.brief,
+    metadata: input.metadata,
+  });
+
+  const settledError = materializationAlreadySettled(input);
+  if (settledError) {
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "skipped_settled_failure",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: Boolean(input.asyncMedia),
+      structuredDataPresent: diagContext.structuredDataPresent,
+      websiteRoutesCount: diagContext.websiteRoutesCount,
+      providerDeclaredStack: diagContext.providerDeclaredStack,
+      metadataPreferredStack: diagContext.metadataPreferredStack,
+      materializationAttempted: false,
+      exported: false,
+      errorCode: settledError,
+      skipReason: "settled_failure",
+      briefObjectiveSource: briefResolution.source,
+      brandNameSource: brandResolution.source,
+    });
     return {
       result: input.currentResult ?? { kind: "structured", data: {} },
+      exported: false,
+      errorCode: settledError,
+    };
+  }
+
+  if (websiteExportAlreadyMaterialized(input)) {
+    const stamped =
+      stampWebsiteExportPreview({
+        result: input.currentResult ?? { kind: "structured", data: {} },
+        mediaArtifactIds: input.currentArtifactIds ?? [],
+        jobSummary: input.jobSummary,
+      }) ?? input.currentResult ?? { kind: "structured", data: {} };
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "skipped_already_materialized",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: Boolean(input.asyncMedia),
+      structuredDataPresent: diagContext.structuredDataPresent,
+      websiteRoutesCount: diagContext.websiteRoutesCount,
+      providerDeclaredStack: diagContext.providerDeclaredStack,
+      metadataPreferredStack: diagContext.metadataPreferredStack,
+      materializationAttempted: false,
+      exported: true,
+      artifactIds: input.currentArtifactIds,
+      skipReason: "already_materialized",
+    });
+    return {
+      result: stamped,
       artifactIds: input.currentArtifactIds
         ? [...input.currentArtifactIds]
         : undefined,
       exported: true,
+    };
+  }
+
+  if (input.path === "poll_hydrate" && structuredData == null) {
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "skipped_awaiting_output",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: Boolean(input.asyncMedia),
+      structuredDataPresent: false,
+      websiteRoutesCount: 0,
+      providerDeclaredStack: diagContext.providerDeclaredStack,
+      metadataPreferredStack: diagContext.metadataPreferredStack,
+      materializationAttempted: false,
+      exported: false,
+      skipReason: "awaiting_structured_output",
+      briefObjectiveSource: briefResolution.source,
+      brandNameSource: brandResolution.source,
+    });
+    return {
+      result: input.currentResult ?? { kind: "pending" },
+      artifactIds: input.currentArtifactIds
+        ? [...input.currentArtifactIds]
+        : undefined,
+      exported: false,
     };
   }
 
@@ -433,10 +628,27 @@ export async function applyWebsiteExportToExecution(input: {
         ? input.metadata.service
         : undefined,
     structuredName,
-    data: pickStructuredData(input.runtimeOutput, input.jobSummary),
+    data: pickStructuredData(
+      input.runtimeOutput,
+      input.jobSummary,
+      input.metadata,
+    ),
   });
 
   if (!shouldExport) {
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "skipped_not_website",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: Boolean(input.asyncMedia),
+      structuredDataPresent: diagContext.structuredDataPresent,
+      websiteRoutesCount: diagContext.websiteRoutesCount,
+      materializationAttempted: false,
+      exported: false,
+      skipReason: "not_website_export",
+    });
     return {
       result: input.currentResult ?? { kind: "structured", data: {} },
       exported: false,
@@ -451,6 +663,25 @@ export async function applyWebsiteExportToExecution(input: {
     /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(structuredName);
 
   if (!input.asyncMedia) {
+    const errorCode = websiteRequired
+      ? "Website export requires async media (ENTERPRISE_ASYNC_MEDIA_ENABLED)"
+      : undefined;
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: websiteRequired ? "failed" : "skipped_not_website",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: false,
+      structuredDataPresent: diagContext.structuredDataPresent,
+      websiteRoutesCount: diagContext.websiteRoutesCount,
+      providerDeclaredStack: diagContext.providerDeclaredStack,
+      metadataPreferredStack: diagContext.metadataPreferredStack,
+      materializationAttempted: websiteRequired,
+      exported: false,
+      errorCode,
+      skipReason: websiteRequired ? undefined : "async_media_unavailable",
+    });
     return {
       result: input.currentResult ?? { kind: "structured", data: {} },
       exported: false,
@@ -463,6 +694,26 @@ export async function applyWebsiteExportToExecution(input: {
     };
   }
 
+  logWebsiteMaterializationDiagnostic({
+    executionId: input.executionId,
+    phase: "attempt",
+    path: input.path,
+    executionKind: input.executionKind,
+    executionSpecSupplied: diagContext.executionSpecSupplied,
+    asyncMediaPresent: true,
+    structuredDataPresent: diagContext.structuredDataPresent,
+    websiteRoutesCount: diagContext.websiteRoutesCount,
+    providerDeclaredStack: diagContext.providerDeclaredStack,
+    metadataPreferredStack: diagContext.metadataPreferredStack,
+    materializationAttempted: true,
+    briefObjectiveSource: briefResolution.source,
+    brandNameSource: brandResolution.source,
+    routeIdentifiers: routeIdentifiers(
+      recoverWebsiteRoutesPlan(structuredData, recoverOptsFromMetadata(input.metadata)) ??
+        [],
+    ),
+  });
+
   const exported = await materializeWebsiteExport({
     asyncMedia: input.asyncMedia,
     executionId: input.executionId,
@@ -471,13 +722,49 @@ export async function applyWebsiteExportToExecution(input: {
     jobSummary: input.jobSummary,
     metadata: input.metadata,
     createId: input.createId,
+    visualImageDeps: input.visualImageDeps,
   });
 
   if (!exported.ok) {
+    const errorCode =
+      exported.error instanceof ValidationError
+        ? websiteMaterializationErrorCode(exported.error)
+        : WEBSITE_MATERIALIZATION_FAILURE_ERROR;
+    const details = exported.error instanceof ValidationError
+      ? (exported.error.details as {
+          websiteRelevance?: WebsiteRelevanceResult;
+          briefObjectiveSource?: string;
+          brandNameSource?: string;
+          routeIdentifiers?: string;
+        })
+      : undefined;
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "failed",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: true,
+      structuredDataPresent: diagContext.structuredDataPresent,
+      websiteRoutesCount: diagContext.websiteRoutesCount,
+      providerDeclaredStack: diagContext.providerDeclaredStack,
+      metadataPreferredStack: diagContext.metadataPreferredStack,
+      materializationAttempted: true,
+      exported: false,
+      errorCode,
+      briefObjectiveSource:
+        details?.briefObjectiveSource ?? briefResolution.source,
+      brandNameSource: details?.brandNameSource ?? brandResolution.source,
+      routeIdentifiers: details?.routeIdentifiers,
+      relevanceOk: details?.websiteRelevance?.ok,
+      relevanceReasons: details?.websiteRelevance
+        ? websiteRelevanceDiagnosticSummary(details.websiteRelevance)
+        : undefined,
+    });
     return {
       result: input.currentResult ?? { kind: "structured", data: {} },
       exported: false,
-      errorCode: String(exported.error.message ?? "export_failed"),
+      errorCode,
     };
   }
 
@@ -485,6 +772,41 @@ export async function applyWebsiteExportToExecution(input: {
     ...(input.currentArtifactIds ?? []),
     ...exported.value.artifactIds,
   ];
+
+  if (mergedArtifacts.length === 0) {
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "failed",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: true,
+      materializationAttempted: true,
+      exported: false,
+      errorCode: WEBSITE_MATERIALIZATION_FAILURE_ERROR,
+    });
+    return {
+      result: input.currentResult ?? { kind: "structured", data: {} },
+      exported: false,
+      errorCode: WEBSITE_MATERIALIZATION_FAILURE_ERROR,
+    };
+  }
+
+  logWebsiteMaterializationDiagnostic({
+    executionId: input.executionId,
+    phase: "succeeded",
+    path: input.path,
+    executionKind: input.executionKind,
+    executionSpecSupplied: diagContext.executionSpecSupplied,
+    asyncMediaPresent: true,
+    structuredDataPresent: diagContext.structuredDataPresent,
+    websiteRoutesCount: diagContext.websiteRoutesCount,
+    providerDeclaredStack: diagContext.providerDeclaredStack,
+    metadataPreferredStack: diagContext.metadataPreferredStack,
+    materializationAttempted: true,
+    exported: true,
+    artifactIds: mergedArtifacts,
+  });
 
   return {
     result: {

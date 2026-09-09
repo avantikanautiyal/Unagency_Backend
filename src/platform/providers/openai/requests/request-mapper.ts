@@ -14,6 +14,10 @@ import {
   openAiImageSizeForAspectRatio,
   resolvePayloadAspectRatio,
 } from "../../image/common/image-aspect-ratio";
+import {
+  extractReferenceImages,
+  referenceImageToDataUrl,
+} from "../../image/common/vendor-image-protocol";
 import { normalizeOpenAiCompletionTokenParams } from "./openai-completion-params";
 
 export function mapCanonicalToOpenAIRequest(
@@ -45,7 +49,6 @@ export function mapCanonicalToOpenAIRequest(
     if (request.features.includes("json_mode") || profile?.requireJsonMode) {
       body.response_format = body.response_format ?? { type: "json_object" };
     }
-    // Provider-neutral structured schema → OpenAI json_schema when supplied on input.
     if (
       request.features.includes("structured_outputs") &&
       request.input.response_format &&
@@ -65,7 +68,6 @@ export function mapCanonicalToOpenAIRequest(
       body.response_format = request.input.response_format;
     }
 
-    // OpenAI rejects json_object unless the word "json" appears in messages.
     const rf = body.response_format as { type?: string } | undefined;
     if (rf?.type === "json_object" || rf?.type === "json_schema") {
       body.messages = ensureJsonHintInMessages(
@@ -76,58 +78,17 @@ export function mapCanonicalToOpenAIRequest(
     if (request.input.tools) body.tools = request.input.tools;
     if (request.input.tool_choice) body.tool_choice = request.input.tool_choice;
   } else if (operation === "embeddings") {
-    // Single-input contract: text | prompt | input (string). Do not invent batching.
     const text =
       (typeof request.input.text === "string" && request.input.text) ||
       (typeof request.input.prompt === "string" && request.input.prompt) ||
       (typeof request.input.input === "string" && request.input.input) ||
       "";
     body.input = text;
-  } else if (operation === "images.generations") {
-    // gpt-image-* rejects DALL·E-era fields like response_format; only forward known keys.
-    const allowed = new Set([
-      "model",
-      "prompt",
-      "n",
-      "size",
-      "quality",
-      "background",
-      "moderation",
-      "output_format",
-      "output_compression",
-      "partial_images",
-      "stream",
-      "user",
-    ]);
-    for (const key of Object.keys(body)) {
-      if (!allowed.has(key)) delete body[key];
-    }
-    body.prompt =
-      request.input.prompt ?? request.input.text ?? JSON.stringify(request.input);
-    // Match ChatGPT-quality output: low is a draft/preview tier (soft, artifact-heavy).
-    if (body.size == null) {
-      const aspectRatio =
-        resolvePayloadAspectRatio(request.input as Record<string, unknown>) ??
-        (typeof request.parameters?.aspectRatio === "string"
-          ? request.parameters.aspectRatio
-          : undefined);
-      body.size = openAiImageSizeForAspectRatio(aspectRatio) ?? "1024x1024";
-    }
-    if (body.quality == null) {
-      const productAction =
-        typeof request.input?.productAction === "string"
-          ? request.input.productAction.trim().toLowerCase()
-          : typeof request.parameters?.productAction === "string"
-            ? request.parameters.productAction.trim().toLowerCase()
-            : "";
-      // Route fan-out: medium is faster; refine pass uses high separately.
-      body.quality =
-        productAction === "route_visual" || productAction === "route_visual_refine"
-          ? productAction === "route_visual_refine"
-            ? "high"
-            : "medium"
-          : "high";
-    }
+  } else if (
+    operation === "images.generations" ||
+    operation === "images.edits"
+  ) {
+    applyOpenAiImageBody(body, request, operation);
   } else if (operation === "moderations") {
     body.input = request.input.input ?? request.input.text ?? "";
   } else if (operation === "audio.speech") {
@@ -153,6 +114,80 @@ export function mapCanonicalToOpenAIRequest(
   });
 }
 
+function applyOpenAiImageBody(
+  body: Record<string, unknown>,
+  request: ProviderAdapterRequest,
+  operation: "images.generations" | "images.edits",
+): void {
+  const allowed = new Set([
+    "model",
+    "prompt",
+    "n",
+    "size",
+    "quality",
+    "background",
+    "moderation",
+    "output_format",
+    "output_compression",
+    "partial_images",
+    "stream",
+    "user",
+    "images",
+    "input_fidelity",
+  ]);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) delete body[key];
+  }
+
+  const basePrompt = String(
+    request.input.prompt ?? request.input.text ?? JSON.stringify(request.input)
+  ).trim();
+
+  if (operation === "images.edits") {
+    const refs = extractReferenceImages(request.input as Record<string, unknown>);
+    const imageUrls = refs
+      .map((ref) => referenceImageToDataUrl(ref))
+      .filter((url): url is string => Boolean(url))
+      .slice(0, 16);
+    body.images = imageUrls.map((image_url) => ({ image_url }));
+    if (body.input_fidelity == null) {
+      body.input_fidelity = "high";
+    }
+    body.prompt = /\breference\b|\battached\b|\blogo\b|\bbrand\s*mark\b/i.test(
+      basePrompt
+    )
+      ? basePrompt
+      : `${basePrompt}\n\nUse the attached reference image(s) faithfully in the result — do not invent a different mark or substitute.`;
+  } else {
+    delete body.images;
+    delete body.input_fidelity;
+    body.prompt = basePrompt;
+  }
+
+  if (body.size == null) {
+    const aspectRatio =
+      resolvePayloadAspectRatio(request.input as Record<string, unknown>) ??
+      (typeof request.parameters?.aspectRatio === "string"
+        ? request.parameters.aspectRatio
+        : undefined);
+    body.size = openAiImageSizeForAspectRatio(aspectRatio) ?? "1024x1024";
+  }
+  if (body.quality == null) {
+    const productAction =
+      typeof request.input?.productAction === "string"
+        ? request.input.productAction.trim().toLowerCase()
+        : typeof request.parameters?.productAction === "string"
+          ? request.parameters.productAction.trim().toLowerCase()
+          : "";
+    body.quality =
+      productAction === "route_visual" || productAction === "route_visual_refine"
+        ? productAction === "route_visual_refine"
+          ? "high"
+          : "medium"
+        : "high";
+  }
+}
+
 function resolveOperation(
   request: ProviderAdapterRequest,
   profile?: DesiredCapabilityProfile
@@ -167,7 +202,21 @@ function resolveOperation(
   ) {
     return "embeddings";
   }
-  if (profile?.modality === "image" || request.modality === "image") return "images.generations";
+  const isImage =
+    profile?.modality === "image" ||
+    request.modality === "image" ||
+    cap === "image.generate" ||
+    cap === "image.edit";
+  if (isImage) {
+    // ChatGPT attaches images via /v1/images/edits for gpt-image-* models.
+    if (
+      cap === "image.edit" ||
+      extractReferenceImages(request.input as Record<string, unknown>).length > 0
+    ) {
+      return "images.edits";
+    }
+    return "images.generations";
+  }
   if (request.features.includes("moderation")) return "moderations";
   return "chat.completions";
 }
@@ -178,6 +227,8 @@ function pathForOperation(operation: string): string {
       return "/embeddings";
     case "images.generations":
       return "/images/generations";
+    case "images.edits":
+      return "/images/edits";
     case "moderations":
       return "/moderations";
     case "audio.speech":
@@ -189,7 +240,6 @@ function pathForOperation(operation: string): string {
   }
 }
 
-/** OpenAI json_object mode requires the word "json" somewhere in messages. */
 function ensureJsonHintInMessages(
   messages: Array<Record<string, unknown>>,
 ): Array<Record<string, unknown>> {

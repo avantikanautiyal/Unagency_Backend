@@ -12,6 +12,7 @@ import {
   auditPromptTransformation,
   logForensicImageConstraintAudit,
 } from "../collaboration/conversational-task-intelligence/forensic-image-constraint-audit";
+import { ensureProviderPromptHasProductionSpec } from "../config/format-production-spec";
 
 function isDirectImageOrVideoPassthrough(
   metadata: Readonly<Record<string, unknown>>
@@ -51,7 +52,13 @@ export function appendOutputRequirementsToPrompt(input: {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }): string {
   const meta = input.metadata ?? {};
-  const executionSpec = readExecutionSpecFromMetadata(meta);
+  const withProduction = ensureProviderPromptHasProductionSpec({
+    prompt: input.prompt,
+    metadata: meta,
+  });
+  const promptWithSpec = withProduction.prompt;
+  const metaWithSpec = withProduction.metadata;
+  const executionSpec = readExecutionSpecFromMetadata(metaWithSpec);
   const userConstraintBlock =
     executionSpec?.creative.negativeConstraints?.length
       ? formatNegativeConstraintForProvider(
@@ -59,27 +66,57 @@ export function appendOutputRequirementsToPrompt(input: {
         )
       : "";
 
-  if (isDirectImageOrVideoPassthrough(meta)) {
-    const base = input.prompt.trim();
-    const output = userConstraintBlock ? `${base}\n\n${userConstraintBlock}` : base;
-    if (executionSpec?.creative.negativeConstraints?.length) {
+  if (isDirectImageOrVideoPassthrough(metaWithSpec)) {
+    const base = promptWithSpec.trim();
+    const logoAssetId =
+      typeof metaWithSpec.brandLogoAssetId === "string"
+        ? metaWithSpec.brandLogoAssetId.trim()
+        : typeof metaWithSpec.logoAssetId === "string"
+          ? metaWithSpec.logoAssetId.trim()
+          : "";
+    const hasLogoRef =
+      Boolean(logoAssetId) ||
+      (Array.isArray(metaWithSpec.assetIds) && metaWithSpec.assetIds.length > 0);
+    const logoBlock = hasLogoRef
+      ? "[HARD CONSTRAINT] Use the attached reference logo/brand mark exactly — do not invent, retype, or substitute the brand name as plain typography."
+      : "";
+    const logoSpecBlock =
+      executionSpec?.referenceAssets?.logo?.value?.mode === "USE_EXISTING" &&
+      executionSpec.referenceAssets.logo.value.assetId
+        ? "[HARD CONSTRAINT] Bind the authoritative brand logo from the execution specification — use the attached reference mark exactly."
+        : "";
+    const constraintParts = [userConstraintBlock, logoBlock || logoSpecBlock]
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const output =
+      constraintParts.length > 0
+        ? `${base}\n\n${constraintParts.join("\n\n")}`
+        : base;
+    if (
+      executionSpec?.creative.negativeConstraints?.length ||
+      hasLogoRef ||
+      logoSpecBlock ||
+      withProduction.injected
+    ) {
       const transformation = auditPromptTransformation({
         stage: "append_output_requirements",
-        inputPrompt: base,
+        inputPrompt: input.prompt.trim(),
         outputPrompt: output,
         spec: executionSpec,
       });
       logForensicImageConstraintAudit({
         executionId:
-          typeof meta.executionId === "string"
-            ? meta.executionId
-            : typeof meta.apiExecutionId === "string"
-              ? meta.apiExecutionId
+          typeof metaWithSpec.executionId === "string"
+            ? metaWithSpec.executionId
+            : typeof metaWithSpec.apiExecutionId === "string"
+              ? metaWithSpec.apiExecutionId
               : undefined,
         productAction:
-          typeof meta.productAction === "string" ? meta.productAction : undefined,
+          typeof metaWithSpec.productAction === "string"
+            ? metaWithSpec.productAction
+            : undefined,
         stage: "append_output_requirements",
-        metadata: meta,
+        metadata: metaWithSpec,
         spec: executionSpec,
         prompt: output,
         transformation,
@@ -90,28 +127,30 @@ export function appendOutputRequirementsToPrompt(input: {
   // Web Tech already uses WebsitePage structured instructions — don't append
   // another deliverable block (extra tokens slow the coding model).
   const service =
-    typeof meta.service === "string" ? meta.service.trim().toLowerCase() : "";
+    typeof metaWithSpec.service === "string"
+      ? metaWithSpec.service.trim().toLowerCase()
+      : "";
   const outputKind =
-    typeof meta.outputKind === "string"
-      ? meta.outputKind.trim().toLowerCase()
+    typeof metaWithSpec.outputKind === "string"
+      ? metaWithSpec.outputKind.trim().toLowerCase()
       : "";
   if (
     service === "website" ||
     outputKind === "deferred_website" ||
     outputKind === "website"
   ) {
-    return input.prompt.trim();
+    return promptWithSpec.trim();
   }
 
   const subtype =
-    typeof meta.subtype === "string" ? meta.subtype : undefined;
+    typeof metaWithSpec.subtype === "string" ? metaWithSpec.subtype : undefined;
   const category =
-    typeof meta.category === "string" ? meta.category : undefined;
+    typeof metaWithSpec.category === "string" ? metaWithSpec.category : undefined;
   const serviceRaw =
-    typeof meta.service === "string" ? meta.service : undefined;
+    typeof metaWithSpec.service === "string" ? metaWithSpec.service : undefined;
 
   if (!serviceRaw && !subtype) {
-    return input.prompt.trim();
+    return promptWithSpec.trim();
   }
 
   try {
@@ -119,20 +158,13 @@ export function appendOutputRequirementsToPrompt(input: {
       service: serviceRaw,
       subtype,
       category,
-      prompt: input.prompt,
+      prompt: promptWithSpec,
     });
     const contractLines = buildContractDeliverablePromptLines(spec, {
-      prompt: input.prompt,
+      prompt: promptWithSpec,
     });
-    const executionSpec = readExecutionSpecFromMetadata(meta);
-    const userConstraintBlock =
-      executionSpec?.creative.negativeConstraints?.length
-        ? formatNegativeConstraintForProvider(
-            executionSpec.creative.negativeConstraints.map((c) => c.value),
-          )
-        : "";
     const lines = [
-      input.prompt.trim(),
+      promptWithSpec.trim(),
       ...(userConstraintBlock ? ["", userConstraintBlock] : []),
       "",
       "[Output requirements]",
@@ -144,6 +176,6 @@ export function appendOutputRequirementsToPrompt(input: {
     ];
     return lines.join("\n");
   } catch {
-    return input.prompt.trim();
+    return promptWithSpec.trim();
   }
 }

@@ -493,15 +493,20 @@ export function recordWebsiteMaterializationTrace(
   input: RecordWebsiteMaterializationTraceInput,
 ): void {
   const hasArtifacts = (input.artifactIds?.length ?? 0) > 0;
+  const materializationSucceeded = input.exported && hasArtifacts;
+  const materializationRequired = input.websiteRequired;
   recordExecutionTraceStage({
     executionId: input.executionId,
     stage: "os_materialization",
-    status: input.exported
+    status: materializationSucceeded
       ? "COMPLETED"
-      : input.websiteRequired
+      : materializationRequired
         ? "FAILED"
         : "SKIPPED",
-    skipReason: !input.websiteRequired && !input.exported ? "website_export_not_required" : undefined,
+    skipReason:
+      !materializationRequired && !input.exported
+        ? "website_export_not_required"
+        : undefined,
     error: input.errorCode,
   });
   recordExecutionTraceStage({
@@ -514,7 +519,7 @@ export function recordWebsiteMaterializationTrace(
     executionId: input.executionId,
     patch: Object.freeze({
       artifactIds: input.artifactIds,
-      usedArtifactMaterialization: input.exported,
+      usedArtifactMaterialization: materializationSucceeded,
       finalProviderId: input.finalProviderId,
       finalModelId: input.finalModelId,
     }),

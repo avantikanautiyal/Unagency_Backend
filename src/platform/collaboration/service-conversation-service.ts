@@ -26,15 +26,44 @@ import type {
 } from "./service-conversation-types";
 import {
   applyExecutionOutcomeToThread,
+  classifySemanticSignals,
   ensureTaskIntelligenceState,
   resolveConversationalTurn,
   updateTaskStateThread,
 } from "./conversational-task-intelligence";
 import type { ConversationalTurnResolution } from "./conversational-task-intelligence";
+import { discoverAuthoritativeLogoInputs } from "./conversational-task-intelligence/discover-authoritative-logo-inputs";
+import { getEnterpriseApiRuntime } from "../api/runtime/bootstrap-enterprise-api";
+import type { SemanticSignals } from "./conversational-task-intelligence/semantic-signals";
 
 function parseAiState(raw: unknown): ServiceAiConversationState {
   if (!raw || typeof raw !== "object") return {};
   return raw as ServiceAiConversationState;
+}
+
+async function classifyTurnSignals(input: {
+  message: string;
+  organizationId: string;
+  hasActiveDeliverable: boolean;
+}): Promise<{
+  signals: SemanticSignals;
+  isSubstantiveNewGeneration: boolean;
+}> {
+  const integration =
+    getEnterpriseApiRuntime()?.platform?.integrationEngine;
+  const classified = await classifySemanticSignals({
+    message: input.message,
+    organizationId: input.organizationId,
+    integration,
+    hasActiveDeliverable: input.hasActiveDeliverable,
+  });
+  const {
+    source: _source,
+    confidence: _confidence,
+    isSubstantiveNewGeneration,
+    ...signals
+  } = classified;
+  return { signals, isSubstantiveNewGeneration };
 }
 
 function toAiMessage(
@@ -296,14 +325,39 @@ export class ServiceConversationService {
     latestUserMessage: string;
     messageId?: string;
     persist?: boolean;
+    attachmentLogoAssetIds?: readonly string[];
+    vaultLogoChoice?: string;
   }): Promise<ConversationalTurnResolution> {
-    const { conversationId, channelId, state } = await this.getState({
-      userId: input.userId,
-      channelId: input.channelId,
-    });
+    const { conversation } = await collaborationOsService.assertMembership(
+      input.userId,
+      input.channelId,
+    );
+    const conversationId = conversation._id.toString();
+    const channelId = conversation.roomKey;
+    const state = parseAiState(conversation.aiState);
     const messages = await this.listMessages({
       userId: input.userId,
       channelId: input.channelId,
+    });
+    const logoDiscovery = await discoverAuthoritativeLogoInputs({
+      organizationId: conversation.organizationId.toString(),
+      brandId: state.brandId,
+      vaultLogoChoice: input.vaultLogoChoice,
+      attachmentLogoAssetIds: input.attachmentLogoAssetIds,
+    });
+    const taskState = ensureTaskIntelligenceState(state.taskIntelligence);
+    const hasActiveDeliverable = Boolean(
+      taskState.activeThreadId &&
+        taskState.threads.some(
+          (t) =>
+            t.threadId === taskState.activeThreadId &&
+            (t.activeExecutionId || t.activeArtifactId)
+        )
+    );
+    const classified = await classifyTurnSignals({
+      message: input.latestUserMessage,
+      organizationId: conversation.organizationId.toString(),
+      hasActiveDeliverable,
     });
     const resolution = resolveConversationalTurn({
       conversationId,
@@ -312,6 +366,9 @@ export class ServiceConversationService {
       latestUserMessage: input.latestUserMessage,
       messages,
       state,
+      logoDiscovery,
+      signals: classified.signals,
+      isSubstantiveNewGeneration: classified.isSubstantiveNewGeneration,
     });
     if (input.persist !== false) {
       await this.updateState({
@@ -328,22 +385,55 @@ export class ServiceConversationService {
     channelId: string;
     latestUserMessage: string;
     persistTaskIntelligence?: boolean;
+    /** When the caller already resolved the turn, skip duplicate resolution. */
+    turn?: ConversationalTurnResolution;
+    attachmentLogoAssetIds?: readonly string[];
+    vaultLogoChoice?: string;
   }): Promise<ServiceExecutionContext> {
-    const { conversationId, channelId, state } = await this.getState({
-      userId: input.userId,
-      channelId: input.channelId,
-    });
+    const { conversation } = await collaborationOsService.assertMembership(
+      input.userId,
+      input.channelId,
+    );
+    const conversationId = conversation._id.toString();
+    const channelId = conversation.roomKey;
+    const state = parseAiState(conversation.aiState);
     const messages = await this.listMessages({
       userId: input.userId,
       channelId: input.channelId,
     });
-    const turn = resolveConversationalTurn({
-      conversationId,
-      channelId,
-      latestUserMessage: input.latestUserMessage,
-      messages,
-      state,
+    const logoDiscovery = await discoverAuthoritativeLogoInputs({
+      organizationId: conversation.organizationId.toString(),
+      brandId: state.brandId,
+      vaultLogoChoice: input.vaultLogoChoice,
+      attachmentLogoAssetIds: input.attachmentLogoAssetIds,
     });
+    let turn = input.turn;
+    if (!turn) {
+      const taskState = ensureTaskIntelligenceState(state.taskIntelligence);
+      const hasActiveDeliverable = Boolean(
+        taskState.activeThreadId &&
+          taskState.threads.some(
+            (t) =>
+              t.threadId === taskState.activeThreadId &&
+              (t.activeExecutionId || t.activeArtifactId)
+          )
+      );
+      const classified = await classifyTurnSignals({
+        message: input.latestUserMessage,
+        organizationId: conversation.organizationId.toString(),
+        hasActiveDeliverable,
+      });
+      turn = resolveConversationalTurn({
+        conversationId,
+        channelId,
+        latestUserMessage: input.latestUserMessage,
+        messages,
+        state,
+        logoDiscovery,
+        signals: classified.signals,
+        isSubstantiveNewGeneration: classified.isSubstantiveNewGeneration,
+      });
+    }
     if (input.persistTaskIntelligence !== false) {
       await this.updateState({
         userId: input.userId,
@@ -360,6 +450,7 @@ export class ServiceConversationService {
         taskIntelligence: turn.updatedTaskState,
       },
       latestUserMessage: input.latestUserMessage,
+      turn,
     });
   }
 

@@ -87,9 +87,42 @@ export class InMemoryClaimableJobStore implements IJobStore {
     return recovered;
   }
 
+  async renewLease(
+    jobId: JobId,
+    ttlMs: number,
+    nowIso: string,
+    workerId?: WorkerId
+  ): Promise<boolean> {
+    const id = String(jobId);
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    if (job.status !== "reserved" && job.status !== "running") return false;
+    if (workerId && job.reservedBy && job.reservedBy !== workerId) return false;
+    this.jobs.set(id, {
+      ...job,
+      leaseExpiresAt: new Date(Date.now() + ttlMs).toISOString(),
+      updatedAt: nowIso,
+    });
+    return true;
+  }
+
   clear(): void {
     this.jobs.clear();
     this.claimLocks.clear();
+  }
+
+  async listRunnableFromDatabase(): Promise<readonly ExecutionJob[]> {
+    return [...this.jobs.values()].filter(
+      (job) => job.status === "queued" || job.status === "retrying",
+    );
+  }
+
+  async hydrate(jobId: JobId): Promise<ExecutionJob | undefined> {
+    return this.jobs.get(String(jobId));
+  }
+
+  async persist(job: ExecutionJob): Promise<void> {
+    this.save(job);
   }
 
   /** Release claim lock after terminal state (test helper). */

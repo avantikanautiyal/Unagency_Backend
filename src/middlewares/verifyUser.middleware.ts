@@ -75,9 +75,30 @@ export const IsVerifiedUser = asyncHandler(async function IsVerifiedUser(
   res: Response,
   next: NextFunction
 ) {
-  if (req.user?.isVerified) {
+  // A user is considered verified if their email is verified OR they signed in
+  // via phone (phone number present on the Firebase token means phone was verified).
+  const user = req.user;
+  if (user?.isVerified) {
     next();
     return;
+  }
+  // Phone-authenticated users: Firebase sets phoneNumber on the decoded token.
+  // The verifyUser middleware stores the raw user object; check contact field as fallback.
+  const authHeader = (req as any).headers?.["authorization"] as string | undefined;
+  if (authHeader) {
+    try {
+      const token = authHeader.split(" ")[1];
+      if (token) {
+        const { verifyFirebaseIdToken } = await import("../libs/firebase/verify-id-token");
+        const decoded = await verifyFirebaseIdToken(token);
+        if (decoded.phoneNumber) {
+          next();
+          return;
+        }
+      }
+    } catch {
+      // fall through to error below
+    }
   }
   const err = new Error("user is not verified");
   next(new ApiError((err as Error).message, 401));

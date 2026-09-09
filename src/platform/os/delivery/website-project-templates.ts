@@ -4,6 +4,13 @@
  */
 
 import type { WebProjectFile, WebProjectPlan, WebStack } from "./website-generation";
+import {
+  buildLayoutCss,
+  buildLayoutNextPage,
+  buildLayoutReactApp,
+  resolveWebLayout,
+  type WebLayoutId,
+} from "./website-scaffold-layouts";
 
 export type WebProjectFillColors = {
   primary: string;
@@ -30,6 +37,18 @@ export type WebProjectFill = {
   colors: WebProjectFillColors;
   /** Required for html-static (complete page). Empty string for other stacks. */
   html: string;
+  /**
+   * Optional layout id for React/Next/MERN scaffolds.
+   * When omitted, inferred from copy or route index.
+   */
+  layout?: WebLayoutId;
+  /**
+   * Server-stamped hero image (data URL). Not part of the LLM structured schema —
+   * stamped after parse / before expand.
+   */
+  heroImageDataUrl?: string;
+  /** Multi-route index (0–2) used to diversify scaffolds when layout is omitted. */
+  layoutRouteIndex?: number;
 };
 
 export const WEB_PROJECT_FILL_STRUCTURED_SCHEMA = {
@@ -107,6 +126,25 @@ function slugify(name: string): string {
   return s || "site";
 }
 
+/**
+ * Public HTTPS stock imagery (same pattern Codex/Claude use in HTML demos).
+ * Deterministic per seed so re-exports stay stable.
+ */
+export function stockImageUrl(
+  seed: string,
+  width = 1200,
+  height = 800
+): string {
+  const safe =
+    slugify(seed).replace(/[^a-z0-9-]/g, "").slice(0, 48) || "website";
+  return `https://picsum.photos/seed/${encodeURIComponent(safe)}/${width}/${height}`;
+}
+
+function resolveHeroImageSrc(fill: WebProjectFill): string {
+  if (fill.heroImageDataUrl?.trim()) return fill.heroImageDataUrl.trim();
+  return stockImageUrl(`${fill.brandName}-${fill.tagline}`, 1400, 900);
+}
+
 function normalizeHex(raw: string, fallback: string): string {
   const t = raw.trim();
   if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return t;
@@ -155,6 +193,7 @@ function normalizeFill(raw: WebProjectFill): WebProjectFill {
       body: raw.heroBody?.trim() || "Details from the brief.",
     });
   }
+  const layout = resolveWebLayout(raw, raw.layoutRouteIndex ?? 0);
   return {
     title: raw.title.trim() || raw.brandName.trim() || "Website",
     summary: raw.summary.trim() || raw.tagline.trim() || raw.title.trim(),
@@ -171,146 +210,125 @@ function normalizeFill(raw: WebProjectFill): WebProjectFill {
       accent: normalizeHex(raw.colors?.accent ?? "", "#c45c26"),
     },
     html: typeof raw.html === "string" ? raw.html : "",
+    layout,
+    ...(typeof raw.layoutRouteIndex === "number"
+      ? { layoutRouteIndex: raw.layoutRouteIndex }
+      : {}),
+    ...(typeof raw.heroImageDataUrl === "string" && raw.heroImageDataUrl.trim()
+      ? { heroImageDataUrl: raw.heroImageDataUrl.trim() }
+      : {}),
   };
 }
 
 function buildReactAppTsx(fill: WebProjectFill): string {
-  const sectionsJs = fill.sections
-    .map(
-      (s) =>
-        `    { heading: ${jsString(s.heading)}, body: ${jsString(s.body)} }`
-    )
-    .join(",\n");
-  return `export default function App() {
-  const brand = ${jsString(fill.brandName)};
-  const tagline = ${jsString(fill.tagline)};
-  const heroBody = ${jsString(fill.heroBody)};
-  const cta = ${jsString(fill.ctaLabel)};
-  const sections = [
-${sectionsJs}
-  ];
-  return (
-    <div className="page">
-      <header className="nav">
-        <strong>{brand}</strong>
-        <a className="cta" href="#cta">{cta}</a>
-      </header>
-      <main>
-        <section className="hero">
-          <p className="eyebrow">{brand}</p>
-          <h1>{tagline}</h1>
-          <p className="lede">{heroBody}</p>
-          <a className="cta" href="#cta">{cta}</a>
-        </section>
-        <section className="grid">
-          {sections.map((s) => (
-            <article key={s.heading}>
-              <h2>{s.heading}</h2>
-              <p>{s.body}</p>
-            </article>
-          ))}
-        </section>
-        <section id="cta" className="cta-band">
-          <h2>{cta}</h2>
-          <p>Ready when you are — {brand}.</p>
-        </section>
-      </main>
-      <footer>
-        <span>© {new Date().getFullYear()} {brand}</span>
-      </footer>
-    </div>
-  );
-}
-`;
+  const layout = resolveWebLayout(fill, fill.layoutRouteIndex ?? 0);
+  return buildLayoutReactApp(fill, layout);
 }
 
 function buildIndexCss(fill: WebProjectFill): string {
-  const { primary, background, text, accent } = fill.colors;
-  return `:root {
-  --bg: ${background};
-  --text: ${text};
-  --primary: ${primary};
-  --accent: ${accent};
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-}
-.page { min-height: 100vh; }
-.nav, footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
-}
-footer { border-bottom: 0; border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent); }
-.hero, .cta-band { padding: 4rem 1.5rem; max-width: 720px; }
-.eyebrow { letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; opacity: 0.7; }
-h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.1; margin: 0.4rem 0 1rem; }
-.lede { font-size: 1.15rem; line-height: 1.55; max-width: 36rem; }
-.cta {
-  display: inline-block;
-  margin-top: 1.25rem;
-  padding: 0.7rem 1.2rem;
-  background: var(--accent);
-  color: #fff;
-  text-decoration: none;
-  border-radius: 2px;
-}
-.grid {
-  display: grid;
-  gap: 1.25rem;
-  padding: 0 1.5rem 3rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-.grid article {
-  padding: 1.25rem;
-  background: color-mix(in srgb, var(--primary) 6%, var(--bg));
-  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
-}
-.grid h2 { margin: 0 0 0.5rem; font-size: 1.15rem; }
-.cta-band { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
-`;
+  const layout = resolveWebLayout(fill, fill.layoutRouteIndex ?? 0);
+  return buildLayoutCss(fill, layout);
 }
 
 function buildHtmlStaticPage(fill: WebProjectFill): string {
+  const heroSrc = resolveHeroImageSrc(fill);
   if (fill.html.trim() && /<\/html>/i.test(fill.html)) {
-    return fill.html.trim();
+    let html = fill.html.trim();
+    // If model HTML lacks motion, inject a minimal rise-in stylesheet once.
+    if (!/@keyframes/i.test(html) && /<\/head>/i.test(html)) {
+      html = html.replace(
+        /<\/head>/i,
+        `<style>
+@keyframes rise-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.reveal{animation:rise-in .7s ease both}
+a.cta,button.cta{transition:transform .25s ease,filter .25s ease}
+a.cta:hover,button.cta:hover{transform:translateY(-2px);filter:brightness(1.05)}
+img{max-width:100%;height:auto;border-radius:12px;display:block}
+</style></head>`
+      );
+    }
+    // Codex/Claude-style: if the model omitted imagery, stamp a public stock hero.
+    if (!/<img\b/i.test(html) && /<\/h1>/i.test(html)) {
+      html = html.replace(
+        /<\/h1>/i,
+        `</h1>\n<img class="hero-visual reveal" src="${esc(heroSrc)}" alt="${esc(fill.brandName)}" width="1400" height="900" loading="lazy"/>`
+      );
+    }
+    return html;
   }
-  const sections = fill.sections
-    .map(
-      (s) =>
-        `<section><h2>${esc(s.heading)}</h2><p>${esc(s.body)}</p></section>`
-    )
+  const sectionCards = fill.sections
+    .map((s, i) => {
+      const img = stockImageUrl(`${fill.brandName}-${s.heading}-${i}`, 900, 560);
+      return `<article class="card reveal" style="animation-delay:${0.12 + i * 0.08}s">
+<img src="${esc(img)}" alt="${esc(s.heading)}" width="900" height="560" loading="lazy"/>
+<h2>${esc(s.heading)}</h2>
+<p>${esc(s.body)}</p>
+</article>`;
+    })
     .join("\n");
   const { primary, background, text, accent } = fill.colors;
+  const proofImg = stockImageUrl(`${fill.brandName}-proof`, 1200, 700);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="description" content="${esc(fill.summary)}"/>
 <title>${esc(fill.title)}</title>
 <style>
-:root{--bg:${background};--text:${text};--accent:${accent};--primary:${primary}}
-body{margin:0;font-family:Georgia,serif;background:var(--bg);color:var(--text)}
-header,main,footer{padding:1.25rem 1.5rem;max-width:720px;margin:0 auto}
-h1{font-size:2.4rem;line-height:1.1}
-.cta{display:inline-block;margin-top:1rem;padding:.7rem 1.1rem;background:var(--accent);color:#fff;text-decoration:none}
-section{margin:1.5rem 0}
+:root{--bg:${background};--text:${text};--accent:${accent};--primary:${primary};--display:Georgia,"Iowan Old Style",serif;--body:"Avenir Next","Segoe UI",sans-serif}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--body);color:var(--text);background:
+radial-gradient(1100px 520px at 8% -10%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 55%),
+radial-gradient(900px 480px at 100% 0%,color-mix(in srgb,var(--primary) 16%,transparent),transparent 50%),
+var(--bg)}
+@keyframes rise-in{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@keyframes ken{from{transform:scale(1.04)}to{transform:scale(1)}}
+.reveal{animation:rise-in .75s cubic-bezier(.22,1,.36,1) both}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:1.1rem 6vw;position:sticky;top:0;backdrop-filter:blur(10px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid color-mix(in srgb,var(--text) 10%,transparent);z-index:5}
+.nav strong{font-family:var(--display);font-size:1.15rem}
+.hero{display:grid;gap:2rem;padding:4.5rem 6vw 2.5rem;max-width:1180px;margin:0 auto;align-items:center}
+@media(min-width:900px){.hero{grid-template-columns:1.05fr .95fr}}
+.eyebrow{letter-spacing:.12em;text-transform:uppercase;font-size:.72rem;opacity:.7}
+h1{font-family:var(--display);font-size:clamp(2.4rem,5.5vw,3.8rem);line-height:1.05;margin:.45rem 0 1rem;max-width:14ch}
+.lede{font-size:1.15rem;line-height:1.65;max-width:38rem;opacity:.94}
+.cta{display:inline-block;margin-top:1.2rem;padding:.8rem 1.25rem;background:var(--accent);color:#fff;text-decoration:none;transition:transform .25s ease,filter .25s ease,box-shadow .25s ease}
+.cta:hover{transform:translateY(-2px);filter:brightness(1.05);box-shadow:0 14px 36px color-mix(in srgb,var(--accent) 35%,transparent)}
+.hero-frame{border-radius:18px;overflow:hidden;min-height:280px;box-shadow:0 28px 70px color-mix(in srgb,var(--text) 18%,transparent)}
+.hero-frame img{width:100%;height:100%;object-fit:cover;min-height:320px;animation:ken 12s ease-out both}
+.grid{display:grid;gap:1.25rem;padding:1rem 6vw 3rem;max-width:1180px;margin:0 auto;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{padding:0 0 1.2rem;border-radius:14px;overflow:hidden;background:color-mix(in srgb,var(--primary) 6%,var(--bg));border:1px solid color-mix(in srgb,var(--text) 9%,transparent);transition:transform .3s ease}
+.card:hover{transform:translateY(-4px)}
+.card img{width:100%;height:170px;object-fit:cover}
+.card h2,.card p{padding:0 1.1rem}
+.card h2{font-family:var(--display);font-size:1.2rem;margin:1rem 0 .4rem}
+.proof{display:grid;gap:1.5rem;padding:1rem 6vw 3rem;max-width:1180px;margin:0 auto;align-items:center}
+@media(min-width:860px){.proof{grid-template-columns:1.1fr .9fr}}
+.proof img{width:100%;border-radius:14px;object-fit:cover;max-height:380px}
+.proof blockquote{font-family:var(--display);font-size:clamp(1.35rem,3vw,1.9rem);line-height:1.35;margin:0}
+#cta{margin:0 6vw 3rem;padding:2.8rem 1.75rem;border-radius:18px;text-align:center;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 16%,var(--bg)),color-mix(in srgb,var(--primary) 10%,var(--bg)))}
+footer{padding:1.5rem 6vw;border-top:1px solid color-mix(in srgb,var(--text) 10%,transparent);opacity:.8}
 </style>
 </head>
 <body>
-<header><strong>${esc(fill.brandName)}</strong></header>
+<header class="nav"><strong>${esc(fill.brandName)}</strong><a class="cta" href="#cta">${esc(fill.ctaLabel)}</a></header>
 <main>
+<section class="hero">
+<div class="reveal">
+<p class="eyebrow">${esc(fill.brandName)}</p>
 <h1>${esc(fill.tagline)}</h1>
-<p>${esc(fill.heroBody)}</p>
+<p class="lede">${esc(fill.heroBody)}</p>
 <a class="cta" href="#cta">${esc(fill.ctaLabel)}</a>
-${sections}
-<section id="cta"><h2>${esc(fill.ctaLabel)}</h2><p>${esc(fill.brandName)}</p></section>
+</div>
+<div class="hero-frame reveal"><img src="${esc(heroSrc)}" alt="${esc(fill.brandName)}" width="1400" height="900" loading="eager"/></div>
+</section>
+<section class="grid">${sectionCards}</section>
+<section class="proof reveal">
+<img src="${esc(proofImg)}" alt="" width="1200" height="700" loading="lazy"/>
+<blockquote>“${esc(fill.summary)}”</blockquote>
+</section>
+<section id="cta" class="reveal"><h2>${esc(fill.ctaLabel)}</h2><p>${esc(fill.brandName)} — built around your brief.</p><a class="cta" href="#cta">${esc(fill.ctaLabel)}</a></section>
 </main>
 <footer><span>© ${new Date().getFullYear()} ${esc(fill.brandName)}</span></footer>
 </body>
@@ -412,36 +430,8 @@ createRoot(document.getElementById("root")!).render(
 
 function nextFiles(fill: WebProjectFill): WebProjectFile[] {
   const name = slugify(fill.brandName);
-  const page = `export default function Page() {
-  const brand = ${jsString(fill.brandName)};
-  const tagline = ${jsString(fill.tagline)};
-  const heroBody = ${jsString(fill.heroBody)};
-  const cta = ${jsString(fill.ctaLabel)};
-  const sections = ${JSON.stringify(fill.sections, null, 2)};
-  return (
-    <main style={{ fontFamily: "Georgia, serif", background: ${jsString(fill.colors.background)}, color: ${jsString(fill.colors.text)}, minHeight: "100vh" }}>
-      <header style={{ padding: "1.25rem 1.5rem", display: "flex", justifyContent: "space-between" }}>
-        <strong>{brand}</strong>
-        <a href="#cta" style={{ background: ${jsString(fill.colors.accent)}, color: "#fff", padding: "0.6rem 1rem", textDecoration: "none" }}>{cta}</a>
-      </header>
-      <section style={{ padding: "4rem 1.5rem", maxWidth: 720 }}>
-        <p style={{ textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 12, opacity: 0.7 }}>{brand}</p>
-        <h1 style={{ fontSize: "clamp(2.2rem,5vw,3.2rem)", lineHeight: 1.1 }}>{tagline}</h1>
-        <p style={{ fontSize: "1.15rem", lineHeight: 1.55 }}>{heroBody}</p>
-        <a id="cta" href="#cta" style={{ display: "inline-block", marginTop: 20, background: ${jsString(fill.colors.accent)}, color: "#fff", padding: "0.7rem 1.1rem", textDecoration: "none" }}>{cta}</a>
-      </section>
-      <section style={{ display: "grid", gap: 16, padding: "0 1.5rem 3rem", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
-        {sections.map((s) => (
-          <article key={s.heading} style={{ padding: 20, border: "1px solid rgba(0,0,0,0.08)" }}>
-            <h2 style={{ marginTop: 0 }}>{s.heading}</h2>
-            <p>{s.body}</p>
-          </article>
-        ))}
-      </section>
-    </main>
-  );
-}
-`;
+  const layout = resolveWebLayout(fill, fill.layoutRouteIndex ?? 0);
+  const page = buildLayoutNextPage(fill, layout);
   return [
     {
       path: "package.json",
@@ -667,14 +657,19 @@ export function parseWebProjectFill(
     "";
   if (!brandName || !tagline) return null;
 
-  const stackRaw = preferredStack
-    ? preferredStack
-    : (typeof rec.stack === "string" && rec.stack) || "react-vite";
+  const explicitStack =
+    typeof rec.stack === "string" &&
+    (["html-static", "react-vite", "next", "mern"] as const).includes(
+      rec.stack.trim().toLowerCase() as WebStack
+    )
+      ? (rec.stack.trim().toLowerCase() as WebStack)
+      : undefined;
+  const stackRaw = explicitStack ?? preferredStack ?? "html-static";
   const stack = (
     ["html-static", "react-vite", "next", "mern"] as const
   ).includes(stackRaw as WebStack)
     ? (stackRaw as WebStack)
-    : preferredStack || "react-vite";
+    : explicitStack ?? preferredStack ?? "html-static";
 
   const colorsRec =
     rec.colors && typeof rec.colors === "object"
@@ -711,5 +706,82 @@ export function parseWebProjectFill(
       accent: String(colorsRec.accent ?? "#c45c26"),
     },
     html: typeof rec.html === "string" ? rec.html : "",
+    ...(typeof rec.layout === "string" && rec.layout.trim()
+      ? { layout: rec.layout.trim() as WebLayoutId }
+      : {}),
+    ...(typeof rec.heroImageDataUrl === "string" && rec.heroImageDataUrl.trim()
+      ? { heroImageDataUrl: rec.heroImageDataUrl.trim() }
+      : {}),
   };
+}
+
+/**
+ * Best-effort inject a hero image + motion hooks into an already-expanded project.
+ * Never fails the export — returns the original project on any issue.
+ */
+export function stampHeroImageOntoWebProject(
+  project: WebProjectPlan,
+  heroImageDataUrl: string
+): WebProjectPlan {
+  const url = heroImageDataUrl.trim();
+  if (!url) return project;
+  const safeUrl = url.replace(/"/g, "&quot;");
+
+  const files = project.files.map((f) => {
+    const path = f.path.replace(/\\/g, "/");
+    let content = f.content;
+
+    if (/(^|\/)index\.css$/i.test(path)) {
+      if (!/@keyframes\s+rise-in/i.test(content)) {
+        content += `
+@keyframes rise-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.reveal{animation:rise-in .7s cubic-bezier(.22,1,.36,1) both}
+.hero-visual,.hero-media img{width:100%;max-height:420px;object-fit:cover;border-radius:12px;display:block}
+.cta{transition:transform .25s ease,filter .25s ease}
+.cta:hover{transform:translateY(-2px);filter:brightness(1.05)}
+`;
+      }
+      return { ...f, content };
+    }
+
+    if (/(^|\/)index\.html$/i.test(path)) {
+      if (!/@keyframes/i.test(content) && /<\/head>/i.test(content)) {
+        content = content.replace(
+          /<\/head>/i,
+          `<style>
+@keyframes rise-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.reveal{animation:rise-in .7s ease both}
+.hero-visual{width:100%;max-height:420px;object-fit:cover;border-radius:12px;margin:1.5rem 0;display:block}
+a.cta{transition:transform .25s ease,filter .25s ease}
+a.cta:hover{transform:translateY(-2px);filter:brightness(1.05)}
+</style></head>`
+        );
+      }
+      if (!/<img\b[^>]*hero-visual/i.test(content) && /<\/h1>/i.test(content)) {
+        content = content.replace(
+          /<\/h1>/i,
+          `</h1>\n<img class="hero-visual reveal" src="${safeUrl}" alt=""/>`
+        );
+      }
+      return { ...f, content };
+    }
+
+    if (/(^|\/)App\.(tsx|jsx)$/i.test(path)) {
+      if (
+        !/<img\b/i.test(content) &&
+        /className="hero"/i.test(content) &&
+        !/hero-media/i.test(content)
+      ) {
+        content = content.replace(
+          /<\/section>/,
+          `<div className="hero-media reveal"><img src="${safeUrl}" alt="" /></div></section>`
+        );
+      }
+      return { ...f, content };
+    }
+
+    return f;
+  });
+
+  return { ...project, files };
 }

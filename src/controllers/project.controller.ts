@@ -23,6 +23,15 @@ const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 import { checkPlanLimit } from "../services/planLimit.service";
 import { creativeProjectService } from "../services/creative-project-service";
+import { servicingCanAccessCustomer } from "../services/cs-assignment-service";
+
+function resolveStaffId(staff: unknown): string {
+  if (!staff) return "";
+  if (typeof staff === "object" && staff && "_id" in staff) {
+    return String((staff as { _id?: unknown })._id ?? "");
+  }
+  return String(staff);
+}
 
 /*----------------------------------{  for Servecing  }-----------------------------------------*/
 //TESTED OK
@@ -319,11 +328,12 @@ const fetchProjectListByClientId = asyncHandler(
     }
 
     if (role === "servicing") {
-      const isMyCustomer = await Users.exists({
-        _id: req?.params?.userId,
-        relationship_manager: req.user?.staff,
+      const canAccess = await servicingCanAccessCustomer({
+        staffId: resolveStaffId(req.user?.staff),
+        customerId: String(req.params?.userId || ""),
+        role,
       });
-      if (!isMyCustomer) throw new ApiError("You are not a staff", 400);
+      if (!canAccess) throw new ApiError("You are not a staff", 400);
     }
     const projects = await Projects.find({
       userId: req.params?.userId,

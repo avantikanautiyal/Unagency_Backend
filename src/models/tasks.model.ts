@@ -14,11 +14,16 @@ export interface ITasks {
   | "todo"
   | "progress"
   | "submitted"
+  | "admin_qc"
+  | "client_review"
   | "feedback"
   | "revision"
-  | "approved";
+  | "approved"
+  | "completed";
 
   files: mongoose.Types.ObjectId[];
+  /** CS notes for the designer (Drafts tab) — visible on resource portal. */
+  csFeedback?: string;
   deadlineNotificationSent?: boolean;
   overdueNotificationSent?: boolean;
 }
@@ -34,6 +39,7 @@ const TaskSchema = new Schema<ITasks>(
     priority: { type: String, default: "low", enum: ["low", "medium", "high"] },
     deadline: { type: Date, required: true },
     completionDate: { type: Date },
+    csFeedback: { type: String, default: "" },
     files: {
       type: [Schema.Types.ObjectId],
       ref: "MediaFile",
@@ -46,9 +52,12 @@ const TaskSchema = new Schema<ITasks>(
         "todo",
         "progress",
         "submitted",
+        "admin_qc",
+        "client_review",
         "feedback",
         "revision",
         "approved",
+        "completed",
       ],
     },
     deadlineNotificationSent: { type: Boolean, default: false },

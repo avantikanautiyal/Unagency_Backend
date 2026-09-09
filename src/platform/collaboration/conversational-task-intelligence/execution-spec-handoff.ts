@@ -20,7 +20,14 @@ function readHandoffSpec(
   return spec;
 }
 
-function resolveParentExecutionId(
+/** Client-provided execution spec from a prior turn resolution (P4.9.1). */
+export function readClientExecutionSpecHandoff(
+  metadata?: Readonly<Record<string, unknown>>,
+): CanonicalExecutionSpecification | undefined {
+  return readHandoffSpec(metadata);
+}
+
+export function resolveParentExecutionIdFromContinuationMetadata(
   metadata?: Readonly<Record<string, unknown>>,
 ): string | undefined {
   const parent =
@@ -28,11 +35,64 @@ function resolveParentExecutionId(
       ? metadata.parentExecutionId.trim()
       : "";
   if (parent && !parent.startsWith("direct_routes_")) return parent;
+
+  const retried =
+    typeof metadata?.retriedFrom === "string"
+      ? metadata.retriedFrom.trim()
+      : "";
+  if (retried && !retried.startsWith("direct_routes_")) return retried;
+
+  const duplicated =
+    typeof metadata?.duplicatedFrom === "string"
+      ? metadata.duplicatedFrom.trim()
+      : "";
+  if (duplicated && !duplicated.startsWith("direct_routes_")) return duplicated;
+
   const refine =
     typeof metadata?.refineFromExecutionId === "string"
       ? metadata.refineFromExecutionId.trim()
       : "";
   return refine && !refine.startsWith("direct_routes_") ? refine : undefined;
+}
+
+export function resolveParentExecutionIdFromMetadata(
+  metadata?: Readonly<Record<string, unknown>>,
+): string | undefined {
+  return resolveParentExecutionIdFromContinuationMetadata(metadata);
+}
+
+/** Load client handoff or parent execution spec snapshot (no stamping). */
+export async function readInheritedExecutionSpec(input: {
+  readonly host: {
+    loadExecution(executionId: string): Promise<
+      | {
+          metadata?: Readonly<Record<string, unknown>>;
+        }
+      | undefined
+    >;
+    loadExecutionCreateMetadata?(
+      executionId: string,
+    ): Promise<Readonly<Record<string, unknown>> | undefined>;
+  };
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}): Promise<CanonicalExecutionSpecification | undefined> {
+  const handoff = readHandoffSpec(input.metadata);
+  if (handoff) return handoff;
+  const parentId = resolveParentExecutionIdFromMetadata(input.metadata);
+  if (!parentId) return undefined;
+  try {
+    if (input.host.loadExecutionCreateMetadata) {
+      const createMeta = await input.host.loadExecutionCreateMetadata(parentId);
+      const fromCreate = readExecutionSpecSnapshot(createMeta)?.spec;
+      if (fromCreate) return fromCreate;
+    }
+    const parent = await input.host.loadExecution(parentId);
+    return readExecutionSpecSnapshot(
+      parent?.metadata as Record<string, unknown> | undefined,
+    )?.spec;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function applyExecutionSpecHandoff(input: {
@@ -43,6 +103,9 @@ export async function applyExecutionSpecHandoff(input: {
         }
       | undefined
     >;
+    loadExecutionCreateMetadata?(
+      executionId: string,
+    ): Promise<Readonly<Record<string, unknown>> | undefined>;
     deps: {
       nowIso: () => string;
       createId: (prefix: string) => string;
@@ -89,12 +152,20 @@ async function inheritSpecFromParentExecution(
         }
       | undefined
     >;
+    loadExecutionCreateMetadata?(
+      executionId: string,
+    ): Promise<Readonly<Record<string, unknown>> | undefined>;
   },
   metadata: Readonly<Record<string, unknown>>,
 ): Promise<CanonicalExecutionSpecification | undefined> {
-  const parentId = resolveParentExecutionId(metadata);
+  const parentId = resolveParentExecutionIdFromMetadata(metadata);
   if (!parentId) return undefined;
   try {
+    if (host.loadExecutionCreateMetadata) {
+      const createMeta = await host.loadExecutionCreateMetadata(parentId);
+      const fromCreate = readExecutionSpecSnapshot(createMeta)?.spec;
+      if (fromCreate) return fromCreate;
+    }
     const parent = await host.loadExecution(parentId);
     return readExecutionSpecSnapshot(
       parent?.metadata as Record<string, unknown> | undefined,

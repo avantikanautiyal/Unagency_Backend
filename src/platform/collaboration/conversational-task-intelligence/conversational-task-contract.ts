@@ -92,6 +92,11 @@ export type ConversationalTaskThread = {
   readonly updatedAt: string;
   /** P4.6 — last resolved execution specification for multi-turn merging. */
   readonly lastExecutionSpec?: import("./execution-specification").CanonicalExecutionSpecification;
+  /** P4.9.7.1 — pending authoritative logo selection (survives reload). */
+  readonly pendingLogoClarification?: {
+    readonly candidates: readonly import("./execution-specification").AuthoritativeLogoCandidate[];
+    readonly resumePrompt?: string;
+  };
 };
 
 export type ConversationalTaskIntelligenceState = {
@@ -140,6 +145,22 @@ export type ConversationalClarification = {
   readonly question: string;
   readonly ambiguities: readonly string[];
   readonly preserveState: true;
+  /** P4.9.7.1 — structured clarification kind (default: generic text). */
+  readonly kind?: "logo_selection" | "generic";
+  /** P4.9.7.1 — authoritative logo candidates when kind=logo_selection. */
+  readonly logoCandidates?: readonly LogoClarificationCandidate[];
+  /** Original user prompt to resume after logo selection. */
+  readonly resumePrompt?: string;
+};
+
+export type LogoClarificationCandidate = {
+  readonly selectionId: string;
+  readonly assetId: string;
+  readonly source: "VAULT" | "ATTACHMENT";
+  readonly name?: string;
+  readonly folder?: string;
+  readonly thumbnailUrl?: string;
+  readonly mimeType?: string;
 };
 
 export type ConversationalTurnObservability = {
@@ -188,4 +209,17 @@ export type ConversationalTurnInput = {
   readonly messages: readonly import("../service-conversation-types").ServiceAiMessageRecord[];
   readonly state: import("../service-conversation-types").ServiceAiConversationState;
   readonly nowIso?: () => string;
+  /**
+   * Precomputed semantic signals (LLM-primary in production).
+   * When omitted, resolver falls back to English heuristics for tests / offline.
+   */
+  readonly signals?: import("./semantic-signals").SemanticSignals;
+  /** When true, treat message as a substantive new brief (from LLM classify). */
+  readonly isSubstantiveNewGeneration?: boolean;
+  /** P4.9.7 — optional logo discovery inputs (client handoff / tests). */
+  readonly logoDiscovery?: {
+    readonly vaultCandidates?: readonly import("./execution-specification").AuthoritativeLogoCandidate[];
+    readonly attachmentLogoAssetIds?: readonly string[];
+    readonly vaultLogoChoice?: string;
+  };
 };

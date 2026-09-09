@@ -229,6 +229,7 @@ export function downloadFormatsForMime(
 /**
  * Formats the UI may offer: contract ∩ what the stored blob can yield.
  * When contract is empty, fall back to MIME-derived formats.
+ * Optional Spec export formats further intersect the candidate set.
  */
 export function resolveSelectableDownloadFormats(input: {
   readonly spec?: Pick<
@@ -237,11 +238,17 @@ export function resolveSelectableDownloadFormats(input: {
   > | null;
   readonly mimeType?: string | null;
   readonly materializedFormats?: readonly string[] | null;
+  readonly requestedDeliverables?: readonly string[] | null;
+  /** Format & Production Spec export.formats — intersect when provided. */
+  readonly productionExportFormats?: readonly string[] | null;
 }): readonly DownloadFormat[] {
   const fromMime = downloadFormatsForMime(input.mimeType);
   const fromContract = input.spec?.supportedDownloadFormats ?? [];
   const fromMaterialized = (input.materializedFormats ?? [])
     .map((f) => normalizeDownloadFormat(f))
+    .filter((f): f is DownloadFormat => Boolean(f));
+  const fromRequested = (input.requestedDeliverables ?? [])
+    .map((f) => normalizeDownloadFormat(String(f)))
     .filter((f): f is DownloadFormat => Boolean(f));
 
   let candidates: readonly DownloadFormat[] =
@@ -257,7 +264,17 @@ export function resolveSelectableDownloadFormats(input: {
     if (intersected.length > 0) candidates = intersected;
   }
 
-  return candidates;
+  const fromProduction = (input.productionExportFormats ?? [])
+    .map((f) => normalizeDownloadFormat(String(f)))
+    .filter((f): f is DownloadFormat => Boolean(f));
+  if (fromProduction.length > 0) {
+    const prodSet = new Set(fromProduction);
+    const narrowed = candidates.filter((f) => prodSet.has(f));
+    if (narrowed.length > 0) candidates = narrowed;
+  }
+
+  const merged = [...new Set([...fromRequested, ...candidates])];
+  return merged.length > 0 ? merged : candidates;
 }
 
 export function shouldPromptForDownloadFormat(
@@ -337,22 +354,22 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
   'website/corporate-website': SPEC(
     'deferred_website',
     ['text'],
-    'Production website project (stack + files) and preview/download',
+    'Design-first marketing site (html-static by default) with preview/download; React/Next when explicitly requested',
   ),
   'website/ecom-website': SPEC(
     'deferred_website',
     ['text'],
-    'E-commerce project (stack + files) and preview/download',
+    'Design-first commerce marketing site (html-static by default) with preview/download',
   ),
   'website/landing-page': SPEC(
     'deferred_website',
     ['text'],
-    'Landing-page project in the chosen stack with live preview',
+    'Design-first landing page (html-static by default) with live preview + downloadable source',
   ),
   'website/ui-design': SPEC(
     'deferred_website',
     ['text'],
-    'UI implemented as code in the chosen stack (react-vite / next / html-static)',
+    'UI implemented as a polished html-static page by default (react-vite / next when requested)',
   ),
   'website/visual-asset': SPEC(
     'dynamic',
@@ -368,7 +385,7 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
   'website/interactive-prototypes': SPEC(
     'deferred_website',
     ['text'],
-    'Interactive prototype as code (react-vite) with preview/download',
+    'Interactive prototype as polished html-static (or react-vite when requested) with preview/download',
   ),
   'website/design-systems': SPEC(
     'document',

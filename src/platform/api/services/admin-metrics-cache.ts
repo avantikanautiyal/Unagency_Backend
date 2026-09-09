@@ -2,7 +2,7 @@
  * Short-lived in-process cache for expensive admin aggregates.
  */
 
-const DEFAULT_TTL_MS = Number(process.env.ADMIN_METRICS_CACHE_TTL_MS ?? 30_000);
+const DEFAULT_TTL_MS = Number(process.env.ADMIN_METRICS_CACHE_TTL_MS ?? 120_000);
 
 type CacheEntry<T> = {
   expiresAt: number;

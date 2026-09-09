@@ -22,6 +22,10 @@ import {
   normalizeRasterFormat,
   type RasterDownloadFormat,
 } from "./image-format-converter";
+import {
+  canExportRasterAsPdf,
+  wrapRasterImageAsPdf,
+} from "./raster-pdf-export";
 
 export type ArtifactMediaUrlResult = {
   readonly artifactId: string;
@@ -101,7 +105,9 @@ export class MediaDeliveryService {
     }
 
     const rasterTarget = normalizeRasterFormat(requestedRaw);
+    const pdfRequested = requestedRaw?.trim().toLowerCase() === "pdf";
     const sourceRaster = formatFromMime(sourceMime);
+    const needsPdfExport = pdfRequested && canExportRasterAsPdf(sourceMime);
     const needsRasterConversion =
       Boolean(rasterTarget) &&
       Boolean(sourceRaster) &&
@@ -109,7 +115,11 @@ export class MediaDeliveryService {
 
     // Prefer provider signed URL when no conversion is required (unless browser
     // clients need same-origin bytes for CORS-safe fetch, e.g. vault re-upload).
-    if (!needsRasterConversion && !options?.preferSameOrigin) {
+    if (
+      !needsRasterConversion &&
+      !needsPdfExport &&
+      !options?.preferSameOrigin
+    ) {
       const signed = await this.blobAccess.createProviderInputSignedUrl(
         storageRef,
         tenantOrganizationId
@@ -145,20 +155,27 @@ export class MediaDeliveryService {
       storageRef,
       contentType,
       ttlSeconds: this.ephemeralTtlSeconds,
-      ...(rasterTarget ? { requestedFormat: rasterTarget } : {}),
+      ...(pdfRequested
+        ? { requestedFormat: "pdf" as const }
+        : rasterTarget
+          ? { requestedFormat: rasterTarget }
+          : {}),
     });
     const origin = normalizePublicOrigin(options?.publicOrigin);
-    const formatQuery = rasterTarget
-      ? `&format=${encodeURIComponent(rasterTarget)}`
-      : "";
+    const formatQuery =
+      pdfRequested || rasterTarget
+        ? `&format=${encodeURIComponent(pdfRequested ? "pdf" : rasterTarget!)}`
+        : "";
     const signedUrl = `${origin}/v1/artifacts/${encodeURIComponent(artifactId)}/content?token=${encodeURIComponent(token.token)}${formatQuery}`;
     return success({
       artifactId,
       signedUrl,
       expiresInSeconds: this.ephemeralTtlSeconds,
-      contentType: rasterTarget
-        ? mimeForRasterFormat(rasterTarget)
-        : contentType,
+      contentType: pdfRequested
+        ? "application/pdf"
+        : rasterTarget
+          ? mimeForRasterFormat(rasterTarget)
+          : contentType,
     });
   }
 
@@ -183,6 +200,24 @@ export class MediaDeliveryService {
 
     const sourceMime = got.value.contentType ?? record.contentType;
     const bytes = Buffer.from(got.value.data, "base64");
+    const requestedFormat = (options?.format ?? record.requestedFormat ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (requestedFormat === "pdf" && canExportRasterAsPdf(sourceMime)) {
+      const exported = await wrapRasterImageAsPdf({
+        bytes,
+        sourceMime,
+      });
+      if (!exported.ok) return exported;
+      return success({
+        kind: "binary_media",
+        artifactId,
+        contentType: exported.value.contentType,
+        bytes: exported.value.bytes,
+      });
+    }
+
     const target =
       normalizeRasterFormat(options?.format) ??
       normalizeRasterFormat(record.requestedFormat);
@@ -223,6 +258,9 @@ export function validateRequestedDownloadFormat(input: {
   readonly requested: string;
 }): Result<RasterDownloadFormat | true> {
   const requested = input.requested.trim().toLowerCase();
+  if (requested === "pdf" && canExportRasterAsPdf(input.sourceMime)) {
+    return success(true);
+  }
   const rasterTarget = normalizeRasterFormat(requested);
   const sourceRaster = formatFromMime(input.sourceMime);
 
@@ -251,7 +289,7 @@ export function validateRequestedDownloadFormat(input: {
   if (!rasterTarget) {
     return failure(
       new ValidationError(
-        `Download format "${requested}" is not supported for this artifact (supported: png, jpg)`
+        `Download format "${requested}" is not supported for this artifact (supported: png, jpg, pdf for raster images)`
       )
     );
   }

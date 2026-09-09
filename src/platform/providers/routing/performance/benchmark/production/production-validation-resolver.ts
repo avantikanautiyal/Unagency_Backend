@@ -200,6 +200,19 @@ export async function resolveProductionValidationAsync(input: {
 
   let deliverableCompliance: DeliverableComplianceReport | undefined;
   if (context.executionSpec) {
+    const attachedBrandAssetIds = (() => {
+      const raw = context.metadata?.assetIds;
+      if (Array.isArray(raw)) {
+        return raw.map(String).map((s) => s.trim()).filter(Boolean);
+      }
+      const logo =
+        typeof context.metadata?.brandLogoAssetId === "string"
+          ? context.metadata.brandLogoAssetId.trim()
+          : typeof context.metadata?.logoAssetId === "string"
+            ? context.metadata.logoAssetId.trim()
+            : "";
+      return logo ? [logo] : [];
+    })();
     deliverableCompliance = evaluateDeliverableCompliance({
       spec: context.executionSpec,
       presentFormats: context.presentDeliverableFormats,
@@ -208,6 +221,11 @@ export async function resolveProductionValidationAsync(input: {
       generatedHeight: context.generatedHeight,
       generatedPageCount: context.generatedPageCount,
       previewContainsCta: context.previewContainsCta,
+      attachedBrandAssetIds,
+      production: {
+        platform: context.platform,
+        formatId: context.format,
+      },
     });
   }
 

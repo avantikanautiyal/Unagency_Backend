@@ -296,6 +296,8 @@ export class ExecutionPipeline {
         status === "completed",
         session.metadata.attempts
       );
+    } else if (status === "timed_out") {
+      void this.recordPendingUsage(session, session.metadata.attempts);
     }
 
     const finalStatus = session.status;
@@ -369,8 +371,31 @@ export class ExecutionPipeline {
         sessionId: session.sessionId,
         retryCount: Math.max(0, pipelineAttempt - 1),
       })
-      .catch(() => {
-        /* accounting must not affect execution */
+      .catch((error) => {
+        /* accounting must not affect execution — logged in service */
+        void error;
+      });
+  }
+
+  private recordPendingUsage(
+    session: ProviderExecutionSession,
+    pipelineAttempt: number
+  ): void {
+    const accounting = getUsageAccountingService();
+    const stats = session.monitor.snapshot();
+    void accounting
+      .recordProviderInvocation({
+        request: session.request,
+        success: false,
+        completedAt: this.deps.nowIso(),
+        latencyMs: stats.totalMs,
+        pipelineAttempt,
+        sessionId: session.sessionId,
+        retryCount: Math.max(0, pipelineAttempt - 1),
+        timedOut: true,
+      })
+      .catch((error) => {
+        void error;
       });
   }
 }

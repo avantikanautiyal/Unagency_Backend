@@ -16,6 +16,7 @@ import Brands from "../../../models/brand.model";
 import Categories from "../../../models/categories.model";
 import MediaFile from "../../../models/mediaFile.model";
 import { PlansModel } from "../../../models/plan.model";
+import { BRAND_ASSET_FOLDERS } from "../../../services/product-asset-service";
 import type { OrgBillingRow } from "./admin-billing-analytics-service";
 import { resolveProjectAiProvidersBatch } from "./admin-execution-providers-service";
 import {
@@ -25,6 +26,35 @@ import {
   isDemoTitle,
   loadAdminDemoExclusions,
 } from "./admin-demo-filter";
+
+/**
+ * Brand kit uploads only (logos / cover / guidelines / …) — excludes
+ * AI/execution-generated creatives saved into the vault.
+ */
+function brandUploadFileCountFilter(organizationId: mongoose.Types.ObjectId) {
+  return {
+    organizationId,
+    status: { $ne: "deleted" },
+    lifecycle: { $nin: ["temporary", "deleted"] },
+    brandId: { $exists: true, $ne: null },
+    $and: [
+      {
+        $or: [
+          { executionId: { $exists: false } },
+          { executionId: null },
+          { executionId: "" },
+        ],
+      },
+      {
+        $or: [
+          { folder: { $in: [...BRAND_ASSET_FOLDERS] } },
+          { folder: { $in: ["", null] } },
+          { folder: { $exists: false } },
+        ],
+      },
+    ],
+  };
+}
 
 export type AdminOrganizationRow = {
   organizationId: string;
@@ -296,23 +326,10 @@ async function resolveOrganizationByLookup(
     }
   }
 
-  const ownerCandidates = await Users.find({})
-    .select("_id")
+  const ownerCandidates = await Organizations.find({})
+    .select("_id owner companyName")
     .lean();
-  const owner = ownerCandidates.find((row) => {
-    const userId = String(row._id);
-    return (
-      userId.toLowerCase() === raw.toLowerCase() ||
-      userId.toLowerCase().endsWith(needle)
-    );
-  });
-  if (owner) {
-    const org = await Organizations.findOne({ owner: owner._id }).lean();
-    if (org && accept(org)) return org;
-  }
-
-  const orgIdRows = await Organizations.find({}).select("_id owner companyName").lean();
-  const matched = orgIdRows.find((row) => accept(row));
+  const matched = ownerCandidates.find((row) => accept(row));
   if (!matched) return null;
   return Organizations.findById(matched._id).lean();
 }
@@ -358,6 +375,56 @@ function mapProjectRoute(project: {
   }
   if (mode === "human") return "Human Only";
   return "Human Only";
+}
+
+function mapRequirementRoute(creationMode?: string | null): string {
+  const mode = String(creationMode ?? "").toLowerCase().trim();
+  if (mode.includes("hybrid")) return "Hybrid";
+  return "Human Only";
+}
+
+function isAiOnlyRequirement(req: {
+  title?: string | null;
+  description?: string | null;
+  creationMode?: string | null;
+}): boolean {
+  const title = String(req.title ?? "");
+  if (/^\s*live brief ·/i.test(title) || /^\s*\[(?:live|demo)\]/i.test(title)) {
+    return true;
+  }
+  const mode = String(req.creationMode ?? "").toLowerCase().trim();
+  if (mode === "ai" || mode === "ai_only" || mode === "ai_creative") return true;
+  if (!mode && /^\s*live brief ·/i.test(String(req.description ?? ""))) return true;
+  return false;
+}
+
+function isCsServicingRequirement(req: {
+  title?: string | null;
+  description?: string | null;
+  creationMode?: string | null;
+  assignedCs?: unknown;
+}): boolean {
+  if (isAiOnlyRequirement(req)) return false;
+  const mode = String(req.creationMode ?? "").toLowerCase().trim();
+  if (mode === "human" || mode === "hybrid") return true;
+  return Boolean(req.assignedCs);
+}
+
+function collabScopeKey(
+  brandId?: unknown,
+  productPath?: string | null
+): string | null {
+  const brand = brandId ? String(brandId).trim() : "";
+  const path = String(productPath ?? "").trim();
+  if (!brand || !path || path === "unspecified") return null;
+  return `${brand}|${path}`;
+}
+
+function normalizeRequestTitle(title?: string | null): string {
+  return String(title ?? "")
+    .replace(/^Live brief ·\s*/i, "")
+    .trim()
+    .toLowerCase();
 }
 
 function formatDisplayDate(value?: Date | string | null): string {
@@ -440,7 +507,7 @@ export async function buildAdminOrganizationDetail(input: {
     billingByOrg.get(organizationId) ??
     [...billingByOrg.values()].find((row) => row.customerUserId === customerUserId);
 
-  const [owner, brands, fileCount, projects, teamRows, plans, activeSubs] =
+  const [owner, brands, fileCount, projects, requirements, teamRows, plans, activeSubs] =
     await Promise.all([
       Users.findById(customerUserId)
         .select("_id name email relationship_manager createdAt")
@@ -448,12 +515,18 @@ export async function buildAdminOrganizationDetail(input: {
       Brands.find({ organizationId: org._id, status: { $ne: "archived" } })
         .select("name")
         .lean(),
-      MediaFile.countDocuments({ organizationId: org._id, status: { $ne: "deleted" } }),
+      MediaFile.countDocuments(brandUploadFileCountFilter(org._id as mongoose.Types.ObjectId)),
       Projects.find({
         $or: [{ userId: customerUserId }, { orgId: org._id }],
       })
         .select(
-          "_id title status origin executionId sourceRouteId creationMode createdAt updatedAt category orgId"
+          "_id title status origin executionId sourceRouteId creationMode createdAt updatedAt category orgId brandId productPath"
+        )
+        .sort({ createdAt: -1 })
+        .lean(),
+      Requirement.find({ userId: customerUserId })
+        .select(
+          "_id title description status creationMode brandId productPath assignedCs category createdAt updatedAt"
         )
         .sort({ createdAt: -1 })
         .lean(),
@@ -472,18 +545,31 @@ export async function buildAdminOrganizationDetail(input: {
     ? await Users.findById(staffRows.userId).select("name").lean()
     : null;
 
+  const servicingRequirements = requirements.filter(
+    (req) => !isDemoTitle(req.title) && isCsServicingRequirement(req)
+  );
+
   const projectIds = projects.map((project) => project._id);
   const categoryIds = [
     ...new Set(
-      projects
-        .map((project) => project.category)
+      [
+        ...projects.map((project) => project.category),
+        ...servicingRequirements.map((req) => req.category),
+      ].filter((value): value is mongoose.Types.ObjectId => Boolean(value))
+    ),
+  ];
+  const requirementCsStaffIds = [
+    ...new Set(
+      servicingRequirements
+        .map((req) => req.assignedCs)
         .filter((value): value is mongoose.Types.ObjectId => Boolean(value))
+        .map((value) => String(value))
     ),
   ];
   const [tasks, categoryRows] = await Promise.all([
     projectIds.length
       ? Tasks.find({ project: { $in: projectIds } })
-          .select("project assignedTo status updatedAt")
+          .select("project assignedTo assignedBy status updatedAt")
           .lean()
       : Promise.resolve([]),
     categoryIds.length
@@ -495,17 +581,41 @@ export async function buildAdminOrganizationDetail(input: {
     categoryRows.map((category) => [String(category._id), category.title ?? ""])
   );
 
-  const staffIds = [
+  const projectResourceStaffIds = [
     ...new Set(
-      tasks
-        .map((task) => task.assignedTo)
-        .filter((value): value is mongoose.Types.ObjectId => Boolean(value))
+      projects.flatMap((project) =>
+        Array.isArray(project.resource)
+          ? project.resource.map((id) => String(id)).filter(Boolean)
+          : []
+      )
     ),
   ];
-  const staffRowsForTasks = staffIds.length
-    ? await Staff.find({ _id: { $in: staffIds } }).select("userId").lean()
+
+  const staffIds = [
+    ...new Set([
+      ...tasks
+        .map((task) => task.assignedTo)
+        .filter((value): value is mongoose.Types.ObjectId => Boolean(value))
+        .map((value) => String(value)),
+      ...tasks
+        .map((task) => task.assignedBy)
+        .filter((value): value is mongoose.Types.ObjectId => Boolean(value))
+        .map((value) => String(value)),
+      ...requirementCsStaffIds,
+      ...projectResourceStaffIds,
+      ...(owner?.relationship_manager
+        ? [String(owner.relationship_manager)]
+        : []),
+    ]),
+  ];
+  const staffRowsForAssignees = staffIds.length
+    ? await Staff.find({
+        _id: { $in: staffIds.map((id) => new mongoose.Types.ObjectId(id)) },
+      })
+        .select("userId")
+        .lean()
     : [];
-  const assigneeUserIds = staffRowsForTasks
+  const assigneeUserIds = staffRowsForAssignees
     .map((row) => row.userId)
     .filter((value): value is mongoose.Types.ObjectId => Boolean(value));
   const assigneeUsers = assigneeUserIds.length
@@ -515,17 +625,97 @@ export async function buildAdminOrganizationDetail(input: {
     assigneeUsers.map((user) => [String(user._id), String(user.name ?? "")])
   );
   const staffUserIdByStaffId = new Map(
-    staffRowsForTasks.map((row) => [String(row._id), String(row.userId ?? "")])
+    staffRowsForAssignees.map((row) => [String(row._id), String(row.userId ?? "")])
   );
+  const staffName = (staffId: string): string => {
+    if (!staffId) return "";
+    const userId = staffUserIdByStaffId.get(staffId) ?? "";
+    return userNameById.get(userId)?.trim() || "";
+  };
 
-  const assigneeByProject = new Map<string, string>();
+  // ASSIGNED TO = resource/designer on the task (or project.resource fallback).
+  const designerByProject = new Map<string, string>();
   for (const task of tasks) {
     const projectId = String(task.project);
-    const staffId = task.assignedTo ? String(task.assignedTo) : "";
-    const userId = staffUserIdByStaffId.get(staffId) ?? "";
-    const name = userNameById.get(userId) ?? "";
-    if (name) assigneeByProject.set(projectId, name);
+    if (designerByProject.has(projectId)) continue;
+    const name = staffName(task.assignedTo ? String(task.assignedTo) : "");
+    if (name) designerByProject.set(projectId, name);
   }
+  for (const project of projects) {
+    const projectId = String(project._id);
+    if (designerByProject.has(projectId)) continue;
+    const resources = Array.isArray(project.resource) ? project.resource : [];
+    for (const raw of resources) {
+      const name = staffName(String(raw));
+      if (name) {
+        designerByProject.set(projectId, name);
+        break;
+      }
+    }
+  }
+
+  // CREATED BY (CS) = CS who assigned the task, else requirement assignedCs, else RM.
+  const csByProject = new Map<string, string>();
+  for (const task of tasks) {
+    const projectId = String(task.project);
+    if (csByProject.has(projectId)) continue;
+    const name = staffName(task.assignedBy ? String(task.assignedBy) : "");
+    if (name) csByProject.set(projectId, name);
+  }
+
+  const csByRequirement = new Map<string, string>();
+  for (const req of servicingRequirements) {
+    const name = staffName(req.assignedCs ? String(req.assignedCs) : "");
+    if (name) csByRequirement.set(String(req._id), name);
+  }
+
+  // If a project has no task.assignedBy yet, inherit CS from the matching requirement.
+  for (const project of projects) {
+    const projectId = String(project._id);
+    if (csByProject.has(projectId)) continue;
+    const projectTitle = normalizeRequestTitle(project.title);
+    const brandId = (project as { brandId?: unknown }).brandId
+      ? String((project as { brandId?: unknown }).brandId)
+      : "";
+    const productPath =
+      (project as { productPath?: string | null }).productPath?.trim() || "";
+    for (const req of servicingRequirements) {
+      const reqCs = csByRequirement.get(String(req._id));
+      if (!reqCs) continue;
+      const scope = collabScopeKey(req.brandId, req.productPath);
+      const projectScope = collabScopeKey(
+        (project as { brandId?: unknown }).brandId,
+        (project as { productPath?: string | null }).productPath
+      );
+      if (scope && projectScope && scope === projectScope) {
+        csByProject.set(projectId, reqCs);
+        break;
+      }
+      if (
+        projectTitle &&
+        normalizeRequestTitle(req.title) === projectTitle
+      ) {
+        csByProject.set(projectId, reqCs);
+        break;
+      }
+      if (
+        brandId &&
+        productPath &&
+        String(req.brandId ?? "") === brandId &&
+        String(req.productPath ?? "") === productPath
+      ) {
+        csByProject.set(projectId, reqCs);
+        break;
+      }
+    }
+  }
+
+  const defaultCsName =
+    staffName(
+      owner?.relationship_manager ? String(owner.relationship_manager) : ""
+    ) ||
+    managerUser?.name?.trim() ||
+    "Unassigned";
 
   const uniqueBrandNames = [...new Set(brands.map((brand) => brand.name).filter(Boolean))];
 
@@ -533,9 +723,112 @@ export async function buildAdminOrganizationDetail(input: {
   const sub = activeSubs[0];
   const plan = sub ? planById.get(sub.planId) : null;
 
-  const activeReq = projects.filter((project) => isActiveStatus(project.status)).length;
   const memberSinceSource =
     (org as { createdAt?: Date | string }).createdAt ?? owner?.createdAt ?? null;
+
+  const billableProjects = projects.filter((project) => !isDemoTitle(project.title));
+  const aiTools = await resolveProjectAiProvidersBatch(billableProjects);
+
+  const projectScopeKeys = new Set<string>();
+  const projectTitles = new Set<string>();
+  for (const project of billableProjects) {
+    const scope = collabScopeKey(
+      (project as { brandId?: unknown }).brandId,
+      (project as { productPath?: string | null }).productPath
+    );
+    if (scope) projectScopeKeys.add(scope);
+    const title = normalizeRequestTitle(project.title);
+    if (title) projectTitles.add(title);
+  }
+
+  const projectRequests: AdminOrganizationRequestRow[] = billableProjects.map(
+    (project, index) => {
+      const aiRoute = mapProjectRoute(project);
+      const categoryTitle = project.category
+        ? categoryTitleById.get(String(project.category)) ?? ""
+        : "";
+      const completedAt =
+        mapProjectStatusLabel(project.status) === "Completed"
+          ? formatDisplayDate(project.updatedAt ?? project.createdAt)
+          : "—";
+      const projectId = String(project._id);
+      return {
+        requestId: projectId,
+        rawProjectId: projectId,
+        brand: project.title || "Untitled project",
+        service: categoryTitle || "Creative",
+        status: mapProjectStatusLabel(project.status),
+        priority: "Normal",
+        assignedTo: designerByProject.get(projectId) ?? "Unassigned",
+        createdBy: csByProject.get(projectId) ?? defaultCsName,
+        dateCreated: formatDisplayDate(project.createdAt),
+        completed: completedAt,
+        aiRoute,
+        aiTool: aiTools[index] ?? "—",
+      };
+    }
+  );
+
+  // Human/hybrid intake briefs that do not yet have a matching Project.
+  const uncoveredRequirements = servicingRequirements.filter((req) => {
+    const scope = collabScopeKey(req.brandId, req.productPath);
+    if (scope && projectScopeKeys.has(scope)) return false;
+    const title = normalizeRequestTitle(req.title);
+    if (title && projectTitles.has(title)) return false;
+    return true;
+  });
+
+  const requirementRequests: AdminOrganizationRequestRow[] = uncoveredRequirements.map(
+    (req) => {
+      const status = mapProjectStatusLabel(req.status);
+      const categoryTitle = req.category
+        ? categoryTitleById.get(String(req.category)) ?? ""
+        : "";
+      const createdAt = (req as { createdAt?: Date | string }).createdAt;
+      const updatedAt = (req as { updatedAt?: Date | string }).updatedAt;
+      const reqId = String(req._id);
+      return {
+        requestId: reqId,
+        rawProjectId: reqId,
+        brand:
+          String(req.title ?? "")
+            .replace(/^Live brief ·\s*/i, "")
+            .trim() || "Untitled brief",
+        service: categoryTitle || "Creative",
+        status,
+        priority: "Normal",
+        // No designer task yet — CS owns the request until a resource is assigned.
+        assignedTo: "Unassigned",
+        createdBy: csByRequirement.get(reqId) ?? defaultCsName,
+        dateCreated: formatDisplayDate(createdAt),
+        completed:
+          status === "Completed" ? formatDisplayDate(updatedAt ?? createdAt) : "—",
+        aiRoute: mapRequirementRoute(req.creationMode),
+        aiTool: "—",
+      };
+    }
+  );
+
+  const requests = [...requirementRequests, ...projectRequests];
+  const requestOrder = new Map<string, number>();
+  for (const req of uncoveredRequirements) {
+    const createdAt = (req as { createdAt?: Date | string }).createdAt;
+    requestOrder.set(
+      String(req._id),
+      createdAt ? new Date(createdAt).getTime() : 0
+    );
+  }
+  for (const project of billableProjects) {
+    requestOrder.set(
+      String(project._id),
+      project.createdAt ? new Date(project.createdAt).getTime() : 0
+    );
+  }
+  requests.sort(
+    (a, b) => (requestOrder.get(b.requestId) ?? 0) - (requestOrder.get(a.requestId) ?? 0)
+  );
+
+  const activeReq = requests.filter((request) => isActiveStatus(request.status)).length;
 
   const row: AdminOrganizationRow = {
     organizationId,
@@ -554,34 +847,6 @@ export async function buildAdminOrganizationDetail(input: {
     humanCostMtd: billingRow?.humanCost ?? 0,
     memberCount: Math.max(teamRows.length, 1),
   };
-
-  const billableProjects = projects.filter((project) => !isDemoTitle(project.title));
-  const aiTools = await resolveProjectAiProvidersBatch(billableProjects);
-
-  const requests: AdminOrganizationRequestRow[] = billableProjects.map((project, index) => {
-    const aiRoute = mapProjectRoute(project);
-    const categoryTitle = project.category
-      ? categoryTitleById.get(String(project.category)) ?? ""
-      : "";
-    const completedAt =
-      mapProjectStatusLabel(project.status) === "Completed"
-        ? formatDisplayDate(project.updatedAt ?? project.createdAt)
-        : "—";
-    return {
-      requestId: String(project._id),
-      rawProjectId: String(project._id),
-      brand: project.title || "Untitled project",
-      service: categoryTitle || "Creative",
-      status: mapProjectStatusLabel(project.status),
-      priority: "Normal",
-      assignedTo: assigneeByProject.get(String(project._id)) ?? "Unassigned",
-      createdBy: "Client",
-      dateCreated: formatDisplayDate(project.createdAt),
-      completed: completedAt,
-      aiRoute,
-      aiTool: aiTools[index] ?? "—",
-    };
-  });
 
   return {
     ...row,

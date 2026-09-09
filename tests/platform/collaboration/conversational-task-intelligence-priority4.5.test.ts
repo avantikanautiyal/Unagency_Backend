@@ -108,6 +108,30 @@ describe("Priority 4.5 — Conversational task intelligence", () => {
     expect(turn.requiresExecution).toBe(true);
   });
 
+  it("1b. long landing brief with focus-on/it is CREATE, not vague-modify ASK", () => {
+    const brief =
+      "Design a landing page for Sunflower Kids with sections Grow, For Schools & Parents, Meet the Sunflower Approach, Final CTA. Focus on schools and parents. Make it clean, optimistic, trustworthy and premium with rounded cards, friendly typography, generous whitespace, smooth animations and strong visual storytelling. Optimized for both desktop and mobile.";
+    const turn = resolveTurn(brief, {
+      messages: [],
+      state: { service: "website", subtype: "landing-page" },
+    });
+    expect(turn.action).toBe("CREATE");
+    expect(turn.requiresExecution).toBe(true);
+    expect(turn.clarification).toBeUndefined();
+  });
+
+  it("1c. descriptive landing brief without create-verb is still CREATE", () => {
+    const brief =
+      "Landing page for Sunflower Kids with sections: Grow, For Schools & Parents, Meet the Sunflower Approach, Final CTA. Include custom cartoon illustrations of children, consistent characters, subtle sunflowers and playful doodles. Visual style should be clean, optimistic, trustworthy and premium.";
+    const turn = resolveTurn(brief, {
+      messages: [],
+      state: { service: "website", subtype: "landing-page" },
+    });
+    expect(turn.action).toBe("CREATE");
+    expect(turn.requiresExecution).toBe(true);
+    expect(turn.clarification).toBeUndefined();
+  });
+
   it("2. simple follow-up refines active deliverable", () => {
     const turn = resolveTurn("Make it more editorial");
     expect(["MODIFY", "REGENERATE", "VARIATE"]).toContain(turn.action);

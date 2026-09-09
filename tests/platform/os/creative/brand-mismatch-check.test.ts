@@ -7,17 +7,27 @@ import {
   clientBrandMismatchChoice,
   detectBrandMismatchInBrief,
   findBrandMentions,
+  isBrandSubjectMention,
+  isColorWordUsedAsColour,
   isComparisonBrandMention,
   resolveBrandMismatchChoice,
   runBrandMismatchCheck,
+  shouldCountBrandMention,
   type TenantBrandRef,
 } from "../../../../src/platform/os/creative/brand-mismatch-check";
 
 const BRAND_A: TenantBrandRef = { id: "brand_a", name: "Acme Co" };
 const BRAND_B: TenantBrandRef = { id: "brand_b", name: "Nova Labs" };
 const BRAND_C: TenantBrandRef = { id: "brand_c", name: "Pixel Forge" };
+const BRAND_BLUE: TenantBrandRef = { id: "brand_blue", name: "Blue" };
+const BRAND_SUNFLOWER: TenantBrandRef = { id: "brand_sun", name: "Sunflower" };
 
 const TENANT_BRANDS = [BRAND_A, BRAND_B, BRAND_C];
+const TENANT_WITH_COLOR_NAMES = [
+  BRAND_SUNFLOWER,
+  BRAND_BLUE,
+  { id: "brand_gold", name: "Gold" },
+];
 
 describe("brand mismatch detection", () => {
   it("1. matching brand → no ASK", () => {
@@ -92,6 +102,67 @@ describe("brand mismatch detection", () => {
     expect(isComparisonBrandMention(brief, hits[0]!.index, hits[0]!.length)).toBe(
       true
     );
+  });
+
+  it("does not treat colour words in a brief as a tenant brand named Blue", () => {
+    const brief =
+      "Create a minimalist logo with blue and gold accents for our oat milk brand";
+    const detection = detectBrandMismatchInBrief({
+      brief,
+      selectedBrandId: BRAND_SUNFLOWER.id,
+      brands: TENANT_WITH_COLOR_NAMES,
+    });
+    expect(detection.kind).toBe("none");
+  });
+
+  it("does not flag lowercase blue in a palette list", () => {
+    const brief = "Logo design using navy blue, cream, and sunflower yellow";
+    expect(
+      detectBrandMismatchInBrief({
+        brief,
+        selectedBrandId: BRAND_SUNFLOWER.id,
+        brands: TENANT_WITH_COLOR_NAMES,
+      }).kind
+    ).toBe("none");
+  });
+
+  it("still flags a real subject mention for a colour-word brand name", () => {
+    const brief = "Design a full brand identity for Blue coffee roasters";
+    const detection = detectBrandMismatchInBrief({
+      brief,
+      selectedBrandId: BRAND_SUNFLOWER.id,
+      brands: TENANT_WITH_COLOR_NAMES,
+    });
+    expect(detection.kind).toBe("mismatch");
+    if (detection.kind === "mismatch") {
+      expect(detection.detected.id).toBe(BRAND_BLUE.id);
+    }
+  });
+
+  it("requires brand-subject cues for colour-word catalog names", () => {
+    const brief = "Create a blue wordmark with clean typography";
+    const hits = findBrandMentions(brief, "Blue");
+    expect(hits.length).toBe(1);
+    expect(
+      shouldCountBrandMention({
+        brief,
+        brandName: "Blue",
+        matchIndex: hits[0]!.index,
+        matchLength: hits[0]!.length,
+        comparison: false,
+      })
+    ).toBe(false);
+    expect(isBrandSubjectMention(brief, hits[0]!.index, hits[0]!.length)).toBe(
+      false
+    );
+    expect(
+      isColorWordUsedAsColour(
+        brief,
+        hits[0]!.index,
+        hits[0]!.length,
+        "Blue"
+      )
+    ).toBe(true);
   });
 });
 
@@ -272,6 +343,21 @@ describe("runBrandMismatchCheck integration", () => {
     expect(result?.ask).toBeFalsy();
     expect(result && "brandId" in result ? result.brandId : null).toBe(
       BRAND_A.id
+    );
+  });
+
+  it("colour word in brief does not ASK when tenant has brand named Blue", async () => {
+    const listColorBrands = async () => TENANT_WITH_COLOR_NAMES;
+    const result = await runBrandMismatchCheck({
+      brief:
+        "Create a warm logo with blue tones and sunflower yellow for packaging",
+      brandId: BRAND_SUNFLOWER.id,
+      organizationId: "org_test",
+      listBrands: listColorBrands,
+    });
+    expect(result?.ask).toBeFalsy();
+    expect(result && "brandId" in result ? result.brandId : null).toBe(
+      BRAND_SUNFLOWER.id
     );
   });
 });

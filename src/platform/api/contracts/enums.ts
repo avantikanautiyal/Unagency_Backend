@@ -103,4 +103,5 @@ export type ApiDomain =
   | "health"
   | "refinement"
   | "delivery"
-  | "os_artifacts";
+  | "os_artifacts"
+  | "cdf";

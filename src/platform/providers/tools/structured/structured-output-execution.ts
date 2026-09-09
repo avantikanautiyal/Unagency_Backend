@@ -34,6 +34,7 @@ import {
   orderWebsiteProviderPrompt,
   recoverWebProjectPlan,
   recoverWebsiteRoutesPlan,
+  serializeWebsiteRouteForStorage,
   validateWebsitePageRelevance,
   websiteContextFromMetadata,
   websiteIncompleteErrorMessage,
@@ -49,6 +50,7 @@ import {
   emailContextFromMetadata,
   orderEmailProviderPrompt,
 } from "../../../os/delivery/email-generation";
+import { ensureProviderPromptHasProductionSpec } from "../../../config/format-production-spec";
 import {
   isConceptsOnlyPresentationPayload,
   isExportablePresentationPayload,
@@ -239,6 +241,7 @@ export function withStructuredOutputRequest(
         brandColors: ctx.brandColors,
         multiRoute,
         isRetry: request.metadata?.websiteCompletenessRetried === true,
+        isDesignRetry: request.metadata?.websiteDesignRetried === true,
       }),
       multiRoute
         ? "Keys ONLY: routes[3] each with title, description, summary, stack, brandName, tagline, heroBody, sections, ctaLabel, colors, html."
@@ -301,6 +304,13 @@ export function withStructuredOutputRequest(
     });
   }
 
+  // Phase 1 — keep Format & Production Spec in structured modality prompts
+  // even when compilers reorder/rebuild the body.
+  prompt = ensureProviderPromptHasProductionSpec({
+    prompt,
+    metadata: request.metadata,
+  }).prompt;
+
   const priorFeatures = Array.isArray(
     (request.options as Record<string, unknown> | undefined)?.features
   )
@@ -310,12 +320,19 @@ export function withStructuredOutputRequest(
     : [];
   const features = [...new Set([...priorFeatures, "json_mode", "response_format"])];
 
-  // WebsiteRoutes (3 fills) needs more headroom than a single content-fill.
+  // WebsiteRoutes (3 fills) needs more headroom; html-static needs Claude-length HTML.
+  const websiteStack = isWebsitePage
+    ? websiteContextFromMetadata(request.metadata, priorPrompt).stack
+    : null;
   const largeJsonMaxTokens =
     isWebsitePage
-      ? schemaName === "WebsiteRoutes"
-        ? 8_192
-        : 4_096
+      ? websiteStack === "html-static"
+        ? schemaName === "WebsiteRoutes"
+          ? 24_576
+          : 16_384
+        : schemaName === "WebsiteRoutes"
+          ? 8_192
+          : 4_096
       : isDocumentPlan || isEmailPlan
         ? 16_384
         : undefined;
@@ -533,14 +550,7 @@ export function parseOrRecoverStructuredOutput(
         return {
           ok: true,
           value: {
-            routes: routes.map((r) => ({
-              title: r.title,
-              description: r.description ?? r.summary,
-              summary: r.summary,
-              stack: r.stack,
-              entry: r.entry,
-              files: r.files,
-            })),
+            routes: routes.map((r) => serializeWebsiteRouteForStorage(r)),
           },
         };
       }
@@ -557,14 +567,7 @@ export function parseOrRecoverStructuredOutput(
         return {
           ok: true,
           value: {
-            routes: recoveredRoutes.map((r) => ({
-              title: r.title,
-              description: r.description ?? r.summary,
-              summary: r.summary,
-              stack: r.stack,
-              entry: r.entry,
-              files: r.files,
-            })),
+            routes: recoveredRoutes.map((r) => serializeWebsiteRouteForStorage(r)),
           },
         };
       }
@@ -853,6 +856,10 @@ async function expandPresentationConceptsToRoutes(input: {
     userBrief: input.ctx.userBrief,
     mustUseFacts: input.ctx.mustUseFacts,
   });
+  const expansionPromptWithSpec = ensureProviderPromptHasProductionSpec({
+    prompt: expansionPrompt,
+    metadata: input.providerRequest.metadata,
+  }).prompt;
 
   const expansionMaxTokens = 16_384;
   const expansionResponseFormat = {
@@ -879,7 +886,7 @@ async function expandPresentationConceptsToRoutes(input: {
       presentationExpandMode: "full",
     },
     payload: buildStructuredReExecutePayload({
-      prompt: expansionPrompt,
+      prompt: expansionPromptWithSpec,
       maxTokens: expansionMaxTokens,
       responseFormat: expansionResponseFormat,
     }),
@@ -1193,6 +1200,10 @@ async function expandSinglePresentationConcept(input: {
     userBrief: input.ctx.userBrief,
     mustUseFacts: input.ctx.mustUseFacts,
   });
+  const expansionPromptWithSpec = ensureProviderPromptHasProductionSpec({
+    prompt: expansionPrompt,
+    metadata: input.providerRequest.metadata,
+  }).prompt;
 
   const expansionRequest: ProviderExecutionRequest = {
     ...input.providerRequest,
@@ -1207,7 +1218,7 @@ async function expandSinglePresentationConcept(input: {
       presentationExpansionRetried: input.expansionRetried,
     },
     payload: buildStructuredReExecutePayload({
-      prompt: expansionPrompt,
+      prompt: expansionPromptWithSpec,
       responseFormat: {
         type: "json_schema",
         json_schema: {

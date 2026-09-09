@@ -10,6 +10,7 @@ import type {
 } from "../contracts/billing-reconciliation";
 import { PROVIDER_BILLING_SYNC_STATUS } from "../contracts/billing-reconciliation";
 import { AIBillingReconciliationModel } from "../../infrastructure/durability/mongo/models/ai-billing-reconciliation.model";
+import { ProviderBillingSyncStateModel } from "../../infrastructure/durability/mongo/models/ai-provider-billing-sync-state.model";
 
 export interface IProviderBillingAdapter {
   readonly providerId: string;
@@ -30,12 +31,12 @@ export interface ProviderBillingLineItem {
 }
 
 export class BillingReconciliationService {
-  private readonly syncState = new Map<string, ProviderBillingSyncState>();
+  private readonly syncStateCache = new Map<string, ProviderBillingSyncState>();
 
   getSyncState(providerId: string, providerAccount?: string | null): ProviderBillingSyncState {
     const key = `${providerId}:${providerAccount ?? "default"}`;
     return (
-      this.syncState.get(key) ?? {
+      this.syncStateCache.get(key) ?? {
         providerId,
         providerAccount: providerAccount ?? null,
         lastSuccessfulSyncAt: null,
@@ -44,6 +45,29 @@ export class BillingReconciliationService {
         syncError: null,
       }
     );
+  }
+
+  async hydrateSyncStateFromStore(): Promise<void> {
+    const docs = await ProviderBillingSyncStateModel.find({}).lean();
+    for (const doc of docs) {
+      const row = doc as {
+        providerId: string;
+        providerAccount?: string | null;
+        lastSuccessfulSyncAt?: string | null;
+        providerDataThrough?: string | null;
+        syncStatus: string;
+        syncError?: string | null;
+      };
+      const key = `${row.providerId}:${row.providerAccount ?? "default"}`;
+      this.syncStateCache.set(key, {
+        providerId: row.providerId,
+        providerAccount: row.providerAccount ?? null,
+        lastSuccessfulSyncAt: row.lastSuccessfulSyncAt ?? null,
+        providerDataThrough: row.providerDataThrough ?? null,
+        syncStatus: row.syncStatus as ProviderBillingSyncState["syncStatus"],
+        syncError: row.syncError ?? null,
+      });
+    }
   }
 
   async recordReconciliation(
@@ -64,7 +88,7 @@ export class BillingReconciliationService {
     providerDataThrough: string
   ): Promise<void> {
     const key = `${providerId}:${providerAccount ?? "default"}`;
-    this.syncState.set(key, {
+    this.syncStateCache.set(key, {
       providerId,
       providerAccount,
       lastSuccessfulSyncAt: new Date().toISOString(),
@@ -81,7 +105,7 @@ export class BillingReconciliationService {
   ): Promise<void> {
     const key = `${providerId}:${providerAccount ?? "default"}`;
     const prev = this.getSyncState(providerId, providerAccount);
-    this.syncState.set(key, {
+    this.syncStateCache.set(key, {
       ...prev,
       syncStatus: PROVIDER_BILLING_SYNC_STATUS.ERROR,
       syncError: error,

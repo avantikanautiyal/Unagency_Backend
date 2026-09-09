@@ -17,6 +17,12 @@ import type { IVendorImageProtocol, VendorImageAuthContext } from "../common/ven
 import { resolveImageWireModelId, extractPrompt, extractReferenceImage } from "../common/vendor-image-protocol";
 import { isImageGenerationCapability } from "../../common/resolve-execution-modality";
 import { providerSupportsReferenceImageEdit } from "../configs/image-provider-capabilities";
+import {
+  logForensicImageConstraintAudit,
+  sanitizeProviderWireBody,
+} from "../../../collaboration/conversational-task-intelligence/forensic-image-constraint-audit";
+import { normalizeImageUsage } from "../../common/media-output";
+import type { IImageHttpClient } from "../http/image-http-client";
 
 function authHeaders(
   spec: VerifiedImageProviderSpec,
@@ -64,9 +70,14 @@ export class VendorSyncImageDispatcher implements IProviderDispatcher {
     }
 
     const reference = extractReferenceImage(request.payload ?? {});
+    const operationKind =
+      typeof request.metadata?.visualOperationKind === "string"
+        ? request.metadata.visualOperationKind.toUpperCase()
+        : "";
     const requiresReferenceEdit =
       String(request.capabilityId).toLowerCase() === "image.edit" ||
-      request.metadata?.referenceInputPresent === true;
+      operationKind === "MODIFY" ||
+      operationKind === "REGENERATE";
     if (requiresReferenceEdit && reference && !providerSupportsReferenceImageEdit(this.spec.canonicalProviderId)) {
       return failure(
         new ValidationError(
@@ -101,6 +112,18 @@ export class VendorSyncImageDispatcher implements IProviderDispatcher {
       plan.request.body && typeof plan.request.body === "object"
         ? (plan.request.body as Record<string, unknown>)
         : {};
+    const formPrompt = plan.request.form?.fields?.prompt;
+    const wireForAudit: Record<string, unknown> = {
+      ...wireBody,
+      ...(typeof formPrompt === "string" ? { prompt: formPrompt } : {}),
+      ...(plan.request.form?.files?.length
+        ? {
+            style_reference_images: plan.request.form.files.map(
+              (file) => file.fieldName
+            ),
+          }
+        : {}),
+    };
     logForensicImageConstraintAudit({
       executionId:
         typeof request.context?.executionId === "string"
@@ -117,7 +140,7 @@ export class VendorSyncImageDispatcher implements IProviderDispatcher {
       capabilityId: String(request.capabilityId),
       generationPath: `VendorSyncImageDispatcher/${this.spec.displayName}`,
       prompt: extractPrompt(request.payload ?? {}),
-      providerWire: sanitizeProviderWireBody(wireBody),
+      providerWire: sanitizeProviderWireBody(wireForAudit),
     });
 
     const headers = {

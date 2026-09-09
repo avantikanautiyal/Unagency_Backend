@@ -1,11 +1,18 @@
 /**
  * Social content format overlays — extends social/content-design contracts.
- * Source: c29Formats.ts (58 formats × 8 platforms).
+ * Source: c29Formats.ts (58 formats × 8 platforms) + Format & Production Spec catalog.
  */
 
 import type { ContractRequirement } from "./evaluation-methods";
 import type { ServiceOutputKind } from "../../../config/service-output-map";
 import { isVideoSocialFormat } from "../../../config/service-output-map";
+import {
+  FORMAT_PRODUCTION_SPEC_PROVENANCE,
+  aspectRatioFromCanvas,
+  isProductionRuleReleasable,
+  resolveProductionRule,
+  type ProductionRule,
+} from "../../../config/format-production-spec";
 
 export const SOCIAL_FORMAT_IDS = Object.freeze([
   "feed-post",
@@ -161,11 +168,98 @@ export function effectiveKindForSocialFormat(
   return isVideoFormat(format) ? "video" : baseKind;
 }
 
+function productionRuleRequirements(
+  format: string,
+  rule: ProductionRule,
+): ContractRequirement[] {
+  const reqs: ContractRequirement[] = [];
+  const canvas = rule.canvas;
+  const hardCanvas = rule.status === "V";
+
+  if (canvas && canvas.unit === "px") {
+    const ratio = aspectRatioFromCanvas(canvas.width, canvas.height);
+    reqs.push({
+      id: `format.${format}.production_canvas`,
+      class: "hard",
+      category: "format",
+      description:
+        `Production canvas ${canvas.width}×${canvas.height}px` +
+        ` (${rule.id}, status ${rule.status}` +
+        `${rule.sourceRef ? `, ${rule.sourceRef}` : ""}` +
+        `; ${FORMAT_PRODUCTION_SPEC_PROVENANCE})`,
+      evaluation: {
+        method: "artifact_inspection",
+        expectedResult: `${canvas.width}x${canvas.height}`,
+        severity: hardCanvas ? "critical" : "high",
+        // V: exact size is a cited fact. D: working default — warn via inspection, soft block.
+        blocksCompletion: hardCanvas,
+      },
+    });
+    reqs.push({
+      id: `format.${format}.aspect_ratio`,
+      class: "hard",
+      category: "format",
+      description: `Output must use ${ratio} aspect ratio for ${rule.placement}`,
+      evaluation: {
+        method: "artifact_inspection",
+        expectedResult: ratio,
+        severity: "high",
+        blocksCompletion: true,
+      },
+    });
+  }
+
+  if (rule.colour) {
+    reqs.push({
+      id: `format.${format}.colour_space`,
+      class: "quality",
+      category: "technical",
+      description: `Colour / output mode: ${rule.colour}`,
+      evaluation: {
+        method: "not_yet_automated",
+        expectedResult: rule.colour,
+        severity: "medium",
+        blocksCompletion: false,
+      },
+      optional: true,
+    });
+  }
+
+  if (!isProductionRuleReleasable(rule)) {
+    reqs.push({
+      id: `format.${format}.release_hold`,
+      class: "hard",
+      category: "format",
+      description:
+        `Placement ${rule.id} is status ${rule.status} — confirm current platform/vendor spec before approved release`,
+      evaluation: {
+        method: "human_approval",
+        expectedResult: "confirmed_override_or_verified_spec",
+        severity: "critical",
+        blocksCompletion: true,
+      },
+    });
+  }
+
+  return reqs;
+}
+
 export function formatOverlayRequirements(
   format: string,
   platform?: string,
 ): readonly ContractRequirement[] {
-  const aspectRatio = aspectRatioForFormat(format);
+  const resolved = resolveProductionRule({ formatId: format, platform });
+  const productionReqs = resolved
+    ? productionRuleRequirements(format, resolved.rule)
+    : [];
+
+  const aspectRatio =
+    resolved?.rule.canvas && resolved.rule.canvas.unit === "px"
+      ? aspectRatioFromCanvas(
+          resolved.rule.canvas.width,
+          resolved.rule.canvas.height,
+        )
+      : aspectRatioForFormat(format);
   const video = isVideoFormat(format);
   const reqs: ContractRequirement[] = [
     {
@@ -180,8 +274,13 @@ export function formatOverlayRequirements(
         blocksCompletion: true,
       },
     },
+    ...productionReqs,
   ];
-  if (aspectRatio) {
+
+  const hasAspectFromProduction = productionReqs.some(
+    (r) => r.id === `format.${format}.aspect_ratio`,
+  );
+  if (aspectRatio && !hasAspectFromProduction) {
     reqs.push({
       id: `format.${format}.aspect_ratio`,
       class: "hard",

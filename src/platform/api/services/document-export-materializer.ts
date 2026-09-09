@@ -28,6 +28,15 @@ import {
   validateDocumentPlanRelevance,
 } from "../../os/delivery/document-generation";
 import { extractBrandNameFromMegaprompt } from "../../os/delivery/presentation-generation";
+import { extractBriefColors } from "../../../services/brand-color-extraction";
+import { namedColorToHex } from "../../os/delivery/website-generation";
+import {
+  createSlideImageResolver,
+  extractReferenceLogoFromMetadata,
+  type BestEffortVisualImageDeps,
+} from "../../os/delivery/best-effort-visual-image";
+import { readExecutionSpecFromMetadata } from "../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
+import type { DeliverableFormat } from "../../collaboration/conversational-task-intelligence/execution-specification";
 
 const PPTX_MIME =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
@@ -41,13 +50,49 @@ export type DocumentExportKind = "presentation" | "document" | "email";
 
 type ExportFileLabel = "pdf" | "pptx" | "docx" | "html" | "txt";
 
-function resolvePresentationExportOptions(
-  metadata?: Readonly<Record<string, unknown>>
+const DELIVERABLE_TO_EXPORT_LABEL: Partial<
+  Record<DeliverableFormat, ExportFileLabel>
+> = Object.freeze({
+  PDF: "pdf",
+  PPTX: "pptx",
+  DOCX: "docx",
+  HTML: "html",
+  TXT: "txt",
+});
+
+function requestedExportLabels(
+  metadata?: Readonly<Record<string, unknown>>,
+  exportKind?: DocumentExportKind,
+): ExportFileLabel[] | undefined {
+  const spec = readExecutionSpecFromMetadata(metadata);
+  if (!spec) return undefined;
+  const explicit = spec.deliverables
+    .filter((d) => d.provenance.explicit)
+    .map((d) => DELIVERABLE_TO_EXPORT_LABEL[d.format])
+    .filter((label): label is ExportFileLabel => Boolean(label));
+  if (explicit.length === 0) return undefined;
+  if (exportKind === "presentation") {
+    return explicit.filter((l) => l === "pdf" || l === "pptx");
+  }
+  if (exportKind === "document") {
+    return explicit.filter((l) => l === "pdf" || l === "docx");
+  }
+  if (exportKind === "email") {
+    return explicit.filter((l) => l === "html" || l === "txt");
+  }
+  return explicit;
+}
+
+export function resolvePresentationExportOptions(
+  metadata?: Readonly<Record<string, unknown>>,
+  visualDeps?: BestEffortVisualImageDeps
 ): PresentationExportOptions {
   const meta = metadata ?? {};
   const userBrief =
     (typeof meta.userBrief === "string" && meta.userBrief.trim()) ||
     (typeof meta.websiteUserBrief === "string" && meta.websiteUserBrief.trim()) ||
+    (typeof meta.conversationalEffectiveInstruction === "string" &&
+      meta.conversationalEffectiveInstruction.trim()) ||
     "";
   const brandName =
     (typeof meta.brandName === "string" && meta.brandName.trim()) ||
@@ -63,12 +108,35 @@ function resolvePresentationExportOptions(
       }
     }
   };
-  pushColor(meta.learnedBrandColors);
-  pushColor(meta.brandColors);
+  // Prompt/brief colours first so user-mentioned palette wins.
+  if (userBrief) pushColor(extractBriefColors(userBrief));
   pushColor(meta.briefExtractedColors);
+  pushColor(meta.brandColors);
+  pushColor(meta.learnedBrandColors);
+
+  const hexColors = [
+    ...new Set(
+      brandColors
+        .map((c) => namedColorToHex(c) ?? (/^#/.test(c) ? c : null))
+        .filter((c): c is string => Boolean(c))
+    ),
+  ];
+
+  const referenceLogo = extractReferenceLogoFromMetadata(meta);
+  const resolveSlideImage = createSlideImageResolver(
+    visualDeps,
+    hexColors,
+    referenceLogo
+  );
+
   return {
     ...(brandName ? { brandName } : {}),
-    ...(brandColors.length ? { brandColors: [...new Set(brandColors)] } : {}),
+    ...(hexColors.length ? { brandColors: hexColors } : {}),
+    ...(resolveSlideImage
+      ? {
+          resolveSlideImage: async (cue, _slide) => resolveSlideImage(cue),
+        }
+      : {}),
   };
 }
 
@@ -376,26 +444,47 @@ async function ingestPresentationPair(input: {
   readonly modelId: string;
   readonly pdfBuf: Buffer;
   readonly pptxBuf: Buffer;
+  readonly requestedLabels?: readonly ExportFileLabel[];
 }): Promise<
   Result<{
     artifactIds: string[];
-    pdfArtifactId: string;
-    pptxArtifactId: string;
+    pdfArtifactId?: string;
+    pptxArtifactId?: string;
   }>
 > {
+  const labels =
+    input.requestedLabels && input.requestedLabels.length > 0
+      ? input.requestedLabels
+      : (["pdf", "pptx"] as const);
+  const files: Array<{ label: ExportFileLabel; mimeType: string; buffer: Buffer }> =
+    [];
+  if (labels.includes("pdf")) {
+    files.push({ label: "pdf", mimeType: PDF_MIME, buffer: input.pdfBuf });
+  }
+  if (labels.includes("pptx")) {
+    files.push({ label: "pptx", mimeType: PPTX_MIME, buffer: input.pptxBuf });
+  }
+  if (files.length === 0) {
+    return failure(
+      new ValidationError("No requested presentation export formats are supported"),
+    );
+  }
   const result = await ingestExportFiles({
-    ...input,
+    asyncMedia: input.asyncMedia,
+    executionId: input.executionId,
+    organizationId: input.organizationId,
+    createId: input.createId,
+    providerId: input.providerId,
+    modelId: input.modelId,
     exportKind: "presentation",
-    files: [
-      { label: "pdf", mimeType: PDF_MIME, buffer: input.pdfBuf },
-      { label: "pptx", mimeType: PPTX_MIME, buffer: input.pptxBuf },
-    ],
+    files,
   });
   if (!result.ok) return result;
-  if (!result.value.pdfArtifactId || !result.value.pptxArtifactId) {
-    return failure(
-      new ValidationError("Presentation export missing PDF or PPTX artifact")
-    );
+  if (labels.includes("pdf") && !result.value.pdfArtifactId) {
+    return failure(new ValidationError("Presentation export missing requested PDF artifact"));
+  }
+  if (labels.includes("pptx") && !result.value.pptxArtifactId) {
+    return failure(new ValidationError("Presentation export missing requested PPTX artifact"));
   }
   return success({
     artifactIds: result.value.artifactIds,
@@ -413,26 +502,47 @@ async function ingestDocumentPair(input: {
   readonly modelId: string;
   readonly pdfBuf: Buffer;
   readonly docxBuf: Buffer;
+  readonly requestedLabels?: readonly ExportFileLabel[];
 }): Promise<
   Result<{
     artifactIds: string[];
-    pdfArtifactId: string;
-    docxArtifactId: string;
+    pdfArtifactId?: string;
+    docxArtifactId?: string;
   }>
 > {
+  const labels =
+    input.requestedLabels && input.requestedLabels.length > 0
+      ? input.requestedLabels
+      : (["pdf", "docx"] as const);
+  const files: Array<{ label: ExportFileLabel; mimeType: string; buffer: Buffer }> =
+    [];
+  if (labels.includes("pdf")) {
+    files.push({ label: "pdf", mimeType: PDF_MIME, buffer: input.pdfBuf });
+  }
+  if (labels.includes("docx")) {
+    files.push({ label: "docx", mimeType: DOCX_MIME, buffer: input.docxBuf });
+  }
+  if (files.length === 0) {
+    return failure(
+      new ValidationError("No requested document export formats are supported"),
+    );
+  }
   const result = await ingestExportFiles({
-    ...input,
+    asyncMedia: input.asyncMedia,
+    executionId: input.executionId,
+    organizationId: input.organizationId,
+    createId: input.createId,
+    providerId: input.providerId,
+    modelId: input.modelId,
     exportKind: "document",
-    files: [
-      { label: "pdf", mimeType: PDF_MIME, buffer: input.pdfBuf },
-      { label: "docx", mimeType: DOCX_MIME, buffer: input.docxBuf },
-    ],
+    files,
   });
   if (!result.ok) return result;
-  if (!result.value.pdfArtifactId || !result.value.docxArtifactId) {
-    return failure(
-      new ValidationError("Document export missing PDF or DOCX artifact")
-    );
+  if (labels.includes("pdf") && !result.value.pdfArtifactId) {
+    return failure(new ValidationError("Document export missing requested PDF artifact"));
+  }
+  if (labels.includes("docx") && !result.value.docxArtifactId) {
+    return failure(new ValidationError("Document export missing requested DOCX artifact"));
   }
   return success({
     artifactIds: result.value.artifactIds,
@@ -452,6 +562,7 @@ export async function materializeDocumentExports(input: {
   readonly createId: (prefix: string) => string;
   readonly providerId?: string;
   readonly modelId?: string;
+  readonly visualImageDeps?: BestEffortVisualImageDeps;
 }): Promise<
   Result<{
     readonly artifactIds: readonly string[];
@@ -498,6 +609,7 @@ export async function materializeDocumentExports(input: {
 
   const providerId = input.providerId ?? "provider.unagency";
   const modelId = input.modelId ?? "document-export";
+  const requestedLabels = requestedExportLabels(input.metadata, input.exportKind);
 
   if (input.exportKind === "email") {
     const parsed = parseEmailPlan(data);
@@ -553,7 +665,17 @@ export async function materializeDocumentExports(input: {
   }
 
   if (input.exportKind === "presentation") {
-    const exportOptions = resolvePresentationExportOptions(input.metadata);
+    const exportOptions = resolvePresentationExportOptions(
+      input.metadata,
+      input.visualImageDeps
+        ? {
+            ...input.visualImageDeps,
+            organizationId: input.organizationId,
+            executionId: input.executionId,
+            createId: input.createId,
+          }
+        : undefined
+    );
     const routes = parsePresentationRoutes(data);
     if (routes && routes.length > 0) {
       return materializePresentationRoutes({
@@ -585,8 +707,10 @@ export async function materializeDocumentExports(input: {
       modelId,
       pdfBuf,
       pptxBuf,
+      requestedLabels,
     });
     if (!pair.ok) return pair;
+    const producedLabels = requestedLabels ?? (["pdf", "pptx"] as const);
     return success({
       artifactIds: pair.value.artifactIds,
       pdfArtifactId: pair.value.pdfArtifactId,
@@ -595,7 +719,8 @@ export async function materializeDocumentExports(input: {
         ...parsed,
         pdfArtifactId: pair.value.pdfArtifactId,
         pptxArtifactId: pair.value.pptxArtifactId,
-        downloadFormats: ["pdf", "pptx"],
+        downloadFormats: [...producedLabels],
+        producedDeliverableFormats: producedLabels.map((l) => l.toUpperCase()),
       },
     });
   }
@@ -699,8 +824,10 @@ export async function materializeDocumentExports(input: {
     modelId,
     pdfBuf,
     docxBuf,
+    requestedLabels,
   });
   if (!pair.ok) return pair;
+  const producedLabels = requestedLabels ?? (["pdf", "docx"] as const);
   return success({
     artifactIds: pair.value.artifactIds,
     pdfArtifactId: pair.value.pdfArtifactId,
@@ -710,7 +837,8 @@ export async function materializeDocumentExports(input: {
       exportKind: "document",
       pdfArtifactId: pair.value.pdfArtifactId,
       docxArtifactId: pair.value.docxArtifactId,
-      downloadFormats: ["pdf", "docx"],
+      downloadFormats: [...producedLabels],
+      producedDeliverableFormats: producedLabels.map((l) => l.toUpperCase()),
       ...(isBrochure ? { layoutStyle: "brochure" } : {}),
     },
   });

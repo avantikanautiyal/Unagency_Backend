@@ -54,7 +54,11 @@ export class BflImageProtocol implements IVendorImageProtocol {
       ENDPOINT_BY_MODEL[input.wireModelId] ??
       ENDPOINT_BY_MODEL[input.spec.wireModelId] ??
       input.spec.wireModelId;
-    const inputImage = reference?.url ?? undefined;
+    const inputImage =
+      reference?.url ??
+      (reference?.base64
+        ? `data:${reference.mimeType || "image/png"};base64,${reference.base64}`
+        : undefined);
     return {
       request: {
         method: "POST",

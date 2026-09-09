@@ -455,7 +455,18 @@ export class CollaborationOsService {
       input.channelId
     );
     if (member.role === "viewer") {
-      throw new ApiError("Read-only conversation access", 403);
+      // Oversight is provisioned as viewer for read access, but Admin QC must be
+      // able to post deliverables into the client ↔ CS service chat.
+      const sender = await Users.findById(input.userId).select("role").lean();
+      const senderRole = String(sender?.role || "")
+        .toLowerCase()
+        .trim();
+      const isOversight = (OVERSIGHT_ROLES as readonly string[]).includes(
+        senderRole
+      );
+      if (!isOversight) {
+        throw new ApiError("Read-only conversation access", 403);
+      }
     }
 
     if (input.clientMessageId) {

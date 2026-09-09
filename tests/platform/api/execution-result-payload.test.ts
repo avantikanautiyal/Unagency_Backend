@@ -45,4 +45,27 @@ describe("mergeExportArtifactsIntoResult", () => {
     expect(merged.kind).toBe("artifact");
     expect(merged.data).toEqual({ artifactIds: ["art_1"] });
   });
+
+  it("stamps website preview artifact ids from webexport pairs", () => {
+    const merged = mergeExportArtifactsIntoResult({
+      status: "succeeded",
+      result: { kind: "empty" },
+      jobSummary: { success: true },
+      mediaArtifactIds: [
+        "art_webexport0_1_0",
+        "art_webexport0_1_1",
+        "art_webexport2_1_2",
+        "art_webexport2_1_3",
+      ],
+    });
+    expect(merged.kind).toBe("structured");
+    const data = merged.data as Record<string, unknown>;
+    expect(data.exportKind).toBe("website");
+    expect(data.projectArtifactId).toBe("art_webexport0_1_0");
+    expect(data.htmlArtifactId).toBe("art_webexport0_1_1");
+    expect(Array.isArray(data.routes)).toBe(true);
+    expect((data.routes as { projectArtifactId: string }[])[1]?.projectArtifactId).toBe(
+      "art_webexport2_1_2",
+    );
+  });
 });

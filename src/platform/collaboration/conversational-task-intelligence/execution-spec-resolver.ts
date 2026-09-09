@@ -3,15 +3,24 @@
  */
 
 import { resolveServiceOutputSpec } from "../../config/service-output-map";
+import {
+  aspectRatioFromCanvas,
+  resolveProductionInstructBundle,
+  resolveProductionRule,
+} from "../../config/format-production-spec";
+import { appendProductionPromptBlockToText } from "../../config/format-production-spec/apply-production-spec-instruct";
 import type { ConversationalAction } from "./conversational-task-contract";
 import type { ConversationalRequirement } from "./conversational-task-contract";
 import type { SemanticSignals } from "./semantic-signals";
 import {
   defaultDeliverablesForService,
+  deliverableFormatFromExportFormat,
   deliverableToOutputKindOverride,
   resolveDeliverables,
 } from "./deliverable-resolver";
 import type {
+  AuthoritativeLogoCandidate,
+  AuthoritativeLogoSpec,
   CanonicalExecutionSpecification,
   ContentItemSpec,
   DeliverableFormat,
@@ -36,6 +45,11 @@ import {
 } from "./requirement-enforcement";
 import { buildVisualOperationSpec } from "./visual-modification-plan";
 import type { VisualOperationSpec } from "./artifact-reference-input";
+import {
+  buildLogoClarificationQuestion,
+  resolveAuthoritativeLogo,
+  resolveLogoFollowUpFromMessage,
+} from "./authoritative-logo-resolver";
 
 export type ExecutionSpecResolverInput = {
   readonly message: string;
@@ -52,6 +66,12 @@ export type ExecutionSpecResolverInput = {
   readonly priorSpec?: CanonicalExecutionSpecification;
   readonly referencedArtifactId?: string;
   readonly referencedAssetId?: string;
+  /** P4.9.7 — pre-discovered vault logo candidates (tests / client handoff). */
+  readonly vaultLogoCandidates?: readonly AuthoritativeLogoCandidate[];
+  readonly attachmentLogoAssetIds?: readonly string[];
+  readonly vaultLogoChoice?: string;
+  readonly brandName?: string;
+  readonly generateNewLogoRequested?: boolean;
 };
 
 /** Service defaults for multi-direction services (e.g. branding generates 3 directions). */
@@ -134,6 +154,10 @@ function buildExecutionInstruction(spec: CanonicalExecutionSpecification): strin
     );
   }
 
+  if (spec.technical.aspectRatio?.value) {
+    parts.push(`Aspect ratio: ${spec.technical.aspectRatio.value}.`);
+  }
+
   if (spec.technical.pageCount?.value) {
     parts.push(`Page count: ${spec.technical.pageCount.value}.`);
   }
@@ -168,10 +192,19 @@ function buildExecutionInstruction(spec: CanonicalExecutionSpecification): strin
     if (asset.value.required) {
       parts.push(
         asset.value.assetId
-          ? `HARD CONSTRAINT — Use the brand ${asset.value.role} asset (${asset.value.assetId}) exactly as provided.`
-          : `HARD CONSTRAINT — Use the brand ${asset.value.role} from the brand vault exactly as provided.`,
+          ? `HARD CONSTRAINT — Use the brand ${asset.value.role} asset (${asset.value.assetId}) exactly as provided. Do not redraw, approximate, or replace it.`
+          : `HARD CONSTRAINT — Use the brand ${asset.value.role} from the brand vault exactly as provided. Do not redraw, approximate, or replace it.`,
       );
     }
+  }
+
+  const logo = spec.referenceAssets?.logo?.value;
+  if (logo?.mode === "USE_EXISTING" && logo.assetId) {
+    parts.push(
+      `HARD CONSTRAINT — Use authoritative logo asset ${logo.assetId} (${logo.source ?? "brand"}) exactly. Do not generate a replacement logo.`,
+    );
+  } else if (logo?.mode === "GENERATE_IF_ABSENT") {
+    parts.push("No authoritative logo supplied — a new logo may be generated from the brief.");
   }
 
   return parts.join(" ");
@@ -208,10 +241,19 @@ export function resolveExecutionSpecification(
   });
 
   const prior = input.priorSpec;
+  const formatFromState = input.format
+    ? deliverableFormatFromExportFormat(input.format)
+    : undefined;
+  const formatFromSignal =
+    input.signals.isExport && input.signals.exportFormat
+      ? deliverableFormatFromExportFormat(input.signals.exportFormat)
+      : undefined;
   const mergedDeliverables = [
     ...new Set([
       ...(prior?.deliverables.map((d) => d.format) ?? []),
       ...(extracted.deliverables ?? []),
+      ...(formatFromState ? [formatFromState] : []),
+      ...(formatFromSignal ? [formatFromSignal] : []),
     ]),
   ];
   const priorMode = prior?.outputIntent.mode;
@@ -316,6 +358,7 @@ export function resolveExecutionSpecification(
     serviceDefaultFormats: serviceDefaults,
     serviceSpec,
     explicitOnly: requestedDeliverables.length > 0,
+    mergeServiceDefaults: true,
   });
 
   const contentItems: readonly ResolvedField<ContentItemSpec>[] | undefined =
@@ -324,6 +367,36 @@ export function resolveExecutionSpecification(
     );
 
   const ambiguity = detectAmbiguity(mergedExtracted, input.message);
+
+  const priorLogo = prior?.referenceAssets?.logo?.value;
+  const logoFollowUp = resolveLogoFollowUpFromMessage({
+    message: input.message,
+    prior: priorLogo?.mode === "NEEDS_SELECTION" ? priorLogo : undefined,
+  });
+  const generateNewLogoRequested =
+    input.generateNewLogoRequested === true ||
+    logoFollowUp?.mode === "GENERATE_IF_ABSENT" ||
+    /\b(generate|create|make)\s+(?:a\s+)?new\s+logo\b/i.test(input.message);
+
+  const authoritativeLogo: AuthoritativeLogoSpec = logoFollowUp ??
+    resolveAuthoritativeLogo({
+      vaultCandidates: input.vaultLogoCandidates,
+      attachmentLogoAssetIds: [
+        ...(input.attachmentLogoAssetIds ?? []),
+        ...(input.referencedAssetId ? [input.referencedAssetId] : []),
+      ],
+      vaultLogoChoice: input.vaultLogoChoice,
+      generateNewRequested: generateNewLogoRequested,
+      prior: priorLogo,
+    });
+
+  const logoClarification =
+    authoritativeLogo.mode === "NEEDS_SELECTION" && authoritativeLogo.candidates?.length
+      ? buildLogoClarificationQuestion(
+          authoritativeLogo.candidates,
+          input.brandName ?? input.brand,
+        )
+      : undefined;
 
   const operationSpec: VisualOperationSpec | undefined =
     buildVisualOperationSpec({
@@ -338,9 +411,48 @@ export function resolveExecutionSpecification(
     deliverableResult.resolutionState === "UNSUPPORTED_DELIVERABLE" &&
     requestedDeliverables.length > 0
       ? "UNSUPPORTED_DELIVERABLE"
-      : ambiguity
+      : logoClarification || ambiguity
         ? "CLARIFICATION_REQUIRED"
-        : "RESOLVED";
+        : authoritativeLogo.mode === "NEEDS_SELECTION"
+          ? "CLARIFICATION_REQUIRED"
+          : "RESOLVED";
+
+  const brandAssetRequirements = [
+    ...(prior?.brandAssets?.requirements ?? []),
+    ...(mergedExtracted.brandAssetRequired
+      ? [
+          explicitField(
+            Object.freeze({
+              role: "logo" as const,
+              required: true,
+              ...(authoritativeLogo.mode === "USE_EXISTING" && authoritativeLogo.assetId
+                ? {
+                    assetId: authoritativeLogo.assetId,
+                    source: "EXPLICIT_USER" as const,
+                  }
+                : {}),
+            }),
+            "EXPLICIT_USER",
+          ),
+        ]
+      : []),
+  ];
+
+  // Format & Production Spec — seed canvas when user/prior did not specify dimensions.
+  const productionResolved = resolveProductionRule({
+    service: input.service,
+    subtype: input.subtype,
+    platform: input.platform,
+    formatId: input.format,
+  });
+  const productionCanvas =
+    productionResolved?.rule.canvas?.unit === "px"
+      ? productionResolved.rule.canvas
+      : undefined;
+  const productionAspect =
+    productionCanvas != null
+      ? aspectRatioFromCanvas(productionCanvas.width, productionCanvas.height)
+      : undefined;
 
   const spec: CanonicalExecutionSpecification = Object.freeze({
     planeVersion: EXECUTION_RESOLUTION_PLANE_VERSION,
@@ -389,35 +501,40 @@ export function resolveExecutionSpecification(
       ),
     }),
     brandAssets:
-      mergedExtracted.brandAssetRequired || prior?.brandAssets?.requirements?.length
+      brandAssetRequirements.length
         ? Object.freeze({
-            requirements: Object.freeze([
-              ...(prior?.brandAssets?.requirements ?? []),
-              ...(mergedExtracted.brandAssetRequired
-                ? [
-                    explicitField(
-                      Object.freeze({
-                        role: "logo" as const,
-                        required: true,
-                      }),
-                      "EXPLICIT_USER",
-                    ),
-                  ]
-                : []),
-            ]),
+            requirements: Object.freeze(brandAssetRequirements),
           })
         : undefined,
+    referenceAssets: Object.freeze({
+      logo: explicitField(authoritativeLogo, "EXPLICIT_USER"),
+    }),
     technical: Object.freeze({
       width: mergedExtracted.width
         ? explicitField(mergedExtracted.width, "EXPLICIT_USER")
-        : undefined,
+        : productionCanvas
+          ? defaultField(productionCanvas.width, "DEFAULT")
+          : undefined,
       height: mergedExtracted.height
         ? explicitField(mergedExtracted.height, "EXPLICIT_USER")
-        : undefined,
+        : productionCanvas
+          ? defaultField(productionCanvas.height, "DEFAULT")
+          : undefined,
+      aspectRatio: productionAspect
+        ? mergedExtracted.width && mergedExtracted.height
+          ? explicitField(
+              aspectRatioFromCanvas(mergedExtracted.width, mergedExtracted.height),
+              "EXPLICIT_USER",
+            )
+          : defaultField(productionAspect, "DEFAULT")
+        : prior?.technical.aspectRatio,
       pageCount: mergedExtracted.pageCount
         ? explicitField(mergedExtracted.pageCount, "EXPLICIT_USER")
         : undefined,
       platform: input.platform ? explicitField(input.platform, "SYSTEM") : undefined,
+      resolution: productionResolved?.rule.colour
+        ? defaultField(productionResolved.rule.colour, "DEFAULT")
+        : prior?.technical.resolution,
     }),
     deliverables: deliverableResult.deliverables,
     outputIntent: Object.freeze({
@@ -438,7 +555,7 @@ export function resolveExecutionSpecification(
         : undefined,
     }),
     resolutionState,
-    clarificationQuestion: ambiguity,
+    clarificationQuestion: logoClarification ?? ambiguity,
     unsupportedDeliverables:
       deliverableResult.unsupported.length > 0
         ? deliverableResult.unsupported
@@ -449,7 +566,17 @@ export function resolveExecutionSpecification(
 
   const withInstruction = Object.freeze({
     ...spec,
-    executionInstruction: buildExecutionInstruction(spec),
+    executionInstruction: (() => {
+      const base = buildExecutionInstruction(spec);
+      const instruct = resolveProductionInstructBundle({
+        service: input.service,
+        subtype: input.subtype,
+        platform: input.platform,
+        formatId: input.format,
+      });
+      if (!instruct) return base;
+      return appendProductionPromptBlockToText(base, instruct.promptBlock.text);
+    })(),
   });
 
   return withInstruction;
@@ -457,8 +584,11 @@ export function resolveExecutionSpecification(
 
 export function executionSpecOutputKindOverride(
   spec: CanonicalExecutionSpecification,
+  options?: { readonly service?: string },
 ): string | undefined {
-  return deliverableToOutputKindOverride(spec.deliverables);
+  return deliverableToOutputKindOverride(spec.deliverables, {
+    service: spec.task.service?.value ?? options?.service,
+  });
 }
 
 export function executionSpecRequiresPresentationExpand(

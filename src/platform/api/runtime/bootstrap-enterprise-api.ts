@@ -85,6 +85,14 @@ export function bootstrapEnterpriseApiRuntime(
     executionMode,
     merged.enableFirebaseBridge === true
   );
+
+  // Best-effort: register vision auditor in non-LIVE too when key present.
+  void import("../../config/format-production-spec")
+    .then(({ registerOpenAiVisualFieldGuideJudgeRunner }) => {
+      registerOpenAiVisualFieldGuideJudgeRunner();
+    })
+    .catch(() => undefined);
+
   return runtimeInstance;
 }
 
@@ -160,6 +168,30 @@ export async function bootstrapEnterpriseApiRuntimeAsync(
     merged.enableFirebaseBridge === true,
     configuredProviders
   );
+
+  // Phase 6 — register Visual Field Guide vision auditor when OpenAI key is present.
+  try {
+    const { registerOpenAiVisualFieldGuideJudgeRunner } = await import(
+      "../../config/format-production-spec"
+    );
+    const registered = registerOpenAiVisualFieldGuideJudgeRunner();
+    if (registered) {
+      console.log(
+        "🎨 [Visual Field Guide] OpenAI vision auditor registered (VISUAL_FIELD_GUIDE_VISION rollout applies)"
+      );
+    } else {
+      console.log(
+        "🎨 [Visual Field Guide] Vision auditor skipped (no OPENAI_API_KEY) — measured evidence only"
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `🎨 [Visual Field Guide] Vision auditor registration failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+
   return runtimeInstance;
 }
 

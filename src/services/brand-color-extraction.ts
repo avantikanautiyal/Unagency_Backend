@@ -1,6 +1,8 @@
 /**
- * Multilingual brand colour extraction — regex tier (fast, no model call).
- * Normalizes tokens to English colour names or hex for prompts and storage.
+ * Brand colour helpers.
+ * Mechanical: hex extraction / merge / normalize.
+ * Alias tables remain for heuristic fallback when LLM extract is unavailable —
+ * production semantic understanding is LLM-primary (`brand-brief-llm-extractor`).
  */
 
 /** Canonical English token → multilingual surface forms (Latin + Devanagari where common). */
@@ -79,6 +81,11 @@ function aliasToCanonical(token: string): string | undefined {
   return undefined;
 }
 
+/** True when a token is a known colour name (not a brand subject by default). */
+export function isKnownColorSurfaceForm(token: string): boolean {
+  return aliasToCanonical(token) !== undefined;
+}
+
 function scanTextForColorTokens(scan: string): string[] {
   const found: string[] = [];
   const lower = scan.toLowerCase();
@@ -101,17 +108,32 @@ function scanTextForColorTokens(scan: string): string[] {
 }
 
 /**
- * Extract colour tokens from free text (hex + multilingual names).
+ * Extract hex colour codes only — mechanical, language-agnostic.
+ */
+export function extractHexColors(text: string | null | undefined): string[] {
+  const raw = (text ?? "").trim();
+  if (!raw) return [];
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const m of raw.matchAll(/#([0-9a-fA-F]{3,6})\b/g)) {
+    const hex = `#${m[1]!.toLowerCase()}`;
+    if (seen.has(hex)) continue;
+    seen.add(hex);
+    found.push(hex);
+  }
+  return found.slice(0, 10);
+}
+
+/**
+ * Extract colour tokens from free text (hex + multilingual name aliases).
+ * Heuristic fallback when LLM extract is unavailable — prefer LLM for semantics.
  * Returns canonical English names and hex codes for downstream prompts.
  */
 export function extractBriefColors(text: string | null | undefined): string[] {
   const raw = (text ?? "").trim();
   if (!raw) return [];
 
-  const found: string[] = [];
-  for (const m of raw.matchAll(/#([0-9a-fA-F]{3,6})\b/g)) {
-    found.push(`#${m[1]!.toLowerCase()}`);
-  }
+  const found: string[] = [...extractHexColors(raw)];
 
   const listMatch = raw.match(
     /(?:brand\s+)?(?:colou?rs?|palette|scheme|theme|rang(?:o?n)?|colores?|paleta)\s*[:\-–,=]*\s*(?:being|are|is|hon|son|es|être)?\s*([^.!?\n]{2,160})/iu

@@ -5,10 +5,23 @@
 import { failure, success, type Result } from "../../../core/result";
 import { ProviderError } from "../../../core/errors";
 
+export interface ImageHttpFormFile {
+  readonly fieldName: string;
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly base64: string;
+}
+
+export interface ImageHttpForm {
+  readonly fields: Readonly<Record<string, string>>;
+  readonly files?: readonly ImageHttpFormFile[];
+}
+
 export interface ImageHttpRequest {
   readonly method: "GET" | "POST";
   readonly path: string;
   readonly body?: Readonly<Record<string, unknown>>;
+  readonly form?: ImageHttpForm;
   readonly headers?: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
 }
@@ -37,8 +50,18 @@ export class FetchImageHttpClient implements IImageHttpClient {
     const headers: Record<string, string> = {
       ...(request.headers ?? {}),
     };
-    if (!headers["Content-Type"] && !headers["content-type"] && request.body) {
+    const usingForm = Boolean(request.form);
+    if (
+      !usingForm &&
+      !headers["Content-Type"] &&
+      !headers["content-type"] &&
+      request.body
+    ) {
       headers["Content-Type"] = "application/json";
+    }
+    if (usingForm) {
+      delete headers["Content-Type"];
+      delete headers["content-type"];
     }
 
     const start = this.clockMs();
@@ -47,10 +70,29 @@ export class FetchImageHttpClient implements IImageHttpClient {
       const timeout = request.timeoutMs ?? 180_000;
       const timer = setTimeout(() => controller.abort(), timeout);
 
+      let fetchBody: BodyInit | undefined;
+      if (request.form) {
+        const form = new FormData();
+        for (const [key, value] of Object.entries(request.form.fields)) {
+          form.append(key, value);
+        }
+        for (const file of request.form.files ?? []) {
+          const bytes = Buffer.from(file.base64, "base64");
+          form.append(
+            file.fieldName,
+            new Blob([new Uint8Array(bytes)], { type: file.mimeType }),
+            file.filename,
+          );
+        }
+        fetchBody = form;
+      } else if (request.body) {
+        fetchBody = JSON.stringify(request.body);
+      }
+
       const res = await fetch(url, {
         method: request.method,
         headers,
-        body: request.body ? JSON.stringify(request.body) : undefined,
+        body: fetchBody,
         signal: controller.signal,
       });
       clearTimeout(timer);

@@ -6,6 +6,7 @@
 import type { CanonicalExecutionSpecification } from "./execution-specification";
 import { constraintObservabilitySummary } from "./requirement-enforcement";
 import { EXECUTION_RESOLUTION_PLANE_VERSION } from "./execution-specification";
+import { applyProductionSpecInstructToMetadata } from "../../config/format-production-spec";
 
 export type ExecutionSpecSnapshot = {
   readonly snapshotId: string;
@@ -81,7 +82,7 @@ export function stampExecutionSpecMetadata(
     nowIso: input.nowIso?.(),
     createId: input.createId,
   });
-  return Object.freeze({
+  const base = Object.freeze({
     ...metadata,
     executionSpecSnapshot: snapshot,
     executionSpecPlaneVersion: input.spec.planeVersion,
@@ -97,7 +98,23 @@ export function stampExecutionSpecMetadata(
       input.spec.creative.negativeConstraints?.filter(
         (c) => c.value.enforcement === "HARD_CONSTRAINT",
       ).length ?? 0,
+    // Prefer Spec keys from the resolved instruction over stale client format.
+    ...(input.spec.task.service?.value
+      ? { service: input.spec.task.service.value }
+      : {}),
+    ...(input.spec.task.subtype?.value
+      ? { subtype: input.spec.task.subtype.value }
+      : {}),
+    ...(input.spec.technical.platform?.value
+      ? { platform: input.spec.technical.platform.value }
+      : {}),
   });
+
+  const { metadata: withProduction } = applyProductionSpecInstructToMetadata(
+    base,
+    { boundAt: input.nowIso?.() ?? new Date().toISOString() },
+  );
+  return Object.freeze(withProduction);
 }
 
 export function executionSpecObservabilitySummary(

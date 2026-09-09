@@ -36,6 +36,8 @@ export interface DeliveryReceipt {
   readonly failureReason?: string;
   readonly idempotencyKey: string;
   readonly approvalReference?: string;
+  /** Spec filename convention suggestion for package/export clients. */
+  readonly suggestedFilename?: string;
 }
 
 export interface DeliveryAuthorizationResult {
@@ -55,5 +57,7 @@ export interface IDeliveryAdapter {
     readonly preview?: string;
     readonly checksum?: string;
     readonly idempotencyKey: string;
+    /** Spec export filename suggestion (Phase 4 surfaces). */
+    readonly suggestedFilename?: string;
   }): Promise<{ readonly externalReference: string; readonly ok: boolean; readonly error?: string }>;
 }

@@ -30,7 +30,7 @@ import {
   isDemoTitle,
   loadAdminDemoExclusions,
 } from "./admin-demo-filter";
-import { sumLedgerAiCostUsd } from "./admin-ai-cost-ledger";
+import { sumLedgerAiCostByMonth, sumLedgerAiCostUsd } from "./admin-ai-cost-ledger";
 
 export type RouteBucket = "ai" | "hybrid" | "human";
 
@@ -1125,6 +1125,18 @@ async function aggregateRevenue(
     invoiceQuery.customerId = { $in: customerIds };
   }
 
+  // Prefer DB-side date window; still tolerate paymentDate/createdAt variance in JS.
+  invoiceQuery.$or = [
+    { paymentDate: { $gte: range.start, $lte: range.end } },
+    {
+      paymentDate: { $exists: false },
+      createdAt: { $gte: range.start, $lte: range.end },
+    },
+    {
+      paymentDate: null,
+      createdAt: { $gte: range.start, $lte: range.end },
+    },
+  ];
   const invoices = await Invoices.find(invoiceQuery).lean();
   for (const inv of invoices) {
     const paidAt = inv.paymentDate ? new Date(inv.paymentDate) : null;
@@ -1556,15 +1568,29 @@ function buildStatusBreakdown(
   executions: Awaited<ReturnType<typeof loadExecutions>>,
   tasks: HumanTaskRow[]
 ): StatusBreakdownItem[] {
-  const counts = { completed: 0, inProgress: 0, pending: 0, escalated: 0 };
+  const counts = { completed: 0, inProgress: 0, pending: 0, escalated: 0, failed: 0 };
 
   for (const { exec } of executions) {
     const status = String(exec.status ?? "").toLowerCase();
-    if (status.includes("fail") || status.includes("cancel") || status.includes("error")) {
+    // Failed/cancelled executions are terminal outcomes — not escalations.
+    if (
+      status.includes("fail") ||
+      status.includes("cancel") ||
+      status.includes("error") ||
+      status.includes("timeout") ||
+      status.includes("dead")
+    ) {
+      counts.failed += 1;
+    } else if (status.includes("escalat") || status.includes("block")) {
       counts.escalated += 1;
     } else if (status.includes("complete") || status.includes("succeed")) {
       counts.completed += 1;
-    } else if (status.includes("review") || status.includes("pending")) {
+    } else if (
+      status.includes("review") ||
+      status.includes("pending") ||
+      status.includes("awaiting") ||
+      status.includes("approval")
+    ) {
       counts.pending += 1;
     } else {
       counts.inProgress += 1;
@@ -1573,11 +1599,19 @@ function buildStatusBreakdown(
 
   for (const task of tasks) {
     const status = String(task.status ?? "").toLowerCase();
-    if (status.includes("approved") || status.includes("complete")) {
+    if (status.includes("escalat") || status.includes("block") || status.includes("hold")) {
+      counts.escalated += 1;
+    } else if (status.includes("approved") || status.includes("complete") || status.includes("done")) {
       counts.completed += 1;
-    } else if (status.includes("feedback") || status.includes("submitted") || status.includes("revision")) {
-      counts.pending += 1;
-    } else if (status.includes("todo")) {
+    } else if (
+      status.includes("feedback") ||
+      status.includes("submitted") ||
+      status.includes("revision") ||
+      status.includes("review") ||
+      status.includes("pending") ||
+      status.includes("todo") ||
+      status.includes("qc")
+    ) {
       counts.pending += 1;
     } else {
       counts.inProgress += 1;
@@ -1589,6 +1623,7 @@ function buildStatusBreakdown(
     { label: "In Progress", value: counts.inProgress, color: "#ff0056" },
     { label: "Pending Review", value: counts.pending, color: "#f59e0b" },
     { label: "Escalated", value: counts.escalated, color: "#ef4444" },
+    { label: "Failed", value: counts.failed, color: "#64748b" },
   ];
 }
 
@@ -1669,18 +1704,11 @@ export async function buildAdminBillingSummary(
   const revenue = revenueResult.total;
   const profit = revenue - totalCost;
 
-  const aiCostByMonth = new Map<string, number>();
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = monthStartBillingTz(new Date(now.getFullYear(), now.getMonth() - i, 1));
-    const key = monthKeyBillingTz(d);
-    const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1, 0, 0, 0, 0));
-    const monthLedger = await sumLedgerAiCostUsd({
-      organizationId: filter.crossTenant ? undefined : filter.organizationId,
-      start: d,
-      end: monthEnd,
-    });
-    aiCostByMonth.set(key, monthLedger.aiCostUsd);
-  }
+  const aiCostByMonth = await sumLedgerAiCostByMonth({
+    start: trendStart,
+    end: now,
+    organizationId: filter.crossTenant ? undefined : filter.organizationId,
+  });
 
   const humanCostByMonth = bucketHumanCostByMonth(yearTasksResult.tasks, trendStart);
 
@@ -1734,6 +1762,8 @@ export async function buildAdminAnalyticsSummary(
 ): Promise<AdminAnalyticsSummary> {
   const cacheKey = adminCacheKey({
     scope: "analytics",
+    // bump when status-breakdown classification rules change
+    v: 2,
     crossTenant: filter.crossTenant,
     organizationId: filter.organizationId ?? "",
     period: filter.period ?? "mtd",

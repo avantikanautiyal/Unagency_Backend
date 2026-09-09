@@ -18,6 +18,7 @@ export class ExportDeliveryAdapter implements IDeliveryAdapter {
     readonly preview?: string;
     readonly checksum?: string;
     readonly idempotencyKey: string;
+    readonly suggestedFilename?: string;
   }): Promise<{
     readonly externalReference: string;
     readonly ok: boolean;
@@ -27,7 +28,10 @@ export class ExportDeliveryAdapter implements IDeliveryAdapter {
     if (existing) {
       return { externalReference: existing, ok: true };
     }
-    const ref = `export://${input.organizationId}/${input.artifactId}/v${input.artifactVersion}/${input.checksum ?? "na"}`;
+    const fileSeg = input.suggestedFilename
+      ? encodeURIComponent(input.suggestedFilename)
+      : "na";
+    const ref = `export://${input.organizationId}/${input.artifactId}/v${input.artifactVersion}/${input.checksum ?? "na"}/${fileSeg}`;
     this.delivered.set(input.idempotencyKey, ref);
     return { externalReference: ref, ok: true };
   }

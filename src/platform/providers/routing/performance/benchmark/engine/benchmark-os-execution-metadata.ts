@@ -5,6 +5,7 @@
 import { applyDirectPassthroughMetadata } from "../../../../../api/services/execution-thin-path";
 import { stampDocumentCreateMetadata } from "../../../../../direct/document-direct-metadata";
 import { stampPresentationCreateMetadata } from "../../../../../direct/presentation-direct-metadata";
+import { stampEmailCreateMetadata } from "../../../../../direct/email-direct-metadata";
 import { WEBSITE_ROUTES_STRUCTURED_SCHEMA } from "../../../../../os/delivery/website-generation";
 import { BENCHMARK_EXECUTION_MODE } from "../contracts/benchmark-execution-config";
 import type { BenchmarkCase, BenchmarkModelTarget, BenchmarkStrategy } from "../contracts/benchmark-case";
@@ -55,6 +56,7 @@ export function buildBenchmarkOsMetadata(input: {
 
   meta = stampPresentationCreateMetadata(meta);
   meta = stampDocumentCreateMetadata(meta);
+  meta = stampEmailCreateMetadata(meta);
   meta = applyDirectPassthroughMetadata(meta);
 
   return meta;
@@ -62,7 +64,12 @@ export function buildBenchmarkOsMetadata(input: {
 
 export function benchmarkCaseUsesOsArtifactPipeline(benchmarkCase: BenchmarkCase): boolean {
   const kind = benchmarkCase.outputKind.toLowerCase();
-  if (kind === "deferred_website" || kind === "presentation" || kind === "document") {
+  if (
+    kind === "deferred_website" ||
+    kind === "presentation" ||
+    kind === "document" ||
+    kind === "email"
+  ) {
     return true;
   }
   if (

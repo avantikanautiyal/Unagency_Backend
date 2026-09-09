@@ -1,6 +1,7 @@
 /**
- * LLM fallback for brand fact extraction when regex misses multilingual / informal phrasing.
- * Best-effort — never throws; returns {} on failure.
+ * LLM-primary brand fact extraction from free-text briefs (multilingual).
+ * Regex is mechanical only: hex colours + merge/normalize. Semantic fields come from LLM.
+ * Fallback to English heuristics when LLM is off or unavailable.
  */
 
 import type { IDirectExecutionEngine } from "../platform/direct/contracts";
@@ -12,8 +13,7 @@ import { normalizeSchemaForOpenAiStrict } from "../platform/providers/tools/stru
 import { applyDirectPassthroughMetadata } from "../platform/api/services/execution-thin-path";
 import type { ProductBrandPreferences } from "./brand-preference-writer";
 import {
-  briefLikelyMentionsColors,
-  extractBriefColors,
+  extractHexColors,
   mergeColorLists,
 } from "./brand-color-extraction";
 import { extractBrandPreferencesFromPrompt } from "./brand-brief-extractor";
@@ -33,12 +33,40 @@ const BRAND_EXTRACT_SCHEMA = normalizeSchemaForOpenAiStrict({
       type: "array",
       items: { type: "string" },
     },
+    avoidList: {
+      type: "array",
+      items: { type: "string" },
+    },
+    typography: {
+      type: "array",
+      items: { type: "string" },
+    },
+    styleNotes: {
+      type: "array",
+      items: { type: "string" },
+    },
     industry: { type: "string" },
     targetAudience: { type: "string" },
     positioning: { type: "string" },
     brandSummary: { type: "string" },
+    brandName: { type: "string" },
+    photographyStyle: { type: "string" },
+    illustrationStyle: { type: "string" },
   },
-  required: ["colors", "toneAdjectives", "industry", "targetAudience", "positioning", "brandSummary"],
+  required: [
+    "colors",
+    "toneAdjectives",
+    "avoidList",
+    "typography",
+    "styleNotes",
+    "industry",
+    "targetAudience",
+    "positioning",
+    "brandSummary",
+    "brandName",
+    "photographyStyle",
+    "illustrationStyle",
+  ],
   additionalProperties: false,
 });
 
@@ -55,7 +83,8 @@ export function resolveBrandLlmExtractRollout(
 ): BrandLlmExtractRollout {
   const raw = env.BRAND_EXTRACT_LLM?.trim().toLowerCase();
   if (raw === "off" || raw === "auto" || raw === "on") return raw;
-  return "auto";
+  // Default on: LLM owns semantic brand understanding; regex is mechanical/fallback.
+  return "on";
 }
 
 function extractStructured(
@@ -83,28 +112,33 @@ function extractStructured(
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 10);
+  return value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter((v) => v.length >= 1 && v.length <= 80)
+    .slice(0, 20);
 }
 
 function toOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const t = value.trim();
-  return t.length >= 2 ? t.slice(0, 220) : undefined;
+  return t.length >= 2 && t.length <= 400 ? t : undefined;
 }
 
-function mapLlmToPreferences(parsed: Record<string, unknown>): ProductBrandPreferences {
-  const out: {
-    colors?: string[];
-    toneAdjectives?: string[];
-    industry?: string;
-    targetAudience?: string;
-    positioning?: string;
-    brandSummary?: string;
-  } = {};
+function mapLlmToPreferences(
+  parsed: Record<string, unknown>
+): ProductBrandPreferences {
+  const out: ProductBrandPreferences = {};
   const colors = toStringArray(parsed.colors);
   if (colors.length) out.colors = colors;
   const tone = toStringArray(parsed.toneAdjectives);
   if (tone.length) out.toneAdjectives = tone;
+  const avoid = toStringArray(parsed.avoidList);
+  if (avoid.length) out.avoidList = avoid;
+  const typography = toStringArray(parsed.typography);
+  if (typography.length) out.typography = typography;
+  const styleNotes = toStringArray(parsed.styleNotes);
+  if (styleNotes.length) out.styleNotes = styleNotes;
   const industry = toOptionalString(parsed.industry);
   if (industry) out.industry = industry;
   const audience = toOptionalString(parsed.targetAudience);
@@ -113,20 +147,35 @@ function mapLlmToPreferences(parsed: Record<string, unknown>): ProductBrandPrefe
   if (positioning) out.positioning = positioning;
   const summary = toOptionalString(parsed.brandSummary);
   if (summary) out.brandSummary = summary;
+  const brandName = toOptionalString(parsed.brandName);
+  if (brandName) out.brandName = brandName;
+  const photo = toOptionalString(parsed.photographyStyle);
+  if (photo) out.photographyStyle = photo;
+  const illustration = toOptionalString(parsed.illustrationStyle);
+  if (illustration) out.illustrationStyle = illustration;
   return out;
+}
+
+function prefsHaveSemanticFacts(prefs: ProductBrandPreferences): boolean {
+  return Object.entries(prefs).some(([key, v]) => {
+    if (key === "colors") return false; // hex-only does not count as semantic success alone
+    return Array.isArray(v) ? v.length > 0 : typeof v === "string" && v.trim().length > 0;
+  });
 }
 
 function shouldRunLlm(input: {
   readonly prompt: string;
   readonly rollout: BrandLlmExtractRollout;
-  readonly regexPrefs: ProductBrandPreferences;
 }): boolean {
   if (input.rollout === "off") return false;
-  if (input.rollout === "on") return input.prompt.trim().length >= 8;
-  const regexColors = extractBriefColors(input.prompt);
-  if (regexColors.length > 0) return false;
-  if ((input.regexPrefs.colors?.length ?? 0) > 0) return false;
-  return briefLikelyMentionsColors(input.prompt);
+  return input.prompt.trim().length >= 8;
+}
+
+/** Mechanical: hex codes only — no language understanding. */
+export function extractMechanicalBrandColors(
+  prompt: string
+): readonly string[] {
+  return extractHexColors(prompt);
 }
 
 export async function extractBrandPreferencesWithLlm(input: {
@@ -140,27 +189,31 @@ export async function extractBrandPreferencesWithLlm(input: {
   if (!prompt) return {};
 
   const rollout = input.rollout ?? resolveBrandLlmExtractRollout();
-  const regexPrefs = extractBrandPreferencesFromPrompt(prompt);
-  if (!shouldRunLlm({ prompt, rollout, regexPrefs })) {
+  if (!shouldRunLlm({ prompt, rollout })) {
     return {};
   }
 
   const id = input.createId ?? ((p: string) => `${p}_${Date.now()}`);
   const llmPrompt = [
     "Extract brand facts from the user brief below.",
-    "The brief may be in any language (English, Hindi, Spanish, Hinglish, etc.).",
+    "The brief may be in any language (English, Hindi, Spanish, Hinglish, Arabic, etc.) or mixed languages.",
+    "Interpret meaning — do not require English keywords.",
     "Return JSON only.",
     "",
     "Rules for colors:",
     "- List every explicit brand colour mentioned (names or hex).",
     "- Normalize colour names to simple English tokens (red, navy, gold) or hex (#RRGGBB).",
-    "- Include colours even when phrased informally or in non-English.",
-    "- If no colours are mentioned, return an empty colors array.",
+    "- Include colours even when phrased informally or in non-English (e.g. laal, लाल, rojo).",
+    "- If no colours are stated but a brand name + category/product is clear, infer 2–4 fitting palette tokens (names or hex) from the brand personality — mark them as inferred in brandSummary if needed.",
+    "- If nothing can be inferred, return an empty colors array.",
     "",
     "Rules for other fields:",
+    "- brandName: extract the product/company/brand name if present, else empty string.",
     "- toneAdjectives: brand tone/personality words if present, else [].",
-    "- industry, targetAudience, positioning, brandSummary: extract if stated, else empty string.",
-    "- Do not invent facts not supported by the brief.",
+    "- avoidList: words/themes to avoid if stated, else [].",
+    "- typography / styleNotes: if stated, else [].",
+    "- industry, targetAudience, positioning, brandSummary, photographyStyle, illustrationStyle: extract if stated, else empty string.",
+    "- Do not invent unrelated brand names.",
     "",
     `Brief:\n${prompt.slice(0, 4000)}`,
   ].join("\n");
@@ -209,7 +262,9 @@ export async function extractBrandPreferencesWithLlm(input: {
   return {};
 }
 
-/** Regex first, optional LLM merge — used by create prepass and learn paths. */
+/**
+ * LLM-primary brand understanding; hex regex always merged; English heuristic only if LLM empty.
+ */
 export async function enrichBrandPreferencesFromBrief(input: {
   readonly prompt: string;
   readonly prompts?: readonly string[];
@@ -223,26 +278,9 @@ export async function enrichBrandPreferencesFromBrief(input: {
     ...(input.prompt.trim() ? [input.prompt.trim()] : []),
   ];
   const mergedText = parts.join("\n");
-  const regexPrefs =
-    parts.length > 1
-      ? parts.reduce(
-          (acc, p) => {
-            const row = extractBrandPreferencesFromPrompt(p);
-            return {
-              ...acc,
-              colors: mergeColorLists(acc.colors, row.colors),
-              toneAdjectives: [
-                ...new Set([...(acc.toneAdjectives ?? []), ...(row.toneAdjectives ?? [])]),
-              ],
-              industry: acc.industry ?? row.industry,
-              targetAudience: acc.targetAudience ?? row.targetAudience,
-              positioning: acc.positioning ?? row.positioning,
-              brandSummary: acc.brandSummary ?? row.brandSummary,
-            };
-          },
-          {} as ProductBrandPreferences
-        )
-      : extractBrandPreferencesFromPrompt(mergedText);
+  if (!mergedText) return { extractionSource: "none" };
+
+  const hexColors = extractMechanicalBrandColors(mergedText);
 
   let llmPrefs: ProductBrandPreferences = {};
   if (input.integration && input.organizationId?.trim()) {
@@ -255,32 +293,61 @@ export async function enrichBrandPreferencesFromBrief(input: {
     });
   }
 
-  const colors = mergeColorLists(regexPrefs.colors, llmPrefs.colors);
-  const toneAdjectives = [
-    ...new Set([
-      ...(regexPrefs.toneAdjectives ?? []),
-      ...(llmPrefs.toneAdjectives ?? []),
-    ]),
-  ];
-
-  const out: EnrichedBrandPreferences = {
-    ...regexPrefs,
-    ...(colors.length ? { colors } : {}),
-    ...(toneAdjectives.length ? { toneAdjectives } : {}),
-    industry: regexPrefs.industry ?? llmPrefs.industry,
-    targetAudience: regexPrefs.targetAudience ?? llmPrefs.targetAudience,
-    positioning: regexPrefs.positioning ?? llmPrefs.positioning,
-    brandSummary: regexPrefs.brandSummary ?? llmPrefs.brandSummary,
-  };
-
   const usedLlm = Object.values(llmPrefs).some((v) =>
     Array.isArray(v) ? v.length > 0 : typeof v === "string" && v.trim()
   );
-  out.extractionSource = usedLlm
-    ? colors.length && (regexPrefs.colors?.length ?? 0) > 0
-      ? "regex+llm"
-      : "llm"
-    : "regex";
+
+  // Heuristic fallback only when LLM produced nothing (offline / off / failure).
+  const heuristicPrefs =
+    !usedLlm
+      ? parts.length > 1
+        ? parts.reduce(
+            (acc, p) => {
+              const row = extractBrandPreferencesFromPrompt(p);
+              return {
+                ...acc,
+                colors: mergeColorLists(acc.colors, row.colors),
+                toneAdjectives: [
+                  ...new Set([
+                    ...(acc.toneAdjectives ?? []),
+                    ...(row.toneAdjectives ?? []),
+                  ]),
+                ],
+                industry: acc.industry ?? row.industry,
+                targetAudience: acc.targetAudience ?? row.targetAudience,
+                positioning: acc.positioning ?? row.positioning,
+                brandSummary: acc.brandSummary ?? row.brandSummary,
+                avoidList: [
+                  ...new Set([...(acc.avoidList ?? []), ...(row.avoidList ?? [])]),
+                ],
+                typography: [
+                  ...new Set([...(acc.typography ?? []), ...(row.typography ?? [])]),
+                ],
+                styleNotes: [
+                  ...new Set([...(acc.styleNotes ?? []), ...(row.styleNotes ?? [])]),
+                ],
+              };
+            },
+            {} as ProductBrandPreferences
+          )
+        : extractBrandPreferencesFromPrompt(mergedText)
+      : {};
+
+  const base = usedLlm ? llmPrefs : heuristicPrefs;
+  const colors = mergeColorLists(hexColors, base.colors);
+
+  const out: EnrichedBrandPreferences = {
+    ...base,
+    ...(colors.length ? { colors } : {}),
+  };
+
+  if (usedLlm) {
+    out.extractionSource = hexColors.length ? "llm+hex" : "llm";
+  } else if (prefsHaveSemanticFacts(out) || (out.colors?.length ?? 0) > 0) {
+    out.extractionSource = "heuristic_fallback";
+  } else {
+    out.extractionSource = "none";
+  }
 
   return out;
 }

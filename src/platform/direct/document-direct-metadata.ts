@@ -3,6 +3,7 @@
  */
 
 import { DOCUMENT_PLAN_STRUCTURED_SCHEMA } from "../os/delivery/document-schemas";
+import { shouldOmitCdfStructuredStamp } from "../cdf/phase-scoped-create";
 
 function structuredNameFrom(meta: Readonly<Record<string, unknown>>): string {
   const so = meta.structuredOutput;
@@ -60,6 +61,7 @@ export function stampDocumentCreateMetadata(
 ): Record<string, unknown> {
   const meta: Record<string, unknown> = { ...(metadata ?? {}) };
   if (!isDocumentDirectCreate(meta)) return meta;
+  if (shouldOmitCdfStructuredStamp(meta)) return meta;
 
   meta.outputKind = "document";
   meta.deliverableRequired = true;

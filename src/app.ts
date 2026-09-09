@@ -62,8 +62,9 @@ app.use(cors());
 
 //Use of Express JSON CONFIG
 app.use("/razorpay/webhook", express.raw({ type: "application/json" }), razorpayWebhook)
-app.use(express.json({ limit: "16kb" }));
-app.use(express.urlencoded({ extended: true }));
+// Execution creates carry CDF continuity + brand metadata; 16kb caused HTTP 413.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 const enterpriseExecutionMode = parseEnterpriseApiExecutionModeFromEnv();
 validateEnterpriseApiExecutionConfig(enterpriseExecutionMode);

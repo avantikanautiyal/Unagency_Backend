@@ -18,65 +18,252 @@ import {
   isDemoSeedEnabled,
   isDemoSubscriptionId,
 } from "../utils/demoSeed";
+import {
+  getPublicRazorpayKeyId,
+  resolveActivePlanFromCode,
+  subscriptionTotalCount,
+} from "../billing/plan-resolver";
+import { listCanonicalPlans } from "../billing/plan-catalog";
+import { syncCanonicalPlansToDatabase } from "../billing/sync-canonical-plans";
+import { getCurrentCreditBalance } from "../billing/credit-service";
+import {
+  getActivePlan,
+  syncEntitlementStatusFromRazorpay,
+} from "../billing/entitlement-service";
+import { isPlanCode } from "../billing/plan-codes";
 
-const FUTURE_SUBSCRIPTION_START_DATE = Date.now() + 24 * 60 * 60 * 1000;
-// creating a razor-pay subscription
+function safeRazorpayError(error: unknown): string {
+  const msg =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message?: string }).message ?? "")
+      : "";
+  // Prefer actionable Razorpay descriptions without dumping secrets
+  const description =
+    error &&
+    typeof error === "object" &&
+    "error" in error &&
+    (error as { error?: { description?: string } }).error?.description
+      ? String((error as { error?: { description?: string } }).error?.description)
+      : "";
+  const combined = `${description} ${msg}`.trim();
+  if (/authentication|key|secret/i.test(combined)) {
+    return "Payment provider authentication failed. Check Razorpay Test keys.";
+  }
+  if (/plan/i.test(combined)) {
+    return "Selected plan is unavailable in Razorpay. Verify plan IDs in env.";
+  }
+  if (combined.length > 0 && combined.length < 180) {
+    return combined;
+  }
+  return "Unable to create subscription. Please try again.";
+}
+
+/**
+ * POST /razorpay/subscriptions/create
+ * Body: { planCode: "UNAGENCY_HYBRID_MONTHLY" }
+ * Frontend must NOT send amount, currency, or Razorpay plan IDs.
+ */
 export const buySubscription = asyncHandler(async (req: RequestUser) => {
-  //   const userId = req.user?.userId;
-  //   console.log(req.body);
-  if (!req?.body?.plan_id) throw new ApiError("plan_id required ", 400);
+  const planCodeRaw = req.body?.planCode ?? req.body?.plan_code;
+  // Reject legacy clients that send arbitrary Razorpay plan IDs
+  if (req.body?.plan_id || req.body?.planId) {
+    throw new ApiError(
+      "Send planCode only. Razorpay plan IDs are resolved server-side.",
+      400
+    );
+  }
+  if (!planCodeRaw) throw new ApiError("planCode is required", 400);
+
+  const { planCode, definition, razorpayPlanId } =
+    resolveActivePlanFromCode(planCodeRaw);
 
   const user = await Users.findById(req.user?.userId);
+  if (!user) throw new ApiError("User not found", 404);
+
+  const existingStatus = String(user?.subscription?.status ?? "");
+  const existingSubId = user?.subscription?.id;
+
+  // Resume incomplete checkout instead of blocking the Select button
+  if (existingSubId && ["created", "authenticated"].includes(existingStatus)) {
+    const local = await Subscriptions.findOne({ subscriptionId: existingSubId });
+    const samePlan =
+      local?.planCode === planCode || local?.planId === razorpayPlanId;
+    if (samePlan) {
+      let shortUrl: string | undefined;
+      let status = existingStatus;
+      try {
+        const fetched = await razorpayInstance.subscriptions.fetch(existingSubId);
+        shortUrl = (fetched as { short_url?: string }).short_url;
+        status = String(fetched.status ?? existingStatus);
+      } catch {
+        /* return local row even if Razorpay fetch fails */
+      }
+      return new ApiResponse(
+        200,
+        {
+          subscriptionId: existingSubId,
+          status,
+          planCode,
+          planName: definition.name,
+          amountInr: definition.amountInr,
+          currency: definition.currency,
+          billingPeriod: definition.billingPeriod,
+          razorpayKeyId: getPublicRazorpayKeyId(),
+          shortUrl,
+          resumed: true,
+        },
+        "Resuming existing Razorpay subscription checkout"
+      );
+    }
+  }
 
   if (
-    user?.subscription?.id &&
-    ["pending", "active"].includes(user?.subscription?.status)
+    existingSubId &&
+    ["pending", "active"].includes(existingStatus)
   ) {
     throw new ApiError(
-      "Please cancel a current subscription before taking a new subscription",
+      "Please cancel your current subscription before choosing a new plan",
       400
     );
   }
 
-  let subscription = null;
-
-  try {
-    // console.log(" start_at", FUTURE_SUBSCRIPTION_START_DATE);
-    subscription = await razorpayInstance.subscriptions.create({
-      plan_id: req.body.plan_id,
-      customer_notify: 1,
-      quantity: 1,
-      total_count: 1,
-      // start_at: Math.(FUTURE_SUBSCRIPTION_START_DATE / 1000),
-      // customer_id : userId
-
-      // req.body.customer_id,
-      // quantity : req.body.quantity,
-      // currency : req.body.currency,
-      // description : req.body.description,
-      // notes : req.body.notes,
+  // Clear a stranded created/authenticated sub for a different plan so Select works
+  if (existingSubId && ["created", "authenticated"].includes(existingStatus)) {
+    try {
+      await razorpayInstance.subscriptions.cancel(existingSubId, false);
+    } catch {
+      /* ignore — may already be cancelled */
+    }
+    await Subscriptions.findOneAndUpdate(
+      { subscriptionId: existingSubId },
+      {
+        $set: {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          razorpayCancelRequested: true,
+        },
+      }
+    );
+    await Users.findByIdAndUpdate(req.user?.userId, {
+      $set: { subscription: {} },
     });
-
-    // subscription = await razorpayInstance.subscriptions.fetch(subscription.id);
-  } catch (error) {
-    console.log("error creating subscription: ", error);
-    throw new ApiError("Error creating subscription: " + (error as any).message, 400);
   }
 
+  // Ensure local plan row exists (never creates Razorpay plans)
+  await PlansModel.findOneAndUpdate(
+    { plan_id: razorpayPlanId },
+    {
+      $setOnInsert: {
+        plan_id: razorpayPlanId,
+        tag:
+          definition.mode === "AI"
+            ? "ai"
+            : definition.mode === "HYBRID"
+              ? "hybrid"
+              : "human",
+        occurance:
+          definition.billingPeriod === "annual" ? "yearly" : "monthly",
+        razorpayPlanItem: {
+          id: razorpayPlanId,
+          entity: "plan",
+          interval: 1,
+          period: definition.billingPeriod === "annual" ? "yearly" : "monthly",
+          item: {
+            id: `item_${razorpayPlanId}`,
+            active: true,
+            name: definition.name,
+            description: definition.name,
+            amount: definition.amountPaise,
+            unit_amount: definition.amountPaise,
+            currency: "INR",
+            type: "plan",
+          },
+        },
+      },
+      $set: {
+        planCode,
+        mode: definition.mode,
+        billingPeriod: definition.billingPeriod,
+        entitlements: definition.entitlements,
+        active: true,
+      },
+    },
+    { upsert: true, new: true }
+  );
 
-  //   console.log("subscription ", subscription);
+  const orgId =
+    (user as { organization?: { _id?: { toString(): string } } }).organization
+      ?._id?.toString() || undefined;
+
+  let subscription: {
+    id: string;
+    plan_id: string;
+    status: string;
+    current_start?: number | null;
+    current_end?: number | null;
+    quantity?: number;
+    total_count?: number;
+    paid_count?: number;
+    remaining_count?: number;
+    customer_id?: string;
+    short_url?: string;
+  };
+
+  try {
+    subscription = await razorpayInstance.subscriptions.create({
+      plan_id: razorpayPlanId,
+      customer_notify: 1,
+      quantity: 1,
+      total_count: subscriptionTotalCount(definition.billingPeriod),
+      notes: {
+        planCode,
+        userId: String(req.user?.userId),
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+    });
+  } catch (error) {
+    console.error("error creating subscription");
+    throw new ApiError(safeRazorpayError(error), 400);
+  }
+
   const createUserSubscription = await Subscriptions.create({
     subscriptionId: subscription.id,
     userId: req.user?.userId,
-    planId: subscription.plan_id,
-    status: subscription.status,
-    start_at: subscription.current_start, // change this to start_at to future date to test a ubgrade subscription feature
-    // UTURE_SUBSCRIPTION_START_DATE,
-    expire_by: subscription.current_start,
+    organizationId: orgId,
+    planId: razorpayPlanId,
+    planCode,
+    status: subscription.status || "created",
+    current_start: subscription.current_start ?? null,
+    current_end: subscription.current_end ?? null,
+    quantity: subscription.quantity ?? 1,
+    total_count: subscription.total_count,
+    paid_count: subscription.paid_count,
+    remaining_count: subscription.remaining_count,
+    customerId: subscription.customer_id,
   });
+
+  await Users.findByIdAndUpdate(req.user?.userId, {
+    $set: {
+      "subscription.id": subscription.id,
+      "subscription.status": subscription.status || "created",
+    },
+  });
+
   return new ApiResponse(
     200,
-    createUserSubscription,
+    {
+      subscriptionId: createUserSubscription.subscriptionId,
+      status: createUserSubscription.status,
+      planCode,
+      planName: definition.name,
+      amountInr: definition.amountInr,
+      currency: definition.currency,
+      billingPeriod: definition.billingPeriod,
+      razorpayKeyId: getPublicRazorpayKeyId(),
+      shortUrl: subscription.short_url,
+      // Keep local record fields for backward-compatible clients
+      ...createUserSubscription.toObject(),
+    },
     "RazorPay Subscription created successfully"
   );
 });
@@ -114,10 +301,17 @@ export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
 });
 
 export const updateSubscription = asyncHandler(async (req: RequestUser) => {
-  const { plan_id } = req.body;
-  const userId = req.user?.userId;
+  const planCodeRaw = req.body?.planCode ?? req.body?.plan_code;
+  if (req.body?.plan_id || req.body?.planId) {
+    throw new ApiError(
+      "Send planCode only. Razorpay plan IDs are resolved server-side.",
+      400
+    );
+  }
+  if (!planCodeRaw) throw new ApiError("planCode is required", 400);
 
-  if (!plan_id) throw new ApiError("plan_id is required", 400);
+  const { planCode, razorpayPlanId } = resolveActivePlanFromCode(planCodeRaw);
+  const userId = req.user?.userId;
 
   const user = await Users.findById(userId);
 
@@ -125,33 +319,40 @@ export const updateSubscription = asyncHandler(async (req: RequestUser) => {
     throw new ApiError("No active subscription found to update. Please buy a subscription first.", 400);
   }
 
-  // Fetch current subscription from Razorpay to check its state and current plan
   var currentSubscription: any;
   try {
     currentSubscription = await razorpayInstance.subscriptions.fetch(user.subscription.id);
-  } catch (error: any) {
-    throw new ApiError("Error fetching current subscription from Razorpay: " + error.message, 400);
+  } catch {
+    throw new ApiError("Unable to fetch current subscription", 400);
   }
 
   if (currentSubscription.status === "cancelled" || currentSubscription.status === "expired") {
     throw new ApiError("Cannot update a cancelled or expired subscription. Please buy a new one.", 400);
   }
 
-  if (currentSubscription.plan_id === plan_id) {
+  if (currentSubscription.plan_id === razorpayPlanId) {
     throw new ApiError("New plan is the same as the current plan. No update needed.", 400);
   }
 
-  // Update subscription in Razorpay
-  // We use schedule_change_at: "now" to apply changes immediately. 
-  // Alternatively, "cycle_end" can be used to schedule the change at the end of the current billing cycle.
+  // Schedule immediate plan change on Razorpay — local entitlements update via webhook.
   const updatedSubscription = await razorpayInstance.subscriptions.update(user.subscription.id, {
-    plan_id: plan_id,
+    plan_id: razorpayPlanId,
     schedule_change_at: "now",
   });
 
+  await Subscriptions.findOneAndUpdate(
+    { subscriptionId: user.subscription.id },
+    { $set: { planId: razorpayPlanId, planCode } }
+  );
+
   return new ApiResponse(
     200,
-    updatedSubscription,
+    {
+      subscriptionId: updatedSubscription.id,
+      status: updatedSubscription.status,
+      planCode,
+      razorpayPlanId,
+    },
     "Subscription update initiated successfully"
   );
 });
@@ -227,6 +428,14 @@ export const getUserCurrentSubscription = asyncHandler(
       return new ApiResponse(200, null, "Subscription expired");
     }
 
+    // Align local entitlement status with Razorpay — badge used live status while
+    // brand limits read Users/Subscriptions (often stuck at "created" after mobile checkout).
+    await syncEntitlementStatusFromRazorpay({
+      userId,
+      subscriptionId,
+      razorpayStatus: String(razerpSubscription.status ?? ""),
+    });
+
     const subscription = await Subscriptions.findOne({
       subscriptionId: req.user?.subscription?.id,
     }).populate({ path: "planId", foreignField: "plan_id" });
@@ -239,8 +448,29 @@ export const getUserCurrentSubscription = asyncHandler(
       payment_method: razerpSubscription?.payment_method!,
       remaining_count: razerpSubscription?.remaining_count!,
       total_count: razerpSubscription?.total_count!,
-    }
-    return new ApiResponse(200, curSubsc, "All subscriptions");
+    };
+
+    const activePlan = await getActivePlan(userId);
+    const credits = await getCurrentCreditBalance(userId);
+
+    return new ApiResponse(
+      200,
+      {
+        ...curSubsc,
+        planCode: subscription?.planCode ?? activePlan?.planCode,
+        entitlements: activePlan?.entitlements ?? null,
+        credits: credits
+          ? {
+              allocated: credits.allocated,
+              used: credits.used,
+              remaining: credits.remaining,
+              periodStart: credits.periodStart,
+              periodEnd: credits.periodEnd,
+            }
+          : null,
+      },
+      "All subscriptions"
+    );
   }
 );
 // route for the service , admin
@@ -326,50 +556,86 @@ export const paymentVerification = asyncHandler(
   }
 );
 export const paymentVerificationApp = asyncHandler(
-  async (req: RequestUser, res) => {
+  async (req: RequestUser) => {
     const {
       razorpay_payment_id,
       razorpay_subscription_id,
       razorpay_signature,
-      ...rest
     } = req.body;
-    console.log(
-      "razopay verification props ",
-      razorpay_payment_id,
-      razorpay_subscription_id,
-      razorpay_signature
-    );
-    // const user = await Users.findById(req.user?.userId);
-    // const subscriptionId = user?.subscription?.id;
+
+    if (
+      !razorpay_payment_id ||
+      !razorpay_subscription_id ||
+      !razorpay_signature
+    ) {
+      throw new ApiError("Payment verification payload incomplete", 400);
+    }
+
+    const secret =
+      process.env.RAZORPAY_SECRET?.trim() ||
+      process.env.RAZORPAY_KEY_SECRET?.trim();
+    if (!secret) throw new ApiError("Payment verification unavailable", 500);
+
+    const generated_signature = crypto
+      .createHmac("sha256", secret)
+      .update(`${razorpay_payment_id}|${razorpay_subscription_id}`, "utf-8")
+      .digest("hex");
+
+    let isValidSignature = false;
+    try {
+      isValidSignature = crypto.timingSafeEqual(
+        Buffer.from(generated_signature, "utf8"),
+        Buffer.from(String(razorpay_signature), "utf8")
+      );
+    } catch {
+      isValidSignature = false;
+    }
+    if (!isValidSignature) {
+      throw new ApiError("Invalid payment signature", 400);
+    }
+
     const subs = await Subscriptions.findOne({
       subscriptionId: razorpay_subscription_id,
     });
+    if (!subs) throw new ApiError("Subscription not found", 404);
 
-    const generated_signature = crypto
-      .createHmac("sha256", process.env?.RAZORPAY_SECRET!)
-      .update(razorpay_payment_id + "|" + razorpay_subscription_id, "utf-8")
-      .digest("hex");
+    const existingPayment = await Payments.findOne({ razorpay_payment_id });
+    if (!existingPayment) {
+      await Payments.create({
+        razorpay_payment_id,
+        razorpay_subscription_id,
+        razorpay_signature,
+        userId: subs.userId,
+        status: "authorized",
+      });
+    }
 
-    const isValidSignature = generated_signature == razorpay_signature;
-    if (!isValidSignature)
-      res.redirect(process.env.FRONTEND_URL + "/payment-failure");
+    // Checkout success is not sole authority — mark authenticated; webhook activates + credits
+    if (!["active", "completed"].includes(String(subs.status))) {
+      await Subscriptions.findOneAndUpdate(
+        { subscriptionId: razorpay_subscription_id },
+        { $set: { status: "authenticated" } }
+      );
+      await Users.findByIdAndUpdate(subs.userId, {
+        $set: {
+          "subscription.id": razorpay_subscription_id,
+          "subscription.status": "authenticated",
+        },
+      });
+    }
 
-    await Payments.create({
-      razorpay_payment_id,
-      razorpay_subscription_id,
-      razorpay_signature,
-      userId: subs?._id!,
-    });
-
-    res.redirect(
-      process.env.FRONTEND_URL +
-      "/payment-success?payment_id=" +
-      razorpay_payment_id +
-      +"&subscription_id=" +
-      razorpay_subscription_id
+    return new ApiResponse(
+      200,
+      {
+        verified: true,
+        subscriptionId: razorpay_subscription_id,
+        paymentId: razorpay_payment_id,
+        planCode: subs.planCode,
+        status: "authenticated",
+        note: "Webhook remains authoritative for activation and credit allocation",
+      },
+      "Payment signature verified"
     );
-    // data base comes here
-    // await
   }
 );
 
@@ -538,14 +804,73 @@ export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
 
 // for Plans
 export const getRazorPayPlans = asyncHandler(async (req: RequestUser) => {
-  // const palns = await razorpayInstance.plans.all();
-  const plans = await PlansModel.find({});
+  const billingPeriod =
+    req.query?.billingPeriod === "annual" || req.query?.period === "annual"
+      ? "annual"
+      : req.query?.billingPeriod === "monthly" || req.query?.period === "monthly"
+        ? "monthly"
+        : undefined;
+
+  // Prefer catalog-backed plans; sync local rows if empty
+  let plans = await PlansModel.find({
+    planCode: { $exists: true, $ne: null },
+    active: { $ne: false },
+    ...(billingPeriod ? { billingPeriod } : {}),
+  }).lean();
+
+  if (plans.length === 0) {
+    try {
+      await syncCanonicalPlansToDatabase();
+      plans = await PlansModel.find({
+        planCode: { $exists: true, $ne: null },
+        active: { $ne: false },
+        ...(billingPeriod ? { billingPeriod } : {}),
+      }).lean();
+    } catch (err) {
+      console.error("canonical plan sync skipped", err);
+      // Fall back to in-memory catalog for display (no secrets)
+      const catalog = listCanonicalPlans(billingPeriod).map((p) => ({
+        plan_id: `pending_${p.planCode}`,
+        planCode: p.planCode,
+        mode: p.mode,
+        billingPeriod: p.billingPeriod,
+        entitlements: p.entitlements,
+        active: p.active,
+        tag: p.mode.toLowerCase(),
+        occurance: p.billingPeriod === "annual" ? "yearly" : "monthly",
+        razorpayPlanItem: {
+          id: `pending_${p.planCode}`,
+          period: p.billingPeriod === "annual" ? "yearly" : "monthly",
+          item: {
+            name: p.name,
+            amount: p.amountPaise,
+            currency: p.currency,
+          },
+        },
+        points: [],
+      }));
+      return new ApiResponse(200, catalog, "Canonical plans (awaiting env sync)");
+    }
+  }
+
   return new ApiResponse(200, plans, "RazorPay Plans fetched successfully");
 });
-export const createRazorPayPlan = asyncHandler(async (req: RequestUser) => {
-  const { plan_id, ...rest } = req.body;
 
-  if (!plan_id) throw new ApiError("Plan ID is required", 400);
+/** Admin utility: attach metadata to an EXISTING Razorpay plan — does not create Razorpay plans. */
+export const createRazorPayPlan = asyncHandler(async (req: RequestUser) => {
+  const { plan_id, planCode, ...rest } = req.body;
+
+  if (planCode && isPlanCode(planCode)) {
+    const result = await syncCanonicalPlansToDatabase();
+    const plan = await PlansModel.findOne({ planCode });
+    return new ApiResponse(
+      200,
+      { plan, synced: result.upserted },
+      "Canonical plans synced (existing Razorpay plan IDs only)"
+    );
+  }
+
+  if (!plan_id) throw new ApiError("Plan ID or planCode is required", 400);
 
   const plan = await razorpayInstance.plans.fetch(plan_id);
 
@@ -554,7 +879,7 @@ export const createRazorPayPlan = asyncHandler(async (req: RequestUser) => {
     razorpayPlanItem: plan,
     ...rest,
   });
-  return new ApiResponse(200, newPlan, "RazorPay Plan created successfully");
+  return new ApiResponse(200, newPlan, "RazorPay Plan linked successfully");
 });
 export const deleteRazorPayPlan = asyncHandler(async (req: RequestUser) => {
   const { plan_id } = req.params;

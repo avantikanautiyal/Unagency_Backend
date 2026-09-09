@@ -11,6 +11,7 @@ import {
 } from "./usage/usage-accounting-service";
 import { AIModelPricingModel } from "../infrastructure/durability/mongo/models/ai-model-pricing.model";
 import { buildPricingRecordsFromSeed } from "./pricing/pricing-seed-loader";
+import { getBillingReconciliationService } from "./reconciliation/billing-reconciliation-service";
 import mongoose from "mongoose";
 
 export interface AccountingPlatform {
@@ -47,6 +48,13 @@ export async function bootAccountingPlatform(options?: {
   const fx = new InMemoryFxRateService();
   const accounting = new UsageAccountingService(ledger, pricing, fx);
   setUsageAccountingService(accounting);
+
+  const reconciliation = getBillingReconciliationService();
+  if (useMongo && mongoose.connection.readyState === 1) {
+    await reconciliation.hydrateSyncStateFromStore().catch(() => {
+      /* non-fatal at boot */
+    });
+  }
 
   return { accounting, ledger };
 }

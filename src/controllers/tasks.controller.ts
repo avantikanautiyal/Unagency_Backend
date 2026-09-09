@@ -128,9 +128,24 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       projectId: String(project),
       extraMemberUserIds: [resourceUserId],
     });
+
+    // Designer needs read access to the Client ↔ CS brief (service room).
+    const projectDoc = await Projects.findById(project)
+      .select("userId brandId productPath title")
+      .lean();
+    if (projectDoc?.userId && projectDoc?.brandId && projectDoc?.productPath) {
+      await collaborationChannelService.ensureForService({
+        userId: String(projectDoc.userId),
+        brandId: String(projectDoc.brandId),
+        productPath: String(projectDoc.productPath),
+        serviceLabel: title,
+        allowOversightBrandLoad: true,
+        extraViewerUserIds: [resourceUserId],
+      });
+    }
   } catch (err) {
     console.warn(
-      "[CreateTask] project chat ensure failed (non-fatal):",
+      "[CreateTask] project/service chat ensure failed (non-fatal):",
       err instanceof Error ? err.message : err
     );
   }
@@ -217,15 +232,21 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
   } else if (role === "resource") {
     filter = { assignedTo: staffId };
   } else if (role === "servicing") {
-    filter = { assignedBy: staffId };
+    // Default: tasks this CS assigned. scope=team → all tasks (designer capacity widgets).
+    const scope = String(req.query.scope || "")
+      .toLowerCase()
+      .trim();
+    filter = scope === "team" ? {} : { assignedBy: staffId };
   }
 
   if (!filter) {
     return new ApiResponse(200, [], "Task List found");
   }
 
+  // Skip files on list endpoints — drafts/attachments load via task-by-id.
   const query = await Tasks.find(filter)
     .sort({ createdAt: -1 })
+    .select("-files")
     .populate({
       path: "assignedTo",
       select: "userId",
@@ -249,7 +270,57 @@ const TaskList = asyncHandler(async (req: RequestUser, res: Response) => {
       select:
         "_id title userId orgId executionId origin creationMode brandId productPath resource creativePrompt",
     })
-    .populate("files");
+    .lean();
+
+  // One org lookup for all task owners — avoids N frontend /organizations/:userId calls.
+  const ownerIds = [
+    ...new Set(
+      query
+        .map((task) => {
+          const project =
+            task.project && typeof task.project === "object"
+              ? (task.project as { userId?: unknown })
+              : null;
+          return project?.userId != null ? String(project.userId) : "";
+        })
+        .filter(Boolean)
+    ),
+  ];
+
+  if (ownerIds.length) {
+    const Organizations = (await import("../models/organization.model")).default;
+    const orgs = await Organizations.find({
+      owner: {
+        $in: ownerIds
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+          .map((id) => new mongoose.Types.ObjectId(id)),
+      },
+    })
+      .select("owner companyName _id")
+      .lean();
+    const orgByOwner = new Map(
+      orgs.map((org) => [
+        String(org.owner),
+        { companyName: org.companyName, orgId: String(org._id) },
+      ])
+    );
+    for (const task of query) {
+      const projectRaw = task.project;
+      if (!projectRaw || typeof projectRaw !== "object" || !("userId" in projectRaw)) {
+        continue;
+      }
+      const project = projectRaw as {
+        userId?: unknown;
+        orgId?: unknown;
+        companyName?: string;
+      };
+      if (!project.userId) continue;
+      const meta = orgByOwner.get(String(project.userId));
+      if (!meta) continue;
+      project.companyName = meta.companyName;
+      if (!project.orgId) project.orgId = meta.orgId;
+    }
+  }
 
   return new ApiResponse(200, query, "Task List found");
 });
@@ -344,7 +415,15 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   const role = req.user?.role;
   if (updates.status) {
     if (role === "servicing") {
-      const allowedStatuses = ["feedback", "revision", "approved", "submitted"];
+      const allowedStatuses = [
+        "feedback",
+        "revision",
+        "approved",
+        "submitted",
+        "admin_qc",
+        "client_review",
+        "completed",
+      ];
       if (!allowedStatuses.includes(updates.status)) {
         return new ApiResponse(
           403,

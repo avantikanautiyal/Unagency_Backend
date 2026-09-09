@@ -138,6 +138,7 @@ export function hookProductionEvidenceAfterFinalize(input: ProductionEvidenceHoo
     generatedHeight: input.generatedHeight,
     generatedPageCount: input.generatedPageCount,
     previewContainsCta: input.previewContainsCta,
+    metadata: enrichedMetadata,
     latencyMs: Math.max(0, input.latencyMs),
     inputTokens: input.inputTokens,
     outputTokens: input.outputTokens,

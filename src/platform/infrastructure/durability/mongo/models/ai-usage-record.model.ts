@@ -88,6 +88,9 @@ const aiUsageRecordSchema = new Schema(
     actualProviderCostUsd: String,
     billingPeriod: { type: String, required: true, index: true },
     rawProviderUsage: Schema.Types.Mixed,
+    providerJobId: { type: String, index: true, sparse: true },
+    accountingState: { type: String, index: true, sparse: true },
+    updatedAt: { type: String, index: true, sparse: true },
   },
   { collection: "ai_usage_records" }
 );

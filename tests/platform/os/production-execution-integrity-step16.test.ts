@@ -185,6 +185,7 @@ describe("Step 16 — Production execution integrity", () => {
       validationExecuted: true,
       evidenceRecorded: true,
       performanceRecordId: "perfrec_step16",
+      allowMissingArtifacts: true,
     });
     expect(integrity.integrityStatus).toBe("PASS");
   });
@@ -208,6 +209,10 @@ describe("Step 16 — Production execution integrity", () => {
         actualModelId: "openai/gpt-4o",
       }),
       mediaArtifactIds: ["art_exec_1"],
+      executionArtifactIds: ["art_exec_1"],
+      persistedArtifactIds: ["art_exec_1"],
+      hydratedArtifactIds: ["art_exec_1"],
+      recordArtifactIds: ["art_exec_1"],
       validationExecuted: true,
       evaluationPlaneExecuted: true,
       artifactHydrated: true,
@@ -217,6 +222,27 @@ describe("Step 16 — Production execution integrity", () => {
     });
     expect(integrity.artifactPersisted).toBe(true);
     expect(integrity.artifactHydrated).toBe(true);
+    expect(integrity.integrityStatus).toBe("PASS");
+  });
+
+  it("B2. missing artifacts without independent continuity → INCOMPLETE (not PASS)", () => {
+    const integrity = buildProductionExecutionIntegrity({
+      executionId: "exec_incomplete",
+      correlationId: "corr_incomplete",
+      service: "social-media",
+      subtype: "content-design",
+      outputKind: "image",
+      providerIdentity: Object.freeze({
+        actualProviderId: "provider.openai",
+        actualModelId: "openai/gpt-4o",
+      }),
+      mediaArtifactIds: [],
+      validationExecuted: true,
+      evidenceRecorded: true,
+      performanceRecordId: "perfrec_incomplete",
+    });
+    expect(integrity.integrityStatus).toBe("INCOMPLETE");
+    expect(integrity.artifactIds).toEqual([]);
   });
 
   it("C. missing artifact reports MISSING not CREATED", () => {
@@ -249,6 +275,40 @@ describe("Step 16 — Production execution integrity", () => {
         hydratedArtifactIds: [],
       }),
     ).toBe("ARTIFACT_HYDRATION_FAILURE");
+  });
+
+  it("E2. does not self-validate by copying the same IDs into every stage", () => {
+    // Omitting persisted/hydrated/record must NOT invent matching arrays.
+    expect(
+      verifyArtifactIdentityContinuity({
+        executionArtifactIds: ["art_exec_1"],
+      }),
+    ).toBeUndefined();
+    const integrity = buildProductionExecutionIntegrity({
+      executionId: "exec_no_self_validate",
+      correlationId: "corr_no_self_validate",
+      service: "website",
+      subtype: "landing-page",
+      outputKind: "deferred_website",
+      providerIdentity: Object.freeze({
+        actualProviderId: "provider.openai",
+        actualModelId: "openai/gpt-4o",
+      }),
+      mediaArtifactIds: ["art_exec_1"],
+      // Intentionally omit independent stage ID lists.
+      validationExecuted: true,
+      evidenceRecorded: true,
+      performanceRecordId: "perfrec_x",
+    });
+    // Continuity check skipped when stages are not independently sourced —
+    // must not PASS solely by duplicating mediaArtifactIds.
+    expect(integrity.artifactIds).toEqual(["art_exec_1"]);
+    expect(
+      verifyArtifactIdentityContinuity({
+        executionArtifactIds: ["art_exec_1"],
+        persistedArtifactIds: ["art_other"],
+      }),
+    ).toBe("ARTIFACT_PERSISTENCE_FAILURE");
   });
 
   it("F. evaluation plane unavailable reports SKIPPED not COMPLETED", () => {
@@ -398,6 +458,43 @@ describe("Step 16 — Production execution integrity", () => {
         declaredOutputKind: "text",
       }),
     ).toBe("OUTPUT_KIND_MISMATCH");
+  });
+
+  it("K2. sealed CDF text under social/content-design catalog is not OUTPUT_KIND_MISMATCH", () => {
+    expect(
+      verifyOutputKindConsistency({
+        service: "social",
+        subtype: "content-design",
+        declaredOutputKind: "text",
+        metadata: {
+          cdfExecutionAuthorityApplied: true,
+          cdfAuthorityOutputKind: "text",
+          cdfAuthorityGenerationModality: "text",
+          cdfAuthorityArtifactKey: "social-media.routes",
+          cdfAuthorityStructuredOutputName: "CdfSocialMediaRoutes",
+        },
+      }),
+    ).toBeUndefined();
+
+    const integrity = buildProductionExecutionIntegrity({
+      executionId: "exec_cdf_routes_text",
+      correlationId: "corr_cdf_routes_text",
+      service: "social",
+      subtype: "content-design",
+      outputKind: "text",
+      capabilityId: "text.generate",
+      providerIdentity: Object.freeze({}),
+      structuredOutputRequested: true,
+      structuredDataPresent: true,
+      allowMissingArtifacts: true,
+      metadata: {
+        cdfExecutionAuthorityApplied: true,
+        cdfAuthorityOutputKind: "text",
+        cdfAuthorityGenerationModality: "text",
+      },
+    });
+    expect(integrity.integrityFailures).not.toContain("OUTPUT_KIND_MISMATCH");
+    expect(integrity.failureCategory).not.toBe("OUTPUT_KIND_MISMATCH");
   });
 
   it("L. missing structured output fails integrity", () => {

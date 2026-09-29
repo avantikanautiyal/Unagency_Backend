@@ -11,6 +11,10 @@ import type {
 } from "./types";
 import { GovernanceEngine as LegacyGovernanceEngine } from "./types";
 import {
+  effectiveEvaluationOutcome,
+  evaluationMayBlock,
+} from "../evaluation/contracts/evaluation-result";
+import {
   createDefaultGovernancePolicy,
   type GovernanceDecisionAction,
   type GovernancePolicy,
@@ -50,6 +54,15 @@ export interface IOsGovernanceEngine {
   /** Phase 0-compatible API for single-capability finalize path */
   decide(input: GovernanceInput): GovernanceDecision;
 }
+
+const OUTCOME_SEVERITY: Record<EvaluationOutcome, number> = {
+  PASS: 0,
+  PASS_WITH_WARNINGS: 1,
+  HUMAN_REVIEW_REQUIRED: 2,
+  RETRY_REQUIRED: 3,
+  REJECTED: 4,
+  BLOCKED: 5,
+};
 
 function mapOutcomeToAction(
   outcome: EvaluationOutcome,
@@ -240,16 +253,33 @@ export class OsGovernanceEngine implements IOsGovernanceEngine {
       };
     }
 
-    const checks: GovernanceCheckResult[] = input.aggregate.results.map((r) => ({
-      checkId: r.evaluatorId,
-      status:
-        r.outcome === "PASS" || r.outcome === "PASS_WITH_WARNINGS"
-          ? ("PASS" as const)
-          : r.outcome === "HUMAN_REVIEW_REQUIRED"
+    // Governance acts on each evaluation's effective outcome given its declared
+    // authority; the raw outcome is preserved in the check message.
+    const checks: GovernanceCheckResult[] = input.aggregate.results.map((r) => {
+      const effective = effectiveEvaluationOutcome(r);
+      return {
+        checkId: r.evaluatorId,
+        status:
+          effective === "PASS" || effective === "PASS_WITH_WARNINGS"
             ? ("PASS" as const)
-            : ("FAIL" as const),
-      message: `${r.outcome}: ${r.findings.map((f) => f.code).join(",") || "ok"}`,
-    }));
+            : effective === "HUMAN_REVIEW_REQUIRED"
+              ? ("PASS" as const)
+              : ("FAIL" as const),
+        message: `${r.outcome}${effective !== r.outcome ? ` (advisory → ${effective}: ${r.authority?.evidenceBasis ?? "non-gating"} evidence)` : ""}: ${r.findings.map((f) => f.code).join(",") || "ok"}`,
+      };
+    });
+    const effectiveWorst = input.aggregate.results.reduce<EvaluationOutcome>(
+      (worst, r) => {
+        const e = effectiveEvaluationOutcome(r);
+        return OUTCOME_SEVERITY[e] > OUTCOME_SEVERITY[worst] ? e : worst;
+      },
+      "PASS",
+    );
+    const creativeResult = input.aggregate.results.find(
+      (r) => r.evaluatorId === CREATIVE_SCORE_EVALUATOR_ID,
+    );
+    const creativeAuthoritative =
+      creativeResult != null && evaluationMayBlock(creativeResult);
 
     // Brand critical hard-block when policy says so
     const brandCritical = input.aggregate.results.some(
@@ -259,12 +289,18 @@ export class OsGovernanceEngine implements IOsGovernanceEngine {
           r.findings.some((f) => f.severity === "critical"))
     );
     let mapped = mapOutcomeToAction(
-      input.aggregate.worstOutcome,
+      input.aggregate.results.length > 0
+        ? effectiveWorst
+        : input.aggregate.worstOutcome,
       policy,
       input.scope,
       {
         ...input.aggregate.aggregateScores,
-        creativeScoreTotal: input.aggregate.aggregateScores.creativeScoreTotal,
+        // Creative total gates release only when the creative evaluation is
+        // authoritative (release gate on deliverable evidence).
+        creativeScoreTotal: creativeAuthoritative
+          ? input.aggregate.aggregateScores.creativeScoreTotal
+          : undefined,
       }
     );
     if (brandCritical && policy.rules.blockOnBrandCritical) {
@@ -278,7 +314,8 @@ export class OsGovernanceEngine implements IOsGovernanceEngine {
     const creativeTotal = input.aggregate.aggregateScores.creativeScoreTotal;
     const creativeBlocked = input.aggregate.results.some(
       (r) =>
-        r.evaluatorId === CREATIVE_SCORE_EVALUATOR_ID && r.outcome === "BLOCKED"
+        r.evaluatorId === CREATIVE_SCORE_EVALUATOR_ID &&
+        effectiveEvaluationOutcome(r) === "BLOCKED"
     );
     if (creativeBlocked && typeof creativeTotal === "number") {
       mapped = {

@@ -1,6 +1,9 @@
 /**
  * Redis-backed distributed rate limiting — authoritative async check.
  * Fail-closed when Redis/kv is unavailable (M9.4A).
+ *
+ * USER_REQUEST and BACKGROUND_POLL use separate Redis key namespaces so
+ * execution hydration polls cannot exhaust the user-facing request bucket.
  */
 
 import { failure, success, type Result } from "../../../core/result";
@@ -10,14 +13,16 @@ import type { IRateLimitService } from "../../../api/interfaces";
 import type { KvClient } from "./shared-memory-kv";
 import { ensureRedisClientReady } from "./redis-client-factory";
 import type Redis from "ioredis";
+import {
+  DEFAULT_BACKGROUND_POLL_POLICIES,
+  DEFAULT_USER_REQUEST_POLICIES,
+  resolveRateLimitCheckDimensions,
+} from "../../../execution-reliability/rate-limit-accounting";
+import type { RateLimitAccountingClass } from "../../../execution-reliability/execution-outcome";
 
 const DEFAULT_POLICIES: readonly RateLimitPolicy[] = [
-  { dimension: "organization", limit: 1000, windowMs: 60_000 },
-  { dimension: "workspace", limit: 500, windowMs: 60_000 },
-  { dimension: "user", limit: 120, windowMs: 60_000 },
-  { dimension: "api_key", limit: 300, windowMs: 60_000 },
-  { dimension: "capability", limit: 200, windowMs: 60_000 },
-  { dimension: "provider", limit: 200, windowMs: 60_000 },
+  ...DEFAULT_USER_REQUEST_POLICIES,
+  ...DEFAULT_BACKGROUND_POLL_POLICIES,
 ];
 
 export class DistributedRateLimitService implements IRateLimitService {
@@ -52,6 +57,7 @@ export class DistributedRateLimitService implements IRateLimitService {
     apiKeyId?: string;
     capabilityId?: string;
     providerId?: string;
+    accountingClass?: RateLimitAccountingClass;
   }): Promise<Result<RateLimitDecision>> {
     if (!this.redis) {
       return failure(
@@ -67,14 +73,16 @@ export class DistributedRateLimitService implements IRateLimitService {
       );
     }
 
-    const checks: { dimension: RateLimitDimension; value?: string }[] = [
-      { dimension: "organization", value: input.organizationId },
-      { dimension: "workspace", value: input.workspaceId },
-      { dimension: "user", value: input.userId },
-      { dimension: "api_key", value: input.apiKeyId },
-      { dimension: "capability", value: input.capabilityId },
-      { dimension: "provider", value: input.providerId },
-    ];
+    const accountingClass = input.accountingClass ?? "USER_REQUEST";
+    const checks = resolveRateLimitCheckDimensions({
+      accountingClass,
+      organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      apiKeyId: input.apiKeyId,
+      capabilityId: input.capabilityId,
+      providerId: input.providerId,
+    });
 
     let tightest: RateLimitDecision | undefined;
     const now = this.clockMs();
@@ -82,7 +90,8 @@ export class DistributedRateLimitService implements IRateLimitService {
     try {
       for (const c of checks) {
         if (!c.value) continue;
-        const policy = this.policies.find((p) => p.dimension === c.dimension)!;
+        const policy = this.policies.find((p) => p.dimension === c.dimension);
+        if (!policy) continue;
         const windowId = Math.floor(now / policy.windowMs);
         const key = `${this.keyPrefix}${c.dimension}:${c.value}:${windowId}`;
         const count = await this.redis.incrby(key, 1);
@@ -96,6 +105,9 @@ export class DistributedRateLimitService implements IRateLimitService {
           resetAt: new Date((windowId + 1) * policy.windowMs).toISOString(),
           dimension: c.dimension,
           key: `${c.dimension}:${c.value}`,
+          limit: policy.limit,
+          windowMs: policy.windowMs,
+          accountingClass,
         };
         if (!decision.allowed) return success(decision);
         if (!tightest || decision.remaining < tightest.remaining) tightest = decision;
@@ -111,8 +123,9 @@ export class DistributedRateLimitService implements IRateLimitService {
         allowed: true,
         remaining: 999,
         resetAt: this.nowIso(),
-        dimension: "organization",
+        dimension: "organization" as RateLimitDimension,
         key: "none",
+        accountingClass,
       }
     );
   }

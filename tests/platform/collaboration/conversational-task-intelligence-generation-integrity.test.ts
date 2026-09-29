@@ -123,8 +123,22 @@ describe("P4.9.7 generation integrity — authoritative logo", () => {
     expect(resolution.candidates).toBeUndefined();
   });
 
-  it("4. two different Vault logos → NEEDS_SELECTION / clarification", () => {
+  it("4. two different Vault logos → defaults to the primary logo PNG", () => {
     const turn = resolveTurn("Create a merchandise mockup using our brand logo.", {
+      logoDiscovery: {
+        vaultCandidates: [
+          { assetId: VAULT_LOGO_A, source: "VAULT", name: "logo-system-png", folder: "logos" },
+          { assetId: VAULT_LOGO_B, source: "VAULT", name: "primary-logo-png", folder: "logos" },
+        ],
+      },
+    });
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("USE_EXISTING");
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(VAULT_LOGO_B);
+    expect(turn.clarification).toBeUndefined();
+  });
+
+  it("4b. two Vault logos + brief names a variant neither matches → clarification", () => {
+    const turn = resolveTurn("Create a merchandise mockup using our stacked logo.", {
       logoDiscovery: {
         vaultCandidates: [
           { assetId: VAULT_LOGO_A, source: "VAULT", name: "Logo A", folder: "logos" },
@@ -139,15 +153,15 @@ describe("P4.9.7 generation integrity — authoritative logo", () => {
     expect(turn.clarification?.logoCandidates?.length).toBe(2);
   });
 
-  it("5. Vault logo + different attached logo → clarification", () => {
+  it("5. Vault logo + attached logo → the attached logo wins", () => {
     const turn = resolveTurn("Design packaging with our logo.", {
       logoDiscovery: {
         vaultCandidates: [{ assetId: VAULT_LOGO_A, source: "VAULT", name: "Vault Logo" }],
         attachmentLogoAssetIds: [ATTACHED_LOGO],
       },
     });
-    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("NEEDS_SELECTION");
-    expect(turn.requiresExecution).toBe(false);
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("USE_EXISTING");
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(ATTACHED_LOGO);
   });
 
   it("6. multiple attached logos → clarification", () => {
@@ -428,6 +442,7 @@ describe("P4.9.7 generation integrity — conversational follow-ups", () => {
         { assetId: VAULT_LOGO_A, source: "VAULT", name: "Logo A" },
         { assetId: VAULT_LOGO_B, source: "VAULT", name: "Logo B" },
       ],
+      brief: "Use our stacked logo.",
     });
     const followUp = resolveLogoFollowUpFromMessage({
       message: "Use the second logo.",
@@ -438,13 +453,16 @@ describe("P4.9.7 generation integrity — conversational follow-ups", () => {
   });
 
   it("24. 'Use the attached logo' resolves attachment", () => {
-    const prior = resolveAuthoritativeLogo({
-      vaultCandidates: [{ assetId: VAULT_LOGO_A, source: "VAULT", name: "Vault" }],
-      attachmentLogoAssetIds: [ATTACHED_LOGO],
-    });
     const followUp = resolveLogoFollowUpFromMessage({
       message: "Use the logo I attached.",
-      prior: { ...prior, mode: "NEEDS_SELECTION", candidates: prior.candidates },
+      prior: {
+        mode: "NEEDS_SELECTION",
+        authoritative: true,
+        candidates: [
+          { assetId: VAULT_LOGO_A, source: "VAULT", name: "Vault" },
+          { assetId: ATTACHED_LOGO, source: "ATTACHMENT" },
+        ],
+      },
     });
     expect(followUp?.assetId).toBe(ATTACHED_LOGO);
     expect(followUp?.source).toBe("ATTACHMENT");

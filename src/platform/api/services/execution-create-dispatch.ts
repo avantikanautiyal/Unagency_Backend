@@ -4,8 +4,21 @@
  */
 
 import { failure, success, type Result } from "../../core/result";
+import { CREATIVE_SCORE_RELEASE_GATE } from "../../os/evaluation/creative-score/creative-score-dimensions";
 import { ValidationError } from "../../core/errors";
 import type { ServiceContextWorkflow } from "../../config/service-context-classifier";
+
+
+function promptPreviewForClient(prompt: string): string {
+  const trimmed = prompt.trim();
+  if (
+    trimmed === "[unagency:canonical_model_request]" ||
+    trimmed.includes("unagency:canonical_model_request")
+  ) {
+    return "";
+  }
+  return prompt.slice(0, 120);
+}
 
 function conversationFieldsFromMetadata(
   metadata?: Readonly<Record<string, unknown>>
@@ -29,6 +42,9 @@ function resolveAsyncVideoPayloadFromMetadata(
   duration?: number;
   aspectRatio?: string;
   resolution?: string;
+  videoTargetDurationSec?: number;
+  videoSegmentIndex?: number;
+  videoSegmentCount?: number;
 } {
   if (!metadata) return {};
   const format =
@@ -41,22 +57,52 @@ function resolveAsyncVideoPayloadFromMetadata(
     typeof metadata.aspectRatio === "string"
       ? metadata.aspectRatio
       : aspectRatioForFormat(format);
-  let duration: number | undefined;
+  let targetDuration: number | undefined;
   if (metadata.duration != null) {
     const raw =
       typeof metadata.duration === "number"
         ? metadata.duration
         : Number(String(metadata.duration).replace(/s$/i, ""));
-    if (Number.isFinite(raw)) duration = raw;
+    if (Number.isFinite(raw)) targetDuration = raw;
+  } else if (metadata.videoTargetDurationSec != null) {
+    const raw =
+      typeof metadata.videoTargetDurationSec === "number"
+        ? metadata.videoTargetDurationSec
+        : Number(metadata.videoTargetDurationSec);
+    if (Number.isFinite(raw)) targetDuration = raw;
   } else {
-    duration = durationForFormat(format, service, subtype);
+    targetDuration = durationForFormat(format, service, subtype);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { planVideoClipSegments, wireDurationForVideoSegment } =
+    require("../../providers/video/common/video-clip-segments") as typeof import("../../providers/video/common/video-clip-segments");
+
+  const segmentIndexRaw = metadata.videoSegmentIndex;
+  const segmentIndex =
+    typeof segmentIndexRaw === "number" && Number.isFinite(segmentIndexRaw)
+      ? Math.max(0, Math.trunc(segmentIndexRaw))
+      : 0;
+  const plan =
+    targetDuration != null
+      ? planVideoClipSegments({ targetDurationSec: targetDuration })
+      : null;
+  const duration =
+    targetDuration != null
+      ? wireDurationForVideoSegment({
+          targetDurationSec: targetDuration,
+          segmentIndex,
+        })
+      : undefined;
   const resolution =
     typeof metadata.resolution === "string" ? metadata.resolution : undefined;
   return {
     ...(duration != null ? { duration } : {}),
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(resolution ? { resolution } : {}),
+    ...(targetDuration != null ? { videoTargetDurationSec: targetDuration } : {}),
+    videoSegmentIndex: segmentIndex,
+    ...(plan ? { videoSegmentCount: plan.segmentCount } : {}),
   };
 }
 
@@ -122,6 +168,12 @@ import { asJobId, type JobId } from "../../infrastructure/execution/contracts/jo
 import { applyWebsiteExportToExecution } from "./website-export-materializer";
 import { isWebsiteGenerationMetadata, isLongRunningPresentationMetadata, isLongRunningDocumentMetadata } from "./execution-thin-path";
 import {
+  logStructuredCompletionPipeline,
+  resolveStructuredCompletionCandidate,
+} from "./execution-structured-completion-candidate";
+import { isCanonicalStructuredPhaseMetadata } from "../../cdf/structured-output-contract";
+import { metadataRequiresCanonicalProductCompletion } from "./execution-cdf-canonical-ingest";
+import {
   aspectRatioForFormat,
   durationForFormat,
 } from "../../os/contracts/output-contracts/format-overlays";
@@ -142,6 +194,7 @@ import { pickRetryableCreateMetadata } from "./execution-retry-handoff";
 import {
   recordProviderDispatchFromSummary,
   recordWebsiteMaterializationTrace,
+  updateExecutionTrace,
 } from "../../os/observability/execution-trace";
 import {
   continuityPostGuardExtras,
@@ -158,6 +211,7 @@ import { autoApprovePendingToolInvocations } from "./auto-approve-pending-tools"
 import { CANONICAL_INTEGRATION_MODE } from "./canonical-execution-spine";
 import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
 import type { CreatePipelineState } from "./execution-create-state";
+import { preserveEstablishedOutcomeEvidenceOnResultData } from "../../cdf/generation-validation/outcome-evidence-preservation";
 
 function metadataBrandAssetIds(
   metadata: Readonly<Record<string, unknown>> | undefined,
@@ -245,7 +299,7 @@ export async function runCreateDispatch(
       correlationId,
       createdAt: now,
       updatedAt: now,
-      promptPreview: req.prompt.slice(0, 120),
+      promptPreview: promptPreviewForClient(req.prompt),
       ...(executionBrandId ? { brandId: executionBrandId } : {}),
       ...conversationFieldsFromMetadata(req.metadata),
       result: { kind: "pending" },
@@ -418,7 +472,7 @@ export async function runCreateDispatch(
       correlationId,
       createdAt: now,
       updatedAt: now,
-      promptPreview: req.prompt.slice(0, 120),
+      promptPreview: promptPreviewForClient(req.prompt),
       ...(executionBrandId ? { brandId: executionBrandId } : {}),
       ...conversationFieldsFromMetadata(req.metadata),
       result: { kind: "pending" },
@@ -532,6 +586,9 @@ export async function runCreateDispatch(
           nowIso: host.deps.nowIso,
         }),
         asyncLane,
+        createMetadataSnapshot: pickRetryableCreateMetadata(
+          workingMetadata ?? req.metadata,
+        ),
       });
     } else {
       host.extrasStore.set(executionId, {
@@ -569,6 +626,9 @@ export async function runCreateDispatch(
           applied: false,
         },
         osLifecycle: asyncLane.lifecycle,
+        createMetadataSnapshot: pickRetryableCreateMetadata(
+          workingMetadata ?? req.metadata,
+        ),
       });
     }
 
@@ -658,6 +718,13 @@ export async function runCreateDispatch(
         ...(req.metadata ?? {}),
         ...(workingMetadata ?? {}),
       });
+      // Canonical CDF emission (text_choice / structured) must use the same
+      // background finalizer as decks/docs — otherwise create can return
+      // non-terminal and poll hydrate would copy routes without ArtifactVersion.
+      const isCanonicalCdfEmission = isCanonicalStructuredPhaseMetadata({
+        ...(req.metadata ?? {}),
+        ...(workingMetadata ?? {}),
+      });
       // LIVE image/video/website/pitch-deck/brochure can exceed the mobile HTTP timeout — tick in background.
       // Short copy/enhance must finish so GET/create return resultText.
       if (
@@ -665,7 +732,8 @@ export async function runCreateDispatch(
         (isLongRunningMedia ||
           isLongRunningWebsite ||
           isLongRunningPresentation ||
-          isLongRunningDocument)
+          isLongRunningDocument ||
+          isCanonicalCdfEmission)
       ) {
         deferredLongRunning = true;
         void (async () => {
@@ -805,11 +873,38 @@ export async function runCreateDispatch(
     const capabilityForGateway =
       capabilityIdRaw?.trim() || "text.generate";
     const controlPlaneWorkspaceId = resolveControlPlaneWorkspaceId(req.workspaceId);
+    const dispatchMetadata = {
+      ...(req.metadata ?? {}),
+      ...(workingMetadata ?? {}),
+      ...(req.toolNames ? { toolNames: req.toolNames } : {}),
+      ...(req.structuredOutput ? { structuredOutput: req.structuredOutput } : {}),
+      ...(req.capabilityId
+        ? { capabilityHint: req.capabilityId, capabilityId: req.capabilityId }
+        : {}),
+      apiExecutionId: executionId,
+      executionId,
+      userId: principal.userId,
+      roles: principal.roles,
+      projectId: req.projectId,
+      brandId: executionBrandId,
+      campaignId:
+        typeof req.metadata?.campaignId === "string"
+          ? req.metadata.campaignId
+          : undefined,
+    };
+    // Phase 11 — promote CMR to top-level DirectExecutionRequest when present
+    // (same semantic object as metadata; enables explicit Model Runtime entry).
+    const { resolveCanonicalModelRequestFromCarrier } = await import(
+      "../../ai/canonical-model-request"
+    );
+    const canonicalModelRequest =
+      resolveCanonicalModelRequestFromCarrier(dispatchMetadata);
     const run = await runDirectProviderExecution({
       integration: host.deps.integration,
       request: {
         requestId: executionId,
         rawPrompt: providerPrompt,
+        ...(canonicalModelRequest ? { canonicalModelRequest } : {}),
         organizationId: asOrganizationId(trustedOrganizationId),
         workspaceId: asWorkspaceId(controlPlaneWorkspaceId),
         budgetLimit: req.budgetLimit,
@@ -817,25 +912,7 @@ export async function runCreateDispatch(
         correlationId,
         mode: CANONICAL_INTEGRATION_MODE,
         scenarioHint: undefined,
-        metadata: {
-          ...(req.metadata ?? {}),
-          ...(workingMetadata ?? {}),
-          ...(req.toolNames ? { toolNames: req.toolNames } : {}),
-          ...(req.structuredOutput ? { structuredOutput: req.structuredOutput } : {}),
-          ...(req.capabilityId
-            ? { capabilityHint: req.capabilityId, capabilityId: req.capabilityId }
-            : {}),
-          apiExecutionId: executionId,
-          executionId,
-          userId: principal.userId,
-          roles: principal.roles,
-          projectId: req.projectId,
-          brandId: executionBrandId,
-          campaignId:
-            typeof req.metadata?.campaignId === "string"
-              ? req.metadata.campaignId
-              : undefined,
-        },
+        metadata: dispatchMetadata,
       },
       capabilityId: capabilityForGateway,
       organizationId: trustedOrganizationId,
@@ -877,6 +954,26 @@ export async function runCreateDispatch(
       executionMode: apiExecutionMode === "live" ? "live" : "simulated",
       durationMs: run.value.durationMs,
     });
+    {
+      const sd = jobSummary.structuredData;
+      const keys =
+        sd && typeof sd === "object" && !Array.isArray(sd)
+          ? Object.keys(sd as object).slice(0, 24)
+          : [];
+      logStructuredCompletionPipeline("job_summary", {
+        executionId,
+        structuredPresent: sd != null,
+        structuredKeyCount: keys.length,
+        structuredKeys: keys,
+        outputContractName:
+          req.structuredOutput &&
+          typeof req.structuredOutput === "object" &&
+          typeof req.structuredOutput.name === "string"
+            ? req.structuredOutput.name
+            : undefined,
+        path: "sync_direct",
+      });
+    }
     recordProviderDispatchFromSummary({
       executionId,
       status,
@@ -1026,7 +1123,8 @@ export async function runCreateDispatch(
   }
 
   // Presentation / document structured plans → PPTX + PDF / PDF + DOCX.
-  // Prefer worker-side materialization (full runtime still in memory).
+  // M7 strangler: attempt CDF canonical ingest first; skip legacy materializer
+  // when shouldSkipLegacyPresentationExport (canonical attach accepted).
   if (status === "succeeded" && jobSummary.documentExportKind == null) {
     const structuredNameHint =
       req.structuredOutput &&
@@ -1049,22 +1147,285 @@ export async function runCreateDispatch(
       materializeDocumentExports,
       resolveDocumentExportKind,
       isRequiredDocumentOrPresentationExport,
+      shouldRunDocumentExportMaterialization,
     } = await import("./document-export-materializer");
-    const deliverableRequired = isRequiredDocumentOrPresentationExport({
-      outputKind: outputKindHint,
-      structuredName: structuredNameHint,
-      service:
-        typeof workingMetadata?.service === "string"
-          ? workingMetadata.service
+    // CDF phase contract gates export — Spec PDF/DOCX alone must not require it.
+    const cdfExportAuthorized =
+      workingMetadata?.cdfExecutionAuthorityApplied !== true ||
+      workingMetadata?.cdfAuthorityAuthorizesDocumentExport === true;
+    const deliverableRequired =
+      cdfExportAuthorized &&
+      isRequiredDocumentOrPresentationExport({
+        outputKind: outputKindHint,
+        structuredName: structuredNameHint,
+        service:
+          typeof workingMetadata?.service === "string"
+            ? workingMetadata.service
+            : undefined,
+        subtype:
+          typeof workingMetadata?.subtype === "string"
+            ? workingMetadata.subtype
+            : undefined,
+        deliverableRequired: workingMetadata?.deliverableRequired === true,
+      });
+
+    const candidateResolution = resolveStructuredCompletionCandidate({
+      result,
+      jobSummary,
+      runtimeOutput: runtimeOutputForMedia,
+      metadata: workingMetadata as Record<string, unknown> | undefined,
+    });
+    let structuredCandidate: unknown = candidateResolution.candidate;
+    logStructuredCompletionPipeline("candidate_resolved", {
+      executionId,
+      jobId: jobId ? String(jobId) : undefined,
+      cdfSessionId:
+        typeof workingMetadata?.cdfSessionId === "string"
+          ? workingMetadata.cdfSessionId
           : undefined,
-      subtype:
-        typeof workingMetadata?.subtype === "string"
-          ? workingMetadata.subtype
+      cdfPhaseId:
+        typeof workingMetadata?.cdfPhaseId === "string"
+          ? workingMetadata.cdfPhaseId
           : undefined,
-      deliverableRequired: workingMetadata?.deliverableRequired === true,
+      outputContractName: structuredNameHint,
+      artifactKey:
+        typeof workingMetadata?.cdfArtifactKey === "string"
+          ? workingMetadata.cdfArtifactKey
+          : undefined,
+      generationModality:
+        typeof workingMetadata?.cdfGenerationModality === "string"
+          ? workingMetadata.cdfGenerationModality
+          : undefined,
+      candidateSource: candidateResolution.source,
+      structuredPresent: candidateResolution.structuredPresent,
+      structuredKeyCount: candidateResolution.structuredKeyCount,
+      structuredKeys: candidateResolution.structuredKeys,
+      resultKind: result.kind,
+      path: "dispatch_sync",
+    });
+    try {
+      const { recoverPresentationRoutesPayload } = await import(
+        "../../os/delivery/document-export-service"
+      );
+      if (structuredCandidate != null) {
+        structuredCandidate = recoverPresentationRoutesPayload(
+          structuredCandidate
+        );
+      }
+    } catch {
+      // recovery is best-effort
+    }
+
+    // ONE authoritative CDF completion ingest (shared with recovered_job).
+    let presentationCanonicalAttach: Record<string, unknown> | null = null;
+    let presentationIngestFailure: Record<string, unknown> | null = null;
+    let packagingCanonicalAttach: Record<string, unknown> | null = null;
+    let packagingIngestFailure: Record<string, unknown> | null = null;
+    let socialMediaCanonicalAttach: Record<string, unknown> | null = null;
+    let socialMediaIngestFailure: Record<string, unknown> | null = null;
+    let structuralMetadataStamps: Record<string, unknown> | undefined;
+    if (status === "succeeded") {
+      try {
+        const { applyCdfCanonicalCompletionIngest } = await import(
+          "./execution-cdf-canonical-ingest"
+        );
+        logStructuredCompletionPipeline("canonical_ingest_before", {
+          executionId,
+          cdfSessionId:
+            typeof workingMetadata?.cdfSessionId === "string"
+              ? workingMetadata.cdfSessionId
+              : undefined,
+          cdfPhaseId:
+            typeof workingMetadata?.cdfPhaseId === "string"
+              ? workingMetadata.cdfPhaseId
+              : undefined,
+          outputContractName: structuredNameHint,
+          artifactKey:
+            typeof workingMetadata?.cdfArtifactKey === "string"
+              ? workingMetadata.cdfArtifactKey
+              : undefined,
+          candidateSource: candidateResolution.source,
+          structuredPresent: structuredCandidate != null,
+          structuredKeyCount: candidateResolution.structuredKeyCount,
+          structuredKeys: candidateResolution.structuredKeys,
+          path: "dispatch_sync",
+        });
+        const ingestOut = await applyCdfCanonicalCompletionIngest({
+          status,
+          workingMetadata: workingMetadata as Record<string, unknown> | undefined,
+          structuredCandidate,
+          mediaArtifactIds: mediaArtifactIds ?? [],
+          executionId,
+          organizationId: trustedOrganizationId,
+          correlationId,
+          workspaceId: req.workspaceId,
+          projectId: req.projectId,
+          userId: (req as { userId?: string }).userId,
+          asyncMedia: host.deps.asyncMedia,
+          logOsExecutionEvent: (event, fields) =>
+            logOsExecutionEvent(event, fields as Parameters<typeof logOsExecutionEvent>[1]),
+        });
+        structuredCandidate = ingestOut.structuredCandidate;
+        if (
+          ingestOut.metadataStamps &&
+          typeof ingestOut.metadataStamps === "object"
+        ) {
+          structuralMetadataStamps = { ...ingestOut.metadataStamps };
+          workingMetadata = {
+            ...(workingMetadata ?? {}),
+            ...structuralMetadataStamps,
+          };
+          state.workingMetadata = workingMetadata;
+        }
+        logStructuredCompletionPipeline("canonical_ingest_after", {
+          executionId,
+          ingestResult: ingestOut.productCompletionBlocked
+            ? "blocked"
+            : ingestOut.socialMediaCanonicalAttach ||
+                ingestOut.presentationCanonicalAttach ||
+                ingestOut.packagingCanonicalAttach ||
+                ingestOut.genericCanonicalAttach
+              ? "accepted"
+              : "no_attach",
+          artifactId:
+            typeof ingestOut.socialMediaCanonicalAttach?.cdfArtifactId ===
+            "string"
+              ? String(ingestOut.socialMediaCanonicalAttach.cdfArtifactId)
+              : typeof ingestOut.presentationCanonicalAttach?.cdfArtifactId ===
+                  "string"
+                ? String(ingestOut.presentationCanonicalAttach.cdfArtifactId)
+                : typeof ingestOut.packagingCanonicalAttach?.cdfArtifactId ===
+                    "string"
+                  ? String(ingestOut.packagingCanonicalAttach.cdfArtifactId)
+                  : typeof ingestOut.genericCanonicalAttach?.cdfArtifactId ===
+                      "string"
+                    ? String(ingestOut.genericCanonicalAttach.cdfArtifactId)
+                    : undefined,
+          artifactVersion:
+            typeof ingestOut.socialMediaCanonicalAttach?.cdfArtifactVersion ===
+            "number"
+              ? Number(ingestOut.socialMediaCanonicalAttach.cdfArtifactVersion)
+              : typeof ingestOut.genericCanonicalAttach?.cdfArtifactVersion ===
+                  "number"
+                ? Number(ingestOut.genericCanonicalAttach.cdfArtifactVersion)
+                : undefined,
+          reason: ingestOut.productCompletionBlockReason,
+          path: "dispatch_sync",
+        });
+        presentationCanonicalAttach = ingestOut.presentationCanonicalAttach;
+        presentationIngestFailure = ingestOut.presentationIngestFailure;
+        packagingCanonicalAttach = ingestOut.packagingCanonicalAttach;
+        packagingIngestFailure = ingestOut.packagingIngestFailure;
+        socialMediaCanonicalAttach = ingestOut.socialMediaCanonicalAttach;
+        socialMediaIngestFailure = ingestOut.socialMediaIngestFailure;
+        {
+          const attach =
+            socialMediaCanonicalAttach ??
+            packagingCanonicalAttach ??
+            presentationCanonicalAttach ??
+            ingestOut.genericCanonicalAttach;
+          if (
+            attach &&
+            typeof attach.cdfArtifactId === "string" &&
+            (typeof attach.cdfArtifactVersion === "number" ||
+              typeof attach.cdfArtifactVersion === "string")
+          ) {
+            workingMetadata = {
+              ...(workingMetadata ?? {}),
+              cdfArtifactId: String(attach.cdfArtifactId),
+              cdfArtifactVersion: attach.cdfArtifactVersion,
+              ...(typeof attach.cdfArtifactKey === "string"
+                ? { cdfArtifactKey: attach.cdfArtifactKey }
+                : {}),
+              cdfGeneratedArtifactsBound: true,
+              cdfCanonicalCompletionEstablished: true,
+              ...(typeof workingMetadata?.generationFanoutTargetId === "string" &&
+              workingMetadata.generationFanoutTargetId.trim()
+                ? {
+                    cdfCanonicalFanoutTargetId:
+                      workingMetadata.generationFanoutTargetId.trim(),
+                  }
+                : {}),
+            };
+            state.workingMetadata = workingMetadata;
+          }
+        }
+        if (ingestOut.productCompletionBlocked) {
+          status = "failed";
+          errorMessage =
+            ingestOut.productCompletionBlockReason ||
+            "Canonical CDF completion requires ArtifactVersion + generatedArtifacts bind";
+          logOsExecutionEvent("execution.cdf_canonical_completion.blocked", {
+            requestId: correlationId,
+            executionId,
+            organizationId: trustedOrganizationId,
+            status: "failed",
+            errorCode: errorMessage,
+          });
+          updateExecutionTrace({
+            executionId,
+            patch: {
+              canonicalCompletionBlocked: true,
+              canonicalCompletionBlockReason: errorMessage,
+            },
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logOsExecutionEvent("execution.cdf_canonical_completion.failed", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "skipped",
+          errorCode: msg,
+        });
+        const { metadataRequiresCanonicalProductCompletion } = await import(
+          "./execution-cdf-canonical-ingest"
+        );
+        if (
+          metadataRequiresCanonicalProductCompletion(
+            workingMetadata as Record<string, unknown> | undefined,
+          )
+        ) {
+          status = "failed";
+          errorMessage = `Canonical CDF completion ingest failed: ${msg}`;
+        }
+      }
+    }
+
+    const { shouldSkipLegacyPresentationExport } = await import(
+      "../../cdf/presentation-runtime"
+    );
+    const skipLegacyExport = shouldSkipLegacyPresentationExport({
+      metadata: workingMetadata,
+      canonicalAttached: Boolean(presentationCanonicalAttach),
     });
 
-    if (!host.deps.asyncMedia && deliverableRequired) {
+    if (skipLegacyExport && presentationCanonicalAttach) {
+      const baseData =
+        typeof structuredCandidate === "object" &&
+        structuredCandidate &&
+        !Array.isArray(structuredCandidate)
+          ? (structuredCandidate as Record<string, unknown>)
+          : {};
+      result = {
+        kind: "structured",
+        data: {
+          ...baseData,
+          ...presentationCanonicalAttach,
+          exportKind: "presentation",
+          downloadFormats: ["pdf", "pptx"],
+          cdfLegacyExportSkipped: true,
+          legacyFallback: false,
+        },
+      };
+      logOsExecutionEvent("execution.document_export.canonical_only", {
+        requestId: correlationId,
+        executionId,
+        organizationId: trustedOrganizationId,
+        status: "succeeded",
+      });
+    } else if (!host.deps.asyncMedia && deliverableRequired) {
       status = "failed";
       errorMessage =
         "Document/presentation export requires async media (ENTERPRISE_ASYNC_MEDIA_ENABLED)";
@@ -1077,43 +1438,69 @@ export async function runCreateDispatch(
       });
     } else if (host.deps.asyncMedia) {
     try {
-      let structuredCandidate: unknown =
-        (result.kind === "structured" ? result.data : undefined) ??
-        jobSummary.structuredData ??
-        runtimeOutputForMedia?.structured ??
-        runtimeOutputForMedia?.structuredOutput ??
-        runtimeOutputForMedia?.data;
-      const { recoverPresentationRoutesPayload } = await import(
-        "../../os/delivery/document-export-service"
-      );
-      if (structuredCandidate != null) {
-        structuredCandidate = recoverPresentationRoutesPayload(
-          structuredCandidate
-        );
-      }
-      const exportKind = resolveDocumentExportKind({
-        outputKind: outputKindHint,
-        mediaKind:
-          typeof workingMetadata?.mediaKind === "string"
-            ? workingMetadata.mediaKind
-            : undefined,
-        structuredName: structuredNameHint,
-        data: structuredCandidate,
+      const allowDocumentExport = shouldRunDocumentExportMaterialization({
+        metadata: workingMetadata as Record<string, unknown> | undefined,
+        structuredData: structuredCandidate,
       });
-      if (!exportKind && deliverableRequired) {
-        status = "failed";
-        errorMessage =
-          (structuredNameHint ?? "").toLowerCase().includes("presentation") ||
-          (outputKindHint ?? "").toLowerCase() === "presentation"
-            ? "Presentation completed without slide decks required for PDF/PPTX export."
-            : "Document completed without a valid DocumentPlan required for PDF/DOCX export.";
-        logOsExecutionEvent("execution.document_export.failed", {
+      if (!allowDocumentExport) {
+        logOsExecutionEvent("execution.document_export.skipped_cdf_authority", {
           requestId: correlationId,
           executionId,
           organizationId: trustedOrganizationId,
-          status: "failed",
-          errorCode: errorMessage,
+          status: "skipped",
         });
+      }
+      const exportKind = allowDocumentExport
+        ? resolveDocumentExportKind({
+            outputKind: outputKindHint,
+            mediaKind:
+              typeof workingMetadata?.mediaKind === "string"
+                ? workingMetadata.mediaKind
+                : undefined,
+            structuredName: structuredNameHint,
+            data: structuredCandidate,
+          })
+        : null;
+      if (!exportKind && deliverableRequired) {
+        // M7: canonical DeckSpec alone can satisfy Presentation deliverable.
+        if (presentationCanonicalAttach) {
+          const baseData =
+            typeof structuredCandidate === "object" &&
+            structuredCandidate &&
+            !Array.isArray(structuredCandidate)
+              ? (structuredCandidate as Record<string, unknown>)
+              : {};
+          result = {
+            kind: "structured",
+            data: {
+              ...baseData,
+              ...presentationCanonicalAttach,
+              exportKind: "presentation",
+              downloadFormats: ["pdf", "pptx"],
+              cdfLegacyExportDeferred: true,
+            },
+          };
+          logOsExecutionEvent("execution.document_export.canonical_fallback", {
+            requestId: correlationId,
+            executionId,
+            organizationId: trustedOrganizationId,
+            status: "succeeded",
+          });
+        } else {
+          status = "failed";
+          errorMessage =
+            (structuredNameHint ?? "").toLowerCase().includes("presentation") ||
+            (outputKindHint ?? "").toLowerCase() === "presentation"
+              ? "Presentation completed without slide decks required for PDF/PPTX export."
+              : "Document completed without a valid DocumentPlan required for PDF/DOCX export.";
+          logOsExecutionEvent("execution.document_export.failed", {
+            requestId: correlationId,
+            executionId,
+            organizationId: trustedOrganizationId,
+            status: "failed",
+            errorCode: errorMessage,
+          });
+        }
       } else if (exportKind) {
         const exported = await materializeDocumentExports({
           asyncMedia: host.deps.asyncMedia,
@@ -1182,6 +1569,13 @@ export async function runCreateDispatch(
               ...(exported.value.htmlArtifactId
                 ? { htmlArtifactId: exported.value.htmlArtifactId }
                 : {}),
+              ...(presentationCanonicalAttach ?? {}),
+              ...(presentationIngestFailure && !presentationCanonicalAttach
+                ? {
+                    ...presentationIngestFailure,
+                    legacyFallback: true,
+                  }
+                : {}),
               downloadFormats:
                 exportKind === "email"
                   ? ["html"]
@@ -1202,6 +1596,31 @@ export async function runCreateDispatch(
             organizationId: trustedOrganizationId,
             status: "succeeded",
           });
+        } else if (presentationCanonicalAttach) {
+          // Strangler: legacy materializer failed but canonical DeckSpec exists.
+          const baseData =
+            typeof structuredCandidate === "object" &&
+            structuredCandidate &&
+            !Array.isArray(structuredCandidate)
+              ? (structuredCandidate as Record<string, unknown>)
+              : {};
+          result = {
+            kind: "structured",
+            data: {
+              ...baseData,
+              ...presentationCanonicalAttach,
+              exportKind: exportKind ?? "presentation",
+              downloadFormats: ["pdf", "pptx"],
+              cdfLegacyExportFailed: true,
+            },
+          };
+          logOsExecutionEvent("execution.document_export.canonical_after_legacy_fail", {
+            requestId: correlationId,
+            executionId,
+            organizationId: trustedOrganizationId,
+            status: "succeeded",
+            errorCode: exported.error.message,
+          });
         } else {
           // Required deliverables always hard-fail; never soft-skip to succeeded.
           status = "failed";
@@ -1218,9 +1637,49 @@ export async function runCreateDispatch(
             errorCode: exported.error.message,
           });
         }
+      } else if (presentationCanonicalAttach) {
+        // Non-export structured / early CDF phase: still surface canonical refs.
+        const base =
+          result.kind === "structured" &&
+          typeof result.data === "object" &&
+          result.data &&
+          !Array.isArray(result.data)
+            ? (result.data as Record<string, unknown>)
+            : typeof structuredCandidate === "object" &&
+                structuredCandidate &&
+                !Array.isArray(structuredCandidate)
+              ? (structuredCandidate as Record<string, unknown>)
+              : {};
+        result = {
+          kind: "structured",
+          data: { ...base, ...presentationCanonicalAttach },
+        };
       }
     } catch (err) {
-      if (deliverableRequired) {
+      if (presentationCanonicalAttach) {
+        const baseData =
+          typeof structuredCandidate === "object" &&
+          structuredCandidate &&
+          !Array.isArray(structuredCandidate)
+            ? (structuredCandidate as Record<string, unknown>)
+            : {};
+        result = {
+          kind: "structured",
+          data: {
+            ...baseData,
+            ...presentationCanonicalAttach,
+            downloadFormats: ["pdf", "pptx"],
+            cdfLegacyExportError: true,
+          },
+        };
+        logOsExecutionEvent("execution.document_export.canonical_after_error", {
+          requestId: correlationId,
+          executionId,
+          organizationId: trustedOrganizationId,
+          status: "succeeded",
+          errorCode: err instanceof Error ? err.message : String(err),
+        });
+      } else if (deliverableRequired) {
         status = "failed";
         errorMessage =
           err instanceof Error
@@ -1243,24 +1702,169 @@ export async function runCreateDispatch(
         });
       }
     }
+    } else if (presentationCanonicalAttach) {
+      const base =
+        result.kind === "structured" &&
+        typeof result.data === "object" &&
+        result.data &&
+        !Array.isArray(result.data)
+          ? (result.data as Record<string, unknown>)
+          : typeof structuredCandidate === "object" &&
+              structuredCandidate &&
+              !Array.isArray(structuredCandidate)
+            ? (structuredCandidate as Record<string, unknown>)
+            : {};
+      result = {
+        kind: "structured",
+        data: { ...base, ...presentationCanonicalAttach },
+      };
+    }
+
+    // M8B: attach Packaging canonical metadata when opt-in ingest succeeds.
+    // NEVER replaces art_* / image materialization — additive only.
+    if (packagingCanonicalAttach || packagingIngestFailure) {
+      const base =
+        typeof result.data === "object" &&
+        result.data &&
+        !Array.isArray(result.data)
+          ? (result.data as Record<string, unknown>)
+          : {};
+      result = {
+        ...result,
+        data: {
+          ...base,
+          ...(packagingCanonicalAttach ?? {}),
+          ...(packagingIngestFailure && !packagingCanonicalAttach
+            ? {
+                ...packagingIngestFailure,
+                legacyFallback: true,
+                packagingLiveTrafficMigrated: false,
+              }
+            : { packagingLiveTrafficMigrated: false }),
+        },
+      };
+    }
+
+    // M9B: attach Social Media canonical metadata when opt-in ingest succeeds.
+    // NEVER replaces art_* / image materialization — additive only.
+    if (socialMediaCanonicalAttach || socialMediaIngestFailure) {
+      const base =
+        typeof result.data === "object" &&
+        result.data &&
+        !Array.isArray(result.data)
+          ? (result.data as Record<string, unknown>)
+          : {};
+      result = {
+        ...result,
+        data: {
+          ...base,
+          ...(socialMediaCanonicalAttach ?? {}),
+          ...(socialMediaIngestFailure && !socialMediaCanonicalAttach
+            ? {
+                ...socialMediaIngestFailure,
+                legacyFallback: true,
+                socialMediaLiveTrafficMigrated: false,
+              }
+            : { socialMediaLiveTrafficMigrated: false }),
+        },
+      };
+    }
+
+    // Observational structural/OCR diagnostics from the same gate (all visual families).
+    if (structuralMetadataStamps && Object.keys(structuralMetadataStamps).length > 0) {
+      const base =
+        typeof result.data === "object" &&
+        result.data &&
+        !Array.isArray(result.data)
+          ? (result.data as Record<string, unknown>)
+          : {};
+      result = {
+        ...result,
+        data: {
+          ...base,
+          ...structuralMetadataStamps,
+        },
+      };
+    }
+
+    // Presentation eligibility stamped after website materialization (below).
+  }
+
+    // Phase 20 — optional HTTP create Output QA / Repair seam (default OFF).
+  if (status === "succeeded" && typeof executionId === "string") {
+    try {
+      const {
+        resolveCanonicalGenerationEligibility,
+        maybeRunHttpCreateOutputQa,
+      } = await import("../../ai/production-hardening");
+      const serviceId =
+        typeof workingMetadata?.cdfServiceId === "string"
+          ? workingMetadata.cdfServiceId
+          : typeof workingMetadata?.serviceId === "string"
+            ? workingMetadata.serviceId
+            : undefined;
+      const phaseId =
+        typeof workingMetadata?.cdfPhaseId === "string"
+          ? workingMetadata.cdfPhaseId
+          : undefined;
+      const eligibility = resolveCanonicalGenerationEligibility({
+        organizationId: trustedOrganizationId,
+        projectId:
+          typeof req.projectId === "string" ? req.projectId : undefined,
+        serviceId,
+        cdfSessionId:
+          typeof workingMetadata?.cdfSessionId === "string"
+            ? workingMetadata.cdfSessionId
+            : undefined,
+        cdfPhaseId: phaseId,
+        executionId,
+        metadata: workingMetadata as Record<string, unknown>,
+      });
+      const qaSeam = await maybeRunHttpCreateOutputQa({
+        executionId,
+        eligibility,
+        serviceId,
+        phaseId,
+        executionResult: {
+          ok: true,
+          actionId:
+            serviceId && phaseId
+              ? `cdf.phase.${serviceId}.${phaseId}.generate`
+              : "http.create.generation",
+          actionVersion: "1.0.0",
+          executionMode: "MODEL_GENERATION",
+          sideEffectLevel: "MUTATING",
+          dryRun: false,
+          executionId,
+          correlationId,
+          result: {
+            kind: "generation_result",
+            value: result,
+          },
+          metadata: {
+            httpCreateQaSeam: true,
+            cdfCanonicalRolloutPath: eligibility.path,
+          },
+        },
+      });
+      if (qaSeam.attempted) {
+        workingMetadata = {
+          ...workingMetadata,
+          cdfHttpOutputQaAttempted: true,
+          cdfHttpOutputQaStatus: qaSeam.qa?.status,
+          cdfHttpOutputQaMayAdvance: qaSeam.mayAdvance,
+          cdfHttpRepairAttempted: qaSeam.repairAttempted,
+          cdfHttpRepairStatus: qaSeam.repair?.status,
+        };
+      }
+    } catch {
+      // QA seam must never break HTTP create when optional.
     }
   }
 
   // Web Tech → HTML artifact (live preview URL + downloadable source).
   if (status === "succeeded") {
-    const websiteRequired =
-      (typeof workingMetadata?.service === "string" &&
-        workingMetadata.service.toLowerCase() === "website") ||
-      (typeof workingMetadata?.outputKind === "string" &&
-        /^(deferred_)?website$/i.test(workingMetadata.outputKind)) ||
-      (workingMetadata?.structuredOutput &&
-        typeof workingMetadata.structuredOutput === "object" &&
-        /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
-          String(
-            (workingMetadata.structuredOutput as { name?: unknown }).name ??
-              "",
-          ),
-        ));
+    const websiteRequired = isWebsiteGenerationMetadata(workingMetadata);
     try {
       const exported = await applyWebsiteExportToExecution({
         asyncMedia: host.deps.asyncMedia,
@@ -1293,6 +1897,46 @@ export async function runCreateDispatch(
         mediaArtifactIds = exported.artifactIds;
       }
       if (exported.exported) {
+        try {
+          const {
+            resolveWebsiteCanonicalCompletionStamp,
+            mergeWebsiteCanonicalCompletionStamp,
+          } = await import("./website-canonical-completion");
+          const websiteStamp = resolveWebsiteCanonicalCompletionStamp({
+            metadata: workingMetadata,
+            mediaArtifactIds,
+            resultData:
+              result?.data &&
+              typeof result.data === "object" &&
+              !Array.isArray(result.data)
+                ? (result.data as Record<string, unknown>)
+                : undefined,
+            structuredData: jobSummary?.structuredData,
+          });
+          if (websiteStamp) {
+            workingMetadata = mergeWebsiteCanonicalCompletionStamp(
+              workingMetadata as Record<string, unknown> | undefined,
+              websiteStamp,
+            );
+            state.workingMetadata = workingMetadata;
+            if (
+              result &&
+              result.data &&
+              typeof result.data === "object" &&
+              !Array.isArray(result.data)
+            ) {
+              result = {
+                ...result,
+                data: mergeWebsiteCanonicalCompletionStamp(
+                  result.data as Record<string, unknown>,
+                  websiteStamp,
+                ),
+              };
+            }
+          }
+        } catch {
+          // website completion stamp is best-effort; materialization already succeeded
+        }
         logOsExecutionEvent("execution.website_export.materialized", {
           requestId: correlationId,
           executionId,
@@ -1374,6 +2018,54 @@ export async function runCreateDispatch(
           errorCode: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+  }
+
+  // Authoritative presentation eligibility — after website stamps so deferred
+  // website completion can resolve AVAILABLE without requiring cdfart_*.
+  {
+    const resultDataForElig =
+      result?.data &&
+      typeof result.data === "object" &&
+      !Array.isArray(result.data)
+        ? (result.data as Record<string, unknown>)
+        : {};
+    const { shouldStampPresentationEligibility, buildPresentationEligibilityStamp } =
+      await import("./execution-cdf-canonical-ingest");
+    if (
+      (status === "succeeded" || status === "failed") &&
+      shouldStampPresentationEligibility(
+        workingMetadata as Record<string, unknown> | undefined,
+        resultDataForElig,
+      )
+    ) {
+      const eligibilityStamp = buildPresentationEligibilityStamp({
+        executionId,
+        executionStatus: status,
+        workingMetadata: workingMetadata as Record<string, unknown> | undefined,
+        resultData: resultDataForElig,
+        artifactIds: mediaArtifactIds,
+        productCompletionBlocked:
+          status === "failed" &&
+          (errorMessage === "structural_compliance_failed" ||
+            errorMessage === "structural_compliance_verification_exception" ||
+            resultDataForElig.cdfCanonicalRejected === true ||
+            (typeof errorMessage === "string" &&
+              errorMessage.trim().length > 0)),
+        productCompletionBlockReason: errorMessage,
+      });
+      workingMetadata = {
+        ...(workingMetadata ?? {}),
+        ...eligibilityStamp,
+      };
+      state.workingMetadata = workingMetadata;
+      result = {
+        ...(result ?? { kind: "structured" as const }),
+        data: {
+          ...resultDataForElig,
+          ...eligibilityStamp,
+        },
+      };
     }
   }
 
@@ -1557,7 +2249,7 @@ export async function runCreateDispatch(
     createdAt: now,
     updatedAt: host.deps.nowIso(),
     completedAt,
-    promptPreview: req.prompt.slice(0, 120),
+    promptPreview: promptPreviewForClient(req.prompt),
     cost,
     evaluationScore,
     errorMessage,
@@ -1623,16 +2315,29 @@ export async function runCreateDispatch(
     );
   }
   const stillInFlight =
-    deferredLongRunning &&
-    (status === "queued" || status === "running" || status === "retrying");
-  const providerSucceeded =
+    status === "queued" || status === "running" || status === "retrying";
+  // Observational: deferred flag no longer required — any non-terminal API
+  // status must not run Phase-6 REJECT / integrity FAIL before provider returns.
+  void deferredLongRunning;
+  // Product/API success (canonical completion) — independent of provider media plane.
+  const productSucceeded =
     status === "succeeded" || status === "awaiting_approval";
+  // Provider generation plane: job success or materialized media, even when
+  // product status was rewritten to failed for structural rejection.
+  const providerSucceeded =
+    productSucceeded ||
+    jobSummary?.success === true ||
+    (mediaArtifactIds?.length ?? 0) > 0 ||
+    workingMetadata?.providerJobSucceeded === true;
+  if (jobSummary?.success === true && workingMetadata) {
+    workingMetadata.providerJobSucceeded = true;
+  }
   const continuityGuardCtx = extractContinuityGuardContext({
     ...(req.metadata ?? {}),
     ...(workingMetadata ?? {}),
   });
-  // Never run Phase-6 REJECT while the deferred job is still queued/running —
-  // that falsely marks long website/deck/doc creates as provider failures.
+  // Never run Phase-6 REJECT while the job is still queued/running —
+  // that falsely marks deferred creates as provider failures (REJECT + execute).
   const phase6Governance = stillInFlight
     ? {
         governance: defaultGovernanceEngine.decide({
@@ -1698,7 +2403,22 @@ export async function runCreateDispatch(
           metadata: workingMetadata,
           jobSummary,
           mediaArtifactIds,
+          resultData:
+            result?.data &&
+            typeof result.data === "object" &&
+            !Array.isArray(result.data)
+              ? (result.data as Record<string, unknown>)
+              : undefined,
         }),
+        skipOutputRequirements:
+          workingMetadata?.skipOutputRequirements === true ||
+          workingMetadata?.cdfSkipImageProductionSpec === true,
+        generationModality:
+          typeof workingMetadata?.cdfAuthorityGenerationModality === "string"
+            ? workingMetadata.cdfAuthorityGenerationModality
+            : typeof workingMetadata?.cdfGenerationModality === "string"
+              ? workingMetadata.cdfGenerationModality
+              : undefined,
         nowIso: host.deps.nowIso,
         createId: host.deps.createId,
       });
@@ -1790,15 +2510,31 @@ export async function runCreateDispatch(
     autoDelivery = {
       error:
         phase6Governance.evaluation.creativeScore != null
-          ? `Release blocked — creative score ${phase6Governance.evaluation.creativeScore}/100 (gate 80)`
+          ? `Release blocked — creative score ${phase6Governance.evaluation.creativeScore}/100 (gate ${CREATIVE_SCORE_RELEASE_GATE})`
           : "Release blocked — creative QA gate failed",
     };
+  }
+
+  try {
+    const { stampExecutionReleaseGate } = await import(
+      "../../cdf/social-media-runtime/execution-release-gate"
+    );
+    stampExecutionReleaseGate(executionId, {
+      blocked: releaseBlocked,
+      creativeScore: phase6Governance.evaluation.creativeScore ?? null,
+      reason: releaseBlocked
+        ? autoDelivery?.error ?? "Release blocked — creative QA / governance gate"
+        : undefined,
+    });
+  } catch {
+    // Release gate stamp is best-effort for CDF approve.
   }
 
   const derivedCost = await deriveFinalizeExecutionCost(executionId);
 
   const extras = {
-    diagnostics: diagnosticsFromJobSummary(
+    diagnostics: {
+      ...diagnosticsFromJobSummary(
       executionId,
       errorMessage,
       {
@@ -1813,6 +2549,14 @@ export async function runCreateDispatch(
       jobId,
       status
     ),
+      ...(workingMetadata?.cdfStructuralCompliance != null
+        ? {
+            cdfStructuralCompliance: workingMetadata.cdfStructuralCompliance,
+            cdfStructuralComplianceStatus:
+              workingMetadata.cdfStructuralComplianceStatus,
+          }
+        : {}),
+    },
     trace: {
       executionId,
       correlationId,
@@ -2034,16 +2778,33 @@ async function finalizeDeferredDistributedJob(input: {
 
   const existing = await host.loadExecution(executionId);
   if (!existing) return;
-  if (
-    existing.status === "succeeded" ||
-    existing.status === "failed" ||
-    existing.status === "cancelled"
-  ) {
+  if (existing.status === "cancelled") {
+    return;
+  }
+  const allowSucceededReingest =
+    existing.status === "succeeded" &&
+    metadataRequiresCanonicalProductCompletion(
+      workingMetadata as Record<string, unknown> | undefined,
+    );
+  if (existing.status === "succeeded" && !allowSucceededReingest) {
     return;
   }
 
   const job = host.deps.distributed.getJob(asJobId(String(jobId)));
   if (!job.ok || !job.value) return;
+
+  // Split-brain recovery: a premature background timeout may have marked the
+  // execution failed while the worker still completed successfully. Allow
+  // terminal job success to reconcile the authoritative execution record.
+  if (existing.status === "failed") {
+    const summaryProbe = job.value.resultSummary ?? {};
+    const jobOk =
+      isTerminalJobStatus(job.value.status) &&
+      job.value.status !== "failed" &&
+      job.value.status !== "cancelled" &&
+      summaryProbe.success !== false;
+    if (!jobOk) return;
+  }
 
   const summary = job.value.resultSummary ?? {};
   const awaitingToolApproval = summary.awaitingToolApproval === true;
@@ -2096,7 +2857,7 @@ async function finalizeDeferredDistributedJob(input: {
     errorMessage: nextError,
   });
 
-  const meta = {
+  let meta = {
     ...(reqMetadata ?? {}),
     ...(workingMetadata ?? {}),
     ...(job.value.payload?.metadata ?? {}),
@@ -2132,23 +2893,51 @@ async function finalizeDeferredDistributedJob(input: {
   nextResult = exported.result;
   const nextArtifactIds = exported.artifactIds ?? existing.artifactIds;
 
+  if (exported.exported) {
+    try {
+      const {
+        resolveWebsiteCanonicalCompletionStamp,
+        mergeWebsiteCanonicalCompletionStamp,
+      } = await import("./website-canonical-completion");
+      const websiteStamp = resolveWebsiteCanonicalCompletionStamp({
+        metadata: meta,
+        mediaArtifactIds: nextArtifactIds,
+        resultData:
+          nextResult?.data &&
+          typeof nextResult.data === "object" &&
+          !Array.isArray(nextResult.data)
+            ? (nextResult.data as Record<string, unknown>)
+            : undefined,
+        structuredData: summary?.structuredData,
+      });
+      if (websiteStamp) {
+        meta = mergeWebsiteCanonicalCompletionStamp(meta, websiteStamp);
+        if (
+          nextResult &&
+          nextResult.data &&
+          typeof nextResult.data === "object" &&
+          !Array.isArray(nextResult.data)
+        ) {
+          nextResult = {
+            ...nextResult,
+            data: mergeWebsiteCanonicalCompletionStamp(
+              nextResult.data as Record<string, unknown>,
+              websiteStamp,
+            ),
+          };
+        }
+      }
+    } catch {
+      // best-effort stamp
+    }
+  }
+
   if (
     exported.errorCode &&
     !exported.exported &&
     status === "succeeded"
   ) {
-    const websiteRequired =
-      (typeof meta.service === "string" &&
-        meta.service.toLowerCase() === "website") ||
-      (typeof meta.outputKind === "string" &&
-        /^(deferred_)?website$/i.test(meta.outputKind)) ||
-      (meta.structuredOutput &&
-        typeof meta.structuredOutput === "object" &&
-        /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
-          String(
-            (meta.structuredOutput as { name?: unknown }).name ?? ""
-          )
-        ));
+    const websiteRequired = isWebsiteGenerationMetadata(meta);
     if (websiteRequired) {
       status = "failed";
       nextError =
@@ -2157,15 +2946,7 @@ async function finalizeDeferredDistributedJob(input: {
     }
   }
 
-  const deferredWebsiteRequired =
-    (typeof meta.service === "string" && meta.service.toLowerCase() === "website") ||
-    (typeof meta.outputKind === "string" &&
-      /^(deferred_)?website$/i.test(meta.outputKind)) ||
-    (meta.structuredOutput &&
-      typeof meta.structuredOutput === "object" &&
-      /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(
-        String((meta.structuredOutput as { name?: unknown }).name ?? ""),
-      ));
+  const deferredWebsiteRequired = isWebsiteGenerationMetadata(meta);
   recordWebsiteMaterializationTrace({
     executionId,
     exported: exported.exported,
@@ -2185,6 +2966,324 @@ async function finalizeDeferredDistributedJob(input: {
         "unknown",
     ),
   });
+
+  // CDF canonical ingest — shared finalizer (same as sync create).
+  let cdfAttachMeta: Record<string, unknown> = {};
+  if (status === "succeeded") {
+    try {
+      const { applyCdfCanonicalCompletionIngest } = await import(
+        "./execution-cdf-canonical-ingest"
+      );
+      const candidateResolution = resolveStructuredCompletionCandidate({
+        result: nextResult,
+        jobSummary: summary,
+        metadata: meta,
+      });
+      const structuredFromSummary = candidateResolution.candidate;
+      logStructuredCompletionPipeline("candidate_resolved", {
+        executionId,
+        jobId: String(jobId),
+        cdfSessionId:
+          typeof meta.cdfSessionId === "string" ? meta.cdfSessionId : undefined,
+        cdfPhaseId:
+          typeof meta.cdfPhaseId === "string" ? meta.cdfPhaseId : undefined,
+        outputContractName: structuredOutputName,
+        artifactKey:
+          typeof meta.cdfArtifactKey === "string"
+            ? meta.cdfArtifactKey
+            : undefined,
+        generationModality:
+          typeof meta.cdfGenerationModality === "string"
+            ? meta.cdfGenerationModality
+            : undefined,
+        candidateSource: candidateResolution.source,
+        structuredPresent: candidateResolution.structuredPresent,
+        structuredKeyCount: candidateResolution.structuredKeyCount,
+        structuredKeys: candidateResolution.structuredKeys,
+        resultKind: nextResult.kind,
+        path: "dispatch_finalize",
+      });
+      const ingestOut = await applyCdfCanonicalCompletionIngest({
+        status,
+        workingMetadata: meta,
+        structuredCandidate: structuredFromSummary,
+        mediaArtifactIds:
+          mediaArtifactIds.length > 0
+            ? mediaArtifactIds
+            : Array.isArray(nextArtifactIds)
+              ? nextArtifactIds.filter(
+                  (id): id is string =>
+                    typeof id === "string" && id.startsWith("art_"),
+                )
+              : [],
+        executionId,
+        organizationId,
+        correlationId,
+        workspaceId:
+          typeof meta.workspaceId === "string" ? meta.workspaceId : undefined,
+        projectId:
+          typeof meta.projectId === "string" ? meta.projectId : undefined,
+        userId: typeof meta.userId === "string" ? meta.userId : undefined,
+        asyncMedia: host.deps.asyncMedia,
+        logOsExecutionEvent: (event, fields) =>
+          logOsExecutionEvent(event, fields as Parameters<typeof logOsExecutionEvent>[1]),
+      });
+      logStructuredCompletionPipeline("canonical_ingest_after", {
+        executionId,
+        ingestResult: ingestOut.productCompletionBlocked
+          ? "blocked"
+          : ingestOut.socialMediaCanonicalAttach ||
+              ingestOut.presentationCanonicalAttach ||
+              ingestOut.packagingCanonicalAttach ||
+              ingestOut.genericCanonicalAttach
+            ? "accepted"
+            : "no_attach",
+        artifactId:
+          typeof ingestOut.socialMediaCanonicalAttach?.cdfArtifactId === "string"
+            ? String(ingestOut.socialMediaCanonicalAttach.cdfArtifactId)
+            : typeof ingestOut.presentationCanonicalAttach?.cdfArtifactId ===
+                "string"
+              ? String(ingestOut.presentationCanonicalAttach.cdfArtifactId)
+              : typeof ingestOut.packagingCanonicalAttach?.cdfArtifactId ===
+                  "string"
+                ? String(ingestOut.packagingCanonicalAttach.cdfArtifactId)
+                : typeof ingestOut.genericCanonicalAttach?.cdfArtifactId ===
+                    "string"
+                  ? String(ingestOut.genericCanonicalAttach.cdfArtifactId)
+                  : undefined,
+        artifactVersion:
+          typeof ingestOut.socialMediaCanonicalAttach?.cdfArtifactVersion ===
+          "number"
+            ? Number(ingestOut.socialMediaCanonicalAttach.cdfArtifactVersion)
+            : typeof ingestOut.genericCanonicalAttach?.cdfArtifactVersion ===
+                "number"
+              ? Number(ingestOut.genericCanonicalAttach.cdfArtifactVersion)
+              : undefined,
+        reason: ingestOut.productCompletionBlockReason,
+        path: "dispatch_finalize",
+      });
+      if (ingestOut.productCompletionBlocked) {
+        status = "failed";
+        nextError =
+          ingestOut.productCompletionBlockReason ||
+          "Canonical CDF completion requires ArtifactVersion + generatedArtifacts bind";
+        logOsExecutionEvent("execution.cdf_canonical_completion.blocked", {
+          requestId: correlationId,
+          executionId,
+          organizationId,
+          status: "failed",
+          errorCode: nextError,
+        });
+        updateExecutionTrace({
+          executionId,
+          patch: {
+            canonicalCompletionBlocked: true,
+            canonicalCompletionBlockReason: nextError,
+          },
+        });
+      }
+      const structuralStamps =
+        ingestOut.metadataStamps &&
+        typeof ingestOut.metadataStamps === "object"
+          ? { ...ingestOut.metadataStamps }
+          : {};
+      cdfAttachMeta = {
+        ...(ingestOut.presentationCanonicalAttach ?? {}),
+        ...(ingestOut.packagingCanonicalAttach ?? {}),
+        ...(ingestOut.socialMediaCanonicalAttach ?? {}),
+        ...(ingestOut.genericCanonicalAttach ?? {}),
+        ...((ingestOut.socialMediaCanonicalAttach ||
+          ingestOut.packagingCanonicalAttach ||
+          ingestOut.presentationCanonicalAttach ||
+          ingestOut.genericCanonicalAttach) && {
+          cdfGeneratedArtifactsBound: true,
+          cdfCanonicalCompletionEstablished: true,
+          ...(typeof meta.generationFanoutTargetId === "string" &&
+          meta.generationFanoutTargetId.trim()
+            ? {
+                cdfCanonicalFanoutTargetId:
+                  meta.generationFanoutTargetId.trim(),
+              }
+            : {}),
+        }),
+        ...(ingestOut.socialMediaIngestFailure &&
+        !ingestOut.socialMediaCanonicalAttach
+          ? {
+              ...ingestOut.socialMediaIngestFailure,
+            }
+          : {}),
+        ...(ingestOut.packagingIngestFailure &&
+        !ingestOut.packagingCanonicalAttach
+          ? {
+              ...ingestOut.packagingIngestFailure,
+            }
+          : {}),
+        ...(ingestOut.presentationIngestFailure &&
+        !ingestOut.presentationCanonicalAttach
+          ? {
+              ...ingestOut.presentationIngestFailure,
+            }
+          : {}),
+        ...(ingestOut.genericIngestFailure && !ingestOut.genericCanonicalAttach
+          ? {
+              ...ingestOut.genericIngestFailure,
+            }
+          : {}),
+        ...structuralStamps,
+      };
+      if (Object.keys(cdfAttachMeta).length > 0) {
+        // Stamp execution metadata for integrity/evidence — not only result.data.
+        // Observed defect: result carried cdfGeneratedArtifactsBound while integrity
+        // metadata lacked it → INCOMPLETE despite real AV+M9C + durable media.
+        // Structural/OCR diagnostics are observational stamps from the same gate.
+        meta = {
+          ...meta,
+          ...cdfAttachMeta,
+        };
+        if (
+          nextResult &&
+          typeof nextResult === "object" &&
+          nextResult.kind === "structured" &&
+          nextResult.data &&
+          typeof nextResult.data === "object"
+        ) {
+          nextResult = {
+            ...nextResult,
+            data: {
+              ...(nextResult.data as Record<string, unknown>),
+              ...cdfAttachMeta,
+            },
+          };
+        } else if (
+          nextResult &&
+          typeof nextResult === "object" &&
+          nextResult.kind === "artifact" &&
+          nextResult.data &&
+          typeof nextResult.data === "object"
+        ) {
+          nextResult = {
+            ...nextResult,
+            data: {
+              ...(nextResult.data as Record<string, unknown>),
+              ...cdfAttachMeta,
+            },
+          };
+        } else if (Object.keys(structuralStamps).length > 0) {
+          // Ensure structural diagnostics remain visible even when result is
+          // text-only / empty — still observational, not acceptance.
+          nextResult = {
+            kind: nextResult?.kind ?? "structured",
+            data: {
+              ...((nextResult?.data &&
+              typeof nextResult.data === "object" &&
+              !Array.isArray(nextResult.data)
+                ? nextResult.data
+                : {}) as Record<string, unknown>),
+              ...structuralStamps,
+            },
+            ...(typeof nextResult?.text === "string"
+              ? { text: nextResult.text }
+              : {}),
+          } as typeof nextResult;
+        }
+      }
+      if (Object.keys(structuralStamps).length > 0) {
+        const { persistStructuralDiagnosticsToJobMetadata } = await import(
+          "./execution-cdf-canonical-ingest"
+        );
+        await persistStructuralDiagnosticsToJobMetadata({
+          jobId: String(jobId),
+          stamps: structuralStamps,
+          getJob: (id) => {
+            if (!host.deps.distributed) return undefined;
+            const got = host.deps.distributed.getJob(asJobId(id));
+            if (!got.ok) return { ok: false as const };
+            return {
+              ok: true as const,
+              value: got.value as {
+                payload?: { metadata?: Record<string, unknown> };
+              },
+            };
+          },
+        });
+      }
+    } catch (cdfErr) {
+      logOsExecutionEvent("execution.cdf_canonical_ingest.recovered_job_failed", {
+        requestId: correlationId,
+        executionId,
+        organizationId,
+        status: "skipped",
+        errorCode:
+          cdfErr instanceof Error ? cdfErr.message : String(cdfErr),
+      });
+    }
+  }
+
+  // Durable state authority: a canonical-completion write (including an
+  // idempotent replay that only re-establishes identity) must not erase
+  // already-established structural/composition evidence for the same exact
+  // canonical ArtifactVersion.
+  nextResult = preserveEstablishedOutcomeEvidenceOnResultData(
+    existing.result,
+    nextResult,
+  );
+
+  // Authoritative presentation eligibility — raw media never implies AVAILABLE
+  // for CDF image-AV canonical paths; deferred_website uses materialization stamps.
+  {
+    const resultData =
+      nextResult?.data &&
+      typeof nextResult.data === "object" &&
+      !Array.isArray(nextResult.data)
+        ? (nextResult.data as Record<string, unknown>)
+        : {};
+    const {
+      shouldStampPresentationEligibility,
+      buildPresentationEligibilityStamp,
+    } = await import("./execution-cdf-canonical-ingest");
+    if (shouldStampPresentationEligibility(meta, resultData)) {
+      const eligibilityStamp = buildPresentationEligibilityStamp({
+        executionId,
+        executionStatus: status,
+        workingMetadata: meta,
+        resultData,
+        artifactIds: nextArtifactIds,
+        productCompletionBlocked:
+          status === "failed" &&
+          (nextError === "structural_compliance_failed" ||
+            nextError === "structural_compliance_verification_exception" ||
+            resultData.cdfCanonicalRejected === true ||
+            (typeof nextError === "string" && nextError.trim().length > 0)),
+        productCompletionBlockReason: nextError,
+      });
+      meta = { ...meta, ...eligibilityStamp };
+      if (
+        nextResult &&
+        typeof nextResult === "object" &&
+        nextResult.data &&
+        typeof nextResult.data === "object" &&
+        !Array.isArray(nextResult.data)
+      ) {
+        nextResult = {
+          ...nextResult,
+          data: {
+            ...(nextResult.data as Record<string, unknown>),
+            ...eligibilityStamp,
+          },
+        };
+      } else {
+        nextResult = {
+          kind: nextResult?.kind ?? "structured",
+          data: {
+            ...eligibilityStamp,
+          },
+          ...(typeof nextResult?.text === "string"
+            ? { text: nextResult.text }
+            : {}),
+        } as typeof nextResult;
+      }
+    }
+  }
 
   const evaluationScore =
     typeof summary.evaluationScore === "number" &&
@@ -2215,8 +3314,16 @@ async function finalizeDeferredDistributedJob(input: {
   }
 
   const continuityGuardCtx = extractContinuityGuardContext(meta);
-  const providerSucceeded =
+  const productSucceeded =
     status === "succeeded" || status === "awaiting_approval";
+  const providerSucceeded =
+    productSucceeded ||
+    summary?.success === true ||
+    mediaArtifactIds.length > 0 ||
+    meta?.providerJobSucceeded === true;
+  if (summary?.success === true && meta && typeof meta === "object") {
+    (meta as Record<string, unknown>).providerJobSucceeded = true;
+  }
   const phase6 = finalizeExecutionGovernanceExtras({
     governanceFinalize: host.governanceFinalize,
     organizationId,
@@ -2232,7 +3339,9 @@ async function finalizeDeferredDistributedJob(input: {
     brandAvoidTerms: continuityGuardCtx.brandAvoidTerms,
     continuityBound: continuityGuardCtx.continuityBound,
     boundLogoAssetId: continuityGuardCtx.boundLogoAssetId,
-    mediaOutputCount: mediaArtifactIds.length,
+    mediaOutputCount:
+      (Array.isArray(nextArtifactIds) ? nextArtifactIds.length : 0) ||
+      mediaArtifactIds.length,
     isImageCapability: isImageGenerationCapability(capabilityId),
     service: typeof meta.service === "string" ? meta.service : undefined,
     territory:
@@ -2256,16 +3365,50 @@ async function finalizeDeferredDistributedJob(input: {
     ...validationContextFromExecution({
       metadata: meta,
       jobSummary: summary,
-      mediaArtifactIds,
+      mediaArtifactIds: Array.isArray(nextArtifactIds)
+        ? nextArtifactIds.filter((id): id is string => typeof id === "string")
+        : mediaArtifactIds,
+      resultData:
+        nextResult?.data &&
+        typeof nextResult.data === "object" &&
+        !Array.isArray(nextResult.data)
+          ? (nextResult.data as Record<string, unknown>)
+          : undefined,
     }),
+    skipOutputRequirements:
+      meta.skipOutputRequirements === true ||
+      meta.cdfSkipImageProductionSpec === true,
+    generationModality:
+      typeof meta.cdfAuthorityGenerationModality === "string"
+        ? meta.cdfAuthorityGenerationModality
+        : typeof meta.cdfGenerationModality === "string"
+          ? meta.cdfGenerationModality
+          : undefined,
     nowIso: host.deps.nowIso,
     createId: host.deps.createId,
   });
 
   const prevExtras = host.extrasStore.get(executionId);
   const deferredContinuationMeta = pickRetryableCreateMetadata(meta);
+  // Structural/composition evidence: source from the (already preserve-merged
+  // by outcome-evidence-preservation, identity-gated) result data rather than
+  // `meta` alone, so a canonical-replay pass that was silent this time still
+  // reports whatever evidence Fix-1 backfilled for the same exact X@V.
+  const structuralResultData =
+    nextResult?.data &&
+    typeof nextResult.data === "object" &&
+    !Array.isArray(nextResult.data)
+      ? (nextResult.data as Record<string, unknown>)
+      : undefined;
+  const diagnosticsStructuralCompliance =
+    structuralResultData?.cdfStructuralCompliance ??
+    meta.cdfStructuralCompliance;
+  const diagnosticsStructuralComplianceStatus =
+    structuralResultData?.cdfStructuralComplianceStatus ??
+    meta.cdfStructuralComplianceStatus;
   const extras: ExecutionExtrasRecord = {
-    diagnostics: diagnosticsFromJobSummary(
+    diagnostics: {
+      ...diagnosticsFromJobSummary(
       executionId,
       nextError,
       {
@@ -2282,6 +3425,13 @@ async function finalizeDeferredDistributedJob(input: {
       String(jobId),
       status
     ),
+      ...(diagnosticsStructuralCompliance != null
+        ? {
+            cdfStructuralCompliance: diagnosticsStructuralCompliance,
+            cdfStructuralComplianceStatus: diagnosticsStructuralComplianceStatus,
+          }
+        : {}),
+    },
     trace: prevExtras?.trace ?? {
       executionId,
       correlationId,

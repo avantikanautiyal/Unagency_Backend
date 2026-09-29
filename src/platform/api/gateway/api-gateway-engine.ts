@@ -30,6 +30,8 @@ import { validateApiRequest } from "../validation/validate-request";
 import { defaultHeaders, serializeError, serializeSuccess } from "../serialization/serialize";
 import { dispatchController, type ControllerDeps } from "../controllers/dispatch";
 import { resolveTenantContext } from "../auth/tenant-resolution";
+import { logOsExecutionEvent } from "../../os/observability/execution-log";
+import type { RateLimitAccountingClass } from "../../execution-reliability/execution-outcome";
 
 export interface ApiGatewayDeps {
   readonly auth: IAuthenticationService;
@@ -126,6 +128,8 @@ export class ApiGatewayEngine implements IApiGateway {
     }
 
     if (route.authRequired) {
+      const accountingClass: RateLimitAccountingClass =
+        route.rateLimitAccountingClass ?? "USER_REQUEST";
       const rl = await this.deps.rateLimits.check({
         organizationId: tenant?.organizationId ?? principal?.organizationId,
         workspaceId: tenant?.workspaceId ?? principal?.workspaceId,
@@ -135,6 +139,7 @@ export class ApiGatewayEngine implements IApiGateway {
           typeof (request.body as { capabilityId?: string } | undefined)?.capabilityId === "string"
             ? (request.body as { capabilityId: string }).capabilityId
             : undefined,
+        accountingClass,
       });
       if (!rl.ok) {
         const status =
@@ -146,14 +151,45 @@ export class ApiGatewayEngine implements IApiGateway {
         );
       }
       if (!rl.value.allowed) {
+        const retryAfterSec = Math.max(
+          1,
+          Math.ceil(
+            (Date.parse(rl.value.resetAt) - this.clockMs()) / 1000
+          ) || Math.ceil((rl.value.windowMs ?? 60_000) / 1000)
+        );
+        const details = {
+          outcome: "APPLICATION_RATE_LIMITED" as const,
+          source: "gateway",
+          limiterId: "gateway.rate_limit",
+          limiterScope: rl.value.dimension,
+          keyType: rl.value.dimension,
+          accountingClass: rl.value.accountingClass ?? accountingClass,
+          windowMs: rl.value.windowMs,
+          limit: rl.value.limit,
+          remaining: rl.value.remaining,
+          resetAt: rl.value.resetAt,
+          retryAfterSec,
+          endpoint: `${request.method} ${request.path}`,
+          correlationId: request.correlationId ?? request.requestId,
+          timestamp: this.nowIso(),
+        };
+        logOsExecutionEvent("execution.rate_limit.application", {
+          requestId: request.requestId,
+          executionId: "n/a",
+          organizationId:
+            tenant?.organizationId ?? principal?.organizationId ?? "unknown",
+          errorCode: "APPLICATION_RATE_LIMITED",
+          status: "rate_limited",
+          capabilityId: details.accountingClass,
+        });
         return success(
           this.errorResponse(
             request,
             429,
-            "RATE_LIMIT_ERROR",
+            "APPLICATION_RATE_LIMITED",
             `rate limit exceeded for ${rl.value.dimension}`,
             start,
-            { remaining: rl.value.remaining, resetAt: rl.value.resetAt }
+            details
           )
         );
       }
@@ -221,6 +257,11 @@ export class ApiGatewayEngine implements IApiGateway {
         headers: {
           "Content-Type": result.value.contentType,
           "Cache-Control": "private, max-age=60",
+          ...(result.value.fileName
+            ? {
+                "Content-Disposition": `attachment; filename="${result.value.fileName.replace(/"/g, "")}"`,
+              }
+            : {}),
           "x-request-id": request.requestId,
           "x-correlation-id": request.correlationId ?? request.requestId,
           "x-artifact-id": result.value.artifactId,
@@ -302,6 +343,8 @@ function statusForError(code: string): number {
     case "AUTHORIZATION_ERROR":
       return 403;
     case "RATE_LIMIT_ERROR":
+    case "APPLICATION_RATE_LIMITED":
+    case "PROVIDER_RATE_LIMITED":
       return 429;
     case "VALIDATION_ERROR":
       return 400;

@@ -52,7 +52,12 @@ export class OpenAIBillingAdapter {
     params.set("end_time", String(input.endTimeSec));
     params.set("bucket_width", "1d");
     params.set("limit", String(input.limit ?? 31));
-    params.set("group_by", "line_item");
+    // Repeated keys = array params. Grouping by project keeps each line unique per bucket.
+    params.append("group_by", "line_item");
+    params.append("group_by", "project_id");
+    for (const projectId of this.resolveProjectIds()) {
+      params.append("project_ids", projectId);
+    }
     if (input.page) params.set("page", input.page);
 
     const url = `${baseUrl}/organization/costs?${params.toString()}`;
@@ -88,6 +93,17 @@ export class OpenAIBillingAdapter {
       process.env.OPENAI_ADMIN_API_KEY ??
       process.env.OPENAI_ADMIN_KEY
     )?.trim();
+  }
+
+  /**
+   * Optional OPENAI_BILLING_PROJECT_IDS (comma-separated) scopes costs to this app's
+   * projects when the OpenAI org is shared with other workloads.
+   */
+  private resolveProjectIds(): string[] {
+    return (process.env.OPENAI_BILLING_PROJECT_IDS ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
   }
 
   private async fetchWithRetry(url: string, apiKey: string): Promise<unknown> {
@@ -137,6 +153,7 @@ export class OpenAIBillingAdapter {
       if (!bucket || typeof bucket !== "object") continue;
       const bucketObj = bucket as Record<string, unknown>;
       const bucketStart = bucketObj.start_time ?? bucketObj.startTime;
+      const bucketEnd = bucketObj.end_time ?? bucketObj.endTime;
       const results = Array.isArray(bucketObj.results) ? bucketObj.results : [];
 
       for (const row of results) {
@@ -146,18 +163,22 @@ export class OpenAIBillingAdapter {
         const value = amountObj?.value ?? r.amount;
         const currency = String(amountObj?.currency ?? "usd").toUpperCase();
         const lineItem = String(r.line_item ?? r.lineItem ?? "unknown");
-        const providerUsageId = `openai:${String(bucketStart ?? "")}:${lineItem}`;
+        const projectId = String(r.project_id ?? r.projectId ?? "default");
+        const providerUsageId = `openai:${String(bucketStart ?? "")}:${projectId}:${lineItem}`;
 
         lines.push({
           providerUsageId,
           providerRequestId: null,
-          amount: value != null ? String(value) : "0",
+          // Plain decimal: String(1e-7) → "1e-7", which parseUsdToMicro rejects.
+          amount: toPlainDecimal(Number(value)),
           currency,
           modelId: lineItem,
           completedAt:
             typeof bucketStart === "number"
               ? new Date(bucketStart * 1000).toISOString()
               : null,
+          bucketEnd:
+            typeof bucketEnd === "number" ? new Date(bucketEnd * 1000).toISOString() : null,
         });
       }
     }
@@ -175,6 +196,12 @@ export class OpenAIBillingAdapter {
       hasMore: Boolean(nextPage),
     };
   }
+}
+
+/** Plain decimal string (no exponent, no trailing zeros) that parseUsdToMicro accepts. */
+function toPlainDecimal(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  return value.toFixed(8).replace(/\.?0+$/, "") || "0";
 }
 
 function sleep(ms: number): Promise<void> {

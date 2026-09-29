@@ -50,6 +50,8 @@ export type MessageDto = {
   clientMessageId?: string;
   metadata?: Record<string, unknown>;
   status?: "sending" | "sent" | "failed";
+  /** Best peer receipt on this message (for WhatsApp-style ticks on own messages). */
+  receiptStatus?: "delivered" | "read";
 };
 
 export type ConversationDto = {
@@ -433,7 +435,36 @@ export class CollaborationOsService {
     const rows = await CollabMessage.find(filter)
       .sort({ sequence: 1 })
       .limit(Math.min(input.limit ?? 50, 100));
-    return rows.map((r) => toMessageDto(r, conversation.roomKey));
+
+    const messageIds = rows.map((r) => r._id);
+    const peerReceipts =
+      messageIds.length > 0
+        ? await ReadReceipt.find({
+            messageId: { $in: messageIds },
+            userId: { $ne: new mongoose.Types.ObjectId(input.userId) },
+          }).lean()
+        : [];
+
+    const peerStatusByMessage = new Map<string, "delivered" | "read">();
+    for (const receipt of peerReceipts) {
+      const messageId = String(receipt.messageId);
+      const status = String(receipt.status || "");
+      const prev = peerStatusByMessage.get(messageId);
+      if (status === "read" || prev === "read") {
+        peerStatusByMessage.set(messageId, "read");
+      } else if (status === "delivered" && prev !== "read") {
+        peerStatusByMessage.set(messageId, "delivered");
+      }
+    }
+
+    return rows.map((r) => {
+      const dto = toMessageDto(r, conversation.roomKey);
+      if (dto.fromUserId === input.userId) {
+        const peer = peerStatusByMessage.get(String(r._id));
+        if (peer) dto.receiptStatus = peer;
+      }
+      return dto;
+    });
   }
 
   async sendMessage(input: {
@@ -638,18 +669,18 @@ export class CollaborationOsService {
       input.userId,
       input.channelId
     );
+    // Do not downgrade an existing "read" receipt back to "delivered".
     await ReadReceipt.findOneAndUpdate(
       {
         messageId: new mongoose.Types.ObjectId(input.messageId),
         userId: new mongoose.Types.ObjectId(input.userId),
+        status: { $ne: "read" },
       },
       {
         $setOnInsert: {
           messageId: new mongoose.Types.ObjectId(input.messageId),
           conversationId: conversation._id,
           userId: new mongoose.Types.ObjectId(input.userId),
-          status: "delivered",
-          at: new Date(),
         },
         $set: {
           status: "delivered",

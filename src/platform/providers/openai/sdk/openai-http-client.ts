@@ -7,6 +7,7 @@ import { failure, success, type Result } from "../../../core/result";
 import { ProviderError, ValidationError } from "../../../core/errors";
 import type { OpenAIAuthenticationConfig } from "../contracts/openai-contracts";
 import { OPENAI_BASE_URL } from "../constants";
+import { attachProviderHttpFailureMetadata } from "../../runtime/diagnostics/provider-error-extraction";
 
 export interface OpenAIHttpMultipartFile {
   readonly fieldName: string;
@@ -130,11 +131,17 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
       });
 
       if (!res.ok) {
+        const durationMs = this.clockMs() - start;
         return failure(
-          new ProviderError(`OpenAI HTTP ${res.status}`, {
-            status: res.status,
-            body: parsed,
-          })
+          new ProviderError(
+            `OpenAI HTTP ${res.status}`,
+            attachProviderHttpFailureMetadata({
+              status: res.status,
+              body: parsed,
+              providerId: "provider.openai",
+              durationMs,
+            })
+          )
         );
       }
 
@@ -148,10 +155,26 @@ export class FetchOpenAIHttpClient implements IOpenAIHttpClient {
         latencyMs: this.clockMs() - start,
       });
     } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      const isNetwork =
+        err instanceof Error &&
+        (/econnrefused|enotfound|econnreset|fetch failed|socket hang up/i.test(err.message) ||
+          err.name === "TypeError");
       return failure(
-        new ProviderError(err instanceof Error ? err.message : "OpenAI HTTP failed", {
-          cause: err,
-        })
+        new ProviderError(
+          isAbort
+            ? "OpenAI HTTP timeout"
+            : err instanceof Error
+              ? err.message
+              : "OpenAI HTTP failed",
+          {
+            cause: err,
+            ...(isAbort ? { status: 408, httpStatus: 408 } : {}),
+            ...(isNetwork && !isAbort ? { failureCategoryHint: "network" } : {}),
+            durationMs: this.clockMs() - start,
+            providerId: "provider.openai",
+          }
+        )
       );
     }
   }

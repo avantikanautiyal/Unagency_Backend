@@ -2,7 +2,8 @@
  * Voice prompt STT product service (M10.15).
  *
  * Flow: upload audio → Execution Gateway → Intelligence audio.transcribe → transcript.
- * No vendor SDKs here — STT runs only through Enterprise executions.
+ * Live multipart uploads take a direct low-latency path (see `transcribeDirect`);
+ * stored-asset transcription still runs through Enterprise executions.
  */
 
 import { ApiError } from "../utils/apiError";
@@ -23,7 +24,14 @@ const AUDIO_MIME = new Set([
   "audio/m4a",
   "audio/x-m4a",
   "audio/x-aac",
+  // Browser MediaRecorder (Chrome/Firefox) produces WebM, often with a codec suffix.
+  "audio/webm",
 ]);
+
+/** `audio/webm;codecs=opus` → `audio/webm` so the allowlist matches what browsers send. */
+function normalizeAudioMime(mimeType: string): string {
+  return (mimeType || "").toLowerCase().trim().split(";")[0]?.trim() || "";
+}
 
 export type VoiceTranscribeResult = {
   transcript: string;
@@ -34,14 +42,82 @@ export type VoiceTranscribeResult = {
   cancelled?: boolean;
 };
 
-function assertAudioMime(mimeType: string): void {
-  const mime = (mimeType || "").toLowerCase().trim();
+const DIRECT_EXECUTION_PREFIX = "stt_direct_";
+const DIRECT_STT_TIMEOUT_MS = 15_000;
+/** How long to wait for the background asset upload after the transcript is ready. */
+const ASSET_UPLOAD_GRACE_MS = 300;
+
+/**
+ * Low-latency STT for live voice prompts: send the in-memory upload straight to
+ * OpenAI. The queued Execution Gateway path adds worker polling, asset
+ * round-trips and post-processing (~8–12s) — far too slow for dictation.
+ * Disable with VOICE_STT_FAST_PATH=false.
+ */
+function directSttApiKey(): string | null {
+  if (process.env.VOICE_STT_FAST_PATH?.trim().toLowerCase() === "false") return null;
+  if (process.env.ENTERPRISE_API_EXECUTION_MODE?.trim().toLowerCase() !== "live") {
+    return null;
+  }
+  return process.env.OPENAI_API_KEY?.trim() || null;
+}
+
+async function transcribeDirect(input: {
+  apiKey: string;
+  bytes: Buffer;
+  filename: string;
+  mimeType: string;
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([new Uint8Array(input.bytes)], { type: input.mimeType }),
+    input.filename
+  );
+  form.append("model", process.env.VOICE_STT_MODEL?.trim() || "whisper-1");
+  form.append("response_format", "json");
+  if (input.language) form.append("language", input.language);
+
+  const timeout = AbortSignal.timeout(DIRECT_STT_TIMEOUT_MS);
+  const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.apiKey}` },
+      body: form,
+      signal,
+    });
+  } catch (err) {
+    if (input.signal?.aborted) throw new ApiError("Transcription cancelled", 499);
+    if (timeout.aborted) throw new ApiError("Speech-to-text timed out", 504);
+    throw new ApiError(
+      `Speech-to-text request failed: ${err instanceof Error ? err.message : String(err)}`,
+      502
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new ApiError(
+      `Speech-to-text failed (${res.status})${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+      502
+    );
+  }
+  const body = (await res.json()) as { text?: unknown };
+  return typeof body.text === "string" ? body.text.trim() : "";
+}
+
+function assertAudioMime(mimeType: string): string {
+  const mime = normalizeAudioMime(mimeType);
   if (!AUDIO_MIME.has(mime)) {
     throw new ApiError(
-      `Unsupported audio type '${mimeType}'. Supported: m4a, wav, aac, mp3`,
+      `Unsupported audio type '${mimeType}'. Supported: m4a, wav, aac, mp3, webm`,
       400
     );
   }
+  return mime;
 }
 
 function principalFromLegacyUser(input: {
@@ -89,21 +165,56 @@ export class VoicePromptService {
     language?: string;
     signal?: AbortSignal;
   }): Promise<VoiceTranscribeResult> {
-    assertAudioMime(input.mimeType);
+    const mimeType = assertAudioMime(input.mimeType);
     if (input.signal?.aborted) {
       throw new ApiError("Transcription cancelled", 499);
     }
 
-    const asset = await productAssetService.upload({
-      userId: input.userId,
-      organizationId: input.organizationId,
-      filename: input.filename || "voice-prompt.m4a",
-      mimeType: input.mimeType,
-      bytes: input.bytes,
-      folder: "voice-prompts",
-      tags: ["voice_prompt", "stt"],
-      tag: "voice_prompt",
-    });
+    const filename = input.filename || "voice-prompt.m4a";
+    const uploadAsset = () =>
+      productAssetService.upload({
+        userId: input.userId,
+        organizationId: input.organizationId,
+        filename,
+        mimeType,
+        bytes: input.bytes,
+        folder: "voice-prompts",
+        tags: ["voice_prompt", "stt"],
+        tag: "voice_prompt",
+      });
+
+    const apiKey = directSttApiKey();
+    if (apiKey) {
+      // Persist the recording in parallel; never block the transcript on storage.
+      const upload = uploadAsset().then(
+        (a) => a.id,
+        () => ""
+      );
+      const transcript = await transcribeDirect({
+        apiKey,
+        bytes: input.bytes,
+        filename,
+        mimeType,
+        language: input.language,
+        signal: input.signal,
+      });
+      if (!transcript) {
+        throw new ApiError("Speech-to-text returned an empty transcript", 502);
+      }
+      const assetId = await Promise.race([
+        upload,
+        new Promise<string>((resolve) => setTimeout(() => resolve(""), ASSET_UPLOAD_GRACE_MS)),
+      ]);
+      return {
+        transcript,
+        assetId,
+        executionId: `${DIRECT_EXECUTION_PREFIX}${Date.now()}`,
+        status: "succeeded",
+        mimeType,
+      };
+    }
+
+    const asset = await uploadAsset();
 
     if (input.signal?.aborted) {
       await productAssetService.delete({
@@ -224,6 +335,10 @@ export class VoicePromptService {
     workspaceId?: string;
     executionId: string;
   }): Promise<{ cancelled: boolean; executionId: string }> {
+    // Direct STT requests are cancelled by the client aborting the HTTP call.
+    if (input.executionId.startsWith(DIRECT_EXECUTION_PREFIX)) {
+      return { cancelled: true, executionId: input.executionId };
+    }
     const runtime = getEnterpriseApiRuntime();
     if (!runtime?.platform?.executions) {
       throw new ApiError("Execution Gateway unavailable", 503);

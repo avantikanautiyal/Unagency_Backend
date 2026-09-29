@@ -1,10 +1,16 @@
 /**
- * Durable CDF session snapshots (Mongo).
- * In-memory store remains the hot path; this backs restarts / multi-instance.
+ * Durable CDF session snapshots (Mongo) with optimistic concurrency (M1B).
+ *
+ * Hot path remains in-memory. When Mongo is connected, CAS updates use:
+ *   WHERE sessionId = X AND sessionVersion = expectedVersion
+ *
+ * Import paths are relative to this file under
+ * platform/infrastructure/durability/mongo/models → ../../../../cdf/...
  */
 
-import { Schema, model, type Document, type Model } from "mongoose";
-import type { CdfSessionState } from "../../../cdf/types";
+import mongoose, { Schema, model, type Document, type Model } from "mongoose";
+import type { CdfSessionState } from "../../../../cdf/types";
+import { normalizeCdfSession } from "../../../../cdf/state-machine/normalize";
 
 export type CdfSessionDoc = Document & {
   sessionId: string;
@@ -13,6 +19,7 @@ export type CdfSessionDoc = Document & {
   projectId?: string;
   userId?: string;
   serviceId: string;
+  sessionVersion: number;
   snapshot: CdfSessionState;
   createdAt: string;
   updatedAt: string;
@@ -26,14 +33,16 @@ const cdfSessionSchema = new Schema(
     projectId: { type: String, index: true },
     userId: { type: String, index: true },
     serviceId: { type: String, required: true, index: true },
+    sessionVersion: { type: Number, required: true, default: 0, index: true },
     snapshot: { type: Schema.Types.Mixed, required: true },
     createdAt: { type: String, required: true },
     updatedAt: { type: String, required: true },
   },
-  { collection: "cdf_sessions" }
+  { collection: "cdf_sessions" },
 );
 
 cdfSessionSchema.index({ organizationId: 1, updatedAt: -1 });
+cdfSessionSchema.index({ sessionId: 1, sessionVersion: 1 });
 
 let CdfSessionModel: Model<CdfSessionDoc> | null = null;
 
@@ -44,10 +53,7 @@ function getModel(): Model<CdfSessionDoc> | null {
     }
     return CdfSessionModel;
   } catch {
-    // Model may already be registered
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mongoose = require("mongoose") as typeof import("mongoose");
       CdfSessionModel = mongoose.model<CdfSessionDoc>("CdfSession");
       return CdfSessionModel;
     } catch {
@@ -56,48 +62,130 @@ function getModel(): Model<CdfSessionDoc> | null {
   }
 }
 
-function mongoReady(): boolean {
+export function isCdfSessionMongoReady(): boolean {
+  return mongoose.connection?.readyState === 1;
+}
+
+export type CdfSessionMongoWriteResult =
+  | { readonly ok: true; readonly mode: "upsert" | "cas" }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "mongo_unavailable"
+        | "model_unavailable"
+        | "cas_conflict"
+        | "write_failed";
+      readonly message?: string;
+    };
+
+export async function persistCdfSessionToMongo(
+  session: CdfSessionState,
+): Promise<CdfSessionMongoWriteResult> {
+  if (!isCdfSessionMongoReady()) {
+    return { ok: false, reason: "mongo_unavailable" };
+  }
+  const Model = getModel();
+  if (!Model) {
+    return { ok: false, reason: "model_unavailable" };
+  }
+  const normalized = normalizeCdfSession(session);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mongoose = require("mongoose") as typeof import("mongoose");
-    return mongoose.connection?.readyState === 1;
-  } catch {
-    return false;
+    await Model.findOneAndUpdate(
+      { sessionId: normalized.sessionId },
+      {
+        sessionId: normalized.sessionId,
+        organizationId: normalized.organizationId,
+        workspaceId: normalized.workspaceId,
+        projectId: normalized.projectId,
+        userId: normalized.userId,
+        serviceId: normalized.serviceId,
+        sessionVersion: normalized.sessionVersion,
+        snapshot: normalized,
+        createdAt: normalized.createdAt,
+        updatedAt: normalized.updatedAt,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).exec();
+    return { ok: true, mode: "upsert" };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "write_failed",
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
-export async function persistCdfSessionToMongo(
-  session: CdfSessionState
-): Promise<void> {
-  if (!mongoReady()) return;
+/**
+ * Atomic conditional update.
+ * @returns ok:true if updated, ok:false cas_conflict if version mismatch/missing,
+ *          mongo_unavailable / model_unavailable when store cannot be used.
+ */
+export async function persistCdfSessionCasToMongo(
+  expectedVersion: number,
+  session: CdfSessionState,
+): Promise<CdfSessionMongoWriteResult> {
+  if (!isCdfSessionMongoReady()) {
+    return { ok: false, reason: "mongo_unavailable" };
+  }
   const Model = getModel();
-  if (!Model) return;
-  await Model.findOneAndUpdate(
-    { sessionId: session.sessionId },
-    {
-      sessionId: session.sessionId,
-      organizationId: session.organizationId,
-      workspaceId: session.workspaceId,
-      projectId: session.projectId,
-      userId: session.userId,
-      serviceId: session.serviceId,
-      snapshot: session,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  ).exec();
+  if (!Model) {
+    return { ok: false, reason: "model_unavailable" };
+  }
+  const normalized = normalizeCdfSession(session);
+  try {
+    const updated = await Model.findOneAndUpdate(
+      {
+        sessionId: normalized.sessionId,
+        sessionVersion: expectedVersion,
+      },
+      {
+        $set: {
+          organizationId: normalized.organizationId,
+          workspaceId: normalized.workspaceId,
+          projectId: normalized.projectId,
+          userId: normalized.userId,
+          serviceId: normalized.serviceId,
+          sessionVersion: normalized.sessionVersion,
+          snapshot: normalized,
+          updatedAt: normalized.updatedAt,
+        },
+        $setOnInsert: {
+          sessionId: normalized.sessionId,
+          createdAt: normalized.createdAt,
+        },
+      },
+      { new: true },
+    ).exec();
+    if (!updated) {
+      return { ok: false, reason: "cas_conflict" };
+    }
+    return { ok: true, mode: "cas" };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "write_failed",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function loadCdfSessionFromMongo(
-  sessionId: string
+  sessionId: string,
 ): Promise<CdfSessionState | undefined> {
-  if (!mongoReady()) return undefined;
+  if (!isCdfSessionMongoReady()) return undefined;
   const Model = getModel();
   if (!Model) return undefined;
   const doc = await Model.findOne({ sessionId }).lean().exec();
   if (!doc || !doc.snapshot || typeof doc.snapshot !== "object") {
     return undefined;
   }
-  return doc.snapshot as CdfSessionState;
+  const snapshot = doc.snapshot as CdfSessionState;
+  if (
+    typeof doc.sessionVersion === "number" &&
+    snapshot.sessionVersion == null
+  ) {
+    snapshot.sessionVersion = doc.sessionVersion;
+  }
+  return normalizeCdfSession(snapshot);
 }

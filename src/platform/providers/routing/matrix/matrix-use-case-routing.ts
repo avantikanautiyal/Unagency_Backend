@@ -127,11 +127,13 @@ export const PAUSED_VIDEO_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "provider.runway",
   "provider.google",
   "provider.pixverse",
+  /** No remaining Kling credits — keep fanout cardinality; do not execute. */
+  "provider.kling",
 ]);
 
 export const KLING_VIDEO_PREF: MatrixProviderPref = {
   providerId: "provider.kling",
-  modelId: "kling-2-1",
+  modelId: "kling-2-6",
   label: "Kling",
 };
 
@@ -147,9 +149,8 @@ export const MINIMAX_VIDEO_PREF: MatrixProviderPref = {
   label: "Hailuo AI",
 };
 
-/** Active LIVE video engines — Kling, Luma, MiniMax. */
+/** Active LIVE video engines — Luma, MiniMax (Kling paused: no credits). */
 export const ACTIVE_VIDEO_PROVIDER_PREFERENCES: readonly MatrixProviderPref[] = [
-  KLING_VIDEO_PREF,
   LUMA_VIDEO_PREF,
   MINIMAX_VIDEO_PREF,
 ];
@@ -183,7 +184,7 @@ export const VIDEO_USE_CASE_PREFERENCES: Record<
     KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
   ],
-  fast: [MINIMAX_VIDEO_PREF, KLING_VIDEO_PREF],
+  fast: [MINIMAX_VIDEO_PREF, KLING_VIDEO_PREF, LUMA_VIDEO_PREF],
   marketing: [
     KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
@@ -194,7 +195,12 @@ export const VIDEO_USE_CASE_PREFERENCES: Record<
     KLING_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
-  general: ACTIVE_VIDEO_PROVIDER_PREFERENCES,
+  /** Declared fanout identity includes Kling; PAUSED filters execution. */
+  general: [
+    KLING_VIDEO_PREF,
+    LUMA_VIDEO_PREF,
+    MINIMAX_VIDEO_PREF,
+  ],
 };
 
 export const AUDIO_USE_CASE_PREFERENCES: Record<

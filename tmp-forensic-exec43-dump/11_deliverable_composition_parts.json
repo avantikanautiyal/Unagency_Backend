@@ -1,0 +1,182 @@
+[
+  {
+    "role": "user",
+    "name": "deliverable_composition",
+    "type": "structured",
+    "data": {
+      "deliverableKind": "social_creative",
+      "deliverableIdentity": {
+        "kind": "social_creative",
+        "concreteLabel": "Instagram Feed Post",
+        "statement": "Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept."
+      },
+      "communicationMode": "single_frame_communication",
+      "requiredElements": [
+        "primary_message_surface",
+        "visual_subject",
+        "brand_signature"
+      ],
+      "optionalElements": [
+        "secondary_message_surface",
+        "message_hierarchy"
+      ],
+      "hierarchy": [
+        {
+          "role": "primary_message_surface",
+          "precedence": 1
+        },
+        {
+          "role": "visual_subject",
+          "precedence": 2
+        },
+        {
+          "role": "brand_signature",
+          "precedence": 3
+        }
+      ],
+      "policies": {
+        "text": {
+          "placement": "on_asset",
+          "required": true
+        },
+        "visual": {
+          "subjectRequired": true,
+          "layoutIntent": "single_frame_readability"
+        },
+        "brand": {
+          "markRole": "signature"
+        }
+      },
+      "filledSlots": [
+        {
+          "element": "primary_message_surface",
+          "value": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "secondary_message_surface",
+          "value": "Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "visual_subject",
+          "value": "One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "message_hierarchy",
+          "value": "1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "layout_zones",
+          "value": "Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "brand_signature",
+          "value": "Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "identity_mark",
+          "value": "Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "typography_treatment",
+          "value": "Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "communication_objective",
+          "value": "Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "supporting_visual_elements",
+          "value": "Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "use_context",
+          "value": "Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.",
+          "source": "creative_direction"
+        },
+        {
+          "element": "user_intent",
+          "value": "Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now\n\nDeliverable: Social Media Creative\n\nCreate a finished Social Media Creative for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.\n\nSTAGE OUTPUT (required): finished single-frame communication asset for the selected platform/size\n\nSTAGE FORBIDDEN: Do NOT produce a flat logo lockup, wordmark alone on cream/white, app icon, or logo sheet as the whole image.\n\nDeliver a finished single-frame communication asset with readable on-asset messaging.\n\nPrimary communication must be visually prominent; the visual subject supports the message.\n\nBrand identity participates as an integrated signature, not as the sole subject of the frame.\n\nREFERENCE ROLE = identity_mark: An authoritative brand identity mark is attached. Reproduce that exact artwork as a subordinate brand-identity element in the layout. Do not invent a different mark. Do not treat the mark as the full composition, dominant subject, or stylistic template of the creative.",
+          "source": "user_instruction"
+        },
+        {
+          "element": "brand_context_name",
+          "value": "Sunflower",
+          "source": "brand_context"
+        }
+      ],
+      "compositionGuidance": [
+        "Deliver a finished single-frame communication asset with readable on-asset messaging.",
+        "Primary communication must be visually prominent; the visual subject supports the message.",
+        "Brand identity participates as an integrated signature, not as the sole subject of the frame.",
+        "Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication.",
+        "When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires."
+      ],
+      "requiredRenderedCommunication": {
+        "active": true,
+        "placement": "on_asset",
+        "required": true,
+        "surfaces": [
+          {
+            "element": "primary_message_surface",
+            "resolutionStatus": "resolved",
+            "text": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+            "provenance": "selected_semantic_direction",
+            "required": true,
+            "semanticClass": "required_rendered_communication"
+          }
+        ],
+        "allRequiredResolved": true,
+        "unresolvedElements": [],
+        "note": "REQUIRED_RENDERED_COMMUNICATION must appear as legible on-asset text with an authoritative non-empty value. Distinct from CREATIVE_DIRECTION, VISUAL_SUBJECT, BRAND_SIGNATURE, and decorative typography."
+      },
+      "semanticRoleSeparation": {
+        "brandSignatureDoesNotSatisfyPrimaryMessage": true,
+        "identityMarkDoesNotSatisfyPrimaryMessage": true,
+        "visualSubjectDoesNotSatisfyPrimaryMessage": true,
+        "note": "Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication."
+      },
+      "lowerAuthorityQualification": {
+        "requiredOnAssetText": true,
+        "note": "When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires."
+      },
+      "structuralCompletion": [
+        {
+          "criterion": "Required semantic element present: primary_message_surface",
+          "structural": true
+        },
+        {
+          "criterion": "Required semantic element present: visual_subject",
+          "structural": true
+        },
+        {
+          "criterion": "Required semantic element present: brand_signature",
+          "structural": true
+        },
+        {
+          "criterion": "Information hierarchy is defined and represented",
+          "structural": true
+        },
+        {
+          "criterion": "Deliverable communication mode is represented in the composition",
+          "structural": true
+        },
+        {
+          "criterion": "Required on-asset text/communication surface is represented when text policy requires it",
+          "structural": true
+        }
+      ],
+      "structuralCompletionNote": "Structural completion criteria describe required semantic elements and hierarchy — not aesthetic quality or model judgment.",
+      "userInstructionAuthoritative": true
+    }
+  }
+]

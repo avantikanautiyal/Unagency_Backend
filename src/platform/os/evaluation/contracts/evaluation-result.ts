@@ -67,6 +67,49 @@ export interface EvaluationResult {
     readonly source: "SYSTEM_RULE" | "BRAND" | "BRIEF" | "OUTPUT" | "POLICY";
   }[];
   readonly policyVersion?: string;
+  /**
+   * What this evaluation is authorised to decide. Absent ⇒ legacy
+   * authoritative (release gate evaluated on the deliverable itself).
+   */
+  readonly authority?: EvaluationAuthority;
+}
+
+/** Whether the evaluated input IS the deliverable, or only a proxy for it. */
+export type EvaluationEvidenceBasis = "deliverable" | "proxy";
+
+export interface EvaluationAuthority {
+  /** Evaluator is configured to gate release (e.g. rollout enforcing). */
+  readonly releaseGate: boolean;
+  readonly evidenceBasis: EvaluationEvidenceBasis;
+  readonly basisReason?: string;
+}
+
+/**
+ * An evaluation may block/reject/retry only when it gates release AND judged
+ * the deliverable itself. Otherwise its verdict is advisory (needs review) —
+ * score, findings and outcome are preserved unchanged on the result.
+ */
+export function evaluationMayBlock(
+  result: Pick<EvaluationResult, "authority">,
+): boolean {
+  const a = result.authority;
+  if (!a) return true;
+  return a.releaseGate && a.evidenceBasis === "deliverable";
+}
+
+/** Outcome as governance must act on it, given the evaluation's authority. */
+export function effectiveEvaluationOutcome(
+  result: Pick<EvaluationResult, "authority" | "outcome">,
+): EvaluationOutcome {
+  if (
+    (result.outcome === "BLOCKED" ||
+      result.outcome === "REJECTED" ||
+      result.outcome === "RETRY_REQUIRED") &&
+    !evaluationMayBlock(result)
+  ) {
+    return "HUMAN_REVIEW_REQUIRED";
+  }
+  return result.outcome;
 }
 
 export interface EvaluateOutputInput {
@@ -114,6 +157,13 @@ export interface EvaluateOutputInput {
   readonly buildSucceeded?: boolean;
   readonly buildOutput?: string;
   readonly runtimeErrors?: readonly string[];
+  /**
+   * When true, skip product-catalog media/website hard contracts.
+   * Set for CDF structured/text phases that already validated structured output.
+   */
+  readonly skipOutputRequirements?: boolean;
+  /** CDF generation modality stamp (structured|text|image|…). */
+  readonly generationModality?: string;
   readonly nowIso?: () => string;
   readonly createId?: (prefix: string) => string;
 }

@@ -4,6 +4,7 @@
 
 import type {
   EvaluateOutputInput,
+  EvaluationEvidenceBasis,
   EvaluationFinding,
   EvaluationResult,
   IEvaluator,
@@ -17,12 +18,36 @@ import {
 } from "../creative-score/creative-score-dimensions";
 import { judgeCreativeScore } from "../creative-score/creative-score-judge";
 import {
+  creativeQaBlocksRelease,
   creativeQaObservesOnly,
   resolveCreativeQaRollout,
 } from "../creative-score/creative-qa-rollout";
 
 export const CREATIVE_SCORE_EVALUATOR_ID = "creative_score" as const;
 export const CREATIVE_SCORE_EVALUATOR_VERSION = "1.0.0" as const;
+
+const MEDIA_MODALITIES = new Set(["image", "video", "audio"]);
+
+/**
+ * Evidence basis: the judge reads the text preview. That preview IS the
+ * deliverable only when the deliverable is textual; for media deliverables it
+ * is a proxy (provider text part / placeholder), not the artifact.
+ */
+function previewEvidenceBasis(input: EvaluateOutputInput): {
+  basis: EvaluationEvidenceBasis;
+  reason: string;
+} {
+  const modality = (input.generationModality ?? input.actualModality ?? "")
+    .trim()
+    .toLowerCase();
+  const media =
+    input.isImageCapability === true ||
+    (input.mediaOutputCount ?? 0) > 0 ||
+    MEDIA_MODALITIES.has(modality);
+  return media
+    ? { basis: "proxy", reason: "text_preview_of_media_deliverable" }
+    : { basis: "deliverable", reason: "text_preview_is_deliverable" };
+}
 
 export class CreativeScoreEvaluator implements IEvaluator {
   readonly evaluatorId = CREATIVE_SCORE_EVALUATOR_ID;
@@ -70,6 +95,16 @@ export class CreativeScoreEvaluator implements IEvaluator {
       });
     }
 
+    const evidence = previewEvidenceBasis(input);
+    if (evidence.basis === "proxy") {
+      findings.push({
+        code: "CREATIVE_SCORE_TEXT_PROXY",
+        message:
+          "Creative score judged from text preview — media deliverable not inspected",
+        severity: "info",
+      });
+    }
+
     const shadow = creativeQaObservesOnly(rollout);
     let outcome: EvaluationResult["outcome"] = "PASS";
     if (!judged.releaseAllowed && !shadow) {
@@ -104,6 +139,11 @@ export class CreativeScoreEvaluator implements IEvaluator {
         riskScore: judged.releaseAllowed ? 0.15 : 0.85,
       },
       findings,
+      authority: {
+        releaseGate: creativeQaBlocksRelease(rollout),
+        evidenceBasis: evidence.basis,
+        basisReason: evidence.reason,
+      },
       severity: outcome === "BLOCKED" ? "critical" : findings.length ? "warning" : "info",
       confidence: 0.92,
       provenance: CREATIVE_SCORE_DIMENSIONS.map((dim: CreativeScoreDimension) => ({

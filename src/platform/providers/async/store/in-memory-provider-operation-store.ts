@@ -47,12 +47,22 @@ export class InMemoryProviderOperationStore implements IProviderOperationStore {
   async listDueForPoll(nowMs: number, limit = 100): Promise<readonly ProviderOperationRecord[]> {
     const due: ProviderOperationRecord[] = [];
     for (const rec of this.byId.values()) {
-      if (rec.state !== "pending" && rec.state !== "submitted" && rec.state !== "completed" && rec.state !== "result_ingesting") {
+      if (
+        rec.state !== "pending" &&
+        rec.state !== "submitted" &&
+        rec.state !== "completed" &&
+        rec.state !== "result_ingesting" &&
+        rec.state !== "submitting"
+      ) {
         continue;
       }
       if (rec.leaseOwner) continue;
       const next = rec.nextPollAt ? Date.parse(rec.nextPollAt) : 0;
-      if (!Number.isFinite(next) || next <= nowMs) due.push(rec);
+      const dueByTime = !Number.isFinite(next) || next <= nowMs;
+      const resumableSuspended =
+        rec.safeMetadata?.pollBudgetExhausted === true &&
+        Boolean(rec.providerJobId?.trim());
+      if (dueByTime || resumableSuspended) due.push(rec);
       if (due.length >= limit) break;
     }
     return due;

@@ -1,0 +1,153 @@
+{
+  "cdfServiceId": "social-media",
+  "cdfPhaseId": "output",
+  "cdfSessionId": "cdf_mu1fz0gn_b5q62iyz",
+  "cdfArtifactKey": "social-media.output",
+  "cdfDeliverableKind": "social_creative",
+  "cdfUxType": "visual",
+  "cdfGenerationModality": "image",
+  "cdfExecutionStrategy": "canonical",
+  "cdfCanonicalContextApplied": true,
+  "cdfCanonicalSectionsPresent": {
+    "currentTask": true,
+    "currentUserInstruction": true,
+    "resolvedReferences": false,
+    "workingMemory": false,
+    "conversationalInterpretation": false,
+    "multimodalContext": true,
+    "requirements": true,
+    "constraints": false,
+    "exclusions": false,
+    "selections": true,
+    "selectedSemanticDirections": true,
+    "brandContext": true,
+    "productGrounding": true,
+    "approvedDecisions": true,
+    "activeBrief": true,
+    "cdfPhase": true,
+    "upstreamArtifacts": true,
+    "productionSpec": true,
+    "outputContract": true,
+    "outputRequirements": true,
+    "deliverableComposition": true,
+    "authority": true
+  },
+  "cdfCanonicalOutputRequirementsPresent": true,
+  "cdfCanonicalProductionSpecPresent": true,
+  "cdfStructuralComplianceStatus": null,
+  "cdfStructuralCompliance": null,
+  "hasStructuralKeys": [],
+  "preferredProviderId": "provider.openai",
+  "preferredModelId": "gpt-image-2",
+  "staticProviderId": "provider.openai",
+  "staticModelId": "gpt-image-2",
+  "imageFailoverChain": [
+    {
+      "providerId": "provider.google",
+      "modelId": "gemini-3-pro-image"
+    },
+    {
+      "providerId": "provider.ideogram",
+      "modelId": "ideogram-3"
+    },
+    {
+      "providerId": "provider.openai",
+      "modelId": "gpt-image-1"
+    }
+  ],
+  "structuredPartNames": [
+    {
+      "role": "developer",
+      "type": "structured",
+      "name": "production_spec"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "current_task"
+    },
+    {
+      "role": "user",
+      "type": "text"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "multimodal_context"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "requirements"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "selections"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "deliverable_composition"
+    },
+    {
+      "role": "user",
+      "type": "text"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "selected_semantic_directions"
+    },
+    {
+      "role": "user",
+      "type": "text"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "brand_context"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "product_grounding"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "approved_decisions"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "active_brief"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "cdf_context"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "upstream_artifact"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "output_contract"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "output_requirements"
+    },
+    {
+      "role": "user",
+      "type": "structured",
+      "name": "authority"
+    }
+  ],
+  "deliverableCompositionPartsCount": 1
+}

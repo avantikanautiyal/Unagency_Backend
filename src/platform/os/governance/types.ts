@@ -3,6 +3,8 @@
  * Missing BrandGuard / SpecGuard / production evaluation MUST NOT silently PASS.
  */
 
+import { CREATIVE_SCORE_RELEASE_GATE } from "../evaluation/creative-score/creative-score-dimensions";
+
 export type GovernanceCheckStatus =
   | "PASS"
   | "FAIL"
@@ -63,7 +65,7 @@ export class GovernanceEngine {
           ? "PLACEHOLDER"
           : creativeScore == null
             ? "NOT_IMPLEMENTED"
-            : creativeScore < 80
+            : creativeScore < CREATIVE_SCORE_RELEASE_GATE
               ? "FAIL"
               : "PASS",
         message: input.evaluationPlaceholder
@@ -97,13 +99,13 @@ export class GovernanceEngine {
           ? "SKIPPED"
           : creativeScore == null
             ? "NOT_IMPLEMENTED"
-            : creativeScore < 80
+            : creativeScore < CREATIVE_SCORE_RELEASE_GATE
               ? "FAIL"
               : "PASS",
         message:
           creativeScore == null
             ? "CreativeScoreEvaluator not run (CREATIVE_QA=off)"
-            : `Creative score ${creativeScore}/100 (gate 80)`,
+            : `Creative score ${creativeScore}/100 (gate ${CREATIVE_SCORE_RELEASE_GATE})`,
       },
       {
         checkId: "safety_policy",
@@ -143,13 +145,13 @@ export class GovernanceEngine {
     if (
       !input.evaluationPlaceholder &&
       typeof creativeScore === "number" &&
-      creativeScore < 80
+      creativeScore < CREATIVE_SCORE_RELEASE_GATE
     ) {
       return {
         action: "REJECT",
         checks,
         blocking: true,
-        reason: `Creative score ${creativeScore}/100 below release gate (80)`,
+        reason: `Creative score ${creativeScore}/100 below release gate (${CREATIVE_SCORE_RELEASE_GATE})`,
         decidedAt: input.nowIso(),
       };
     }

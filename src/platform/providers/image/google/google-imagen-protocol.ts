@@ -8,7 +8,12 @@ import type {
   VendorImageNormalizedResult,
   VendorImageWirePlan,
 } from "../common/vendor-image-protocol";
-import { extractPrompt, extractReferenceImage } from "../common/vendor-image-protocol";
+import {
+  applyProviderReferenceAdaptations,
+  extractPrompt,
+  extractReferenceImages,
+} from "../common/vendor-image-protocol";
+import { buildProviderReferenceRoleObservability } from "../../../ai/multimodal-context/reference-role";
 import { resolvePayloadAspectRatio } from "../common/image-aspect-ratio";
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
@@ -18,8 +23,8 @@ import {
 } from "../../common/media-output";
 
 const WIRE_BY_MODEL: Record<string, string> = {
-  "imagen-4": "gemini-2.5-flash-image",
-  "imagen-4.0-generate-001": "gemini-2.5-flash-image",
+  "imagen-4": "gemini-3.1-flash-image",
+  "imagen-4.0-generate-001": "gemini-3.1-flash-image",
   "gemini-2.5-flash-image": "gemini-2.5-flash-image",
   "gemini-3.1-flash-image": "gemini-3.1-flash-image",
   "gemini-3.1-flash-lite-image": "gemini-3.1-flash-lite-image",
@@ -46,9 +51,13 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
     request: ProviderExecutionRequest;
     wireModelId: string;
   }): VendorImageWirePlan {
-    const prompt = extractPrompt(input.request.payload);
+    const basePrompt = extractPrompt(input.request.payload);
     const aspectRatio = resolvePayloadAspectRatio(input.request.payload);
-    const reference = extractReferenceImage(input.request.payload);
+    const references = extractReferenceImages(
+      input.request.payload,
+      input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+    );
+    const reference = references[0];
     const capability = String(input.request.capabilityId ?? "").toLowerCase();
     const operationKind =
       typeof input.request.metadata?.visualOperationKind === "string"
@@ -58,14 +67,17 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
       capability === "image.edit" ||
       operationKind === "MODIFY" ||
       operationKind === "REGENERATE";
+    const { prompt: rolePrompt, adaptations } = applyProviderReferenceAdaptations({
+      basePrompt,
+      references: isArtifactEdit ? [] : references,
+      vendor: "google_gemini_image",
+    });
     const promptWithFormat = [
       aspectRatio ? `Generate a ${aspectRatio} aspect ratio image.` : "Generate an image.",
-      reference
-        ? isArtifactEdit
-          ? "The attached image is the existing result to modify — preserve unchanged elements unless the instruction explicitly changes them."
-          : "A reference image (logo or brand mark) is attached — reproduce it faithfully in the layout; do not invent a different logo."
+      isArtifactEdit && reference
+        ? "The attached image is the existing result to modify — preserve unchanged elements unless the instruction explicitly changes them."
         : "",
-      prompt,
+      rolePrompt,
     ]
       .filter(Boolean)
       .join(" ");
@@ -74,7 +86,8 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
       WIRE_BY_MODEL[input.spec.wireModelId] ??
       input.spec.wireModelId;
     const parts: Record<string, unknown>[] = [{ text: promptWithFormat }];
-    if (reference?.base64) {
+    const primary = adaptations[0];
+    if (reference?.base64 && primary?.deliverBytes !== false) {
       parts.push({
         inlineData: {
           mimeType: reference.mimeType,
@@ -98,6 +111,19 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
           },
         },
       },
+      ...(adaptations.length ? { referenceAdaptation: adaptations } : {}),
+      referenceRoleObservability: buildProviderReferenceRoleObservability({
+        canonicalRole:
+          primary?.canonicalRole ?? reference?.semanticReferenceRole,
+        resolutionSource:
+          typeof (reference as { referenceRoleResolutionSource?: string })
+            ?.referenceRoleResolutionSource === "string"
+            ? (reference as { referenceRoleResolutionSource: string })
+                .referenceRoleResolutionSource
+            : undefined,
+        transportFieldName: reference?.base64 ? "inlineData" : undefined,
+        adaptations,
+      }),
     };
   }
 

@@ -20,6 +20,8 @@ import { canTransitionProviderOperation } from "../contracts/provider-operation-
 import type { BlobAccessService } from "../../../media/blob/blob-access-service";
 import { extractInputAssets } from "../../common/input-asset-validator";
 import { sanitizeOutputsForPersistence } from "../persistence/sanitize-operation-record";
+import { logOsExecutionEvent } from "../../../os/observability/execution-log";
+import { extractVideoComposeSafeMetadata } from "../../video/common/video-compose-safe-metadata";
 
 export interface AsyncSubmitOutcome {
   readonly kind: "accepted_async";
@@ -70,6 +72,15 @@ export class AsyncProviderOrchestrator {
     const idempotencyKey = submissionKey;
     const existing = await this.deps.store.getBySubmissionKey(submissionKey);
     if (existing?.providerJobId && existing.state !== "submitting") {
+      logOsExecutionEvent("execution.async.persist", {
+        requestId: existing.operationId,
+        executionId: existing.executionId,
+        organizationId: existing.organizationId,
+        providerId: existing.providerId,
+        modelId: existing.modelId,
+        capabilityId: existing.capabilityId,
+        status: "idempotent_resume",
+      });
       return success({ kind: "accepted_async", operation: existing });
     }
 
@@ -118,11 +129,14 @@ export class AsyncProviderOrchestrator {
         : {};
     const failoverChain = payloadMeta.failoverChain;
     const routingDecisionId = payloadMeta.routingDecisionId;
+    const videoComposeMeta = extractVideoComposeSafeMetadata(payloadMeta);
     record = transitionOperation(record, "submitted", this.nowIso(), {
       providerJobId: submitted.providerJobId,
       submittedAt: now,
       safeMetadata: {
+        ...(record.safeMetadata ?? {}),
         ...(submitted.safeMetadata ?? {}),
+        ...videoComposeMeta,
         ...(Array.isArray(failoverChain) ? { failoverChain } : {}),
         ...(typeof routingDecisionId === "string" ? { routingDecisionId } : {}),
       },
@@ -142,6 +156,15 @@ export class AsyncProviderOrchestrator {
     }
 
     await this.deps.store.update(record);
+    logOsExecutionEvent("execution.async.submit", {
+      requestId: record.operationId,
+      executionId: record.executionId,
+      organizationId: record.organizationId,
+      providerId: record.providerId,
+      modelId: record.modelId,
+      capabilityId: record.capabilityId,
+      status: submitted.status,
+    });
     return success({ kind: "accepted_async", operation: record });
   }
 

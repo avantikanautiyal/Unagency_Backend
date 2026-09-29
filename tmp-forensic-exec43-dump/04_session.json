@@ -1,0 +1,92 @@
+{
+  "_id": "6aa81d06fd9d412b0259c8c6",
+  "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+  "__v": 0,
+  "createdAt": "2026-09-14T16:12:54.167Z",
+  "organizationId": "6a89ff83ae22a3d696a169e6",
+  "serviceId": "social-media",
+  "sessionVersion": 5,
+  "snapshot": {
+    "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+    "serviceId": "social-media",
+    "organizationId": "6a89ff83ae22a3d696a169e6",
+    "workspaceId": null,
+    "projectId": null,
+    "userId": "6a89ff5aae22a3d696a16732",
+    "contractVersion": "2.0.0-m1",
+    "sessionVersion": 5,
+    "status": "active",
+    "brief": "Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now",
+    "phaseIndex": 3,
+    "phaseId": "output",
+    "approved": [
+      {
+        "phaseId": "platform",
+        "approvedAt": "2026-09-14T16:13:23.811Z",
+        "selectedRouteIndex": 0,
+        "selectedRouteLabel": "Instagram",
+        "note": "Preselected from product picker: Instagram"
+      },
+      {
+        "phaseId": "size-reference",
+        "approvedAt": "2026-09-14T16:13:23.811Z",
+        "selectedRouteIndex": 1,
+        "selectedRouteLabel": "Use Platform Size",
+        "note": "Preselected format from product picker: feed-post"
+      }
+    ],
+    "selected": [
+      {
+        "phaseId": "routes",
+        "selectedAt": "2026-09-14T16:15:17.630Z",
+        "selectedRouteIndex": 2,
+        "selectedRouteLabel": "Choice 3",
+        "routeTitle": "A Day in the Sun",
+        "routeDesc": "An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringing Sunflower's mission to life through authentic human moments rather than abstract concepts.\nPhotographic or illustrated vignette style featuring children in natural, joyful learning moments. Golden hour lighting quality with sunshine yellows, calming blues, and fresh greens. Soft focus backgrounds with sharp, emotion-rich foreground subjects. Human-centered and heartwarming.\n\"Every child deserves to flourish\" — leading with the inclusive, child-first values that define Sunflower's approach while creating immediate emotional resonance with parent and educator audiences.\nThis direction answers the brief's call for aesthetic appeal and proper brand description by showing rather than telling — authentic moments of children thriving create emotional connection while the warm color treatment and sunlit quality reinforce brand colors and name. Most effective for building trust through relatability.\nEmotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.\nSunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.\nGrowing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.\nOne to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.\nThe children's faces and expressions, particularly their eyes and genuine smiles, positioned in the upper-middle section of the frame. Natural eye contact or absorbed engagement draws viewers into the emotional moment and brand promise.\nRule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.\n1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.\nFriendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.\nSubtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.\nGolden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.\nLogo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.\nAuthentic child imagery immediately signals to parents 'this is for families like mine' while professional execution reassures schools of credibility. The inclusive, joyful tone attracts audiences seeking positive, affirming educational environments. Context: Instagram users respond strongly to genuine human emotion and relatable moments.\nDesigned to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.\nMust not appear stock-photo generic, overly posed/artificial, saccharine/cheesy, or staged. Avoid tokenistic diversity, sad/struggling children imagery, or focusing on devices/screens. Don't obscure children's faces with heavy text overlays. Cannot become so lifestyle-focused that educational mission gets lost. Keep identity mark subordinate to the human story.",
+        "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+        "artifactVersion": 1,
+        "executionId": "exec_14_1789402421619"
+      }
+    ],
+    "masters": {
+      "routeId": "Choice 3",
+      "routeTitle": "A Day in the Sun",
+      "routeDesc": "An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringing Sunflower's mission to life through authentic human moments rather than abstract concepts.\nPhotographic or illustrated vignette style featuring children in natural, joyful learning moments. Golden hour lighting quality with sunshine yellows, calming blues, and fresh greens. Soft focus backgrounds with sharp, emotion-rich foreground subjects. Human-centered and heartwarming.\n\"Every child deserves to flourish\" — leading with the inclusive, child-first values that define Sunflower's approach while creating immediate emotional resonance with parent and educator audiences.\nThis direction answers the brief's call for aesthetic appeal and proper brand description by showing rather than telling — authentic moments of children thriving create emotional connection while the warm color treatment and sunlit quality reinforce brand colors and name. Most effective for building trust through relatability.\nEmotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.\nSunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.\nGrowing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.\nOne to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.\nThe children's faces and expressions, particularly their eyes and genuine smiles, positioned in the upper-middle section of the frame. Natural eye contact or absorbed engagement draws viewers into the emotional moment and brand promise.\nRule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.\n1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.\nFriendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.\nSubtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.\nGolden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.\nLogo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.\nAuthentic child imagery immediately signals to parents 'this is for families like mine' while professional execution reassures schools of credibility. The inclusive, joyful tone attracts audiences seeking positive, affirming educational environments. Context: Instagram users respond strongly to genuine human emotion and relatable moments.\nDesigned to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.\nMust not appear stock-photo generic, overly posed/artificial, saccharine/cheesy, or staged. Avoid tokenistic diversity, sad/struggling children imagery, or focusing on devices/screens. Don't obscure children's faces with heavy text overlays. Cannot become so lifestyle-focused that educational mission gets lost. Keep identity mark subordinate to the human story."
+    },
+    "modeOwnership": "ai",
+    "productMode": "ai",
+    "createdAt": "2026-09-14T16:12:54.167Z",
+    "updatedAt": "2026-09-14T16:16:10.584Z",
+    "activeBriefId": "abr_mu1fznc2_4",
+    "activeBriefVersion": 3,
+    "lastRequestKey": "select_route|3|2|A Day in the Sun|Choice 3|||||cdfart_mu1g1wsi_1_social-media-routes|1|exec_14_1789402421619||",
+    "approvedArtifacts": [],
+    "selectedArtifacts": [
+      {
+        "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+        "version": 1,
+        "phaseId": "routes",
+        "artifactKey": "social-media.routes",
+        "role": "selected"
+      }
+    ],
+    "generatedArtifacts": [
+      {
+        "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+        "version": 1,
+        "phaseId": "routes",
+        "artifactKey": "social-media.routes",
+        "role": "generated"
+      },
+      {
+        "artifactId": "cdfart_mu1g380n_2_social-media-output",
+        "version": 1,
+        "phaseId": "output",
+        "artifactKey": "social-media.output",
+        "role": "generated"
+      }
+    ]
+  },
+  "updatedAt": "2026-09-14T16:16:10.584Z",
+  "userId": "6a89ff5aae22a3d696a16732"
+}

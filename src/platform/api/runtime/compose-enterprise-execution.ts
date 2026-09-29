@@ -21,6 +21,7 @@ import { materializeSyncImageArtifacts } from "../services/sync-image-artifact-m
 import {
   materializeDocumentExports,
   resolveDocumentExportKind,
+  shouldRunDocumentExportMaterialization,
   isRequiredDocumentOrPresentationExport,
 } from "../services/document-export-materializer";
 import {
@@ -89,6 +90,16 @@ export function composeEnterpriseExecution(
               structuredCandidate
             );
           }
+          if (
+            !shouldRunDocumentExportMaterialization({
+              metadata: args.metadata,
+              structuredData: structuredCandidate,
+            })
+          ) {
+            return failure(
+              new ValidationError("No document/presentation export requested"),
+            );
+          }
           const exportKind = resolveDocumentExportKind({
             outputKind:
               typeof args.metadata?.outputKind === "string"
@@ -155,7 +166,7 @@ export function composeEnterpriseExecution(
           if (!exported.ok) return exported;
           return success({
             artifactIds: exported.value.artifactIds,
-            structuredData: exported.value.plan,
+            documentExportPlan: exported.value.plan,
             exportKind,
           });
         }

@@ -41,7 +41,7 @@ export const UNIVERSAL_RELEASE_GATES: readonly UniversalReleaseGate[] =
     gate(
       "identity",
       "Correct wordmark and approved color treatment; no unintended external brands.",
-      "Use only the approved UNAGENCY / brand wordmark and color treatment; no competitor or unrelated marks.",
+      "Use only the approved client brand wordmark and color treatment; no competitor, platform, or unrelated marks.",
     ),
     gate(
       "copy",

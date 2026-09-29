@@ -193,23 +193,53 @@ export function coerceValueTowardJsonSchema(
   const props = schemaProps(schema);
   const name = (schemaName ?? "").toLowerCase();
 
+  // Canonical CDF structured contracts that require schema identity must never
+  // enter DocumentPlan/LaunchPlan remapping — those remappers drop schemaId
+  // and sections[].id, which then fail the same schema used for provider request.
+  const requiresSchemaIdentity = required.includes("schemaId");
+  const sectionItemsRequireId = (() => {
+    const sections = props.sections;
+    if (!sections || typeof sections !== "object" || Array.isArray(sections)) {
+      return false;
+    }
+    const items = (sections as Record<string, unknown>).items;
+    if (!items || typeof items !== "object" || Array.isArray(items)) {
+      return false;
+    }
+    const itemRequired = Array.isArray(
+      (items as Record<string, unknown>).required,
+    )
+      ? ((items as Record<string, unknown>).required as string[])
+      : [];
+    return itemRequired.includes("id");
+  })();
+  const isCanonicalStructuredIdentitySchema =
+    requiresSchemaIdentity ||
+    sectionItemsRequireId ||
+    name.includes("structuredapproval") ||
+    name.startsWith("cdf");
+
   const looksLikeLaunchPlan =
-    name === "launchplan" ||
-    (required.includes("title") &&
-      required.includes("summary") &&
-      required.includes("steps") &&
-      Boolean(props.steps));
+    !isCanonicalStructuredIdentitySchema &&
+    (name === "launchplan" ||
+      (required.includes("title") &&
+        required.includes("summary") &&
+        required.includes("steps") &&
+        Boolean(props.steps)));
 
   if (looksLikeLaunchPlan) {
     return coerceLaunchPlanLike(obj, schema);
   }
 
+  // DocumentPlan only — never ApprovalDoc / website / packaging CDF schemas.
   const looksLikeDocumentPlan =
-    name === "documentplan" ||
-    (required.includes("title") &&
-      required.includes("summary") &&
-      required.includes("sections") &&
-      Boolean(props.sections));
+    !isCanonicalStructuredIdentitySchema &&
+    (name === "documentplan" ||
+      (required.includes("title") &&
+        required.includes("summary") &&
+        required.includes("sections") &&
+        Boolean(props.sections) &&
+        !required.includes("schemaId")));
 
   if (looksLikeDocumentPlan) {
     return coerceDocumentPlanLike(obj, schema);
@@ -230,15 +260,125 @@ export function coerceValueTowardJsonSchema(
     return coerceWebsitePageLike(obj, schema);
   }
 
+  // Presentation deck routes only — do NOT treat every CDF text_choice
+  // `{ routes: [...] }` schema (social-media/packaging/etc.) as PresentationRoutes.
+  // That heuristic emptied slide-less route cards → `$.routes: got 0`.
   const looksLikePresentationRoutes =
     name === "presentationroutes" ||
-    (required.includes("routes") && Boolean(props.routes));
+    (required.includes("routes") &&
+      Boolean(props.routes) &&
+      presentationRoutesSchemaExpectsSlides(props.routes));
 
   if (looksLikePresentationRoutes) {
     return coercePresentationRoutesLike(obj);
   }
 
-  return value;
+  // Generic schema-driven coerce: alias remaps + strip undeclared props when
+  // additionalProperties:false. Applies to any structured contract (CDF text_choice,
+  // packaging, etc.) without product-specific branches.
+  return coerceTowardDeclaredSchema(value, schema);
+}
+
+/**
+ * Common aliases for declared schema property names.
+ * Looked up by target property key — not by service/phase/product.
+ */
+const STRING_PROPERTY_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  name: ["title", "label", "heading", "routeName"],
+  title: ["name", "label", "heading"],
+  summary: ["description", "overview", "brief", "pitch"],
+  description: ["summary", "overview", "subtitle", "body"],
+  creativeIdea: ["idea", "concept", "prompt", "creative", "direction"],
+  visualTreatment: ["visual", "visualDirection", "treatment", "look", "style"],
+  headlineAngle: ["headline", "messageAngle", "angle", "hook", "message"],
+  rationale: ["why", "reason", "designRationale", "explanation", "because"],
+  shelfIdea: ["idea", "concept", "shelf", "creativeIdea"],
+  visualDirection: ["visual", "visualTreatment", "direction", "look"],
+  designRationale: ["rationale", "why", "reason", "explanation"],
+  hierarchyThought: ["hierarchy", "layoutThought", "structure", "layout"],
+  heading: ["title", "name", "label"],
+  body: ["content", "text", "description", "summary"],
+};
+
+function isBlank(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
+/**
+ * Recursively reshape provider JSON toward the declared JSON Schema:
+ * - fill missing string fields from known aliases
+ * - recurse into object/array children
+ * - when `additionalProperties: false`, drop undeclared keys
+ *
+ * Does not invent missing array items or required objects — those stay
+ * fail-closed so malformed structured output can still failover.
+ */
+export function coerceTowardDeclaredSchema(
+  value: unknown,
+  schema: Record<string, unknown>
+): unknown {
+  if (!schema || typeof schema !== "object") return value;
+
+  if (schema.type === "array" || (Array.isArray(value) && schema.items)) {
+    if (!Array.isArray(value)) return value;
+    const items = asObject(schema.items);
+    if (!items) return value;
+    return value.map((item) => coerceTowardDeclaredSchema(item, items));
+  }
+
+  const hasObjectShape =
+    schema.type === "object" ||
+    (schema.properties != null && typeof schema.properties === "object");
+  if (!hasObjectShape) return value;
+
+  const obj = asObject(value);
+  if (!obj) return value;
+
+  const props = schemaProps(schema);
+  const propKeys = Object.keys(props);
+  if (propKeys.length === 0) return value;
+
+  const working: Record<string, unknown> = { ...obj };
+
+  for (const key of propKeys) {
+    if (!isBlank(working[key])) continue;
+    const propSchema = props[key]!;
+    const propType = propSchema.type;
+    if (propType != null && propType !== "string") continue;
+    const aliases = STRING_PROPERTY_ALIASES[key] ?? [];
+    const filled = firstString(...aliases.map((alias) => working[alias]));
+    if (filled) working[key] = filled;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const key of propKeys) {
+    if (!(key in working)) continue;
+    out[key] = coerceTowardDeclaredSchema(working[key], props[key]!);
+  }
+
+  if (schema.additionalProperties === false) {
+    return out;
+  }
+
+  for (const [key, v] of Object.entries(working)) {
+    if (!(key in out)) out[key] = v;
+  }
+  return out;
+}
+
+/** True when routes.items look like pitch-deck routes (slides / deckTitle). */
+function presentationRoutesSchemaExpectsSlides(
+  routesSchema: Record<string, unknown>,
+): boolean {
+  const items = asObject(routesSchema.items);
+  if (!items) return false;
+  const itemProps = schemaProps(items);
+  const itemRequired = schemaRequired(items);
+  if (itemRequired.includes("slides") || Boolean(itemProps.slides)) return true;
+  if (itemRequired.includes("deckTitle") || Boolean(itemProps.deckTitle)) {
+    return true;
+  }
+  return false;
 }
 
 const PRESENTATION_LAYOUTS = new Set([

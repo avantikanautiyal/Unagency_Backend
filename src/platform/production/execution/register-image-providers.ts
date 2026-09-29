@@ -10,6 +10,7 @@ import type { IProviderDispatcher } from "../../providers/runtime/interfaces/pro
 import {
   ALL_IMAGE_PROVIDER_SPECS,
   VERIFIED_IMAGE_PROVIDER_SPECS,
+  isSyncVendorExecutableImageSpec,
 } from "../../providers/image/configs/verified-image-provider-specs";
 import { createVerifiedImageProvider } from "../../providers/image/factories/create-verified-image-provider";
 import type { IImageHttpClient } from "../../providers/image/http/image-http-client";
@@ -87,6 +88,10 @@ export function registerImageProviders(
   const registered: RegisteredImageProvider[] = [];
 
   for (const spec of VERIFIED_IMAGE_PROVIDER_SPECS) {
+    // Native OpenAI (and any non-sync capability declaration) stays out of
+    // VendorSyncImageDispatcher — capability registry only.
+    if (!isSyncVendorExecutableImageSpec(spec)) continue;
+
     const providerId = asProviderId(spec.canonicalProviderId);
     const caps = collectProviderCapabilities(options.modelRegistry, providerId);
     if (caps.length === 0) continue;

@@ -156,10 +156,9 @@ export const getProductAssetMedia = asyncHandler(
       disposition,
       refresh,
     });
-    if (data.etag) {
-      res.setHeader("ETag", `"${data.etag}"`);
-    }
-    res.setHeader("Cache-Control", data.cacheControl);
+    // The body carries a short-lived signed URL: a browser-cached copy (or a 304
+    // keyed on the blob checksum) would hand back an expired link.
+    res.setHeader("Cache-Control", "private, no-store");
     return new ApiResponse(200, data, "Media authorized");
   }
 );

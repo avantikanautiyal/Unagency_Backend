@@ -96,6 +96,7 @@ async function resolveLogoWithVault(input: {
   readonly organizationId: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly profileLogoAssetId?: string;
+  readonly brief?: string;
 }): Promise<{
   readonly resolve: KnowledgeResolveResult;
   readonly logoChoice?: { readonly candidates: readonly VaultLogoCandidate[] };
@@ -109,6 +110,7 @@ async function resolveLogoWithVault(input: {
     brandId: input.brandId,
     metadata: input.metadata,
     profileLogoAssetId: input.profileLogoAssetId,
+    brief: input.brief,
   });
 
   if (vault.selectedAssetId) {
@@ -235,6 +237,7 @@ export async function runContinuityBindPipeline(
     organizationId: input.organizationId,
     metadata: input.metadata,
     profileLogoAssetId: profileContext.logoAssetId,
+    brief: input.brief,
   });
   const resolvedFinal = logoResolution.resolve;
 

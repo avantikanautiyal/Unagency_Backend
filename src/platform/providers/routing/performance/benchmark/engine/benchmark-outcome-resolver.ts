@@ -74,6 +74,11 @@ export function resolveBenchmarkOutcome(input: BenchmarkOutcomeInput): Benchmark
     return "CONTRACT_FAILURE";
   }
 
+  // Unverified ≠ failed: no measured failure, verification could not complete.
+  if (v.status === "UNVERIFIED") {
+    return "VERIFICATION_INCOMPLETE";
+  }
+
   if (v.status === "BLOCKED" || v.status === "FAIL" || !v.completionAllowed) {
     return "MODEL_QUALITY_FAILURE";
   }

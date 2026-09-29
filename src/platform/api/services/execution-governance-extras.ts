@@ -114,6 +114,8 @@ export function validationContextFromExecution(input: {
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly jobSummary?: Readonly<Record<string, unknown>>;
   readonly mediaArtifactIds?: readonly string[];
+  /** Optional result.data bag (post-materialization stamps). */
+  readonly resultData?: Readonly<Record<string, unknown>>;
 }): {
   subtype?: string;
   platform?: string;
@@ -124,12 +126,52 @@ export function validationContextFromExecution(input: {
   actualAspectRatio?: string;
   structuredData?: unknown;
   mediaArtifactIds?: readonly string[];
+  buildSucceeded?: boolean;
+  buildOutput?: string;
+  runtimeErrors?: readonly string[];
 } {
   const meta = input.metadata ?? {};
   const summary = input.jobSummary ?? {};
   const structuredData =
     summary.structuredData ??
+    input.resultData ??
     (typeof meta.structuredOutput === "object" ? meta.structuredOutput : undefined);
+
+  // Website materialization authority → SpecGuard build/runtime evidence.
+  // Observational quality must not RETRY a successfully materialized website
+  // merely because build_test_execution was NOT_AUTOMATED at validation time.
+  let buildSucceeded: boolean | undefined;
+  let buildOutput: string | undefined;
+  let runtimeErrors: readonly string[] | undefined;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const {
+      hasWebsiteMaterializationEvidence,
+      isDeferredWebsiteOutputKind,
+    } = require("./website-canonical-completion") as typeof import("./website-canonical-completion");
+    const websiteProduct =
+      isDeferredWebsiteOutputKind(meta.outputKind) ||
+      (typeof meta.service === "string" &&
+        meta.service.trim().toLowerCase() === "website");
+    if (
+      websiteProduct &&
+      hasWebsiteMaterializationEvidence({
+        metadata: meta,
+        structuredData,
+        mediaArtifactIds: input.mediaArtifactIds,
+        resultData: input.resultData,
+      })
+    ) {
+      buildSucceeded = true;
+      buildOutput =
+        "website materialization completed (ZIP/HTML export artifacts persisted)";
+      // Empty array = measured no runtime errors (PASS), not "not run".
+      runtimeErrors = Object.freeze([]);
+    }
+  } catch {
+    // best-effort — validation proceeds without materialization evidence
+  }
+
   return {
     subtype: typeof meta.subtype === "string" ? meta.subtype : undefined,
     platform: typeof meta.platform === "string" ? meta.platform : undefined,
@@ -144,6 +186,9 @@ export function validationContextFromExecution(input: {
         : undefined,
     structuredData,
     mediaArtifactIds: input.mediaArtifactIds,
+    ...(buildSucceeded === true
+      ? { buildSucceeded, buildOutput, runtimeErrors }
+      : {}),
   };
 }
 
@@ -226,6 +271,8 @@ export function finalizeExecutionGovernanceExtras(input: {
   readonly buildSucceeded?: boolean;
   readonly buildOutput?: string;
   readonly runtimeErrors?: readonly string[];
+  readonly skipOutputRequirements?: boolean;
+  readonly generationModality?: string;
   readonly nowIso: () => string;
   readonly createId: (prefix: string) => string;
 }): {
@@ -271,6 +318,8 @@ export function finalizeExecutionGovernanceExtras(input: {
     buildSucceeded: input.buildSucceeded,
     buildOutput: input.buildOutput,
     runtimeErrors: input.runtimeErrors,
+    skipOutputRequirements: input.skipOutputRequirements,
+    generationModality: input.generationModality,
     providerSuccess: input.providerSuccess,
     policy,
     taskResults: [

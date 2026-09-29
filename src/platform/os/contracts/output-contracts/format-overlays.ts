@@ -125,7 +125,7 @@ export function aspectRatioForFormat(format?: string): string | undefined {
   return undefined;
 }
 
-/** Target clip length (seconds) from product format — clamped for MiniMax (6|10). */
+/** Target deliverable length (seconds). Providers clamp per clip (MiniMax/Luma ≤10s). */
 export function durationForFormat(
   format?: string,
   service?: string,
@@ -135,24 +135,28 @@ export function durationForFormat(
   const svc = (service ?? "").toLowerCase();
   const sub = (subtype ?? "").toLowerCase();
 
+  if (svc === "video" || svc === "videos") {
+    return 20;
+  }
   if (
     /\b(reels?|stories?|shorts?|vertical-video|feed-video-vertical|spotlight|tiktok)\b/.test(
       f
     ) ||
     svc === "social"
   ) {
-    return 10;
+    return 20;
   }
   if (
-    svc === "video" &&
-    /\b(corporate|film|commercial|brand|motion|documentary)\b/.test(sub)
+    /\b(corporate|film|commercial|brand|motion|documentary|promo|animation)\b/.test(
+      sub
+    )
   ) {
-    return 10;
+    return 20;
   }
-  if (svc === "ads" || /\b(commercial|video|motion|film|reel)\b/.test(f)) {
-    return 10;
+  if (svc === "ads" || /\b(commercial|video|motion|film|reel|promo)\b/.test(f)) {
+    return 20;
   }
-  if (isVideoFormat(format)) return 6;
+  if (isVideoFormat(format)) return 20;
   return undefined;
 }
 

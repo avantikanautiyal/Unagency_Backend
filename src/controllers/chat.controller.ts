@@ -20,9 +20,18 @@ import { collaborationActionsService } from "../services/collaboration/collabora
 import { collaborationOsService } from "../platform/collaboration/collaboration-os-service";
 import { emitCollaborationEvent } from "../platform/collaboration/socket-gateway";
 import { serviceConversationService } from "../platform/collaboration/service-conversation-service";
+import { servicingCanAccessCustomer } from "../services/cs-assignment-service";
 
 const template =
   "Hi Team UNAGENCY, I am interested in exploring your {service} services.";
+
+function staffIdFromRequest(req: RequestUser): unknown {
+  const staff = req.user?.staff;
+  if (staff && typeof staff === "object" && "_id" in staff) {
+    return (staff as { _id: unknown })._id;
+  }
+  return staff;
+}
 
 export const getStreamChatToken = asyncHandler(async (req: RequestUser) => {
   const userId = String(req.user?.userId || "");
@@ -77,38 +86,6 @@ export const ensureBrandChannel = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, channel, "brand channel ready");
 });
 
-/** Resource may open a client's service room only when assigned to matching work. */
-async function assertResourceAssignedToClientService(input: {
-  resourceUserId: string;
-  customerUserId: string;
-  brandId: string;
-  productPath: string;
-}): Promise<void> {
-  const Staff = (await import("../models/staff.model")).default;
-  const Projects = (await import("../models/projects.model")).default;
-  const Tasks = (await import("../models/tasks.model")).default;
-
-  const staff = await Staff.findOne({ userId: input.resourceUserId }).select("_id");
-  if (!staff?._id) throw new ApiError("Forbidden", 403);
-
-  const projectFilter: Record<string, unknown> = {
-    userId: input.customerUserId,
-    productPath: input.productPath,
-  };
-  if (mongoose.isValidObjectId(input.brandId)) {
-    projectFilter.brandId = input.brandId;
-  }
-
-  const projects = await Projects.find(projectFilter).select("_id").lean();
-  if (!projects.length) throw new ApiError("Forbidden", 403);
-
-  const assigned = await Tasks.findOne({
-    assignedTo: staff._id,
-    project: { $in: projects.map((p) => p._id) },
-  }).select("_id");
-  if (!assigned) throw new ApiError("Forbidden", 403);
-}
-
 export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
   // Auth middleware attaches `role` (not `userRole`) — oversight depends on this.
   const callerRole = String(req.user?.role || "").toLowerCase().trim();
@@ -126,20 +103,35 @@ export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
 
   const isOversightRole = callerRole === "admin" || callerRole === "superadmin";
   const isResourceRole = callerRole === "resource";
+  const isServicingRole = callerRole === "servicing";
+
+  // Resources must not open Client ↔ CS rooms — brief is shared explicitly by CS.
+  if (isResourceRole) {
+    throw new ApiError(
+      "Resources cannot access the client service brief channel",
+      403
+    );
+  }
+
+  // Admin/superadmin and CS may open the client's service room when they pass
+  // customerUserId — otherwise ensure binds to the caller and brand membership
+  // checks fail for staff who are not org members.
   const canResolveClient =
-    Boolean(requestedClientId) && (isOversightRole || isResourceRole);
+    Boolean(requestedClientId) && (isOversightRole || isServicingRole);
 
   if (canResolveClient && !mongoose.isValidObjectId(requestedClientId!)) {
     throw new ApiError("customerUserId is invalid", 400);
   }
 
-  if (isResourceRole && requestedClientId) {
-    await assertResourceAssignedToClientService({
-      resourceUserId: callerUserId,
-      customerUserId: requestedClientId,
-      brandId,
-      productPath,
+  if (isServicingRole && requestedClientId) {
+    const canAccess = await servicingCanAccessCustomer({
+      staffId: staffIdFromRequest(req),
+      customerId: requestedClientId,
+      role: callerRole,
     });
+    if (!canAccess) {
+      throw new ApiError("Customer is not associated with your ID", 403);
+    }
   }
 
   const clientUserId = canResolveClient ? requestedClientId! : callerUserId;
@@ -150,7 +142,8 @@ export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
     productPath,
     serviceLabel,
     allowOversightBrandLoad: canResolveClient,
-    extraViewerUserIds: isResourceRole ? [callerUserId] : undefined,
+    // CS/servicing may join the Client ↔ CS room.
+    extraViewerUserIds: isServicingRole ? [callerUserId] : undefined,
   });
   return new ApiResponse(200, channel, "service channel ready");
 });
@@ -228,6 +221,16 @@ export const uploadAttachmentInChannel = asyncHandler(
       caption ||
       (isAudio ? `🎤 Voice note — ${fileName}` : `📎 ${fileName}`);
 
+    const purpose = String(req.body?.purpose || "").trim();
+    const isQcFeedback = purpose === "qc_feedback";
+    const isEscalation = purpose === "escalation";
+    const isBriefShare = purpose === "brief_share";
+    const taggedPurpose = isQcFeedback || isEscalation || isBriefShare;
+    const purposeKind = isEscalation
+      ? "escalation_attachment"
+      : isBriefShare
+        ? "brief_share_attachment"
+        : "qc_feedback_attachment";
     const message = await collaborationChannelService.sendMessage({
       userId,
       channelId,
@@ -235,11 +238,25 @@ export const uploadAttachmentInChannel = asyncHandler(
       messageType: isAudio ? "voice" : "text",
       parentId: req.body?.parentId,
       metadata: {
-        kind: isAudio ? "voice_note" : "chat_attachment",
+        kind: taggedPurpose
+          ? purposeKind
+          : isAudio
+            ? "voice_note"
+            : "chat_attachment",
         url,
         fileName,
         mimeType,
         size: file.size,
+        ...(taggedPurpose
+          ? {
+              purpose,
+              requestedBy: isEscalation
+                ? "escalation"
+                : isBriefShare
+                  ? "cs"
+                  : "admin",
+            }
+          : {}),
       },
     });
     emitCollaborationEvent(message.channelId, "message:new", message as any);

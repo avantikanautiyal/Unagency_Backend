@@ -11,16 +11,34 @@ export class InMemoryClaimableJobStore implements IJobStore {
   private readonly claimLocks = new Set<string>();
 
   save(job: ExecutionJob): void {
-    this.jobs.set(String(job.jobId), job);
+    const id = String(job.jobId);
+    const prev = this.jobs.get(id);
+    let next = job;
+    // Mirror MongoJobStore.persist for claimed rows: ownership fields are mutated
+    // only by tryClaim / renewLease / reclaimExpired — never by status persist.
     if (
-      job.status === "completed" ||
-      job.status === "failed" ||
-      job.status === "cancelled" ||
-      job.status === "dead_letter" ||
-      job.status === "queued" ||
-      job.status === "retrying"
+      prev &&
+      (job.status === "reserved" || job.status === "running") &&
+      (prev.status === "reserved" || prev.status === "running")
     ) {
-      this.claimLocks.delete(String(job.jobId));
+      next = {
+        ...job,
+        reservedBy: prev.reservedBy,
+        reservationId: prev.reservationId,
+        leaseId: prev.leaseId,
+        leaseExpiresAt: prev.leaseExpiresAt,
+      };
+    }
+    this.jobs.set(id, next);
+    if (
+      next.status === "completed" ||
+      next.status === "failed" ||
+      next.status === "cancelled" ||
+      next.status === "dead_letter" ||
+      next.status === "queued" ||
+      next.status === "retrying"
+    ) {
+      this.claimLocks.delete(id);
     }
   }
 
@@ -50,7 +68,10 @@ export class InMemoryClaimableJobStore implements IJobStore {
     if (this.claimLocks.has(id)) return undefined;
 
     this.claimLocks.add(id);
-    const leaseExpiresAt = new Date(Date.now() + ttlMs).toISOString();
+    const baseMs = Date.parse(nowIso);
+    const leaseExpiresAt = new Date(
+      (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
+    ).toISOString();
     const claimed: ExecutionJob = {
       ...job,
       status: "reserved",
@@ -63,16 +84,28 @@ export class InMemoryClaimableJobStore implements IJobStore {
     return claimed;
   }
 
+  /**
+   * Reclaim only when durable lease ownership has genuinely expired.
+   * Concurrent renewLease (same owner) advances leaseExpiresAt and wins.
+   */
   async reclaimExpired(nowIso: string, nowMs: number): Promise<readonly ExecutionJob[]> {
     const recovered: ExecutionJob[] = [];
     for (const [id, job] of this.jobs) {
       if (job.status !== "reserved" && job.status !== "running") continue;
       if (!job.leaseExpiresAt) continue;
       const expires = Date.parse(job.leaseExpiresAt);
-      if (!Number.isFinite(expires) || expires > nowMs) continue;
+      // Re-read after expiry check to mimic CAS against concurrent renew.
+      const latest = this.jobs.get(id);
+      if (!latest || (latest.status !== "reserved" && latest.status !== "running")) {
+        continue;
+      }
+      const latestExpires = latest.leaseExpiresAt
+        ? Date.parse(latest.leaseExpiresAt)
+        : NaN;
+      if (!Number.isFinite(latestExpires) || latestExpires > nowMs) continue;
 
       const reset: ExecutionJob = {
-        ...job,
+        ...latest,
         status: "queued",
         reservedBy: undefined,
         reservationId: undefined,
@@ -87,6 +120,11 @@ export class InMemoryClaimableJobStore implements IJobStore {
     return recovered;
   }
 
+  /**
+   * Renew lease only for the durable owner.
+   * Atomic within a single Node process (sync Map RMW). Not a cross-process
+   * CAS — distributed ownership proofs must use MongoJobStore in production.
+   */
   async renewLease(
     jobId: JobId,
     ttlMs: number,
@@ -97,10 +135,14 @@ export class InMemoryClaimableJobStore implements IJobStore {
     const job = this.jobs.get(id);
     if (!job) return false;
     if (job.status !== "reserved" && job.status !== "running") return false;
-    if (workerId && job.reservedBy && job.reservedBy !== workerId) return false;
+    // Durable ownership: only the reserved worker may renew.
+    if (workerId && String(job.reservedBy ?? "") !== String(workerId)) return false;
+    const baseMs = Date.parse(nowIso);
     this.jobs.set(id, {
       ...job,
-      leaseExpiresAt: new Date(Date.now() + ttlMs).toISOString(),
+      leaseExpiresAt: new Date(
+        (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
+      ).toISOString(),
       updatedAt: nowIso,
     });
     return true;

@@ -2,14 +2,17 @@
  * Phase 1 — Instruct path for Format & Production Spec.
  *
  * Same productionRuleId used for prompt injection and release enforcement.
- * Appends [UNAGENCY Production Spec] to provider-facing prompts and stamps
+ * Appends [Format Production Spec] to provider-facing prompts and stamps
  * productionSpecBinding on execution metadata.
  */
 
 import {
   PRODUCTION_PROMPT_BLOCK_HEADER,
+  PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY,
+  PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY_FORMAT,
   buildProductionPromptBlock,
   type ProductionPromptBlock,
+  type ProductionPromptProjection,
 } from "./production-prompt-block";
 import {
   buildProductionSpecBindingFromResolved,
@@ -38,7 +41,11 @@ export type ProductionInstructBundle = {
 };
 
 export function promptContainsProductionSpecBlock(prompt: string): boolean {
-  return prompt.includes(PRODUCTION_PROMPT_BLOCK_HEADER);
+  return (
+    prompt.includes(PRODUCTION_PROMPT_BLOCK_HEADER) ||
+    prompt.includes(PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY) ||
+    prompt.includes(PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY_FORMAT)
+  );
 }
 
 /**
@@ -60,6 +67,7 @@ export function resolveProductionInstructBundle(
     readonly boundAt?: string;
     readonly placementLabel?: string;
     readonly maxWeightedLines?: number;
+    readonly projection?: ProductionPromptProjection;
   },
 ): ProductionInstructBundle | undefined {
   const resolved = resolveProductionRule(input);
@@ -69,6 +77,7 @@ export function resolveProductionInstructBundle(
     rule: resolved.rule,
     placementLabel: input.placementLabel,
     maxWeightedLines: input.maxWeightedLines,
+    projection: input.projection ?? "provider_technical",
   });
   const binding = buildProductionSpecBindingFromResolved(resolved, {
     promptBlockHash: promptBlock.contentHash,
@@ -103,6 +112,7 @@ export function applyProductionSpecInstructToMetadata(
   options?: {
     readonly boundAt?: string;
     readonly maxWeightedLines?: number;
+    readonly projection?: ProductionPromptProjection;
     /** When set, use this bundle instead of resolving from metadata. */
     readonly bundle?: ProductionInstructBundle;
     /** Skip inject when rollout is off (still resolves for callers that need binding). */
@@ -113,6 +123,14 @@ export function applyProductionSpecInstructToMetadata(
   readonly bundle?: ProductionInstructBundle;
   readonly skippedByRollout?: boolean;
 } {
+  // CDF non-visual authority — never stamp PNG/JPG production Spec.
+  if (
+    metadata.skipProductionSpecInstruct === true ||
+    metadata.cdfSkipImageProductionSpec === true
+  ) {
+    return { metadata: { ...metadata }, skippedByRollout: true };
+  }
+
   const resolveInput = resolveProductionInstructInputFromMetadata(metadata);
   const rollout = resolveProductionSpecRollout();
   const shouldInject =
@@ -145,6 +163,7 @@ export function applyProductionSpecInstructToMetadata(
       ...resolveInput,
       boundAt: options?.boundAt ?? new Date().toISOString(),
       maxWeightedLines: options?.maxWeightedLines,
+      projection: options?.projection ?? "provider_technical",
     });
 
   if (!bundle) {

@@ -157,6 +157,25 @@ describe("M10.15 voice / STT", () => {
     expect(resolved.organizationId).toBe(orgA.toString());
   });
 
+  test("VoicePromptService accepts browser webm including codec parameters", async () => {
+    const voice = new VoicePromptService();
+    try {
+      await voice.uploadAndTranscribe({
+        userId: userA.toString(),
+        organizationId: orgA.toString(),
+        filename: "brief-voice.webm",
+        mimeType: "audio/webm;codecs=opus",
+        bytes: Buffer.from("webm-bytes"),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).not.toMatch(/Unsupported audio type/i);
+      if (err instanceof ApiError) {
+        expect(err.statusCode).not.toBe(400);
+      }
+    }
+  });
+
   test("VoicePromptService rejects unsupported mime before upload", async () => {
     const voice = new VoicePromptService();
     await expect(

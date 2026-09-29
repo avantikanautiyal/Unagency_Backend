@@ -3,6 +3,7 @@
  */
 
 import type { RouteDefinition } from "../contracts";
+import type { RateLimitAccountingClass } from "../../execution-reliability/execution-outcome";
 
 function v(
   version: "v1" | "v2",
@@ -11,7 +12,8 @@ function v(
   domain: RouteDefinition["domain"],
   summary: string,
   permissions: RouteDefinition["permissions"],
-  authRequired = true
+  authRequired = true,
+  rateLimitAccountingClass?: RateLimitAccountingClass
 ): RouteDefinition {
   return {
     routeId: `${version}_${method}_${path.replace(/\//g, "_")}`,
@@ -22,8 +24,14 @@ function v(
     summary,
     authRequired,
     permissions,
+    ...(rateLimitAccountingClass
+      ? { rateLimitAccountingClass }
+      : {}),
   };
 }
+
+/** Execution / session hydration polls — separate from USER_REQUEST bucket. */
+const POLL: RateLimitAccountingClass = "BACKGROUND_POLL";
 
 function routesFor(version: "v1" | "v2"): RouteDefinition[] {
   return [
@@ -52,7 +60,7 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
       ["execution:create", "execution:stream"]
     ),
     v(version, "GET", "/executions", "executions", "Execution history", ["execution:read"]),
-    v(version, "GET", "/executions/:executionId", "executions", "Get execution", ["execution:read"]),
+    v(version, "GET", "/executions/:executionId", "executions", "Get execution", ["execution:read"], true, POLL),
     v(version, "POST", "/executions/:executionId/cancel", "executions", "Cancel execution", ["execution:cancel"]),
     v(version, "POST", "/executions/:executionId/retry", "executions", "Retry execution", ["execution:retry"]),
     v(version, "POST", "/executions/:executionId/delete", "executions", "Soft delete execution", ["execution:cancel"]),
@@ -60,9 +68,10 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "POST", "/executions/:executionId/favorite", "executions", "Favorite execution", ["execution:read"]),
     v(version, "POST", "/executions/:executionId/duplicate", "executions", "Duplicate execution", ["execution:create"]),
     v(version, "POST", "/executions/:executionId/tool-approvals/:invocationId", "executions", "Decide tool approval", ["review:write"]),
-    v(version, "GET", "/executions/:executionId/stream", "executions", "Stream execution", ["execution:stream"]),
-    v(version, "GET", "/executions/:executionId/artifacts", "executions", "Execution artifacts", ["execution:read"]),
-    v(version, "GET", "/artifacts/:artifactId/media", "executions", "Signed media URL for artifact", ["execution:read"]),
+    v(version, "GET", "/executions/:executionId/stream", "executions", "Stream execution", ["execution:stream"], true, POLL),
+    v(version, "GET", "/executions/:executionId/artifacts", "executions", "Execution artifacts", ["execution:read"], true, POLL),
+    v(version, "GET", "/artifacts/:artifactId/media", "executions", "Signed media URL for artifact", ["execution:read"], true, POLL),
+    v(version, "POST", "/artifacts/bundles", "executions", "ZIP download bundle of artifacts (e.g. Logo Pack)", ["execution:read"]),
     // Tokenized byte stream for Expo Image (no Bearer header) — auth via short-lived query token.
     v(
       version,
@@ -71,19 +80,21 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
       "executions",
       "Stream artifact media bytes by ephemeral token",
       [],
-      false
+      false,
+      POLL
     ),
-    v(version, "GET", "/executions/:executionId/diagnostics", "executions", "Execution diagnostics", ["execution:read"]),
-    v(version, "GET", "/executions/:executionId/trace", "executions", "Execution trace", ["execution:read"]),
-    v(version, "GET", "/executions/:executionId/cost", "executions", "Execution cost", ["execution:read"]),
-    v(version, "GET", "/executions/:executionId/evaluation", "executions", "Execution evaluation", ["execution:read"]),
-    v(version, "GET", "/executions/:executionId/experience", "executions", "Execution experience", ["execution:read"]),
-    v(version, "GET", "/executions/:executionId/workflow-follow-up", "executions", "Linked workflow follow-up", ["execution:read"]),
+    v(version, "GET", "/executions/:executionId/diagnostics", "executions", "Execution diagnostics", ["execution:read"], true, POLL),
+    v(version, "GET", "/executions/:executionId/trace", "executions", "Execution trace", ["execution:read"], true, POLL),
+    v(version, "GET", "/executions/:executionId/cost", "executions", "Execution cost", ["execution:read"], true, POLL),
+    v(version, "GET", "/executions/:executionId/evaluation", "executions", "Execution evaluation", ["execution:read"], true, POLL),
+    v(version, "GET", "/executions/:executionId/experience", "executions", "Execution experience", ["execution:read"], true, POLL),
+    v(version, "GET", "/executions/:executionId/workflow-follow-up", "executions", "Linked workflow follow-up", ["execution:read"], true, POLL),
     v(version, "POST", "/executions/:executionId/workflow-follow-up/consume", "executions", "Consume workflow follow-up", ["execution:create"]),
-    v(version, "GET", "/executions/:executionId/auto-delivery", "executions", "Auto-delivery status", ["execution:read"]),
+    v(version, "GET", "/executions/:executionId/auto-delivery", "executions", "Auto-delivery status", ["execution:read"], true, POLL),
     v(version, "GET", "/benchmarks", "benchmarks", "Benchmarks", ["benchmark:read"]),
     v(version, "GET", "/analytics/summary", "analytics", "Analytics summary", ["analytics:read"]),
     v(version, "GET", "/billing/summary", "billing", "Billing summary", ["billing:read"]),
+    v(version, "GET", "/admin/provider-health", "analytics", "Provider circuit health snapshot (internal)", ["analytics:read"]),
     v(version, "GET", "/admin/dashboard", "analytics", "Admin dashboard bundle", ["analytics:read"]),
     v(version, "GET", "/admin/ai-costs/overview", "analytics", "AI cost overview (ledger)", ["analytics:read"]),
     v(version, "GET", "/admin/ai-costs/providers", "analytics", "AI cost by provider", ["analytics:read"]),
@@ -91,6 +102,7 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "GET", "/admin/ai-costs/services", "analytics", "AI cost by service", ["analytics:read"]),
     v(version, "GET", "/admin/ai-costs/executions/:executionId", "analytics", "AI cost for execution", ["analytics:read"]),
     v(version, "GET", "/admin/ai-costs/usage/:usageRecordId", "analytics", "AI usage record detail", ["analytics:read"]),
+    v(version, "POST", "/admin/ai-costs/sync-provider-billing", "analytics", "Sync OpenAI/Anthropic org cost APIs", ["analytics:read"]),
     v(version, "GET", "/admin/organizations", "organizations", "Admin organization directory", ["analytics:read"]),
     v(version, "GET", "/admin/organizations/:organizationId", "organizations", "Admin organization detail", ["analytics:read"]),
     v(version, "GET", "/notifications", "notifications", "List notifications", ["notification:read"]),
@@ -99,26 +111,54 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "GET", "/files/:fileId", "files", "Get file", ["file:read"]),
     v(version, "GET", "/reviews", "human_reviews", "Human reviews", ["review:read"]),
     v(version, "POST", "/os/refinements", "refinement", "Request structured refinement", ["execution:create"]),
-    v(version, "GET", "/os/refinements/:refinementId", "refinement", "Get refinement status", ["execution:read"]),
-    v(version, "GET", "/os/refinements/:refinementId/question", "refinement", "Get current refinement question", ["execution:read"]),
+    v(version, "GET", "/os/refinements/:refinementId", "refinement", "Get refinement status", ["execution:read"], true, POLL),
+    v(version, "GET", "/os/refinements/:refinementId/question", "refinement", "Get current refinement question", ["execution:read"], true, POLL),
     v(version, "POST", "/os/refinements/:refinementId/answers", "refinement", "Submit refinement answer", ["execution:create"]),
     v(version, "POST", "/os/refinements/:refinementId/complete", "refinement", "Complete refinement feedback", ["execution:create"]),
-    v(version, "GET", "/os/artifacts/:artifactId", "os_artifacts", "Get OS artifact", ["execution:read"]),
-    v(version, "GET", "/os/artifacts/:artifactId/versions", "os_artifacts", "List OS artifact versions", ["execution:read"]),
+    v(version, "GET", "/os/artifacts/:artifactId", "os_artifacts", "Get OS artifact", ["execution:read"], true, POLL),
+    v(version, "GET", "/os/artifacts/:artifactId/versions", "os_artifacts", "List OS artifact versions", ["execution:read"], true, POLL),
     v(version, "POST", "/os/artifacts/:artifactId/versions/:version/approve", "os_artifacts", "Approve OS artifact version (optional brandMemory)", ["execution:create"]),
-    v(version, "GET", "/os/executions/:executionId/manifest", "os_artifacts", "Get artifact manifest", ["execution:read"]),
+    v(version, "GET", "/os/executions/:executionId/manifest", "os_artifacts", "Get artifact manifest", ["execution:read"], true, POLL),
     v(version, "POST", "/os/deliveries/authorize", "delivery", "Authorize delivery", ["execution:create"]),
     v(version, "POST", "/os/deliveries", "delivery", "Create delivery", ["execution:create"]),
-    v(version, "GET", "/os/deliveries/:deliveryId", "delivery", "Get delivery status", ["execution:read"]),
+    v(version, "GET", "/os/deliveries/:deliveryId", "delivery", "Get delivery status", ["execution:read"], true, POLL),
     v(version, "POST", "/os/deliveries/:deliveryId/cancel", "delivery", "Cancel delivery", ["execution:cancel"]),
     v(version, "GET", "/cdf/services", "cdf", "List CDF service flow configs", ["execution:read"]),
     v(version, "GET", "/cdf/services/:serviceId", "cdf", "Get CDF service flow config", ["execution:read"]),
     v(version, "POST", "/cdf/sessions", "cdf", "Start CDF session", ["execution:create"]),
-    v(version, "GET", "/cdf/sessions/:sessionId", "cdf", "Get CDF session state", ["execution:read"]),
+    v(version, "GET", "/cdf/sessions/:sessionId", "cdf", "Get CDF session state", ["execution:read"], true, POLL),
     v(version, "POST", "/cdf/transition", "cdf", "Apply CDF stage transition", ["execution:create"]),
-    v(version, "GET", "/os/reviews/:reviewId", "human_reviews", "Get human review", ["review:read"]),
+    v(
+      version,
+      "POST",
+      "/cdf/artifacts/:artifactId/versions/:version/render",
+      "cdf",
+      "Render exact CDF artifact version to PPTX/PDF (canonical; no AI)",
+      ["execution:create"],
+    ),
+    v(
+      version,
+      "GET",
+      "/cdf/rendered-files/:fileId",
+      "cdf",
+      "Get CDF RenderedFile metadata",
+      ["execution:read"],
+      true,
+      POLL,
+    ),
+    v(
+      version,
+      "GET",
+      "/cdf/rendered-files/:fileId/content",
+      "cdf",
+      "Download CDF RenderedFile bytes",
+      ["execution:read"],
+      true,
+      POLL,
+    ),
+    v(version, "GET", "/os/reviews/:reviewId", "human_reviews", "Get human review", ["review:read"], true, POLL),
     v(version, "POST", "/os/reviews/:reviewId/decision", "human_reviews", "Submit human review decision", ["review:write"]),
-    v(version, "GET", "/os/executions/:executionId/review", "human_reviews", "Get pending review for execution", ["review:read"]),
+    v(version, "GET", "/os/executions/:executionId/review", "human_reviews", "Get pending review for execution", ["review:read"], true, POLL),
     v(version, "POST", "/webhooks", "webhooks", "Register webhook", ["org:write"]),
     v(version, "GET", "/brand-profiles", "brand_profiles", "Brand profiles", ["org:read"]),
     v(version, "GET", "/knowledge-bases", "knowledge_bases", "Knowledge bases", ["workspace:read"]),

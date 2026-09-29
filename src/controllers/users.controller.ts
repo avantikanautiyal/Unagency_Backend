@@ -314,6 +314,7 @@ const FetchResource = asyncHandler(async (req, res) => {
         designation: 1,
         "userInfo.name": 1,
         "userInfo._id": 1,
+        "userInfo.email": 1,
       },
     },
   ]);
@@ -494,6 +495,51 @@ const UpdateTourCompletion = asyncHandler(async (req: RequestUser, res) => {
   );
 });
 
+/** Super admin: permanently remove an internal team account (Firebase, staff, user). */
+const DeleteInternalUser = asyncHandler(async (req: RequestUser, res) => {
+  const userId = String(req.params.id ?? "").trim();
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return new ApiResponse(400, null, "Invalid user ID");
+  }
+  if (req.user?.userId && req.user.userId === userId) {
+    return new ApiResponse(400, null, "You cannot delete your own account");
+  }
+
+  const user = await Users.findById(userId);
+  if (!user) {
+    return new ApiResponse(404, null, "User not found");
+  }
+  if (user.role === "superadmin" || user.role === "customer") {
+    return new ApiResponse(403, null, "This account cannot be deleted");
+  }
+
+  if (user.firebaseId) {
+    try {
+      await firebaseAdmin.auth().deleteUser(user.firebaseId);
+    } catch (err: unknown) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: string }).code)
+          : "";
+      if (code !== "auth/user-not-found") {
+        return new ApiResponse(500, null, "Could not remove the login account");
+      }
+    }
+  }
+
+  const staff = await Staff.findOne({ userId: user._id });
+  if (staff) {
+    await Users.updateMany(
+      { relationship_manager: staff._id },
+      { $unset: { relationship_manager: "" } }
+    );
+    await Staff.findByIdAndDelete(staff._id);
+  }
+
+  await Users.findByIdAndDelete(user._id);
+  return new ApiResponse(200, { id: userId }, "User deleted");
+});
+
 export {
   CreateUser,
   FetchCustomers,
@@ -508,4 +554,5 @@ export {
   FetchCustomerById,
   FetchCustomerPlan,
   UpdateTourCompletion,
+  DeleteInternalUser,
 };

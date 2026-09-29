@@ -1,5 +1,13 @@
 /**
- * Verified sync image provider specs — LIVE only when vendorApiVerified=true.
+ * Verified / declared image provider capability + wire specs.
+ *
+ * LIVE sync-vendor executables: vendorApiVerified=true AND syncVendorExecutable≠false
+ * (Ideogram / Recraft / Google via VendorSyncImageDispatcher).
+ *
+ * Native OpenAI gpt-image path is capability-declared here so REFERENCE_IMAGE /
+ * TEXT_TO_IMAGE resolve from the registry — not from providerId runtime branches.
+ * It is NOT registered into VendorSyncImageDispatcher (syncVendorExecutable=false).
+ *
  * Midjourney / HiDream / Reve / Picsart / Freepik remain catalogued but blocked.
  */
 
@@ -22,13 +30,24 @@ export interface VerifiedImageProviderSpec {
   readonly inventoryModelId: string;
   readonly wireModelId: string;
   readonly supportsTextToImage: boolean;
-  /** P4.9 — provider accepts a reference / source image on the wire request. */
+  /** Provider accepts a reference / source image on the wire request. */
   readonly supportsReferenceImage: boolean;
-  /** P4.9 — provider supports modification of an existing image artifact. */
+  /** Provider supports modification of an existing image artifact. */
   readonly supportsImageEdit: boolean;
-  /** Optional multi-image or masked edit (registry only; not assumed from vendor name). */
+  /**
+   * Declared on-asset text rendering fidelity. Leave undefined until verified —
+   * undeclared does not hard-exclude a provider.
+   * Distinct from TEXT_TO_IMAGE / prompt acceptance.
+   */
+  readonly supportsOnAssetText?: boolean;
   readonly supportsMultiImageInput?: boolean;
   readonly supportsMaskedEdit?: boolean;
+  /**
+   * When false, capability declarations participate in the registry but the
+   * provider is NOT registered via VendorSyncImageDispatcher (native path).
+   * Default: true for sync vendors.
+   */
+  readonly syncVendorExecutable?: boolean;
   readonly createProtocol: () => IVendorImageProtocol;
 }
 
@@ -68,7 +87,7 @@ export const RECRAFT_IMAGE_SPEC: VerifiedImageProviderSpec = {
   createProtocol: () => new RecraftImageProtocol(),
 };
 
-/** Matrix: Gemini flash-image — photorealistic / general (Imagen :predict deprecated for new keys). */
+/** Matrix: Gemini flash-image — latest verified Nano Banana 2 (Imagen :predict deprecated). */
 export const GOOGLE_IMAGEN_SPEC: VerifiedImageProviderSpec = {
   canonicalProviderId: "provider.google",
   vendor: "google",
@@ -79,12 +98,41 @@ export const GOOGLE_IMAGEN_SPEC: VerifiedImageProviderSpec = {
   liveSmokeEnvVar: "RUN_LIVE_GOOGLE_IMAGEN_SMOKE",
   authHeaderKind: "x-goog-api-key",
   vendorApiVerified: true,
-  inventoryModelId: "gemini-2.5-flash-image",
-  wireModelId: "gemini-2.5-flash-image",
+  inventoryModelId: "gemini-3.1-flash-image",
+  wireModelId: "gemini-3.1-flash-image",
   supportsTextToImage: true,
   supportsReferenceImage: true,
   supportsImageEdit: true,
   createProtocol: () => new GoogleImagenProtocol(),
+};
+
+/**
+ * OpenAI gpt-image — native images.generations / images.edits path.
+ * Capability-declared so resolvers need no providerId special case.
+ * ON_ASSET_TEXT remains undeclared (prompt acceptance ≠ rendered-text fidelity).
+ */
+export const OPENAI_IMAGE_SPEC: VerifiedImageProviderSpec = {
+  canonicalProviderId: "provider.openai",
+  vendor: "openai",
+  displayName: "OpenAI GPT Image",
+  baseUrl: "https://api.openai.com/v1",
+  credentialEnvVar: "OPENAI_API_KEY",
+  enableEnvVar: "OPENAI_ENABLED",
+  liveSmokeEnvVar: "RUN_LIVE_OPENAI_IMAGE_SMOKE",
+  authHeaderKind: "bearer",
+  vendorApiVerified: true,
+  inventoryModelId: "gpt-image-2.5-sunburst",
+  wireModelId: "gpt-image-2.5-sunburst",
+  supportsTextToImage: true,
+  supportsReferenceImage: true,
+  supportsImageEdit: true,
+  // Multi-image edits exist on the wire; leave undeclared until product-verified.
+  syncVendorExecutable: false,
+  createProtocol: () => {
+    throw new Error(
+      "OpenAI image uses the native OpenAI adapter (images.generations/edits), not VendorSyncImageDispatcher",
+    );
+  },
 };
 
 function blockedImage(
@@ -188,13 +236,26 @@ export const BLOCKED_IMAGE_PROVIDER_SPECS: readonly VerifiedImageProviderSpec[] 
   }),
 ];
 
+/** Sync-vendor LIVE specs registered into VendorSyncImageDispatcher. */
 export const VERIFIED_IMAGE_PROVIDER_SPECS: readonly VerifiedImageProviderSpec[] = [
   IDEOGRAM_IMAGE_SPEC,
   RECRAFT_IMAGE_SPEC,
   GOOGLE_IMAGEN_SPEC,
 ];
 
+/** Capability-declared native paths (not sync-vendor dispatchers). */
+export const DECLARED_NATIVE_IMAGE_PROVIDER_SPECS: readonly VerifiedImageProviderSpec[] =
+  [OPENAI_IMAGE_SPEC];
+
+/** All specs that participate in capability resolution / catalog. */
 export const ALL_IMAGE_PROVIDER_SPECS: readonly VerifiedImageProviderSpec[] = [
   ...VERIFIED_IMAGE_PROVIDER_SPECS,
+  ...DECLARED_NATIVE_IMAGE_PROVIDER_SPECS,
   ...BLOCKED_IMAGE_PROVIDER_SPECS,
 ];
+
+export function isSyncVendorExecutableImageSpec(
+  spec: VerifiedImageProviderSpec,
+): boolean {
+  return spec.vendorApiVerified && spec.syncVendorExecutable !== false;
+}

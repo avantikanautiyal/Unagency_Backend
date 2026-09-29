@@ -26,10 +26,16 @@ import {
 } from "../../../../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
 import {
   buildProductionExecutionIntegrity,
+  hasCanonicalCdfContinuityEvidence,
   logProductionExecutionIntegrity,
   mergeProviderIdentityFromTrace,
   resolveActualProviderIdentity,
 } from "../../../../../os/observability/production-execution-integrity";
+import { cdfExecutionRequiresMediaArtifact } from "../../../../../cdf/execution-authority";
+import {
+  hasStructuralFailureStamp,
+  isStructuralCompletionBlocked,
+} from "../../../../../cdf/generation-validation/structural-completion-authority";
 import {
   resolveProductionValidationAsync,
   type ProductionArtifactEvaluationDeps,
@@ -37,6 +43,20 @@ import {
 } from "./production-validation-resolver";
 import { schedulePersistExecutionObservability } from "../../../../../os/observability/persist-execution-observability";
 import type { IExecutionObservabilityStore } from "../../../../../os/observability/execution-observability-store";
+
+/** Provider generation plane — independent of final product/API status. */
+function resolveProviderPlaneSuccess(context: {
+  readonly providerSuccess: boolean;
+  readonly mediaArtifactIds?: readonly string[];
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}): boolean {
+  if (context.providerSuccess === true) return true;
+  if ((context.mediaArtifactIds?.length ?? 0) > 0) return true;
+  if (context.metadata?.providerJobSucceeded === true) return true;
+  // A stamped structural verdict implies provider media existed.
+  if (hasStructuralFailureStamp(context.metadata)) return true;
+  return false;
+}
 import type { CanonicalExecutionSpecification } from "../../../../../collaboration/conversational-task-intelligence/execution-specification";
 import type { DeliverableFormat } from "../../../../../collaboration/conversational-task-intelligence/execution-specification";
 import type { ExecutionSpecSnapshot } from "../../../../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
@@ -205,7 +225,10 @@ export async function ingestProductionEvidenceAndShadow(
         outputTokens: context.outputTokens,
         totalTokens: context.totalTokens,
         estimatedCost: context.estimatedCost,
-        providerSuccess: context.providerSuccess,
+        providerSuccess: resolveProviderPlaneSuccess(context),
+        structuralComplianceBlocked: isStructuralCompletionBlocked(
+          context.metadata,
+        ),
         routingMode: context.routingMode,
         routingPolicyId: context.routingPolicyId,
         routingPolicyVersion: context.routingPolicyVersion,
@@ -295,6 +318,19 @@ export async function ingestProductionEvidenceAndShadow(
       fallbackReason: context.fallbackReason,
     }),
   );
+  const cdfAuthorityApplied =
+    context.metadata?.cdfExecutionAuthorityApplied === true;
+  const mediaNotRequired =
+    !cdfExecutionRequiresMediaArtifact(context.metadata) ||
+    context.metadata?.skipOutputRequirements === true;
+  const cdfTextOrStructuredModality =
+    cdfAuthorityApplied &&
+    (context.metadata?.cdfAuthorityOutputKind === "text" ||
+      context.metadata?.cdfAuthorityGenerationModality === "text" ||
+      context.metadata?.cdfAuthorityGenerationModality === "structured" ||
+      context.metadata?.cdfGenerationModality === "text" ||
+      context.metadata?.cdfGenerationModality === "structured" ||
+      mediaNotRequired);
   const integrity = buildProductionExecutionIntegrity({
     executionId: context.productionExecutionId,
     correlationId: context.requestId ?? context.productionExecutionId,
@@ -307,12 +343,28 @@ export async function ingestProductionEvidenceAndShadow(
     structuredOutputRequested: traceBeforeFinalize?.usedStructuredOutput,
     structuredDataPresent: context.structuredData != null,
     mediaArtifactIds: context.mediaArtifactIds,
+    // CDF sealed text/structured phases produce canonical ArtifactVersions, not media IDs.
+    // Image/video/hybrid CDF continuity is recognized via cdfart_* X@V evidence.
+    allowMissingArtifacts:
+      cdfTextOrStructuredModality === true ||
+      mediaNotRequired ||
+      hasCanonicalCdfContinuityEvidence(context.metadata),
     performanceRecordId: performanceRecord?.performanceRecordId,
     evidenceRecorded: performanceRecord != null,
     validationExecuted: validation != null,
     evaluationPlaneExecuted: stageTrace?.evaluationPlane === "COMPLETED",
     artifactHydrated: stageTrace?.artifactHydration === "COMPLETED",
     artifactEvaluated: stageTrace?.evaluationPlane === "COMPLETED",
+    providerSuccess: resolveProviderPlaneSuccess(context),
+    // Observe sealed CDF authority — never let product catalog overwrite it.
+    metadata: context.metadata,
+    // Independently proven by artifact hydrator (repo + blob bytes), not a blind copy.
+    ...(stageTrace?.persistedArtifactIds
+      ? { persistedArtifactIds: stageTrace.persistedArtifactIds }
+      : {}),
+    ...(stageTrace?.hydratedArtifactIds
+      ? { hydratedArtifactIds: stageTrace.hydratedArtifactIds }
+      : {}),
   });
 
   const finalizedTrace = recordProductionEvidenceTrace({
@@ -324,7 +376,7 @@ export async function ingestProductionEvidenceAndShadow(
     evidenceMode: performanceRecord?.evidenceMode,
     performanceRecordId: performanceRecord?.performanceRecordId,
     finalOutcome: performanceRecord?.benchmarkOutcome,
-    providerSuccess: context.providerSuccess,
+    providerSuccess: resolveProviderPlaneSuccess(context),
     step2SkippedReason: evidenceError ? evidenceError : undefined,
     step2Executed: validation != null,
     evidenceRecorded: performanceRecord != null,
@@ -364,12 +416,24 @@ export async function ingestProductionEvidenceAndShadow(
         structuredOutputRequested: finalizedTrace.usedStructuredOutput,
         structuredDataPresent: context.structuredData != null,
         mediaArtifactIds: context.mediaArtifactIds,
+        allowMissingArtifacts:
+          cdfTextOrStructuredModality === true ||
+          mediaNotRequired ||
+          hasCanonicalCdfContinuityEvidence(context.metadata),
         performanceRecordId: performanceRecord?.performanceRecordId,
         evidenceRecorded: performanceRecord != null,
         validationExecuted: validation != null,
         evaluationPlaneExecuted: stageTrace?.evaluationPlane === "COMPLETED",
         artifactHydrated: stageTrace?.artifactHydration === "COMPLETED",
         artifactEvaluated: stageTrace?.evaluationPlane === "COMPLETED",
+        providerSuccess: resolveProviderPlaneSuccess(context),
+        metadata: context.metadata,
+        ...(stageTrace?.persistedArtifactIds
+          ? { persistedArtifactIds: stageTrace.persistedArtifactIds }
+          : {}),
+        ...(stageTrace?.hydratedArtifactIds
+          ? { hydratedArtifactIds: stageTrace.hydratedArtifactIds }
+          : {}),
       })
     : integrity;
   logProductionExecutionIntegrity(finalIntegrity);

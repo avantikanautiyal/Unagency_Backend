@@ -23,10 +23,16 @@ import {
   type PresentationPlan,
   type PresentationRoutePlan,
 } from "../../os/delivery/document-export-service";
+import { inferPresentationDesignStyle } from "../../os/delivery/presentation-design";
 import { parseEmailPlan } from "../../os/delivery/email-generation";
 import {
   validateDocumentPlanRelevance,
 } from "../../os/delivery/document-generation";
+import { isCanonicalStructuredPhaseMetadata } from "../../cdf/structured-output-contract";
+import {
+  cdfContractAuthorizesDocumentExport,
+  resolveCdfContractFromMetadata,
+} from "../../cdf/execution-authority";
 import { extractBrandNameFromMegaprompt } from "../../os/delivery/presentation-generation";
 import { extractBriefColors } from "../../../services/brand-color-extraction";
 import { namedColorToHex } from "../../os/delivery/website-generation";
@@ -129,12 +135,24 @@ export function resolvePresentationExportOptions(
     referenceLogo
   );
 
+  // PDF and PPTX render the same deck — generate each slide visual once.
+  const slideImageCache = new Map<string, ReturnType<NonNullable<typeof resolveSlideImage>>>();
   return {
     ...(brandName ? { brandName } : {}),
     ...(hexColors.length ? { brandColors: hexColors } : {}),
     ...(resolveSlideImage
       ? {
-          resolveSlideImage: async (cue, _slide) => resolveSlideImage(cue),
+          resolveSlideImage: (cue, _slide) => {
+            const key = cue.trim();
+            let pending = slideImageCache.get(key);
+            if (!pending) {
+              pending = resolveSlideImage(
+                `Presentation slide artwork — imagery only, no words, letters, captions or slide text: ${key}`
+              );
+              slideImageCache.set(key, pending);
+            }
+            return pending;
+          },
         }
       : {}),
   };
@@ -169,18 +187,33 @@ function tryParseJsonObject(text: unknown): Record<string, unknown> | undefined 
   return undefined;
 }
 
+/** CDF / provider artifact payloads — never coerce into legacy DocumentPlan. */
+export function isCdfArtifactStructuredPayload(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const schemaId = (data as Record<string, unknown>).schemaId;
+  return typeof schemaId === "string" && schemaId.trim().startsWith("unagency.");
+}
+
+/** Legacy export materializer output — not authoritative structured emission. */
+export function isDocumentExportProjection(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const rec = data as Record<string, unknown>;
+  if (typeof rec.exportKind !== "string" || !rec.exportKind.trim()) return false;
+  return (
+    typeof rec.pdfArtifactId === "string" ||
+    typeof rec.pptxArtifactId === "string" ||
+    typeof rec.docxArtifactId === "string" ||
+    typeof rec.htmlArtifactId === "string" ||
+    Array.isArray(rec.producedDeliverableFormats)
+  );
+}
+
 function isPresentationShapedPayload(data: unknown): boolean {
   if (!data || typeof data !== "object" || Array.isArray(data)) return false;
   const rec = data as Record<string, unknown>;
   if (Array.isArray(rec.routes) || Array.isArray(rec.concepts)) return true;
-  if (
-    Array.isArray(rec.slides) &&
-    !Array.isArray(rec.sections) &&
-    !Array.isArray(rec.chapters) &&
-    !Array.isArray(rec.pages)
-  ) {
-    return true;
-  }
+  // CDF storyline / slide-content carry sections + slides — not DocumentPlan.
+  if (Array.isArray(rec.slides) && rec.slides.length > 0) return true;
   return Boolean(parsePresentationRoutes(rec) || parsePresentationPlan(rec));
 }
 
@@ -199,8 +232,12 @@ function isLaunchPlanShapedPayload(data: unknown): boolean {
 function coerceTowardDocumentPlan(
   data: Record<string, unknown>
 ): Record<string, unknown> | undefined {
-  // Never remap presentation-shaped or LaunchPlan payloads into documents.
-  if (isPresentationShapedPayload(data) || isLaunchPlanShapedPayload(data)) {
+  // Never remap presentation-shaped, CDF artifact, or LaunchPlan payloads.
+  if (
+    isCdfArtifactStructuredPayload(data) ||
+    isPresentationShapedPayload(data) ||
+    isLaunchPlanShapedPayload(data)
+  ) {
     return undefined;
   }
   const title =
@@ -696,8 +733,14 @@ export async function materializeDocumentExports(input: {
         new ValidationError("Structured output is not a valid PresentationPlan")
       );
     }
-    const pdfBuf = await buildPresentationPdf(parsed, exportOptions);
-    const pptxBuf = await buildPresentationPptx(parsed, exportOptions);
+    const planOptions: PresentationExportOptions = {
+      ...exportOptions,
+      designStyle: inferPresentationDesignStyle(
+        [parsed.title, parsed.subtitle, ...parsed.slides.map((s) => s.visualCue)].join(" ")
+      ),
+    };
+    const pdfBuf = await buildPresentationPdf(parsed, planOptions);
+    const pptxBuf = await buildPresentationPptx(parsed, planOptions);
     const pair = await ingestPresentationPair({
       asyncMedia: input.asyncMedia,
       executionId: input.executionId,
@@ -868,8 +911,12 @@ async function materializePresentationRoutes(input: {
   for (let i = 0; i < input.routes.length; i += 1) {
     const route = input.routes[i]!;
     const deck: PresentationPlan = route.deck;
-    const pdfBuf = await buildPresentationPdf(deck, input.exportOptions);
-    const pptxBuf = await buildPresentationPptx(deck, input.exportOptions);
+    const routeOptions: PresentationExportOptions = {
+      ...input.exportOptions,
+      designStyle: inferPresentationDesignStyle(`${route.title} ${route.description}`),
+    };
+    const pdfBuf = await buildPresentationPdf(deck, routeOptions);
+    const pptxBuf = await buildPresentationPptx(deck, routeOptions);
     const pair = await ingestPresentationPair({
       asyncMedia: input.asyncMedia,
       executionId: input.executionId,
@@ -914,6 +961,68 @@ async function materializePresentationRoutes(input: {
       pptxArtifactId: first?.pptxArtifactId,
     },
   });
+}
+
+/**
+ * Document/presentation export may run only when the AUTHORITATIVE execution
+ * contract declares a document/presentation/email deliverable.
+ *
+ * For CDF phases: ExecutionSpec PDF/DOCX preferences alone never authorize
+ * materialization — the phase contract (via sealed CDF authority) must.
+ * Prevents backward-propagating final export formats into upstream routes /
+ * text / image phases.
+ */
+export function shouldRunDocumentExportMaterialization(input: {
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly structuredData?: unknown;
+}): boolean {
+  if (input.structuredData == null) return false;
+
+  const meta = input.metadata;
+  // Explicit CDF seal: only export when the sealed contract authorizes it.
+  if (meta?.cdfExecutionAuthorityApplied === true) {
+    if (meta.cdfAuthorityAuthorizesDocumentExport !== true) {
+      return false;
+    }
+  } else if (isCanonicalStructuredPhaseMetadata(meta)) {
+    // Canonical emission without seal stamp — resolve contract directly.
+    const contract = resolveCdfContractFromMetadata(meta);
+    if (contract && !cdfContractAuthorizesDocumentExport(contract)) {
+      return false;
+    }
+  }
+
+  const structuredName =
+    meta?.structuredOutput && typeof meta.structuredOutput === "object"
+      ? String(
+          (meta.structuredOutput as { name?: unknown }).name ?? "",
+        )
+      : undefined;
+
+  const exportKind = resolveDocumentExportKind({
+    outputKind:
+      typeof meta?.outputKind === "string" ? meta.outputKind : undefined,
+    mediaKind:
+      typeof meta?.mediaKind === "string" ? meta.mediaKind : undefined,
+    structuredName,
+    data: input.structuredData,
+  });
+
+  if (!isCanonicalStructuredPhaseMetadata(meta)) {
+    return exportKind != null || input.structuredData != null;
+  }
+
+  if (!exportKind) return false;
+  if (isCdfArtifactStructuredPayload(input.structuredData)) {
+    const recovered = recoverExportStructuredData(input.structuredData);
+    if (exportKind === "presentation") {
+      return Boolean(
+        parsePresentationRoutes(recovered) || parsePresentationPlan(recovered),
+      );
+    }
+    return false;
+  }
+  return true;
 }
 
 export function resolveDocumentExportKind(input: {

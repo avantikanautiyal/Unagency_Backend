@@ -10,8 +10,38 @@ import {
 import type { AIModelPricingRecord, PricingUnitRate } from "../contracts/ai-model-pricing";
 import { PRICING_UNIT } from "../contracts/enums";
 
-const PRICING_VERSION = "seed-v1";
+const PRICING_VERSION = "seed-v2";
 const EFFECTIVE_FROM = "2024-01-01T00:00:00.000Z";
+
+/** Official cache-hit multipliers / rates (USD per 1M) keyed by vendor. */
+function cachedInputRateUsd(entry: SeedModelEntry): string | null {
+  const vendor = entry.providerVendor;
+  const input = entry.inputPer1k;
+  if (input <= 0) return null;
+  if (vendor === "anthropic") {
+    // Anthropic cache hits = 0.1 × base input (docs.anthropic.com pricing)
+    return String(input * 0.1);
+  }
+  if (vendor === "deepseek") {
+    // Off-peak cache-hit rates from api-docs.deepseek.com
+    if (entry.modelId.includes("flash") || entry.modelId === "deepseek-chat") return "0.003";
+    if (entry.modelId.includes("pro") || entry.modelId === "deepseek-reasoner") return "0.022";
+    return "0.003";
+  }
+  if (vendor === "gemini" || vendor === "google") {
+    // Gemini context caching ≈ 0.1 × input on current flash/pro tables
+    return String(input * 0.1);
+  }
+  if (vendor === "xai") {
+    // grok-4.x cached input is typically 0.25× input for <200k prompts
+    return String(input * 0.25);
+  }
+  if (vendor === "openai") {
+    // OpenAI cached input is typically 0.5× input
+    return String(input * 0.5);
+  }
+  return null;
+}
 
 function isMediaModel(entry: SeedModelEntry): boolean {
   return (
@@ -103,6 +133,14 @@ function seedRatesForModel(entry: SeedModelEntry): {
       unitRates.push({
         unit: PRICING_UNIT.TOKEN_OUTPUT_PER_1M,
         pricePerUnit: String(output),
+        currency: "USD",
+      });
+    }
+    const cached = cachedInputRateUsd(entry);
+    if (cached) {
+      unitRates.push({
+        unit: PRICING_UNIT.TOKEN_CACHED_INPUT_PER_1M,
+        pricePerUnit: cached,
         currency: "USD",
       });
     }

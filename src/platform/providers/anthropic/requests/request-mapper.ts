@@ -7,8 +7,15 @@
  */
 
 import type { ProviderAdapterRequest, ProviderWirePayload } from "../../adapters/contracts/adapter-io";
-import { mapToAnthropicVisionContent } from "../../common/vision-content";
 import { transformSchemaForAnthropicToolInput } from "../structured-output/schema-transform";
+import {
+  isCanonicalModelRequest,
+  mapCanonicalModelRequestToProviderPayload,
+  extractCanonicalMultimodalProviderHandoff,
+  canonicalImageDeliveriesToAnthropicBlocks,
+  CANONICAL_MULTIMODAL_MAPPING_SOURCE,
+} from "../../../ai/canonical-model-request";
+import { mapToAnthropicVisionContent } from "../../common/vision-content";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -47,11 +54,70 @@ export function mapCanonicalToAnthropicRequest(
     request.modality === "multimodal" ||
     String(request.capabilityId).toLowerCase().includes("vision");
 
+  // Phase 4 / 9A — CanonicalModelRequest → labeled prompt + multimodal from CMR.
+  let input = request.input as Record<string, unknown>;
+  const cmr = input.canonicalModelRequest;
+  if (isCanonicalModelRequest(cmr) && !input.messages) {
+    const handoff = extractCanonicalMultimodalProviderHandoff(cmr, {
+      supportsImageInput: true,
+    });
+    const projected = mapCanonicalModelRequestToProviderPayload(cmr, {
+      multimodalProviderMappedCount: handoff.mappedCount,
+      multimodalProviderOmittedCount: handoff.omitted.length,
+    });
+    const imageBlocks = canonicalImageDeliveriesToAnthropicBlocks(
+      handoff.imageDeliveries,
+    );
+    if (imageBlocks.length > 0) {
+      input = {
+        ...input,
+        prompt: projected.prompt,
+        text: projected.prompt,
+        input: projected.prompt,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: projected.prompt }, ...imageBlocks],
+          },
+        ],
+        multimodalContextPresent: projected.multimodalContextPresent,
+        canonicalMultimodalProviderMappingApplied: true,
+        canonicalMultimodalMappingSource: CANONICAL_MULTIMODAL_MAPPING_SOURCE,
+        canonicalMultimodalMappedCount: handoff.mappedCount,
+        canonicalMultimodalOmittedCount: handoff.omitted.length,
+        canonicalMultimodalItemCount: handoff.itemCount,
+      };
+    } else {
+      input = {
+        ...input,
+        prompt: projected.prompt,
+        text: projected.prompt,
+        input: projected.prompt,
+        messages: [...projected.messages],
+        multimodalContextPresent: projected.multimodalContextPresent,
+        canonicalMultimodalProviderMappingApplied: handoff.applied,
+        canonicalMultimodalMappingSource: handoff.applied
+          ? CANONICAL_MULTIMODAL_MAPPING_SOURCE
+          : undefined,
+        canonicalMultimodalMappedCount: handoff.mappedCount,
+        canonicalMultimodalOmittedCount: handoff.omitted.length,
+        canonicalMultimodalItemCount: handoff.itemCount,
+      };
+    }
+  }
+
   const messages =
-    (request.input.messages as Array<Record<string, unknown>>) ??
-    (request.input.prompt || isVision
-      ? [{ role: "user", content: isVision ? mapToAnthropicVisionContent(request) : request.input.prompt }]
-      : [{ role: "user", content: JSON.stringify(request.input) }]);
+    (input.messages as Array<Record<string, unknown>>) ??
+    (input.prompt || isVision
+      ? [
+          {
+            role: "user",
+            content: isVision
+              ? mapToAnthropicVisionContent(request)
+              : input.prompt,
+          },
+        ]
+      : [{ role: "user", content: JSON.stringify(input) }]);
 
   const anthropicMessages = messages.map((m) => {
     if (Array.isArray(m.content)) {

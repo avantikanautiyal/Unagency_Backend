@@ -1,0 +1,221 @@
+{
+  "phase": "14.6",
+  "generatedAt": "2026-09-29T19:38:15.786Z",
+  "summary": {
+    "totalArtifacts": 5,
+    "usableForPresence": 3,
+    "groundTruthAvailable": 3,
+    "presenceAccuracy": 1,
+    "messageMatchAccuracy": 0,
+    "falseNegatives": 3,
+    "falsePositives": 0,
+    "producerErrors": 0,
+    "groundTruthUnavailable": 2,
+    "note": "Sample size is small; do not treat as production reliability.",
+    "productionPreprocessing": "No preprocessing — raw bytes to tesseract.recognize",
+    "capabilityClaim": "undeclared"
+  },
+  "rows": [
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "providerMeta": "ideogram/ideogram-3 (metadata only)",
+      "modality": "image",
+      "aspectRatio": "1:1",
+      "expectedTexts": [
+        "Hello! We're Sunflower – a fresh approach to education for students in Classes 1-12"
+      ],
+      "extracted": "y \\ Sunfls=wer",
+      "outcome": "ok",
+      "confidence": 0.35,
+      "latencyMs": 529,
+      "presenceDetected": true,
+      "messageMatch": false,
+      "presenceCorrect": true,
+      "messageMatchCorrect": false,
+      "classification": "FALSE_NEGATIVE",
+      "failureTaxonomy": "character_corruption_or_wrong_text",
+      "pathLabel": "memory_vault_resolver",
+      "characteristics": {
+        "textOverImage": true,
+        "textOverGradient": null,
+        "textOverSolid": false,
+        "approxTextBlocks": 1,
+        "approxTextSize": "medium",
+        "textDensity": "minimal",
+        "stylizedTypography": true,
+        "logoLikely": true,
+        "notes": "Known lifestyle+wordmark failure class; required intro often missing on canvas"
+      },
+      "error": null
+    },
+    {
+      "artifact": "real_02_phase8_bloomsip_refreshment",
+      "providerMeta": "image provider from composition E2E (metadata only)",
+      "modality": "image",
+      "aspectRatio": "1:1",
+      "expectedTexts": [
+        "Transform your everyday refresh with real botanicals and sparkling sophistication—meet BloomSip.",
+        "Refreshment, Refined. Botanicals, Reimagined.",
+        "Premium ingredients. Pure refreshment. Purely you."
+      ],
+      "extracted": "ER 03.27 we - ©® Instagam ~~ @ V : p i} _ QQ \\ y y CCOUANTOVetare - 3 ” ya Qv [A] Colayvloukay C633 aaad2 ituave an imstagatiec creative sbout my brand inssthectred pressb ecouttii mage. insoed coilol imeattteatvedtoaticcatioy onde cocottiiia tiny foreatve coinge- Frecurionen@iisscraatines aobretliive canepot. ® Q [V] n",
+      "outcome": "ok",
+      "confidence": 0.46,
+      "latencyMs": 1053,
+      "presenceDetected": true,
+      "messageMatch": false,
+      "presenceCorrect": true,
+      "messageMatchCorrect": false,
+      "classification": "FALSE_NEGATIVE",
+      "failureTaxonomy": "character_corruption_or_wrong_text",
+      "pathLabel": "memory_vault_resolver",
+      "characteristics": {
+        "textOverImage": true,
+        "textOverGradient": null,
+        "textOverSolid": null,
+        "approxTextBlocks": 2,
+        "approxTextSize": "medium",
+        "textDensity": "moderate",
+        "stylizedTypography": true,
+        "logoLikely": true,
+        "notes": "Route Refreshment Refined — primary+headline+secondary available"
+      },
+      "error": null
+    },
+    {
+      "artifact": "real_03_exec42_sunflower_metaphor",
+      "providerMeta": "ideogram (metadata only)",
+      "modality": "image",
+      "aspectRatio": "1:1",
+      "expectedTexts": [
+        "Sunflower nurtures every aspect of a child's development—helping them build strong foundations, grow confidently, and flourish in all areas of life.",
+        "Growing minds. Growing humans."
+      ],
+      "extracted": "FORMAT",
+      "outcome": "ok",
+      "confidence": 0.96,
+      "latencyMs": 431,
+      "presenceDetected": true,
+      "messageMatch": false,
+      "presenceCorrect": true,
+      "messageMatchCorrect": false,
+      "classification": "FALSE_NEGATIVE",
+      "failureTaxonomy": "character_corruption_or_wrong_text",
+      "pathLabel": "memory_vault_resolver",
+      "characteristics": {
+        "textOverImage": true,
+        "textOverGradient": null,
+        "textOverSolid": null,
+        "approxTextBlocks": 2,
+        "approxTextSize": "medium",
+        "textDensity": "moderate",
+        "stylizedTypography": true,
+        "logoLikely": true,
+        "notes": "Route The Sunflower Metaphor — primaryMessage from route JSON"
+      },
+      "error": null
+    },
+    {
+      "artifact": "real_04_exec43_sunny_introduction",
+      "providerMeta": "ideogram (metadata only)",
+      "modality": "image",
+      "aspectRatio": "1:1",
+      "expectedTexts": null,
+      "extracted": "Unagency",
+      "outcome": "ok",
+      "confidence": 0.89,
+      "latencyMs": 366,
+      "presenceDetected": true,
+      "messageMatch": null,
+      "presenceCorrect": true,
+      "messageMatchCorrect": null,
+      "classification": "GROUND_TRUTH_UNAVAILABLE",
+      "failureTaxonomy": null,
+      "pathLabel": "memory_vault_resolver",
+      "characteristics": {
+        "textOverImage": true,
+        "textOverGradient": null,
+        "textOverSolid": null,
+        "approxTextBlocks": null,
+        "approxTextSize": "unknown",
+        "textDensity": "unknown",
+        "stylizedTypography": true,
+        "logoLikely": true,
+        "notes": "GROUND_TRUTH_UNAVAILABLE for message match: headlineAngle is OR-alternatives without primaryMessage field"
+      },
+      "error": null
+    },
+    {
+      "artifact": "real_05_brand_logo_reference",
+      "providerMeta": null,
+      "modality": "image",
+      "aspectRatio": "unknown",
+      "expectedTexts": null,
+      "extracted": "W f 8: on",
+      "outcome": "ok",
+      "confidence": 0.28,
+      "latencyMs": 402,
+      "presenceDetected": true,
+      "messageMatch": null,
+      "presenceCorrect": null,
+      "messageMatchCorrect": null,
+      "classification": "GROUND_TRUTH_UNAVAILABLE",
+      "failureTaxonomy": null,
+      "pathLabel": "memory_vault_resolver",
+      "characteristics": {
+        "textOverImage": false,
+        "textOverGradient": false,
+        "textOverSolid": true,
+        "approxTextBlocks": 1,
+        "approxTextSize": "large",
+        "textDensity": "minimal",
+        "stylizedTypography": true,
+        "logoLikely": true,
+        "notes": "Identity mark reference — excluded from creative accuracy metrics"
+      },
+      "error": null
+    }
+  ],
+  "offlinePreprocessExperiment": [
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "variant": "raw",
+      "extracted": "y \\ Sunfls=wer",
+      "messageMatch": false,
+      "presenceDetected": true,
+      "latencyMs": 439
+    },
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "variant": "grayscale",
+      "extracted": "E-3 bh) (%",
+      "messageMatch": false,
+      "presenceDetected": true,
+      "latencyMs": 249
+    },
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "variant": "contrast",
+      "extracted": "AH r b a",
+      "messageMatch": false,
+      "presenceDetected": true,
+      "latencyMs": 250
+    },
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "variant": "enlarged",
+      "extracted": "Sunfliswer NS ) ¢",
+      "messageMatch": false,
+      "presenceDetected": true,
+      "latencyMs": 392
+    },
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "variant": "thresholded",
+      "extracted": "Sunfls wer",
+      "messageMatch": false,
+      "presenceDetected": true,
+      "latencyMs": 197
+    }
+  ]
+}

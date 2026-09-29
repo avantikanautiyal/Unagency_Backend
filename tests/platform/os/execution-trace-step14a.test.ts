@@ -204,6 +204,29 @@ describe("Step 14A — Production execution trace", () => {
     logSpy.mockRestore();
   });
 
+  it("records structured_output as SKIPPED while provider is still queued", () => {
+    beginExecutionTrace({
+      requestId: correlationId,
+      executionId,
+      correlationId,
+      service: "website",
+      subtype: "landing-page",
+      usedStructuredOutput: true,
+      usedOsArtifactPipeline: true,
+    });
+    recordProviderDispatchFromSummary({
+      executionId,
+      status: "queued",
+      jobSummary: Object.freeze({}),
+      workingMetadata: Object.freeze({ structuredOutput: { name: "WebsiteRoutes" } }),
+    });
+
+    const state = getExecutionTrace(executionId)!;
+    const structured = state.stages.find((s) => s.stage === "structured_output");
+    expect(structured?.status).toBe("SKIPPED");
+    expect(structured?.skipReason).toBe("provider_not_terminal");
+  });
+
   it("records structured_output as FAILED when requested but missing", () => {
     beginExecutionTrace({
       requestId: correlationId,

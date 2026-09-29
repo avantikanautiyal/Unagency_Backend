@@ -88,6 +88,7 @@ describe("Recraft style_reference_urls", () => {
         image: {
           mimeType: "image/png",
           base64: TINY_PNG,
+          semanticReferenceRole: "style_reference",
         },
       },
       metadata: {},

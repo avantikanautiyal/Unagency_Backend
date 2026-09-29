@@ -166,7 +166,7 @@ export const META_CONFIG: TextProviderConfig = {
   adapterId: "adapter.meta.text",
   sdkClientId: "sdk.meta.text",
   version: V,
-  baseUrl: "https://api.llama.meta.com/compat/v1",
+  baseUrl: "https://api.llama.com/compat/v1",
   credentialEnvVar: "META_API_KEY",
   enableEnvVar: "META_ENABLED",
   seedWireModels: [

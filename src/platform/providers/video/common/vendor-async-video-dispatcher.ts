@@ -26,6 +26,15 @@ import type {
   VendorVideoAuthContext,
 } from "./vendor-video-protocol";
 
+function isDiscontinuedVideoModelError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("discontinued") ||
+    m.includes("no longer available") ||
+    (m.includes("model") && (m.includes("not available") || m.includes("unsupported")))
+  );
+}
+
 export class VendorAsyncVideoDispatcher implements IAsyncProviderDispatcher {
   constructor(
     private readonly providerId: string,
@@ -74,36 +83,72 @@ export class VendorAsyncVideoDispatcher implements IAsyncProviderDispatcher {
     const imageUrls = await this.resolveImageInputs(request);
     if (!imageUrls.ok) return imageUrls;
 
-    const plan = this.protocol.buildSubmit(request, wireModel, imageUrls.value, idempotencyKey);
-    if (!plan.ok) return plan;
+    const wireCandidates = this.wireSubmitCandidates(wireModel);
+    let lastFailure: Result<ProviderAsyncSubmitResult> | undefined;
 
-    const path = this.withQuery(plan.value.path, plan.value.query);
-    const response = await this.http.send({
-      method: plan.value.method,
-      path,
-      body: plan.value.body,
-      headers: { ...authHeaders.value, ...(plan.value.headers ?? {}) },
-      timeoutMs: 120_000,
-    });
-    if (!response.ok) return response;
+    for (const candidate of wireCandidates) {
+      const plan = this.protocol.buildSubmit(request, candidate, imageUrls.value, idempotencyKey);
+      if (!plan.ok) return plan;
 
-    const parsed = this.protocol.parseSubmit(response.value.body, response.value.headers);
-    if (!parsed.ok) return parsed;
-
-    // Kling: encode submit mode into providerJobId so poll survives reconciler rebuild
-    // without original image assets in the request payload.
-    if (this.protocol.vendorId === "kling" && !parsed.value.providerJobId.includes(":")) {
-      const klingMode = plan.value.path.includes("image2video")
-        ? "image2video"
-        : "text2video";
-      return success({
-        ...parsed.value,
-        providerJobId: `${klingMode}:${parsed.value.providerJobId}`,
-        safeMetadata: { ...parsed.value.safeMetadata, klingMode },
+      const path = this.withQuery(plan.value.path, plan.value.query);
+      const response = await this.http.send({
+        method: plan.value.method,
+        path,
+        body: plan.value.body,
+        headers: { ...authHeaders.value, ...(plan.value.headers ?? {}) },
+        timeoutMs: 120_000,
       });
+      if (!response.ok) {
+        lastFailure = response as Result<ProviderAsyncSubmitResult>;
+        const errMsg =
+          response.error instanceof Error ? response.error.message : String(response.error);
+        const canRetryWire =
+          isDiscontinuedVideoModelError(errMsg) &&
+          candidate !== wireCandidates[wireCandidates.length - 1];
+        if (canRetryWire) continue;
+        return response as Result<ProviderAsyncSubmitResult>;
+      }
+
+      const parsed = this.protocol.parseSubmit(response.value.body, response.value.headers);
+      if (!parsed.ok) return parsed;
+
+      // Kling: encode submit mode into providerJobId so poll survives reconciler rebuild
+      // without original image assets in the request payload.
+      if (this.protocol.vendorId === "kling" && !parsed.value.providerJobId.includes(":")) {
+        const klingMode = plan.value.path.includes("image2video")
+          ? "image2video"
+          : "text2video";
+        return success({
+          ...parsed.value,
+          providerJobId: `${klingMode}:${parsed.value.providerJobId}`,
+          safeMetadata: {
+            ...parsed.value.safeMetadata,
+            klingMode,
+            ...(candidate !== wireModel ? { wireModelFallback: candidate } : {}),
+          },
+        });
+      }
+
+      if (candidate !== wireModel) {
+        return success({
+          ...parsed.value,
+          safeMetadata: { ...parsed.value.safeMetadata, wireModelFallback: candidate },
+        });
+      }
+
+      return parsed;
     }
 
-    return parsed;
+    return lastFailure ?? failure(new ValidationError(`Model ${request.modelId} submit failed`));
+  }
+
+  private wireSubmitCandidates(primaryWire: string): readonly string[] {
+    const proto = this.protocol as IVendorVideoProtocol & {
+      resolveWireFallbacks?: (wireModel: string) => readonly string[];
+    };
+    if (typeof proto.resolveWireFallbacks !== "function") return [primaryWire];
+    const rest = proto.resolveWireFallbacks(primaryWire);
+    return [primaryWire, ...rest];
   }
 
   async pollAsync(

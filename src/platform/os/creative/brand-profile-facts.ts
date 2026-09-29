@@ -30,7 +30,7 @@ export async function resolveBrandProfileContext(input: {
     status: { $ne: "archived" },
   })
     .select(
-      "name positioning voice industry targetAudience colors guidelinesProfile logoAssetId"
+      "name positioning voice industry targetAudience colors guidelines guidelinesProfile logoAssetId"
     )
     .lean();
 
@@ -60,6 +60,14 @@ export async function resolveBrandProfileContext(input: {
     (typeof gp.tone === "string" ? gp.tone : "");
   push("personality", personality || undefined);
   push("voice", personality || doc.voice || undefined);
+  push(
+    "voiceGuidelines",
+    typeof gp.voiceGuidelines === "string" ? gp.voiceGuidelines : undefined,
+  );
+  push(
+    "writingStyle",
+    typeof gp.writingStyle === "string" ? gp.writingStyle : undefined,
+  );
   push("industry", doc.industry);
   push("targetAudience", doc.targetAudience || (typeof gp.targetAudience === "string" ? gp.targetAudience : undefined));
   push(
@@ -72,9 +80,49 @@ export async function resolveBrandProfileContext(input: {
           ? gp.description
           : undefined
   );
+  push(
+    "guidelines",
+    typeof doc.guidelines === "string" ? doc.guidelines : undefined,
+  );
+  push(
+    "typography",
+    typeof gp.typography === "string" ? gp.typography : undefined,
+  );
+  push(
+    "photographyStyle",
+    typeof gp.photographyStyle === "string" ? gp.photographyStyle : undefined,
+  );
+  push(
+    "illustrationStyle",
+    typeof gp.illustrationStyle === "string" ? gp.illustrationStyle : undefined,
+  );
+  push(
+    "iconStyle",
+    typeof gp.iconStyle === "string" ? gp.iconStyle : undefined,
+  );
+  push(
+    "logoRules",
+    typeof gp.logoRules === "string" ? gp.logoRules : undefined,
+  );
+  push(
+    "spacingRules",
+    typeof gp.spacingRules === "string" ? gp.spacingRules : undefined,
+  );
 
   if (Array.isArray(doc.colors) && doc.colors.length) {
     push("colors", doc.colors.slice(0, 6).join(", "));
+  } else if (Array.isArray(gp.primaryColors) && gp.primaryColors.length) {
+    const secondary = Array.isArray(gp.secondaryColors)
+      ? (gp.secondaryColors as unknown[]).map(String)
+      : [];
+    push(
+      "colors",
+      [...(gp.primaryColors as unknown[]).map(String), ...secondary]
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+        .join(", "),
+    );
   }
 
   return {
@@ -101,6 +149,12 @@ export function brandProfileFromFacts(
   readonly targetAudience?: string;
   readonly brandSummary?: string;
   readonly brandName?: string;
+  readonly typography?: string;
+  readonly photographyStyle?: string;
+  readonly illustrationStyle?: string;
+  readonly guidelines?: string;
+  readonly voiceGuidelines?: string;
+  readonly writingStyle?: string;
 } {
   const get = (key: string) => facts.find((f) => f.key === key)?.value?.trim();
   return {
@@ -110,6 +164,12 @@ export function brandProfileFromFacts(
     industry: get("industry"),
     targetAudience: get("targetAudience"),
     brandSummary: get("brandSummary"),
+    typography: get("typography"),
+    photographyStyle: get("photographyStyle"),
+    illustrationStyle: get("illustrationStyle"),
+    guidelines: get("guidelines"),
+    voiceGuidelines: get("voiceGuidelines"),
+    writingStyle: get("writingStyle"),
   };
 }
 

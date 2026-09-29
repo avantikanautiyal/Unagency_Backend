@@ -17,6 +17,8 @@ export interface IProject {
   /** AI Create Design origin metadata */
   origin?: string;
   executionId?: string;
+  /** CDF session (or equivalent) so multi-stage runs stay one project. */
+  sessionId?: string;
   sourceRouteId?: string;
   artifactId?: string;
   brandId?: mongoose.Types.ObjectId;
@@ -78,6 +80,7 @@ const ProjectSchema = new Schema<IProject>(
     idleNotificationSent: { type: Boolean, default: false },
     origin: { type: String, default: "studio" },
     executionId: { type: String, index: true },
+    sessionId: { type: String, index: true },
     sourceRouteId: { type: String, index: true },
     artifactId: { type: String },
     brandId: { type: Schema.Types.ObjectId, ref: "Brands" },

@@ -1,0 +1,60 @@
+---
+pid: 11239
+cwd: /Users/avantikanautiyal/Desktop/Unagency_fullstack/unagency-backend
+active_command: npm start
+last_command: npm start
+last_exit_code: 1
+---
+[forensic-image-constraint] {"audit":"P4.9","executionId":"exec_43_1789402538385","productAction":"generate","stage":"provider_wire_request","negativeConstraintCount":0,"hardConstraintCount":0,"requirements":[],"constraintPlanes":{"executionSpec":{"negativeConstraintCount":0,"hardConstraintCount":0,"present":false},"canonicalModelRequest":{"requirementsPresent":true,"constraintsPresent":false,"outputRequirementsPresent":true,"productionSpecPresent":true,"outputContractPresent":true},"promptProjection":{"labeledSectionsPresent":["OUTPUT_REQUIREMENTS"],"hardConstraintBlockPresent":false,"leafTokenPresent":false},"emptyExecutionSpecInterpretation":{"code":"prompt_has_labeled_requirements_without_execution_spec","detail":"CMR requirement/output surfaces were projected into the labeled prompt; ExecutionSpec negativeConstraints remain empty (not a projection loss)"}},"promptFingerprint":"a47c7e70c313d103","hardConstraintPresent":false,"leafConstraintPresent":false,"leafTokenHeuristicOnly":true,"provider":"provider.ideogram","model":"ideogram-3","capability":"image.generate","generationPath":"VendorSyncImageDispatcher/Ideogram","providerWire":{"promptFingerprint":"a47c7e70c313d103","promptLength":27543,"hardConstraintPresent":false,"leafConstraintPresent":false,"hasReferenceImage":true}}
+{"scope":"execution.structured_completion","event":"direct_execution_result","executionId":"exec_43_1789402538385","requestId":"exec_43_1789402538385","provider":"provider.ideogram","model":"ideogram-3","resultKeys":["content","provider","outputs"],"structuredOutputPresent":false,"structuredPresent":false,"dataPresent":false,"dataStructuredPresent":false,"textPresent":true,"mediaPresent":true,"structuredKeyCount":0,"structuredKeys":[],"ts":"2026-09-14T16:16:05.788Z"}
+{"scope":"execution.structured_completion","event":"job_summary","executionId":"exec_43_1789402538385","jobId":"job_46_1789402538414","structuredPresent":false,"structuredKeyCount":0,"structuredKeys":[],"runtimeStructuredPresent":false,"resultKeys":["content","provider","outputs"],"path":"distributed_worker","ts":"2026-09-14T16:16:05.789Z"}
+🖼️  [Direct] sync image materialized | executionId=exec_43_1789402538385 | artifacts=art_syncimg_53_1789402565789_0
+⚙️  [Direct] execution complete | mode=live | success=true | capability=image.generate | provider=provider.ideogram | model=ideogram-3 | routingDecision=n/a | evaluatorScore=n/a | stages=2 | durationMs=26706
+[UNAGENCY OS] {"event":"execution.website_materialization.diagnostic","executionId":"exec_43_1789402538385","status":"skipped_already_materialized","path":"poll_hydrate","executionKind":"idempotent_replay","executionSpecSupplied":false,"asyncMediaPresent":true,"structuredDataPresent":false,"websiteRoutesCount":0,"materializationAttempted":false,"exported":true,"artifactIds":"art_syncimg_53_1789402565789_0","skipReason":"already_materialized","asyncMediaEnabledEnv":true}
+{"scope":"execution.structured_completion","event":"candidate_resolved","executionId":"exec_43_1789402538385","jobId":"job_46_1789402538414","cdfSessionId":"cdf_mu1fz0gn_b5q62iyz","cdfPhaseId":"output","artifactKey":"social-media.output","candidateSource":"media_required_for_contract","structuredPresent":false,"structuredKeyCount":0,"structuredKeys":[],"resultKind":"artifact","path":"poll_hydrate","ts":"2026-09-14T16:16:09.454Z"}
+[Direct] job execution completed | jobId=job_46_1789402538414 | status=completed
+[UNAGENCY OS] {"event":"execution.website_materialization.diagnostic","executionId":"exec_43_1789402538385","status":"skipped_already_materialized","path":"dispatch_finalize","executionKind":"recovered_job","executionSpecSupplied":false,"asyncMediaPresent":true,"structuredDataPresent":false,"websiteRoutesCount":0,"materializationAttempted":false,"exported":true,"artifactIds":"art_syncimg_53_1789402565789_0","skipReason":"already_materialized","asyncMediaEnabledEnv":true}
+{"scope":"execution.structured_completion","event":"candidate_resolved","executionId":"exec_43_1789402538385","jobId":"job_46_1789402538414","cdfSessionId":"cdf_mu1fz0gn_b5q62iyz","cdfPhaseId":"output","artifactKey":"social-media.output","generationModality":"image","candidateSource":"media_required_for_contract","structuredPresent":false,"structuredKeyCount":0,"structuredKeys":[],"resultKind":"artifact","path":"dispatch_finalize","ts":"2026-09-14T16:16:09.562Z"}
+[UNAGENCY OS] {"event":"execution.cdf_canonical_image_bridge.succeeded","requestId":"corr_44_1789402538385","executionId":"exec_43_1789402538385","organizationId":"6a89ff83ae22a3d696a169e6","status":"succeeded"}
+[UNAGENCY OS] {"event":"execution.cdf_canonical_image_bridge.succeeded","requestId":"corr_44_1789402538385","executionId":"exec_43_1789402538385","organizationId":"6a89ff83ae22a3d696a169e6","status":"succeeded"}
+{"scope":"cdf.generation_validation","validationId":"val_mu1g380n_n89p79","artifactId":"__candidate_gate__","artifactVersion":0,"artifactKey":"social-media.output","status":"passed","candidateGate":true,"headlessCandidate":true,"failedRequirementIds":[],"validatorVersion":"m4.cdf.v2","activeBriefVersion":3,"contextHash":"ctx:cd2351f1","ts":"2026-09-14T16:16:10.583Z"}
+{"scope":"cdf.generation_artifact","status":"ok","artifactKey":"social-media.output","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"executionId":"exec_43_1789402538385","cdfContextId":"ctx_b5q62iyz_output_cd2351f1","cdfContextHash":"ctx:cd2351f1","activeBriefVersion":3,"normalizationStatus":"ok","validationStatus":"passed","validationId":"val_mu1g380n_n89p79","ts":"2026-09-14T16:16:10.583Z"}
+{"scope":"cdf.social_media_runtime","event":"ingest_accepted","sessionId":"cdf_mu1fz0gn_b5q62iyz","phaseId":"output","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"artifactKey":"social-media.output","artifactTargetKey":"social-media.output","validationStatus":"passed","generationExecutionId":"exec_43_1789402538385","sessionMutation":false,"canonicalPath":true,"legacyFallback":false,"downloadEligible":true,"liveTrafficMigrated":true,"ts":"2026-09-14T16:16:10.583Z"}
+{"scope":"cdf.artifacts","event":"generated_artifacts_pinned","sessionId":"cdf_mu1fz0gn_b5q62iyz","sessionVersion":5,"phaseId":"output","artifactKey":"social-media.output","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"ts":"2026-09-14T16:16:10.584Z"}
+{"scope":"cdf.social_media_runtime","event":"m9c_generated_bind","ok":true,"sessionId":"cdf_mu1fz0gn_b5q62iyz","phaseId":"output","artifactKey":"social-media.output","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"sessionVersion":5,"idempotentReplay":false,"casAttempt":0,"ts":"2026-09-14T16:16:10.584Z"}
+[UNAGENCY OS] {"event":"execution.cdf_social_media_session_bind.succeeded","requestId":"corr_44_1789402538385","executionId":"exec_43_1789402538385","organizationId":"6a89ff83ae22a3d696a169e6","status":"succeeded"}
+{"scope":"execution.structured_completion","event":"generated_artifact_bind","sessionId":"cdf_mu1fz0gn_b5q62iyz","executionId":"exec_43_1789402538385","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"artifactKey":"social-media.output","generatedArtifactsCount":2,"exactGenerated":"cdfart_mu1g380n_2_social-media-output@1","ts":"2026-09-14T16:16:10.664Z"}
+{"scope":"execution.structured_completion","event":"canonical_ingest_after","executionId":"exec_43_1789402538385","ingestResult":"accepted","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"path":"poll_hydrate","ts":"2026-09-14T16:16:10.664Z"}
+{"scope":"cdf.social_media_runtime","event":"ingest_failed_legacy_continues","sessionId":"cdf_mu1fz0gn_b5q62iyz","phaseId":"output","canonicalPath":false,"fallbackReason":"ingest_error","error":"[GENERATION_ARTIFACT_IDEMPOTENCY_CONFLICT] Idempotency key m9b_ingest_exec_43_1789402538385_output already bound to a different payload","ts":"2026-09-14T16:16:12.511Z"}
+[UNAGENCY OS] {"event":"execution.cdf_canonical_completion.idempotent_replay","requestId":"corr_44_1789402538385","executionId":"exec_43_1789402538385","organizationId":"6a89ff83ae22a3d696a169e6","status":"succeeded","errorCode":"ingest_conflict_established_completion"}
+{"scope":"execution.structured_completion","event":"canonical_ingest_after","executionId":"exec_43_1789402538385","ingestResult":"accepted","artifactId":"cdfart_mu1g380n_2_social-media-output","artifactVersion":1,"path":"dispatch_finalize","ts":"2026-09-14T16:16:12.511Z"}
+[UNAGENCY OS] {"event":"governance.execution_decided","requestId":"exec_43_1789402538385","executionId":"exec_43_1789402538385","organizationId":"6a89ff83ae22a3d696a169e6","status":"BLOCK","planId":"plan_exec_43_1789402538385","planVersion":1}
+[UNAGENCY OS] {"event":"execution.background_finalize","requestId":"corr_44_1789402538385","executionId":"exec_43_1789402538385","organizationId":"6a89ff83ae22a3d696a169e6","capabilityId":"image.generate","status":"succeeded","lifecycle":"COMPLETED"}
+[UNAGENCY-PRODUCTION-EVIDENCE] | execution=exec_43_1789402538385 | request=corr_44_1789402538385 | service=social/content-design | industry=Education | model=provider.ideogram/ideogram-3 | strategy=strategy.baseline | knowledge=knowledge.generic | quality=24.0| validation=FAIL | source=production | mode=observational
+[UNAGENCY-SHADOW] safety gate | adaptiveRoutingEnabled=false
+[UNAGENCY-SHADOW] | execution=exec_43_1789402538385 | status=INSUFFICIENT_EVIDENCE | actual=provider.ideogram/ideogram-3 | strategy=strategy.baseline | knowledge=knowledge.generic | shadow=none | confidence=insufficient | evidence=INSUFFICIENT | promotion=INSUFFICIENT_EVIDENCE
+[UNAGENCY-EXECUTION-TRACE]
+executionId=exec_43_1789402538385
+correlationId=corr_44_1789402538385
+service=social
+subtype=content-design
+outputKind=image
+requestedModel=unknown
+selectedModel=provider.openai/gpt-image-2
+actualModel=provider.ideogram/ideogram-3
+fallbackUsed=YES(rate_limit)
+execution=SUCCESS
+structuredOutput=NO
+artifact=CREATED
+artifactId=art_syncimg_53_1789402565789_0
+artifact_render=COMPLETED
+runtime_evaluation=SKIPPED(runtime_not_applicable_to_modality)
+evaluation_plane=COMPLETED
+step2_validation=COMPLETED
+evaluation=COMPLETED
+contract=FAIL
+quality=24
+evidence=RECORDED
+routing=STATIC
+finalStatus=MODEL_QUALITY_FAILURE
+[UNAGENCY-EXECUTION-INTEGRITY] {"executionId":"exec_43_1789402538385","correlationId":"corr_44_1789402538385","service":"social","subtype":"content-design","outputKind":"image","requestedModel":"unknown","selectedModel":"provider.openai/gpt-image-2","actualModel":"provider.ideogram/ideogram-3","fallbackUsed":true,"fallbackReason":"rate_limit","structuredOutput":"SKIPPED","materialization":"COMPLETED","artifact":"CREATED","artifactIds":"art_syncimg_53_1789402565789_0","persisted":true,"hydrated":"COMPLETED","evaluated":"COMPLETED","evaluation":"COMPLETED","step2":"COMPLETED","qualityGate":"COMPLETED","evidence":"RECORDED","status":"PASS"}

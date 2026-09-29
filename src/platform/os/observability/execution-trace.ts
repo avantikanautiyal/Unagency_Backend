@@ -25,9 +25,26 @@ export type ExecutionTraceStage =
   | "step2_validation"
   | "quality_gate"
   | "production_evidence"
-  | "model_performance_record";
+  | "model_performance_record"
+  /** Phase 3 — CDF canonical generation context bridge. */
+  | "cdf_canonical_context"
+  | "cdf_provider_boundary"
+  /** Phase 15 — Canonical action execution boundary. */
+  | "action_execution"
+  /** Phase 16 — Canonical output QA boundary. */
+  | "output_qa"
+  /** Phase 17 — Canonical automatic repair boundary. */
+  | "automatic_repair"
+  /** Phase 18 — Canonical benchmarking / evaluation (observational). */
+  | "canonical_benchmark"
+  /** Phase 20 — Progressive enablement path decision. */
+  | "canonical_rollout";
 
-export type ExecutionTraceStageStatus = "COMPLETED" | "SKIPPED" | "FAILED";
+export type ExecutionTraceStageStatus =
+  | "COMPLETED"
+  | "SKIPPED"
+  | "FAILED"
+  | "NOT_APPLICABLE";
 
 export type ExecutionTraceStageRecord = {
   readonly stage: ExecutionTraceStage;
@@ -77,6 +94,9 @@ export type ExecutionTraceState = {
   readonly executionStatus?: string;
   readonly finalOutcome?: string;
   readonly qualityScore?: number;
+  /** CDF canonical ingest withheld completion; overrides model-plane finalOutcome. */
+  readonly canonicalCompletionBlocked?: boolean;
+  readonly canonicalCompletionBlockReason?: string;
   readonly stages: readonly ExecutionTraceStageRecord[];
 };
 
@@ -197,6 +217,9 @@ function stageStatusLabel(
 ): string {
   const hit = stages.filter((s) => s.stage === stage).pop();
   if (!hit) return "NOT_TRACED";
+  if (hit.status === "NOT_APPLICABLE") {
+    return `NOT_APPLICABLE${hit.skipReason ? `(${hit.skipReason})` : ""}`;
+  }
   if (hit.status === "SKIPPED") return `SKIPPED${hit.skipReason ? `(${hit.skipReason})` : ""}`;
   if (hit.status === "FAILED") return "FAILED";
   return "COMPLETED";
@@ -204,13 +227,25 @@ function stageStatusLabel(
 
 export function buildExecutionTraceSummary(state: ExecutionTraceState): string {
   const hasArtifacts = (state.artifactIds?.length ?? 0) > 0;
-  const artifact = hasArtifacts ? "CREATED" : "MISSING";
+  // Structured/text: empty media IDs are N/A when structured output succeeded —
+  // never label as MISSING (feeds false CONTRACT_FAILURE narratives).
+  const mediaStagesNa = state.stages.some(
+    (s) =>
+      (s.stage === "artifact_render" || s.stage === "artifact_hydration") &&
+      s.status === "NOT_APPLICABLE",
+  );
+  const artifact = hasArtifacts
+    ? "CREATED"
+    : mediaStagesNa || state.usedStructuredOutput
+      ? "NOT_APPLICABLE"
+      : "MISSING";
   const evaluationPlane = stageStatusLabel(state.stages, "evaluation_plane");
   const step2 = stageStatusLabel(state.stages, "step2_validation");
   const evaluation =
     evaluationPlane === "COMPLETED"
       ? "COMPLETED"
-      : evaluationPlane.startsWith("SKIPPED")
+      : evaluationPlane.startsWith("SKIPPED") ||
+          evaluationPlane.startsWith("NOT_APPLICABLE")
         ? evaluationPlane
         : step2;
   const contract = state.contractValidationStatus ?? "UNVERIFIED";
@@ -237,6 +272,10 @@ export function buildExecutionTraceSummary(state: ExecutionTraceState): string {
     state.fallbackUsed === true
       ? `YES(${state.fallbackReason ?? "provider_failover"})`
       : "NO";
+  const blockReason = state.canonicalCompletionBlockReason ?? "unknown";
+  const finalStatus = state.canonicalCompletionBlocked
+    ? `CANONICAL_COMPLETION_BLOCKED(${blockReason})`
+    : state.finalOutcome ?? state.executionStatus ?? "UNKNOWN";
 
   return [
     `${EXECUTION_TRACE_PREFIX}`,
@@ -262,7 +301,10 @@ export function buildExecutionTraceSummary(state: ExecutionTraceState): string {
     `quality=${state.qualityScore ?? "n/a"}`,
     `evidence=${evidence}`,
     `routing=${routing}`,
-    `finalStatus=${state.finalOutcome ?? state.executionStatus ?? "UNKNOWN"}`,
+    ...(state.canonicalCompletionBlocked
+      ? [`canonical_completion=BLOCKED(${blockReason})`]
+      : []),
+    `finalStatus=${finalStatus}`,
   ].join("\n");
 }
 
@@ -361,26 +403,57 @@ export function recordProviderDispatchTrace(input: RecordProviderDispatchTraceIn
       fallbackUsed: input.fallbackUsed === true,
     }),
   });
+  const terminalSuccess =
+    input.executionStatus === "succeeded" ||
+    input.executionStatus === "completed" ||
+    input.executionStatus === "awaiting_approval";
+  const terminalFailure =
+    input.executionStatus === "failed" ||
+    input.executionStatus === "cancelled" ||
+    input.executionStatus === "rejected";
+  const providerTerminal = terminalSuccess || terminalFailure;
+  const inFlight =
+    input.executionStatus === "queued" ||
+    input.executionStatus === "running" ||
+    input.executionStatus === "retrying" ||
+    input.executionStatus === "pending";
+
   recordExecutionTraceStage({
     executionId: input.executionId,
     stage: "provider_dispatch",
-    status:
-      input.executionStatus === "succeeded" || input.executionStatus === "completed"
-        ? "COMPLETED"
-        : "FAILED",
-    error: input.errorMessage,
+    status: terminalSuccess
+      ? "COMPLETED"
+      : terminalFailure
+        ? "FAILED"
+        : inFlight || !providerTerminal
+          ? "SKIPPED"
+          : "FAILED",
+    skipReason:
+      inFlight || !providerTerminal
+        ? "provider_not_terminal"
+        : undefined,
+    error: terminalFailure ? input.errorMessage : undefined,
   });
   recordExecutionTraceStage({
     executionId: input.executionId,
     stage: "structured_output",
     status: input.structuredDataPresent
       ? "COMPLETED"
-      : input.structuredOutputRequested
-        ? "FAILED"
-        : "SKIPPED",
-    skipReason: input.structuredOutputRequested ? undefined : "no_structured_output_requested",
+      : !input.structuredOutputRequested
+        ? "SKIPPED"
+        : !providerTerminal || inFlight
+          ? "SKIPPED"
+          : "FAILED",
+    skipReason: !input.structuredOutputRequested
+      ? "no_structured_output_requested"
+      : !providerTerminal || inFlight
+        ? "provider_not_terminal"
+        : undefined,
     error:
-      input.structuredOutputRequested && !input.structuredDataPresent
+      input.structuredOutputRequested &&
+      !input.structuredDataPresent &&
+      providerTerminal &&
+      !inFlight
         ? "structured_output_missing"
         : undefined,
   });
@@ -540,13 +613,29 @@ export type RecordProductionEvidenceTraceInput = {
   readonly evidenceRecorded?: boolean;
   readonly step2Executed?: boolean;
   readonly stageTrace?: {
-    readonly artifactHydration: "COMPLETED" | "SKIPPED" | "FAILED";
+    readonly artifactHydration:
+      | "COMPLETED"
+      | "SKIPPED"
+      | "FAILED"
+      | "NOT_APPLICABLE";
     readonly artifactHydrationReason?: string;
-    readonly artifactRender?: "COMPLETED" | "SKIPPED" | "FAILED";
+    readonly artifactRender?:
+      | "COMPLETED"
+      | "SKIPPED"
+      | "FAILED"
+      | "NOT_APPLICABLE";
     readonly artifactRenderReason?: string;
-    readonly runtimeEvaluation?: "COMPLETED" | "SKIPPED" | "FAILED";
+    readonly runtimeEvaluation?:
+      | "COMPLETED"
+      | "SKIPPED"
+      | "FAILED"
+      | "NOT_APPLICABLE";
     readonly runtimeEvaluationReason?: string;
-    readonly evaluationPlane: "COMPLETED" | "SKIPPED" | "FAILED";
+    readonly evaluationPlane:
+      | "COMPLETED"
+      | "SKIPPED"
+      | "FAILED"
+      | "NOT_APPLICABLE";
     readonly evaluationPlaneReason?: string;
     readonly hydratedArtifactCount?: number;
   };
@@ -561,7 +650,8 @@ export function recordProductionEvidenceTrace(
       stage: "artifact_hydration",
       status: input.stageTrace.artifactHydration,
       skipReason:
-        input.stageTrace.artifactHydration === "SKIPPED"
+        input.stageTrace.artifactHydration === "SKIPPED" ||
+        input.stageTrace.artifactHydration === "NOT_APPLICABLE"
           ? input.stageTrace.artifactHydrationReason
           : undefined,
       error:
@@ -577,7 +667,8 @@ export function recordProductionEvidenceTrace(
       stage: "artifact_render",
       status: input.stageTrace.artifactRender ?? "SKIPPED",
       skipReason:
-        input.stageTrace.artifactRender === "SKIPPED"
+        input.stageTrace.artifactRender === "SKIPPED" ||
+        input.stageTrace.artifactRender === "NOT_APPLICABLE"
           ? input.stageTrace.artifactRenderReason
           : undefined,
       error:
@@ -590,7 +681,8 @@ export function recordProductionEvidenceTrace(
       stage: "runtime_evaluation",
       status: input.stageTrace.runtimeEvaluation ?? "SKIPPED",
       skipReason:
-        input.stageTrace.runtimeEvaluation === "SKIPPED"
+        input.stageTrace.runtimeEvaluation === "SKIPPED" ||
+        input.stageTrace.runtimeEvaluation === "NOT_APPLICABLE"
           ? input.stageTrace.runtimeEvaluationReason
           : undefined,
       error:
@@ -603,7 +695,8 @@ export function recordProductionEvidenceTrace(
       stage: "evaluation_plane",
       status: input.stageTrace.evaluationPlane,
       skipReason:
-        input.stageTrace.evaluationPlane === "SKIPPED"
+        input.stageTrace.evaluationPlane === "SKIPPED" ||
+        input.stageTrace.evaluationPlane === "NOT_APPLICABLE"
           ? input.stageTrace.evaluationPlaneReason
           : undefined,
       error:

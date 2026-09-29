@@ -10,6 +10,8 @@ export const OPENAI_SEEDED_IMAGE_MODELS = [
   "gpt-image-1",
   "gpt-image-1.5",
   "gpt-image-2",
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
 ] as const;
 
 export function enrichDiscoveredModel(

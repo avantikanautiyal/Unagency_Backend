@@ -18,10 +18,12 @@ function requestWithLogo(prompt: string): ProviderExecutionRequest {
       image: {
         mimeType: "image/png",
         url: `data:image/png;base64,${TINY_PNG}`,
+        semanticReferenceRole: "identity_mark",
       },
     },
     metadata: {
       referenceInputPresent: true,
+      // Provenance only — must not invent semantic role by itself.
       referenceInputType: "brand_vault_asset",
       productAction: "route_visual",
     },
@@ -31,15 +33,23 @@ function requestWithLogo(prompt: string): ProviderExecutionRequest {
   };
 }
 
-describe("Ideogram style reference for vault logos", () => {
-  it("sends the logo as style_reference_images instead of dropping it", () => {
+describe("Ideogram reference images with canonical roles", () => {
+  it("sends logo bytes and preserves identity_mark semantic role (not style_reference)", () => {
     const plan = new IdeogramImageProtocol().buildGenerateRequest({
       spec: IDEOGRAM_IMAGE_SPEC,
       request: requestWithLogo("Instagram feed post for Sunflower oats"),
       wireModelId: IDEOGRAM_IMAGE_SPEC.wireModelId,
     });
     expect(plan.request.form?.fields.prompt).toContain("Sunflower");
-    expect(plan.request.form?.files?.[0]?.fieldName).toBe("style_reference_images");
+    expect(plan.request.form?.fields.prompt).toMatch(/REFERENCE ROLE = identity_mark/);
+    expect(plan.referenceAdaptation?.[0]?.canonicalRole).toBe("identity_mark");
+    expect(plan.referenceAdaptation?.[0]?.canonicalRole).not.toBe("style_reference");
+    expect(plan.request.form?.files?.[0]?.fieldName).toBe(
+      "character_reference_images",
+    );
+    expect(plan.referenceAdaptation?.[0]?.providerSemanticMeaning).toBe(
+      "identity_preservation",
+    );
     expect(plan.request.form?.files?.[0]?.base64).toBe(TINY_PNG);
     expect(plan.request.body).toBeUndefined();
   });
@@ -67,5 +77,31 @@ describe("Ideogram style reference for vault logos", () => {
       style_reference_images: ["style_reference_images"],
     });
     expect(audit.hasReferenceImage).toBe(true);
+  });
+
+  it("brand_vault_asset provenance alone does not invent identity_mark guidance", () => {
+    const plan = new IdeogramImageProtocol().buildGenerateRequest({
+      spec: IDEOGRAM_IMAGE_SPEC,
+      request: {
+        ...requestWithLogo("post"),
+        payload: {
+          prompt: "post",
+          text: "post",
+          image: {
+            mimeType: "image/png",
+            url: `data:image/png;base64,${TINY_PNG}`,
+          },
+        },
+        metadata: {
+          referenceInputPresent: true,
+          referenceInputType: "brand_vault_asset",
+        },
+      },
+      wireModelId: IDEOGRAM_IMAGE_SPEC.wireModelId,
+    });
+    expect(plan.referenceAdaptation ?? []).toHaveLength(0);
+    expect(String(plan.request.form?.fields.prompt)).not.toMatch(
+      /REFERENCE ROLE = identity_mark/,
+    );
   });
 });

@@ -1,0 +1,30 @@
+{
+  "executionId": "exec_43_1789402538385",
+  "status": "succeeded",
+  "jobId": "job_46_1789402538414",
+  "artifactIds": [
+    "art_syncimg_53_1789402565789_0"
+  ],
+  "promptPreview": "",
+  "resultKeys": [
+    "kind",
+    "data"
+  ],
+  "result": {
+    "kind": "artifact",
+    "data": {
+      "artifactIds": [
+        "art_syncimg_53_1789402565789_0"
+      ],
+      "cdfArtifactId": "cdfart_mu1g380n_2_social-media-output",
+      "cdfArtifactVersion": 1,
+      "cdfArtifactKey": "social-media.output",
+      "cdfRuntimePath": "canonical",
+      "canonicalPath": true,
+      "cdfDownloadEligible": true,
+      "cdfCanonicalCompletionEstablished": true,
+      "cdfIdempotentCompletionReplay": true,
+      "cdfGeneratedArtifactsBound": true
+    }
+  }
+}

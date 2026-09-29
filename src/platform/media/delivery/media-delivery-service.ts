@@ -26,6 +26,13 @@ import {
   canExportRasterAsPdf,
   wrapRasterImageAsPdf,
 } from "./raster-pdf-export";
+import { randomBytes } from "crypto";
+import {
+  buildArtifactBundleZip,
+  sanitizeBundleName,
+  type BundleFormat,
+  type BundleSourceFile,
+} from "./artifact-bundle";
 
 export type ArtifactMediaUrlResult = {
   readonly artifactId: string;
@@ -39,6 +46,13 @@ export type ArtifactBinaryContent = {
   readonly artifactId: string;
   readonly contentType: string;
   readonly bytes: Buffer;
+  /** When set, served as an attachment with this download filename. */
+  readonly fileName?: string;
+};
+
+export type ArtifactBundleUrlResult = ArtifactMediaUrlResult & {
+  readonly fileName: string;
+  readonly entryNames: readonly string[];
 };
 
 export function isArtifactBinaryContent(value: unknown): value is ArtifactBinaryContent {
@@ -179,6 +193,87 @@ export class MediaDeliveryService {
     });
   }
 
+  /**
+   * ZIP several tenant-owned artifacts (raster → PNG/JPG/PDF) and return a
+   * short-lived tokenized download URL for the archive.
+   */
+  async createArtifactBundleUrl(input: {
+    readonly organizationId: string;
+    readonly bundleName: string;
+    readonly items: readonly { readonly artifactId: string; readonly name: string }[];
+    readonly formats?: readonly BundleFormat[];
+    readonly readme?: string;
+    readonly publicOrigin?: string;
+  }): Promise<Result<ArtifactBundleUrlResult>> {
+    if (!this.blobStorage) {
+      return failure(new ValidationError("Blob storage unavailable for media delivery"));
+    }
+    if (input.items.length === 0) {
+      return failure(new ValidationError("Bundle requires at least one artifact"));
+    }
+    const files: BundleSourceFile[] = [];
+    for (const item of input.items) {
+      const rec = await this.artifacts.get(item.artifactId);
+      if (!rec || rec.organizationId !== input.organizationId) {
+        return failure(new NotFoundError(`Artifact not found: ${item.artifactId}`));
+      }
+      if (!rec.artifact.label.startsWith("blob:")) {
+        return failure(
+          new ValidationError(`Artifact is not a durable blob reference: ${item.artifactId}`)
+        );
+      }
+      const got = await this.blobStorage.get(parseStorageRefKey(rec.artifact.label));
+      if (!got.ok) return got;
+      if (!got.value) {
+        return failure(new NotFoundError(`Blob bytes not found: ${item.artifactId}`));
+      }
+      let mimeType = got.value.contentType ?? "";
+      if (!mimeType || mimeType === "application/octet-stream") {
+        const owned = await this.blobAccess.resolveForTenantAsync(
+          rec.artifact.label,
+          input.organizationId
+        );
+        if (owned.ok && owned.value.mimeType) mimeType = owned.value.mimeType;
+      }
+      files.push({
+        name: item.name,
+        bytes: Buffer.from(got.value.data, "base64"),
+        mimeType: mimeType || "application/octet-stream",
+      });
+    }
+
+    const built = await buildArtifactBundleZip({
+      files,
+      ...(input.formats ? { formats: input.formats } : {}),
+      ...(input.readme ? { readme: input.readme } : {}),
+    });
+    if (!built.ok) return built;
+
+    const bundleId = `bundle_${randomBytes(9).toString("hex")}`;
+    const key = `tenant/${input.organizationId}/bundles/${bundleId}.zip`;
+    const stored = await this.blobStorage.put(key, built.value.bytes, "application/zip");
+    if (!stored.ok) return stored;
+
+    const fileName = `${sanitizeBundleName(input.bundleName, "download")}.zip`;
+    const token = this.tokens.mint({
+      artifactId: bundleId,
+      organizationId: input.organizationId,
+      storageRef: `blob:${key}`,
+      contentType: "application/zip",
+      ttlSeconds: this.ephemeralTtlSeconds,
+      fileName,
+    });
+    const origin = normalizePublicOrigin(input.publicOrigin);
+    return success({
+      artifactId: bundleId,
+      signedUrl: `${origin}/v1/artifacts/${encodeURIComponent(bundleId)}/content?token=${encodeURIComponent(token.token)}`,
+      expiresInSeconds: this.ephemeralTtlSeconds,
+      contentType: "application/zip",
+      fileName,
+      entryNames: built.value.entryNames,
+    });
+  }
+
   async resolveArtifactBinaryByToken(
     artifactId: string,
     token: string,
@@ -200,6 +295,15 @@ export class MediaDeliveryService {
 
     const sourceMime = got.value.contentType ?? record.contentType;
     const bytes = Buffer.from(got.value.data, "base64");
+    if (record.fileName) {
+      return success({
+        kind: "binary_media",
+        artifactId,
+        contentType: record.contentType,
+        bytes,
+        fileName: record.fileName,
+      });
+    }
     const requestedFormat = (options?.format ?? record.requestedFormat ?? "")
       .trim()
       .toLowerCase();

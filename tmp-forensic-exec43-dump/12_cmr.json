@@ -1,0 +1,879 @@
+{
+  "messages": [
+    {
+      "role": "developer",
+      "content": [
+        {
+          "type": "structured",
+          "name": "production_spec",
+          "semanticRole": "production_spec",
+          "schema": "instagram.feed.square",
+          "version": "1.1.0",
+          "data": {
+            "productionRuleId": "instagram.feed.square",
+            "contentHash": "357a1b528ea6d77f",
+            "authorityStatus": "D",
+            "edition": "1.0.0",
+            "provenance": "format-spec@1.0.0+hygiene-ref@1.0+visual-field-guide@1.0",
+            "version": "1.1.0",
+            "sections": [
+              {
+                "id": "header",
+                "title": "Header",
+                "lines": [
+                  "[production_constraints]",
+                  "Provenance: format-spec@1.0.0+hygiene-ref@1.0+visual-field-guide@1.0"
+                ]
+              },
+              {
+                "id": "placement",
+                "title": "Placement",
+                "lines": [
+                  "Rule id: instagram.feed.square",
+                  "Service: social",
+                  "Subtype: content-design",
+                  "Platform: instagram",
+                  "Placement: feed.square",
+                  "Name the exact intended placement; never approve or generate a single asset for \"All\"."
+                ]
+              },
+              {
+                "id": "canvas",
+                "title": "Canvas",
+                "lines": [
+                  "Canvas: 1080×1080 px; aspect 1:1"
+                ]
+              },
+              {
+                "id": "authority",
+                "title": "Authority",
+                "lines": [
+                  "Authority: D — House default — use unless booked placement / vendor template overrides"
+                ]
+              },
+              {
+                "id": "export",
+                "title": "Export",
+                "lines": [
+                  "Export formats: png, jpg",
+                  "Export notes: sRGB digital still"
+                ]
+              },
+              {
+                "id": "technical",
+                "title": "Technical",
+                "lines": [
+                  "Colour space: sRGB"
+                ]
+              },
+              {
+                "id": "universal_gates",
+                "title": "Universal release gates",
+                "lines": [
+                  "[brief] Confirm approved brief: objective, audience, output, channel, quantity, due date.",
+                  "[identity] Use only the approved client brand wordmark and color treatment; no competitor, platform, or unrelated marks.",
+                  "[copy] Use only approved copy: names, grammar, numbers, language, CTA, and required disclosures.",
+                  "[rights] Respect documented rights, expiry, and territory restrictions for all assets.",
+                  "[technical] Match the specified canvas size, ratio, colour space, and output method exactly.",
+                  "[readability] Keep essential content readable at intended size, crop, overlay, and viewing distance.",
+                  "[destination] Every link, QR, and native action must reach the approved destination only.",
+                  "[source_package] Editable sources, dependencies, and exports must correspond to the same revision.",
+                  "[approval] Final output requires creator and independent reviewer approval of the exact version."
+                ]
+              },
+              {
+                "id": "production_note",
+                "title": "Production note",
+                "lines": [
+                  "PNG/JPG; one message."
+                ]
+              },
+              {
+                "id": "composition_authority_qualification",
+                "title": "Composition authority (outranks decorative-text preferences)",
+                "lines": [
+                  "When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires."
+                ]
+              }
+            ],
+            "text": "[production_constraints]\nProvenance: format-spec@1.0.0+hygiene-ref@1.0+visual-field-guide@1.0\nPlacement:\n- Rule id: instagram.feed.square\n- Service: social\n- Subtype: content-design\n- Platform: instagram\n- Placement: feed.square\n- Name the exact intended placement; never approve or generate a single asset for \"All\".\nCanvas:\n- Canvas: 1080×1080 px; aspect 1:1\nAuthority:\n- Authority: D — House default — use unless booked placement / vendor template overrides\nExport:\n- Export formats: png, jpg\n- Export notes: sRGB digital still\nTechnical:\n- Colour space: sRGB\nUniversal release gates:\n- [brief] Confirm approved brief: objective, audience, output, channel, quantity, due date.\n- [identity] Use only the approved client brand wordmark and color treatment; no competitor, platform, or unrelated marks.\n- [copy] Use only approved copy: names, grammar, numbers, language, CTA, and required disclosures.\n- [rights] Respect documented rights, expiry, and territory restrictions for all assets.\n- [technical] Match the specified canvas size, ratio, colour space, and output method exactly.\n- [readability] Keep essential content readable at intended size, crop, overlay, and viewing distance.\n- [destination] Every link, QR, and native action must reach the approved destination only.\n- [source_package] Editable sources, dependencies, and exports must correspond to the same revision.\n- [approval] Final output requires creator and independent reviewer approval of the exact version.\nProduction note:\n- PNG/JPG; one message.\n\n[Composition authority]\nWhen textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires."
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "structured",
+          "name": "current_task",
+          "semanticRole": "cdf_current_task",
+          "data": {
+            "Service": "social-media",
+            "Phase": "output",
+            "PhaseName": "Creative",
+            "Modality": "image",
+            "ExecutionStrategy": "canonical",
+            "Target artifact": "social-media.output",
+            "SemanticRole": "visual",
+            "SemanticObjective": "Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept. Client brand identity: Sunflower. Current user intent: Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now Deliverable: Social Media Creative … Selected creative direction: A Day in the Sun: An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringi… Follow DELIVERABLE COMPOSITION required on-asset communication + CURRENT USER INSTRUCTION; SELECTED SEMANTIC DIRECTION realizes creative HOW; Production Spec supplies technical constraints only.",
+            "DeliverableSemantics": "Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.",
+            "PhaseEntryMessage": "Here is your social creative based on the selected route:",
+            "Subtype": "content-design",
+            "Platform": "instagram",
+            "Format": "feed-post",
+            "ContextId": "ctx_b5q62iyz_output_cd2351f1",
+            "ContextHash": "463ba92e"
+          }
+        },
+        {
+          "type": "text",
+          "text": "Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now\n\nDeliverable: Social Media Creative\n\nCreate a finished Social Media Creative for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.\n\nSTAGE OUTPUT (required): finished single-frame communication asset for the selected platform/size\n\nSTAGE FORBIDDEN: Do NOT produce a flat logo lockup, wordmark alone on cream/white, app icon, or logo sheet as the whole image.\n\nDeliver a finished single-frame communication asset with readable on-asset messaging.\n\nPrimary communication must be visually prominent; the visual subject supports the message.\n\nBrand identity participates as an integrated signature, not as the sole subject of the frame.\n\nREFERENCE ROLE = identity_mark: An authoritative brand identity mark is attached. Reproduce that exact artwork as a subordinate brand-identity element in the layout. Do not invent a different mark. Do not treat the mark as the full composition, dominant subject, or stylistic template of the creative.",
+          "semanticRole": "current_user_instruction"
+        },
+        {
+          "type": "structured",
+          "name": "multimodal_context",
+          "semanticRole": "multimodal_context",
+          "data": {
+            "note": "User/application-provided multimedia context. Not a replacement for ArtifactVersion UPSTREAM ARTIFACTS. Extracted text is not the original file.",
+            "selectionMethod": "authorized_metadata_and_conversation_attachments",
+            "truncated": false,
+            "imageCount": 1,
+            "documentCount": 0,
+            "spreadsheetCount": 0,
+            "unsupportedCount": 0,
+            "extractedTextCount": 0,
+            "items": [
+              {
+                "itemId": "asset:6a98cb217bc20263f64311aa",
+                "sourceType": "product_asset",
+                "modality": "image",
+                "mimeType": "image/jpeg",
+                "filename": "Branding & Logo · Logo design (JPG)",
+                "assetId": "6a98cb217bc20263f64311aa",
+                "attachmentId": null,
+                "messageId": null,
+                "conversationId": null,
+                "provenance": [
+                  "metadata.assets",
+                  "product_asset_input_bridge"
+                ],
+                "relationshipLabel": "execution_product_asset",
+                "semanticReferenceRole": "identity_mark",
+                "referenceRoleResolutionSource": "persisted_semantic_reference_role",
+                "accessKind": "provider_input_ref",
+                "hasVisualProviderRef": true,
+                "deliveryStatus": "ready",
+                "extractedTextChars": null,
+                "extractedText": null,
+                "sizeBytes": null,
+                "notes": null,
+                "providerDelivery": {
+                  "mimeType": "image/jpeg",
+                  "hasUrl": true,
+                  "hasStorageRef": true
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "structured",
+          "name": "requirements",
+          "semanticRole": "requirements",
+          "data": [
+            {
+              "key": "brief.raw",
+              "displayValue": "Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now",
+              "priority": "explicit_current_user_instruction",
+              "explicit": true,
+              "status": null,
+              "source": null
+            },
+            {
+              "key": "platform",
+              "displayValue": "instagram",
+              "priority": "explicit_current_user_instruction",
+              "explicit": true,
+              "status": null,
+              "source": null
+            }
+          ]
+        },
+        {
+          "type": "structured",
+          "name": "selections",
+          "semanticRole": "selections",
+          "data": [
+            {
+              "phaseId": "routes",
+              "label": "Choice 3",
+              "routeTitle": "A Day in the Sun",
+              "routeIndex": 2
+            }
+          ]
+        },
+        {
+          "type": "structured",
+          "name": "deliverable_composition",
+          "semanticRole": "deliverable_composition",
+          "data": {
+            "deliverableKind": "social_creative",
+            "deliverableIdentity": {
+              "kind": "social_creative",
+              "concreteLabel": "Instagram Feed Post",
+              "statement": "Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept."
+            },
+            "communicationMode": "single_frame_communication",
+            "requiredElements": [
+              "primary_message_surface",
+              "visual_subject",
+              "brand_signature"
+            ],
+            "optionalElements": [
+              "secondary_message_surface",
+              "message_hierarchy"
+            ],
+            "hierarchy": [
+              {
+                "role": "primary_message_surface",
+                "precedence": 1
+              },
+              {
+                "role": "visual_subject",
+                "precedence": 2
+              },
+              {
+                "role": "brand_signature",
+                "precedence": 3
+              }
+            ],
+            "policies": {
+              "text": {
+                "placement": "on_asset",
+                "required": true
+              },
+              "visual": {
+                "subjectRequired": true,
+                "layoutIntent": "single_frame_readability"
+              },
+              "brand": {
+                "markRole": "signature"
+              }
+            },
+            "filledSlots": [
+              {
+                "element": "primary_message_surface",
+                "value": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "secondary_message_surface",
+                "value": "Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "visual_subject",
+                "value": "One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "message_hierarchy",
+                "value": "1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "layout_zones",
+                "value": "Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "brand_signature",
+                "value": "Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "identity_mark",
+                "value": "Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "typography_treatment",
+                "value": "Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "communication_objective",
+                "value": "Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "supporting_visual_elements",
+                "value": "Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "use_context",
+                "value": "Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.",
+                "source": "creative_direction"
+              },
+              {
+                "element": "user_intent",
+                "value": "Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now\n\nDeliverable: Social Media Creative\n\nCreate a finished Social Media Creative for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.\n\nSTAGE OUTPUT (required): finished single-frame communication asset for the selected platform/size\n\nSTAGE FORBIDDEN: Do NOT produce a flat logo lockup, wordmark alone on cream/white, app icon, or logo sheet as the whole image.\n\nDeliver a finished single-frame communication asset with readable on-asset messaging.\n\nPrimary communication must be visually prominent; the visual subject supports the message.\n\nBrand identity participates as an integrated signature, not as the sole subject of the frame.\n\nREFERENCE ROLE = identity_mark: An authoritative brand identity mark is attached. Reproduce that exact artwork as a subordinate brand-identity element in the layout. Do not invent a different mark. Do not treat the mark as the full composition, dominant subject, or stylistic template of the creative.",
+                "source": "user_instruction"
+              },
+              {
+                "element": "brand_context_name",
+                "value": "Sunflower",
+                "source": "brand_context"
+              }
+            ],
+            "compositionGuidance": [
+              "Deliver a finished single-frame communication asset with readable on-asset messaging.",
+              "Primary communication must be visually prominent; the visual subject supports the message.",
+              "Brand identity participates as an integrated signature, not as the sole subject of the frame.",
+              "Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication.",
+              "When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires."
+            ],
+            "requiredRenderedCommunication": {
+              "active": true,
+              "placement": "on_asset",
+              "required": true,
+              "surfaces": [
+                {
+                  "element": "primary_message_surface",
+                  "resolutionStatus": "resolved",
+                  "text": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+                  "provenance": "selected_semantic_direction",
+                  "required": true,
+                  "semanticClass": "required_rendered_communication"
+                }
+              ],
+              "allRequiredResolved": true,
+              "unresolvedElements": [],
+              "note": "REQUIRED_RENDERED_COMMUNICATION must appear as legible on-asset text with an authoritative non-empty value. Distinct from CREATIVE_DIRECTION, VISUAL_SUBJECT, BRAND_SIGNATURE, and decorative typography."
+            },
+            "semanticRoleSeparation": {
+              "brandSignatureDoesNotSatisfyPrimaryMessage": true,
+              "identityMarkDoesNotSatisfyPrimaryMessage": true,
+              "visualSubjectDoesNotSatisfyPrimaryMessage": true,
+              "note": "Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication."
+            },
+            "lowerAuthorityQualification": {
+              "requiredOnAssetText": true,
+              "note": "When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires."
+            },
+            "structuralCompletion": [
+              {
+                "criterion": "Required semantic element present: primary_message_surface",
+                "structural": true
+              },
+              {
+                "criterion": "Required semantic element present: visual_subject",
+                "structural": true
+              },
+              {
+                "criterion": "Required semantic element present: brand_signature",
+                "structural": true
+              },
+              {
+                "criterion": "Information hierarchy is defined and represented",
+                "structural": true
+              },
+              {
+                "criterion": "Deliverable communication mode is represented in the composition",
+                "structural": true
+              },
+              {
+                "criterion": "Required on-asset text/communication surface is represented when text policy requires it",
+                "structural": true
+              }
+            ],
+            "structuralCompletionNote": "Structural completion criteria describe required semantic elements and hierarchy — not aesthetic quality or model judgment.",
+            "userInstructionAuthoritative": true
+          }
+        },
+        {
+          "type": "text",
+          "text": "COMPOSITION AUTHORITY: When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires. Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication.",
+          "semanticRole": "composition_authority"
+        },
+        {
+          "type": "structured",
+          "name": "selected_semantic_directions",
+          "semanticRole": "selected_semantic_direction",
+          "data": [
+            {
+              "phaseId": "routes",
+              "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+              "version": 1,
+              "artifactKey": "social-media.routes",
+              "selectedRouteIndex": 2,
+              "optionNumber": 3,
+              "choiceArrayKey": "routes",
+              "semanticFieldNames": [
+                "routeId",
+                "name",
+                "creativeIdea",
+                "visualTreatment",
+                "headlineAngle",
+                "rationale",
+                "composition",
+                "hierarchy",
+                "communicationObjective",
+                "primaryMessage",
+                "secondaryMessage",
+                "visualConcept",
+                "focalPoint",
+                "typographyDirection",
+                "supportingVisualElements",
+                "brandIntegration",
+                "identityMarkRole",
+                "audienceSignal",
+                "useContextIntent",
+                "avoidances"
+              ],
+              "choice": {
+                "routeId": "route_03_a_day_in_the_sun",
+                "name": "A Day in the Sun",
+                "creativeIdea": "An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringing Sunflower's mission to life through authentic human moments rather than abstract concepts.",
+                "visualTreatment": "Photographic or illustrated vignette style featuring children in natural, joyful learning moments. Golden hour lighting quality with sunshine yellows, calming blues, and fresh greens. Soft focus backgrounds with sharp, emotion-rich foreground subjects. Human-centered and heartwarming.",
+                "headlineAngle": "\"Every child deserves to flourish\" — leading with the inclusive, child-first values that define Sunflower's approach while creating immediate emotional resonance with parent and educator audiences.",
+                "rationale": "This direction answers the brief's call for aesthetic appeal and proper brand description by showing rather than telling — authentic moments of children thriving create emotional connection while the warm color treatment and sunlit quality reinforce brand colors and name. Most effective for building trust through relatability.",
+                "visualCharacteristics": null,
+                "communicationObjective": "Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.",
+                "primaryMessage": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+                "secondaryMessage": "Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.",
+                "visualConcept": "One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.",
+                "focalPoint": "The children's faces and expressions, particularly their eyes and genuine smiles, positioned in the upper-middle section of the frame. Natural eye contact or absorbed engagement draws viewers into the emotional moment and brand promise.",
+                "composition": "Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.",
+                "hierarchy": "1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.",
+                "typographyDirection": "Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.",
+                "supportingVisualElements": "Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.",
+                "brandIntegration": "Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.",
+                "identityMarkRole": "Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.",
+                "audienceSignal": "Authentic child imagery immediately signals to parents 'this is for families like mine' while professional execution reassures schools of credibility. The inclusive, joyful tone attracts audiences seeking positive, affirming educational environments. Context: Instagram users respond strongly to genuine human emotion and relatable moments.",
+                "useContextIntent": "Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.",
+                "avoidances": "Must not appear stock-photo generic, overly posed/artificial, saccharine/cheesy, or staged. Avoid tokenistic diversity, sad/struggling children imagery, or focusing on devices/screens. Don't obscure children's faces with heavy text overlays. Cannot become so lifestyle-focused that educational mission gets lost. Keep identity mark subordinate to the human story."
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "SELECTED SEMANTIC DIRECTION is authoritative for creative realization (HOW). Generate from the structured choice object — not from UI labels, Option N, or selection indexes alone. It does not override DELIVERABLE COMPOSITION required elements, hierarchy, or required on-asset textPolicy.",
+          "semanticRole": "selected_direction_authority"
+        },
+        {
+          "type": "structured",
+          "name": "brand_context",
+          "semanticRole": "brand_context",
+          "data": {
+            "note": "SELECTED BRAND CONTEXT is authoritative for brand identity. Historical brand preferences are advisory when CURRENT USER INSTRUCTION intentionally overrides them for this turn. Does NOT replace CURRENT USER INSTRUCTION.",
+            "brandId": "6a98c471613dce5f8e5b8b9f",
+            "brandName": "Sunflower",
+            "facts": [
+              {
+                "key": "brandName",
+                "value": "Sunflower",
+                "provenance": "selected_brand"
+              },
+              {
+                "key": "brandColors",
+                "value": "blue, green, yellow, white, cream, #ffd700",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "brandTone",
+                "value": "Startup · 2–10 · 3, casual, premium, professional, minimal, friendly, playful, approachable, calm, warm, modern, youthful, confident, nurturing, optimistic, inclusive, trustworthy, child-first, supportive, clean, engaging, cheerful, welcoming, inviting, poetic, heartwarming, human-centered, authentic",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "brandSummary",
+                "value": "Sunflower is an educational brand helping school-going children develop mental well-being, emotional resilience, life skills and overall growth. The brand is centered around the concept of helping children learn, grow, connect, express and flourish. Tagline: \"Growing minds. Growing humans.\" The approach is supportive, inclusive, child-first, and focuses on education beyond academics.",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "positioning",
+                "value": "It is education platform for kids starting from classes 1 to 12",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "voice",
+                "value": "Startup · 2–10 · 3, casual, premium, professional, minimal, friendly, playful, approachable, calm, warm, modern, youthful, confident, nurturing, optimistic, inclusive, trustworthy, child-first, supportive, clean, engaging, cheerful, welcoming, inviting, poetic, heartwarming, human-centered, authentic",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "typography",
+                "value": "friendly typography, rounded cards, friendly, rounded, clean layouts, clean",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "photographyStyle",
+                "value": "not specified",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "illustrationStyle",
+                "value": "premium 2D cartoon illustration style with diverse, expressive school children, sunflower motifs, playful doodles, warm school/garden environments",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "targetAudience",
+                "value": "school-going students, schools, parents",
+                "provenance": "execution_metadata"
+              },
+              {
+                "key": "industry",
+                "value": "Education",
+                "provenance": "execution_metadata"
+              }
+            ],
+            "negatives": []
+          }
+        },
+        {
+          "type": "structured",
+          "name": "product_grounding",
+          "semanticRole": "product_grounding",
+          "data": {
+            "service": "social",
+            "subtype": "content-design",
+            "platform": "instagram",
+            "format": "feed-post",
+            "category": "instagram:feed-post"
+          }
+        },
+        {
+          "type": "structured",
+          "name": "approved_decisions",
+          "semanticRole": "approved_decisions",
+          "data": [
+            {
+              "phaseId": "platform",
+              "label": "Instagram"
+            },
+            {
+              "phaseId": "size-reference",
+              "label": "Use Platform Size"
+            }
+          ]
+        },
+        {
+          "type": "structured",
+          "name": "active_brief",
+          "semanticRole": "active_brief",
+          "data": {
+            "activeBriefId": "abr_mu1fznc2_4",
+            "activeBriefVersion": 3,
+            "note": "ActiveBrief requirements are represented in the REQUIREMENTS part"
+          }
+        },
+        {
+          "type": "structured",
+          "name": "cdf_context",
+          "semanticRole": "cdf_phase",
+          "data": {
+            "phaseId": "output",
+            "uxType": "visual",
+            "generationModality": "image",
+            "dependencies": [
+              "routes"
+            ],
+            "activeBriefId": "abr_mu1fznc2_4",
+            "activeBriefVersion": 3,
+            "sessionVersion": 4,
+            "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+            "serviceId": "social-media",
+            "contextId": "ctx_b5q62iyz_output_cd2351f1",
+            "contextHash": "ctx:cd2351f1",
+            "status": "ready",
+            "generationContextHash": "463ba92e"
+          }
+        },
+        {
+          "type": "structured",
+          "name": "upstream_artifact",
+          "semanticRole": "selected_reference",
+          "schema": "social-media.routes",
+          "version": "1",
+          "data": {
+            "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+            "version": 1,
+            "artifactKey": "social-media.routes",
+            "phaseId": "routes",
+            "role": "selected_reference",
+            "status": "selected",
+            "schemaVersion": "1",
+            "sessionRole": "selected",
+            "required": true,
+            "lineage": {
+              "parentArtifactId": null,
+              "parentVersion": null,
+              "sourceArtifacts": []
+            },
+            "artifactProjectionMode": "selected_only",
+            "projectedSelectedOnly": true,
+            "data": {
+              "schemaId": "unagency.social_media.routes.v1",
+              "platformRef": null,
+              "sizeReferenceRef": null,
+              "sourceRefs": {
+                "activeBriefId": "abr_mu1fznc2_4",
+                "activeBriefVersion": 1,
+                "contextId": "ctx_b5q62iyz_routes_060db74e",
+                "contextHash": "ctx:060db74e",
+                "executionId": "exec_14_1789402421619"
+              },
+              "routes": [
+                {
+                  "routeId": "route_03_a_day_in_the_sun",
+                  "name": "A Day in the Sun",
+                  "creativeIdea": "An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringing Sunflower's mission to life through authentic human moments rather than abstract concepts.",
+                  "visualTreatment": "Photographic or illustrated vignette style featuring children in natural, joyful learning moments. Golden hour lighting quality with sunshine yellows, calming blues, and fresh greens. Soft focus backgrounds with sharp, emotion-rich foreground subjects. Human-centered and heartwarming.",
+                  "headlineAngle": "\"Every child deserves to flourish\" — leading with the inclusive, child-first values that define Sunflower's approach while creating immediate emotional resonance with parent and educator audiences.",
+                  "rationale": "This direction answers the brief's call for aesthetic appeal and proper brand description by showing rather than telling — authentic moments of children thriving create emotional connection while the warm color treatment and sunlit quality reinforce brand colors and name. Most effective for building trust through relatability.",
+                  "visualCharacteristics": null,
+                  "communicationObjective": "Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.",
+                  "primaryMessage": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+                  "secondaryMessage": "Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.",
+                  "visualConcept": "One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.",
+                  "focalPoint": "The children's faces and expressions, particularly their eyes and genuine smiles, positioned in the upper-middle section of the frame. Natural eye contact or absorbed engagement draws viewers into the emotional moment and brand promise.",
+                  "composition": "Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.",
+                  "hierarchy": "1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.",
+                  "typographyDirection": "Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.",
+                  "supportingVisualElements": "Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.",
+                  "brandIntegration": "Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.",
+                  "identityMarkRole": "Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.",
+                  "audienceSignal": "Authentic child imagery immediately signals to parents 'this is for families like mine' while professional execution reassures schools of credibility. The inclusive, joyful tone attracts audiences seeking positive, affirming educational environments. Context: Instagram users respond strongly to genuine human emotion and relatable moments.",
+                  "useContextIntent": "Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.",
+                  "avoidances": "Must not appear stock-photo generic, overly posed/artificial, saccharine/cheesy, or staged. Avoid tokenistic diversity, sad/struggling children imagery, or focusing on devices/screens. Don't obscure children's faces with heavy text overlays. Cannot become so lifestyle-focused that educational mission gets lost. Keep identity mark subordinate to the human story."
+                }
+              ],
+              "generationProjection": {
+                "mode": "selected_only",
+                "choiceArrayKey": "routes",
+                "selectedIndex": 2,
+                "siblingChoiceCount": 3,
+                "note": "Sibling choices omitted from provider generation projection; exact ArtifactVersion provenance remains on this upstream part."
+              }
+            }
+          }
+        },
+        {
+          "type": "structured",
+          "name": "output_contract",
+          "semanticRole": "output_contract",
+          "data": {
+            "instructions": [
+              "Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.",
+              "Generate ONLY the deliverable for CDF phase \"output\" (Creative).",
+              "Phase purpose: Here is your social creative based on the selected route:",
+              "Semantic role (uxType): visual",
+              "Execution strategy: canonical",
+              "Modality describes encoding — it does NOT redefine the phase task as generic visual composition.",
+              "Treat UPSTREAM ARTIFACT sections as authoritative structured sources.",
+              "Do not ignore or regenerate approved upstream content from scratch.",
+              "Do not invent facts that contradict REQUIREMENTS or UPSTREAM ARTIFACT data."
+            ],
+            "deliverableSemantics": "Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.",
+            "deliverableConcreteLabel": "Instagram Feed Post",
+            "deliverableSemanticsSource": "product_grounding_and_contract",
+            "canonicalFullDeck": false,
+            "phaseId": "output",
+            "artifactKey": "social-media.output",
+            "generationModality": "image",
+            "serviceId": "social-media"
+          }
+        },
+        {
+          "type": "structured",
+          "name": "output_requirements",
+          "semanticRole": "output_requirements",
+          "data": {
+            "deliverable": "Instagram Feed Post",
+            "kind": "image",
+            "modalities": [
+              "image",
+              "video"
+            ],
+            "mockupRole": "optional",
+            "lines": [
+              "Deliverable: Instagram Feed Post",
+              "Deliverable semantics: Create a finished Instagram Feed Post (Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.",
+              "Format: image",
+              "Modalities: image, video",
+              "Mockup role: optional",
+              "Primary output kind: image.",
+              "Mockup role: optional.",
+              "Create the actual production-ready deliverable — not a device, laptop, browser, business-card, signage, apparel, or presentation mockup of it."
+            ],
+            "promptBlock": "[Output requirements]\nDeliverable: Instagram Feed Post\nDeliverable semantics: Create a finished Instagram Feed Post (Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.\nFormat: image\nModalities: image, video\nMockup role: optional\nPrimary output kind: image.\nMockup role: optional.\nCreate the actual production-ready deliverable — not a device, laptop, browser, business-card, signage, apparel, or presentation mockup of it."
+          }
+        },
+        {
+          "type": "structured",
+          "name": "authority",
+          "semanticRole": "authority",
+          "data": {
+            "lines": [
+              "Canonical ArtifactVersion data above is authoritative for upstream content.",
+              "SELECTED SEMANTIC DIRECTION (when present) is the authoritative creative choice (HOW) — not UI labels, Option N, promptPreview, or route titles alone.",
+              "DELIVERABLE COMPOSITION (when present) defines required structural/communication elements (WHAT) — distinct from creative direction, production spec, and user instruction. Required composition properties outrank lower-authority creative preferences when they conflict.",
+              "BRAND CONTEXT (when present) is the authoritative selected brand — not app/product/organization names.",
+              "Do not treat truncated approval notes as the source of truth when UPSTREAM ARTIFACT Content is present.",
+              "CURRENT USER INSTRUCTION outranks Production Spec defaults when they conflict.",
+              "Production Spec is technical production constraint guidance — not a replacement for explicit user requirements, selected creative direction, or client brand identity.",
+              "Production Spec section titles and framework labels are NOT brand names/logos/wordmarks to render in the creative.",
+              "WORKING MEMORY is contextual conversational evidence only — it does not override CURRENT USER INSTRUCTION, REQUIREMENTS, APPROVED DECISIONS, RESOLVED REFERENCES, SELECTED SEMANTIC DIRECTION, DELIVERABLE COMPOSITION, or UPSTREAM ARTIFACTS.",
+              "MULTIMODAL CONTEXT is user/application attachment context — distinct from UPSTREAM ARTIFACTS (CDF ArtifactVersions). Extracted text is not the original file."
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "context": {
+    "requirements": [
+      {
+        "requirementId": "req_mu1fznbp_3",
+        "key": "brief.raw",
+        "displayValue": "Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now",
+        "category": "content",
+        "priority": "explicit_current_user_instruction",
+        "explicit": true,
+        "sourceInputId": "src_mu1fznbm_1"
+      },
+      {
+        "requirementId": "req_mu1fznbn_2",
+        "key": "platform",
+        "displayValue": "instagram",
+        "category": "platform",
+        "priority": "explicit_current_user_instruction",
+        "explicit": true,
+        "sourceInputId": "src_mu1fznbm_1"
+      }
+    ],
+    "constraints": [],
+    "exclusions": [],
+    "selections": [
+      {
+        "phaseId": "routes",
+        "label": "Choice 3",
+        "routeTitle": "A Day in the Sun",
+        "routeIndex": 2,
+        "semantic": "selection"
+      }
+    ],
+    "approvedDecisions": [
+      {
+        "phaseId": "platform",
+        "label": "Instagram",
+        "artifactId": null,
+        "executionId": null,
+        "note": "Preselected from product picker: Instagram",
+        "semantic": "approval"
+      },
+      {
+        "phaseId": "size-reference",
+        "label": "Use Platform Size",
+        "artifactId": null,
+        "executionId": null,
+        "note": "Preselected format from product picker: feed-post",
+        "semantic": "approval"
+      }
+    ],
+    "cdfPhase": {
+      "phaseId": "output",
+      "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+      "serviceId": "social-media",
+      "phaseContext": {
+        "phaseId": "output",
+        "serviceId": "social-media",
+        "name": "Creative",
+        "uxType": "visual",
+        "generationModality": "image",
+        "artifactType": "image",
+        "artifactKey": "social-media.output",
+        "implementationStatus": "active",
+        "dependencyPhaseIds": [
+          "routes"
+        ],
+        "allowNonVisualReady": false,
+        "selectionMode": "required_one",
+        "approvalMode": "required",
+        "refinementEnabled": true,
+        "refinementScopes": [
+          "artifact",
+          "phase"
+        ],
+        "entryMessage": "Here is your social creative based on the selected route:",
+        "description": "Here is your social creative based on the selected route:",
+        "executionStrategy": "canonical",
+        "outputLabel": "Social Media Creative"
+      }
+    },
+    "currentTask": {
+      "phaseId": "output",
+      "artifactKey": "social-media.output"
+    }
+  },
+  "outputContract": {
+    "name": "social-media.output",
+    "required": true,
+    "instructions": [
+      "Generate ONLY the deliverable for CDF phase \"output\" (Creative).",
+      "Phase purpose: Here is your social creative based on the selected route:",
+      "Semantic role (uxType): visual",
+      "Execution strategy: canonical",
+      "Modality describes encoding — it does NOT redefine the phase task as generic visual composition.",
+      "Treat UPSTREAM ARTIFACT sections as authoritative structured sources.",
+      "Do not ignore or regenerate approved upstream content from scratch.",
+      "Do not invent facts that contradict REQUIREMENTS or UPSTREAM ARTIFACT data."
+    ],
+    "phaseId": "output",
+    "artifactKey": "social-media.output",
+    "generationModality": "image",
+    "canonicalFullDeck": false,
+    "version": "1"
+  },
+  "metadata": {
+    "generationContextHash": "463ba92e",
+    "cdfSessionId": "cdf_mu1fz0gn_b5q62iyz",
+    "cdfPhaseId": "output",
+    "serviceId": "social-media",
+    "source": "cdf_canonical_generation",
+    "productionSpecPresent": true,
+    "outputRequirementsPresent": true,
+    "deliverableCompositionPresent": true,
+    "referenceResolutionApplied": false,
+    "resolvedReferenceCount": 0,
+    "unresolvedReferenceCount": 0,
+    "ambiguousReferenceCount": 0,
+    "workingMemoryApplied": false,
+    "workingMemoryItemCount": 0,
+    "workingMemoryCharacterCount": 0,
+    "workingMemoryTruncated": false,
+    "multimodalContextApplied": true,
+    "multimodalItemCount": 1,
+    "multimodalImageCount": 1,
+    "multimodalDocumentCount": 0,
+    "multimodalUnsupportedCount": 0,
+    "multimodalExtractedTextCount": 0,
+    "messageCount": 2,
+    "contentPartCount": 19,
+    "structuredPartCount": 16
+  },
+  "multimodalProviderDeliveries": [
+    {
+      "itemId": "asset:6a98cb217bc20263f64311aa",
+      "assetId": "6a98cb217bc20263f64311aa",
+      "attachmentId": null,
+      "mimeType": "image/jpeg",
+      "filename": "Branding & Logo · Logo design (JPG)",
+      "url": "data:image/jpeg;base64,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",
+      "storageRef": "tenant/6a89ff83ae22a3d696a169e6/assets/6a98cb217bc20263f64311aa/branding-logo-logo-design-jpg-art_syncimg_-1788398368866-0lj7fj.jpg"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ import {
   UpdateInternalUser,
   UpdateUser,
   UpdateTourCompletion,
+  DeleteInternalUser,
 } from "../controllers/users.controller";
 import { fileUpload } from "../middlewares/multers3.middleware";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
@@ -81,6 +82,12 @@ router.get(
   "/enable-user/:firebaseID",
   VerifyRole(["admin", "superadmin"]),
   EnableUser
+);
+//Desc: Super admin permanently deletes an internal team user.
+router.delete(
+  "/delete-user/:id",
+  VerifyRole(["superadmin"]),
+  DeleteInternalUser
 );
 //Desc: It is used in Chat Module of Messaging for User role. NOTE: TAPI
 router.get("/:id", FetchUserById);

@@ -11,6 +11,22 @@ import { recoverWebProjectPlan, recoverWebsiteRoutesPlan, webProjectToLegacyPage
 
 const MAX_TEXT = 8_000;
 
+const NON_WEBSITE_EXPORT_KINDS = new Set(["document", "presentation", "email"]);
+
+/** Document / deck / email exports carry an HTML preview but are never websites. */
+export function isNonWebsiteExportKind(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    NON_WEBSITE_EXPORT_KINDS.has(value.trim().toLowerCase())
+  );
+}
+
+function recordExportKind(value: unknown): unknown {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>).exportKind
+    : undefined;
+}
+
 export function buildExecutionResultPayload(input: {
   readonly status: ExecutionApiStatus;
   readonly jobSummary?: Readonly<Record<string, unknown>>;
@@ -34,6 +50,7 @@ export function buildExecutionResultPayload(input: {
   }
 
   const structured =
+    jobSummary?.structuredEmissionData ??
     jobSummary?.structuredData ??
     runtimeOutput?.structured ??
     runtimeOutput?.structuredOutput ??
@@ -41,18 +58,42 @@ export function buildExecutionResultPayload(input: {
       ? runtimeOutput.data
       : undefined);
 
-  const websiteRoutes = recoverWebsiteRoutesPlan(structured);
-  const websiteProject =
-    websiteRoutes?.[0] ??
-    recoverWebProjectPlan(structured) ??
-    recoverWebProjectPlan(
-      typeof jobSummary?.resultText === "string" ? jobSummary.resultText : undefined
-    ) ??
-    recoverWebProjectPlan(pickText(runtimeOutput));
+  // Canonical CDF structured emissions (ApprovalDoc, sitemap, etc.) must never
+  // be rewritten via website recovery — recoverWebProjectPlan invents html-static
+  // from title/summary prose and destroys schemaId / sections[].id.
+  const preserveCanonicalStructured =
+    looksLikeCanonicalStructuredEmission(structured) ||
+    looksLikeCanonicalStructuredContractName(
+      jobSummary?.structuredContractName ??
+        jobSummary?.outputContractName ??
+        runtimeOutput?.structuredOutputName,
+    ) ||
+    isNonWebsiteExportKind(jobSummary?.documentExportKind) ||
+    isNonWebsiteExportKind(recordExportKind(structured));
+
+  const websiteRoutes = preserveCanonicalStructured
+    ? undefined
+    : recoverWebsiteRoutesPlan(structured);
+  const websiteProject = preserveCanonicalStructured
+    ? undefined
+    : websiteRoutes?.[0] ??
+      recoverWebProjectPlan(structured) ??
+      recoverWebProjectPlan(
+        typeof jobSummary?.resultText === "string"
+          ? jobSummary.resultText
+          : undefined,
+      ) ??
+      recoverWebProjectPlan(pickText(runtimeOutput));
 
   // Only promote to website when recovery found a real project — LaunchPlan
-  // {title,summary,steps} must stay as structured creative routes.
-  if (websiteProject && !looksLikeLaunchPlan(structured)) {
+  // {title,summary,steps} and CDF text_choice {routes with creativeIdea/...}
+  // must stay as structured creative routes.
+  if (
+    websiteProject &&
+    !looksLikeLaunchPlan(structured) &&
+    !looksLikeTextChoiceRoutes(structured) &&
+    !preserveCanonicalStructured
+  ) {
     const extra =
       structured && typeof structured === "object"
         ? (structured as Record<string, unknown>)
@@ -137,17 +178,26 @@ export function mergeExportArtifactsIntoResult(input: {
     typeof input.jobSummary?.documentExportKind === "string"
       ? input.jobSummary.documentExportKind
       : undefined;
-  const plan =
-    input.jobSummary?.structuredData != null &&
-    typeof input.jobSummary.structuredData === "object"
-      ? (input.jobSummary.structuredData as Record<string, unknown>)
+  const exportPlan =
+    input.jobSummary?.documentExportPlan != null &&
+    typeof input.jobSummary.documentExportPlan === "object"
+      ? (input.jobSummary.documentExportPlan as Record<string, unknown>)
       : null;
+  const authoritativeStructured =
+    input.jobSummary?.structuredEmissionData != null &&
+    typeof input.jobSummary.structuredEmissionData === "object"
+      ? (input.jobSummary.structuredEmissionData as Record<string, unknown>)
+      : input.jobSummary?.structuredData != null &&
+          typeof input.jobSummary.structuredData === "object"
+        ? (input.jobSummary.structuredData as Record<string, unknown>)
+        : null;
 
-  if (exportKind && plan) {
+  if (exportKind && (exportPlan || authoritativeStructured)) {
     return {
       kind: "structured",
       data: {
-        ...plan,
+        ...(authoritativeStructured ?? {}),
+        ...(exportPlan ?? {}),
         exportKind,
         downloadFormats:
           exportKind === "document"
@@ -220,6 +270,14 @@ export function stampWebsiteExportPreview(input: {
     (id) => typeof id === "string" && id.trim().length > 0,
   );
   if (ids.length === 0) return undefined;
+  if (
+    isNonWebsiteExportKind(input.jobSummary?.documentExportKind) ||
+    (input.result.kind === "structured" &&
+      isNonWebsiteExportKind(recordExportKind(input.result.data))) ||
+    isNonWebsiteExportKind(recordExportKind(input.jobSummary?.structuredData))
+  ) {
+    return undefined;
+  }
 
   const structured = input.jobSummary?.structuredData;
   const routes = recoverWebsiteRoutesPlan(structured);
@@ -301,6 +359,59 @@ function looksLikeLaunchPlan(data: unknown): boolean {
   if (typeof d.html === "string" && d.html.trim()) return false;
   if (typeof d.stack === "string" && d.stack.trim()) return false;
   return true;
+}
+
+/**
+ * Canonical CDF structured emission identity — never rewrite as WebProject.
+ * Generic: any payload with schemaId, or ApprovalDoc-shaped sections with ids.
+ */
+function looksLikeCanonicalStructuredEmission(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  if (typeof d.schemaId === "string" && d.schemaId.trim()) return true;
+  if (!Array.isArray(d.sections) || d.sections.length === 0) return false;
+  if (Array.isArray(d.files) && d.files.length > 0) return false;
+  if (typeof d.html === "string" && d.html.trim()) return false;
+  if (typeof d.stack === "string" && d.stack.trim()) return false;
+  return d.sections.some((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const row = item as Record<string, unknown>;
+    return typeof row.id === "string" && row.id.trim().length > 0;
+  });
+}
+
+function looksLikeCanonicalStructuredContractName(name: unknown): boolean {
+  if (typeof name !== "string" || !name.trim()) return false;
+  const n = name.trim().toLowerCase();
+  return (
+    n.startsWith("cdf") ||
+    n.includes("structuredapproval") ||
+    n === "cdfstructuredapprovaldoc"
+  );
+}
+
+/**
+ * CDF text_choice route cards (social / packaging / etc.) — never rewrite as WebProject.
+ * Contract-driven shape: routes[] with creative route fields, no website files/html/stack.
+ */
+function looksLikeTextChoiceRoutes(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  if (!Array.isArray(d.routes) || d.routes.length === 0) return false;
+  if (Array.isArray(d.files) && d.files.length > 0) return false;
+  if (typeof d.html === "string" && d.html.trim()) return false;
+  if (typeof d.stack === "string" && d.stack.trim()) return false;
+  return d.routes.some((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const r = item as Record<string, unknown>;
+    return (
+      typeof r.creativeIdea === "string" ||
+      typeof r.visualTreatment === "string" ||
+      typeof r.headlineAngle === "string" ||
+      typeof r.idea === "string" ||
+      typeof r.rationale === "string"
+    );
+  });
 }
 
 function pickText(

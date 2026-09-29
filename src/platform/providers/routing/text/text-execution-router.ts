@@ -97,10 +97,15 @@ export class TextExecutionRouter {
 
     const failoverChain: { providerId: string; modelId: string }[] = [];
     const seen = new Set<string>([`${selected.providerId}::${selected.modelId}`]);
+    const seenProviders = new Set<string>([selected.providerId]);
     for (const step of preferences) {
       const key = `${step.providerId}::${step.modelId}`;
       if (seen.has(key)) continue;
+      // Prefer vendor diversity — two Anthropic models must not consume the
+      // Direct text failover budget before Gemini/DeepSeek (website CDF).
+      if (seenProviders.has(step.providerId)) continue;
       seen.add(key);
+      seenProviders.add(step.providerId);
       failoverChain.push({ providerId: step.providerId, modelId: step.modelId });
     }
 

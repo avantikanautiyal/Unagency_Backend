@@ -29,10 +29,19 @@ export async function bootAccountingPlatform(options?: {
 
   if (options?.seedPricing !== false && useMongo) {
     if (mongoose.connection.readyState === 1) {
-      const existing = await AIModelPricingModel.countDocuments();
-      if (existing === 0) {
+      const seedVersion = "seed-v2";
+      const hasCurrentSeed = await AIModelPricingModel.countDocuments({
+        pricingVersion: seedVersion,
+      });
+      if (hasCurrentSeed === 0) {
         const now = new Date().toISOString();
         const records = buildPricingRecordsFromSeed(now);
+        await AIModelPricingModel.updateMany(
+          { pricingVersion: { $ne: seedVersion }, active: true },
+          { $set: { active: false, updatedAt: now } }
+        ).catch(() => {
+          /* non-fatal */
+        });
         await AIModelPricingModel.insertMany(records, { ordered: false }).catch(() => {
           /* ignore duplicate seed races */
         });

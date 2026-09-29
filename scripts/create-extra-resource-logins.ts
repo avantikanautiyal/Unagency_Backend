@@ -34,15 +34,6 @@ const EXTRA_RESOURCES = [
     minTaskCapacity: 1,
     maxTaskCapacity: 7,
   },
-  {
-    email: DEMO_USERS.resource4,
-    name: "Designer — Web",
-    designation: "Web Designer",
-    experience: 6,
-    specialization: ["UI/UX", "Website", "Web Tech"],
-    minTaskCapacity: 1,
-    maxTaskCapacity: 9,
-  },
 ] as const;
 
 async function ensureFirebaseUser(email: string, password: string, name: string) {

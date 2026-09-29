@@ -12,6 +12,9 @@ export interface InputAssetReference {
   readonly organizationId?: string;
   readonly workspaceId?: string;
   readonly mimeType?: string;
+  /** Canonical why-attached role (identity_mark, style_reference, …). */
+  readonly semanticReferenceRole?: string;
+  readonly referenceInputType?: string;
 }
 
 export function extractInputAssets(

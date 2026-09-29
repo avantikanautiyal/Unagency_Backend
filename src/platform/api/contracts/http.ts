@@ -77,4 +77,9 @@ export interface RouteDefinition {
   readonly permissions: readonly Permission[];
   readonly rateLimitKey?: string;
   readonly deprecated?: boolean;
+  /**
+   * Declared accounting class for gateway rate limiting.
+   * Defaults to USER_REQUEST when omitted.
+   */
+  readonly rateLimitAccountingClass?: import("../../execution-reliability/execution-outcome").RateLimitAccountingClass;
 }

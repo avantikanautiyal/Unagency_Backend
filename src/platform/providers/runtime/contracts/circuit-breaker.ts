@@ -18,6 +18,13 @@ export interface CircuitBreakerState {
   readonly successCount: number;
   readonly lastTransitionAt: string;
   readonly openedAt?: string;
+  /** Epoch ms when the circuit opened — used for cooldownRemaining. */
+  readonly openedAtMs?: number;
+  readonly failureThreshold?: number;
+  readonly successThreshold?: number;
+  readonly resetTimeoutMs?: number;
+  readonly lastFailureAt?: string;
+  readonly lastFailureCategory?: string;
 }
 
 export interface CircuitBreakerConfig {

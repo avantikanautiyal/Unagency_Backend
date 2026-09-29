@@ -3,8 +3,12 @@
  * Direct tool runtime enters the concepts → full-deck expansion gate.
  */
 
-import { PRESENTATION_ROUTE_CONCEPTS_SCHEMA } from "../os/delivery/presentation-schemas";
+import {
+  PRESENTATION_ROUTE_CONCEPTS_SCHEMA,
+  PRESENTATION_ROUTES_STRUCTURED_SCHEMA,
+} from "../os/delivery/presentation-schemas";
 import { shouldOmitCdfStructuredStamp } from "../cdf/phase-scoped-create";
+import { isCanonicalStructuredPhaseMetadata } from "../cdf/structured-output-contract";
 
 function structuredNameFrom(meta: Readonly<Record<string, unknown>>): string {
   const so = meta.structuredOutput;
@@ -38,11 +42,25 @@ const PRESENTATION_CONCEPTS_STRUCTURED_OUTPUT = {
   strict: true,
 } as const;
 
+const PRESENTATION_ROUTES_STRUCTURED_OUTPUT = {
+  name: "PresentationRoutes",
+  schema: PRESENTATION_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
+    string,
+    unknown
+  >,
+  strict: true,
+} as const;
+
 /** True when this create must run PresentationRouteConcepts → full deck expand. */
 export function isPresentationDirectCreate(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): boolean {
   if (!metadata) return false;
+  // Phase 2 canonical full-deck: not the legacy concepts→routes create.
+  if (metadata.cdfOmitConceptsExpansion === true) return false;
+  if (metadata.cdfCanonicalFullDeck === true) return false;
+  // Canonical structured CDF phases use phase artifact schemas — never concepts→deck.
+  if (isCanonicalStructuredPhaseMetadata(metadata)) return false;
   const service = String(metadata.service ?? "").toLowerCase();
   const subtype = String(metadata.subtype ?? "").toLowerCase();
   const outputKind = String(metadata.outputKind ?? "").toLowerCase();
@@ -75,8 +93,23 @@ export function stampPresentationCreateMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> {
   const meta: Record<string, unknown> = { ...(metadata ?? {}) };
-  if (!isPresentationDirectCreate(meta)) return meta;
   if (shouldOmitCdfStructuredStamp(meta)) return meta;
+  // Sealed CDF authority: never rewrite outputKind; phase contract stamps SO.
+  if (meta.cdfExecutionAuthorityApplied === true) return meta;
+
+  // Phase 2: canonical full-deck stamps PresentationRoutes directly (no concepts).
+  if (
+    meta.cdfOmitConceptsExpansion === true ||
+    meta.cdfCanonicalFullDeck === true
+  ) {
+    meta.outputKind = "presentation";
+    meta.presentationExpandMode = "canonical";
+    meta.deliverableRequired = true;
+    meta.structuredOutput = { ...PRESENTATION_ROUTES_STRUCTURED_OUTPUT };
+    return meta;
+  }
+
+  if (!isPresentationDirectCreate(meta)) return meta;
 
   const subtype =
     typeof meta.subtype === "string" ? meta.subtype.trim().toLowerCase() : "";

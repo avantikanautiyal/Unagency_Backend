@@ -10,6 +10,8 @@ import {
   normalizeOpenAiUsage,
   normalizeAnthropicUsage,
   normalizeGeminiUsage,
+  normalizeDeepSeekUsage,
+  normalizeFromCanonicalUsage,
   normalizeImageUsage,
   normalizeVideoUsage,
   normalizeAudioUsage,
@@ -89,6 +91,71 @@ describe("accounting", () => {
     expect(usage.cachedInputTokens).toBe(50);
   });
 
+  it("normalizes Anthropic canonical promptTokens into billable input", () => {
+    const usage = normalizeFromCanonicalUsage(
+      { promptTokens: 1200, completionTokens: 400, totalTokens: 1600 },
+      "provider.anthropic",
+      "text.generate"
+    );
+    expect(usage.inputTokens).toBe(1200);
+    expect(usage.outputTokens).toBe(400);
+    expect(usage.providerReportedCostUsd).toBeNull();
+  });
+
+  it("normalizes DeepSeek cache hit/miss tokens", () => {
+    const usage = normalizeDeepSeekUsage({
+      prompt_tokens: 10000,
+      prompt_cache_hit_tokens: 8000,
+      prompt_cache_miss_tokens: 2000,
+      completion_tokens: 500,
+    });
+    expect(usage.inputTokens).toBe(2000);
+    expect(usage.cachedInputTokens).toBe(8000);
+    expect(usage.outputTokens).toBe(500);
+  });
+
+  it("uses xAI cost_in_usd_ticks as exact provider-reported cost", () => {
+    const usage = normalizeFromCanonicalUsage(
+      {
+        promptTokens: 199,
+        completionTokens: 1,
+        totalTokens: 200,
+        costInUsdTicks: 37_756_000,
+      },
+      "provider.xai",
+      "text.generate"
+    );
+    expect(usage.providerReportedCostUsd).toBe("0.003775");
+    const calculator = new CostCalculator(pricing);
+    const result = calculator.calculate({
+      providerId: "provider.xai",
+      modelId: "grok-4",
+      capabilityId: "text.generate",
+      asOf: now,
+      usage,
+    });
+    expect(result.costStatus).toBe(AI_COST_STATUS.CALCULATED);
+    expect(result.estimatedTotalCostUsd).toBe("0.003775");
+  });
+
+  it("calculates Anthropic cost from canonical usage (fixes ₹0 runs)", () => {
+    const calculator = new CostCalculator(pricing);
+    const usage = normalizeFromCanonicalUsage(
+      { promptTokens: 1_000_000, completionTokens: 0 },
+      "provider.anthropic",
+      "text.generate"
+    );
+    const result = calculator.calculate({
+      providerId: "provider.anthropic",
+      modelId: "claude-sonnet-4-5",
+      capabilityId: "text.generate",
+      asOf: now,
+      usage,
+    });
+    expect(result.costStatus).toBe(AI_COST_STATUS.CALCULATED);
+    expect(result.estimatedTotalCostUsd).toBe("3");
+  });
+
   it("normalizes Gemini usageMetadata fields", () => {
     const usage = normalizeGeminiUsage({
       usageMetadata: {
@@ -137,7 +204,7 @@ describe("accounting", () => {
     });
     expect(result.costStatus).toBe(AI_COST_STATUS.CALCULATED);
     expect(Number(result.estimatedTotalCostUsd)).toBeGreaterThan(0);
-    expect(result.pricingVersion).toBe("seed-v1");
+    expect(result.pricingVersion).toBe("seed-v2");
   });
 
   it("uses pricing effective at invocation time (version safety)", () => {
@@ -191,6 +258,7 @@ describe("accounting", () => {
         reasoningTokens: null,
         totalTokens: null,
         otherUnits: [],
+        providerReportedCostUsd: null,
         providerRequestId: null,
         rawProviderUsage: null,
       },

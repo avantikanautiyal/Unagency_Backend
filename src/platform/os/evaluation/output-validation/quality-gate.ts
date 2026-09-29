@@ -19,6 +19,12 @@ export type QualityGatePolicy = {
   readonly allowNeedsRevision: boolean;
   /** Minimum overall quality score for PASS (0-100). */
   readonly minQualityScore: number;
+  /**
+   * When true: deliverable materialization already established the product
+   * (e.g. website ZIP/HTML). Observational UNVERIFIED / NOT_AUTOMATED /
+   * quality-below must not erase completion. Hard FAIL still blocks.
+   */
+  readonly materializationCompletionAuthority?: boolean;
 };
 
 export const DEFAULT_QUALITY_GATE_POLICY: QualityGatePolicy = Object.freeze({
@@ -26,6 +32,15 @@ export const DEFAULT_QUALITY_GATE_POLICY: QualityGatePolicy = Object.freeze({
   allowNeedsRevision: true,
   minQualityScore: 70,
 });
+
+/** Policy when ZIP/HTML (or equivalent) materialization already succeeded. */
+export const MATERIALIZED_DELIVERABLE_QUALITY_GATE_POLICY: QualityGatePolicy =
+  Object.freeze({
+    blockOnUnverifiedMandatory: false,
+    allowNeedsRevision: true,
+    minQualityScore: 70,
+    materializationCompletionAuthority: true,
+  });
 
 export function summarizeHardRequirements(
   requirements: readonly RequirementValidationResult[],
@@ -71,6 +86,17 @@ export function summarizeQualityDimensions(
   const totalWeight = dimensions.reduce((s, d) => s + d.weight, 0) || 1;
   const weightedSum = dimensions.reduce((s, d) => s + d.weightedContribution, 0);
   const overallScore = Math.round(weightedSum / totalWeight);
+  const measured = dimensions.filter(
+    (d) => d.status === "PASS" || d.status === "FAIL",
+  );
+  const measuredWeight = measured.reduce((s, d) => s + d.weight, 0);
+  const measuredScore =
+    measured.length > 0 && measuredWeight > 0
+      ? Math.round(
+          measured.reduce((s, d) => s + d.weightedContribution, 0) /
+            measuredWeight,
+        )
+      : null;
 
   const belowThresholdIds = dimensions
     .filter((d) => d.status === "FAIL" || (d.status === "PASS" && d.score < d.threshold))
@@ -90,6 +116,7 @@ export function summarizeQualityDimensions(
     evaluated,
     unverified,
     overallScore,
+    measuredScore,
     thresholdMet,
     belowThresholdIds: Object.freeze(belowThresholdIds),
   });
@@ -149,17 +176,53 @@ export function applyQualityGate(input: {
     );
     if (blockingUnverified.length > 0 || blockingNotAutomated.length > 0) {
       const ids = [...blockingUnverified, ...blockingNotAutomated].map((r) => r.requirementId);
+      // Policy still withholds completion, but nothing was measured as failing:
+      // report UNVERIFIED, never a quality FAIL.
       return Object.freeze({
-        status: "FAIL" as const,
+        status: "UNVERIFIED" as const,
         completionAllowed: false,
         reason: `Mandatory requirement(s) unverified/not automated: ${ids.join(", ")}`,
       });
     }
   }
 
+  // Quality verdicts come from measured dimensions only. Unmeasured
+  // (UNVERIFIED / NOT_AUTOMATED) dimensions are a verification gap, not a
+  // low score.
   const qualityBelow =
-    qualitySummary.overallScore < policy.minQualityScore ||
-    !qualitySummary.thresholdMet;
+    !qualitySummary.thresholdMet ||
+    (qualitySummary.measuredScore != null &&
+      qualitySummary.measuredScore < policy.minQualityScore);
+  const qualityUnverified =
+    !qualityBelow &&
+    qualitySummary.unverified > 0 &&
+    qualitySummary.overallScore < policy.minQualityScore;
+
+  // Materialization authority: quality plane is observational — do not RETRY
+  // a successfully materialized deliverable for score / unverified automation.
+  if (policy.materializationCompletionAuthority === true) {
+    if (qualityBelow) {
+      return Object.freeze({
+        status: "PASS" as const,
+        completionAllowed: true,
+        reason: `Materialization succeeded; quality score ${qualitySummary.overallScore} observational (threshold ${policy.minQualityScore})`,
+      });
+    }
+    return Object.freeze({
+      status: "PASS" as const,
+      completionAllowed: true,
+      reason:
+        "Materialization succeeded; mandatory hard failures absent (observational checks non-blocking)",
+    });
+  }
+
+  if (qualityUnverified) {
+    return Object.freeze({
+      status: "UNVERIFIED" as const,
+      completionAllowed: true,
+      reason: `Quality not measurable: ${qualitySummary.unverified} dimension(s) unverified/not automated (measured score ${qualitySummary.measuredScore ?? "n/a"})`,
+    });
+  }
 
   if (qualityBelow && policy.allowNeedsRevision) {
     return Object.freeze({
@@ -186,10 +249,22 @@ export function applyQualityGate(input: {
 
 export function gateStatusToEvaluationOutcome(
   status: ValidationGateStatus,
-): "PASS" | "PASS_WITH_WARNINGS" | "RETRY_REQUIRED" | "BLOCKED" {
+  /** Gate completion decision — policy may withhold completion when unverified. */
+  completionAllowed?: boolean,
+):
+  | "PASS"
+  | "PASS_WITH_WARNINGS"
+  | "HUMAN_REVIEW_REQUIRED"
+  | "RETRY_REQUIRED"
+  | "BLOCKED" {
   switch (status) {
     case "PASS":
       return "PASS";
+    case "UNVERIFIED":
+      // Declared policy withholding completion (or unknown) stays fail-closed;
+      // when completion is allowed, could-not-verify ≠ must regenerate — a
+      // human decides.
+      return completionAllowed === true ? "HUMAN_REVIEW_REQUIRED" : "RETRY_REQUIRED";
     case "NEEDS_REVISION":
       return "RETRY_REQUIRED";
     case "FAIL":

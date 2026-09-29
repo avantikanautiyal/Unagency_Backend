@@ -30,6 +30,8 @@ import { ensureProviderPromptHasProductionSpec } from "../../config/format-produ
 /** Soft-path marker — delivery auth must not treat these as Spec PASS. */
 export const BEST_EFFORT_VISUAL_PRODUCTION_ELIGIBLE = false as const;
 
+const MAX_PROVIDER_ATTEMPTS = 3;
+
 export type VisualImageBytes = {
   readonly base64: string;
   readonly mimeType: string;
@@ -205,8 +207,25 @@ export async function generateBestEffortVisualImage(input: {
       }
     }
 
-    const entry = registry.resolveAvailable(asProviderId(providerId));
-    if (!entry?.dispatcher) {
+    // Primary route first, then failover providers — one exhausted/over-quota
+    // provider must not leave every slide without a visual.
+    const attempts: { providerId: string; modelId: string }[] = [];
+    const seenProviders = new Set<string>();
+    for (const step of [{ providerId, modelId }, ...routed.value.failoverChain]) {
+      if (attempts.length >= MAX_PROVIDER_ATTEMPTS) break;
+      if (seenProviders.has(step.providerId)) continue;
+      if (
+        hasReferenceLogo &&
+        step.providerId !== providerId &&
+        !capabilityProfileForProvider(step.providerId)?.supportsReferenceImage
+      ) {
+        continue;
+      }
+      if (!registry.resolveAvailable(asProviderId(step.providerId))?.dispatcher) continue;
+      seenProviders.add(step.providerId);
+      attempts.push({ providerId: step.providerId, modelId: step.modelId });
+    }
+    if (attempts.length === 0) {
       console.warn(
         `[best-effort-visual] no executable dispatcher for ${providerId}`
       );
@@ -229,59 +248,63 @@ export async function generateBestEffortVisualImage(input: {
           }
         : {};
 
-    const request: ProviderExecutionRequest = {
-      requestId: createId("visimg"),
-      context: {
-        executionId: asExecutionId(executionId),
-        organizationId: asOrganizationId(organizationId),
-        workspaceId: asWorkspaceId(workspaceId),
-        providerId: asProviderId(providerId),
-        correlationId: executionId,
-      },
-      capabilityId: asCapabilityId("image.generate"),
-      providerId: asProviderId(providerId),
-      modelId,
-      payload: { prompt, ...referencePayload },
-      retryPolicy: { strategy: "none", maxAttempts: 1, baseDelayMs: 0 },
-      timeoutPolicy: { executionTimeoutMs: 90_000 },
-      streaming: false,
-      priority: 0,
-      createdAt: nowIso(),
-    };
+    for (const attempt of attempts) {
+      const entry = registry.resolveAvailable(asProviderId(attempt.providerId));
+      if (!entry?.dispatcher) continue;
+      const request: ProviderExecutionRequest = {
+        requestId: createId("visimg"),
+        context: {
+          executionId: asExecutionId(executionId),
+          organizationId: asOrganizationId(organizationId),
+          workspaceId: asWorkspaceId(workspaceId),
+          providerId: asProviderId(attempt.providerId),
+          correlationId: executionId,
+        },
+        capabilityId: asCapabilityId("image.generate"),
+        providerId: asProviderId(attempt.providerId),
+        modelId: attempt.modelId,
+        payload: { prompt, ...referencePayload },
+        retryPolicy: { strategy: "none", maxAttempts: 1, baseDelayMs: 0 },
+        timeoutPolicy: { executionTimeoutMs: 90_000 },
+        streaming: false,
+        priority: 0,
+        createdAt: nowIso(),
+      };
 
-    const dispatched = await entry.dispatcher.dispatch(
-      request,
-      UNCANCELLED_TOKEN
-    );
-    if (!dispatched.ok) {
-      console.warn(
-        `[best-effort-visual] dispatch failed: ${dispatched.error.message}`
+      const dispatched = await entry.dispatcher.dispatch(
+        request,
+        UNCANCELLED_TOKEN
       );
-      return undefined;
+      if (!dispatched.ok) {
+        console.warn(
+          `[best-effort-visual] dispatch failed (${attempt.providerId}): ${dispatched.error.message}`
+        );
+        continue;
+      }
+
+      const first = listImageMediaOutputs(dispatched.value.output)[0];
+      if (!first) continue;
+
+      const fromField =
+        typeof first.base64 === "string" && first.base64.trim()
+          ? first.base64.trim()
+          : undefined;
+      const fromDataUrl =
+        typeof first.url === "string" ? extractBase64FromDataUrl(first.url) : undefined;
+      const base64 = fromField ?? fromDataUrl;
+      if (!base64) {
+        // HTTPS URL without bytes — skip (PPTX needs embedded data)
+        console.warn("[best-effort-visual] image had URL only, no base64 — skipped");
+        continue;
+      }
+
+      return {
+        base64,
+        mimeType: first.mimeType?.trim() || "image/png",
+        productionReleaseEligible: BEST_EFFORT_VISUAL_PRODUCTION_ELIGIBLE,
+      };
     }
-
-    const images = listImageMediaOutputs(dispatched.value.output);
-    const first = images[0];
-    if (!first) return undefined;
-
-    const fromField =
-      typeof first.base64 === "string" && first.base64.trim()
-        ? first.base64.trim()
-        : undefined;
-    const fromDataUrl =
-      typeof first.url === "string" ? extractBase64FromDataUrl(first.url) : undefined;
-    const base64 = fromField ?? fromDataUrl;
-    if (!base64) {
-      // HTTPS URL without bytes — skip (PPTX needs embedded data)
-      console.warn("[best-effort-visual] image had URL only, no base64 — skipped");
-      return undefined;
-    }
-
-    return {
-      base64,
-      mimeType: first.mimeType?.trim() || "image/png",
-      productionReleaseEligible: BEST_EFFORT_VISUAL_PRODUCTION_ELIGIBLE,
-    };
+    return undefined;
   } catch (err) {
     console.warn(
       `[best-effort-visual] unexpected error: ${

@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import MediaFile from "../models/mediaFile.model";
 import type { KnowledgeResolveResult } from "../platform/os/creative/knowledge-resolver";
 import type { BrandContextAssetRef } from "../platform/os/creative/brand-context-packet";
+import { selectDefaultLogoCandidate } from "./default-logo-selection";
 
 const LOGO_FOLDERS = new Set(["logos", "logo-versions"]);
 
@@ -16,12 +17,16 @@ export type VaultLogoCandidate = {
   readonly folder?: string;
   readonly approvalStatus: string;
   readonly updatedAt?: string;
+  readonly mimeType?: string;
+  readonly tags?: readonly string[];
 };
 
 export type BrandVaultLogoResolution = {
   readonly candidates: readonly VaultLogoCandidate[];
   readonly selectedAssetId?: string;
   readonly needsChoice: boolean;
+  /** True when selectedAssetId is the primary-PNG default among 2+ logos. */
+  readonly defaulted?: boolean;
 };
 
 function metadataString(
@@ -83,6 +88,8 @@ function toCandidate(doc: {
   approvalStatus?: string | null;
   updatedAt?: Date | null;
   uploadedAt?: Date | null;
+  mimeType?: string | null;
+  tags?: string[] | null;
 }): VaultLogoCandidate {
   const updated = doc.updatedAt ?? doc.uploadedAt;
   return {
@@ -91,6 +98,8 @@ function toCandidate(doc: {
     folder: doc.folder ? String(doc.folder) : undefined,
     approvalStatus: String(doc.approvalStatus ?? "none"),
     updatedAt: updated ? new Date(updated).toISOString() : undefined,
+    mimeType: doc.mimeType ? String(doc.mimeType) : undefined,
+    tags: doc.tags?.map(String),
   };
 }
 
@@ -153,6 +162,7 @@ export async function resolveBrandVaultLogos(input: {
   readonly brandId: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly profileLogoAssetId?: string;
+  readonly brief?: string;
 }): Promise<BrandVaultLogoResolution> {
   const explicitChoice = metadataString(input.metadata, "vaultLogoChoice");
   if (explicitChoice) {
@@ -226,7 +236,14 @@ export async function resolveBrandVaultLogos(input: {
     };
   }
 
-  // Multiple logos always require explicit user selection — do not
-  // auto-pick a single approved mark when other vault logos exist.
+  const picked = selectDefaultLogoCandidate(candidates, input.brief);
+  if (picked.candidate) {
+    return {
+      candidates,
+      selectedAssetId: picked.candidate.assetId,
+      needsChoice: false,
+      defaulted: true,
+    };
+  }
   return { candidates, needsChoice: true };
 }

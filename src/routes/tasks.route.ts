@@ -6,6 +6,7 @@ import {
   TaskListForResource,
   UpdateTask,
   getTaskById,
+  ClientReviewTask,
 } from "../controllers/tasks.controller";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 import { fileUpload } from "../middlewares/multers3.middleware";
@@ -17,6 +18,13 @@ router.post("/", VerifyRole(["servicing"]), fileUpload.array("files", 10), Creat
 router.get("/", VerifyRole(["servicing", "resource", "admin", "superadmin"]), TaskList);
 // desc : its allows a resource to fetch its 1 week task to use it in a kanbanboard
 router.get("/kanban", VerifyRole(["resource"]), TaskListForResource);
+
+// Client reviews a CS-shared draft (approve → Admin QC, or request changes)
+router.post(
+  "/client-review/:taskId",
+  VerifyRole(["customer"]),
+  ClientReviewTask
+);
 
 // its allows a servecing and resoruce to fetch there task in the chat
 router.get("/:userId", VerifyRole(["servicing", "resource", "admin", "superadmin"]), TaskListByUserId);
@@ -32,7 +40,7 @@ router.put(
 // get task by id
 router.get(
   "/task-by-id/:id",
-  VerifyRole(["servicing", "resource", "admin", "superadmin"]),
+  VerifyRole(["servicing", "resource", "admin", "superadmin", "customer"]),
   getTaskById
 );
 

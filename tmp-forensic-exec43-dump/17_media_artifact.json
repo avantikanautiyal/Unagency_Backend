@@ -1,0 +1,13 @@
+[
+  {
+    "_id": "6aa81dc9fd9d412b0259c8d8",
+    "artifactId": "art_syncimg_53_1789402565789_0",
+    "__v": 0,
+    "createdAt": "2026-09-14T16:16:09.244Z",
+    "executionId": "exec_43_1789402538385",
+    "kind": "media",
+    "label": "blob:tenant/6a89ff83ae22a3d696a169e6/executions/exec_43_1789402538385/artifacts/art_syncimg_53_1789402565789_0/output-0.png",
+    "organizationId": "6a89ff83ae22a3d696a169e6",
+    "updatedAt": "2026-09-14T16:16:09.244Z"
+  }
+]

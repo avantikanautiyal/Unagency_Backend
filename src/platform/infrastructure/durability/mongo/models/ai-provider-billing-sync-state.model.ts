@@ -5,6 +5,8 @@ export interface ProviderBillingSyncStateDoc {
   readonly providerAccount: string | null;
   readonly lastSuccessfulSyncAt: string | null;
   readonly providerDataThrough: string | null;
+  /** Earliest instant covered by a successful provider cost sync. */
+  readonly providerDataFrom: string | null;
   readonly syncStatus: string;
   readonly syncError: string | null;
   readonly updatedAt: string;
@@ -16,6 +18,7 @@ const providerBillingSyncStateSchema = new Schema(
     providerAccount: { type: String, default: null },
     lastSuccessfulSyncAt: String,
     providerDataThrough: String,
+    providerDataFrom: String,
     syncStatus: { type: String, required: true, index: true },
     syncError: String,
     updatedAt: { type: String, required: true },

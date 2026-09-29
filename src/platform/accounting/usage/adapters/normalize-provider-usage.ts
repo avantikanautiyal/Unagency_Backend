@@ -1,9 +1,14 @@
 /**
  * Provider usage normalization adapters.
+ *
+ * Maps each vendor's response usage shape onto NormalizedAIUsage using the
+ * field names documented by that provider (Anthropic input_tokens, Gemini
+ * usageMetadata, DeepSeek cache hit/miss, xAI cost_in_usd_ticks, etc.).
  */
 
 import type { NormalizedAIUsage, NormalizedUsageUnit } from "../../contracts/ai-usage";
 import { PRICING_UNIT } from "../../contracts/enums";
+import { usdTicksToUsdString } from "../../money/usd-money";
 
 function num(value: unknown): number | null {
   if (value == null) return null;
@@ -17,11 +22,27 @@ function str(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Keep usage metrics (incl. *_tokens / cost ticks) for audit/recalc.
+ * Only strip secrets and free-text payloads.
+ */
 function sanitizeRawUsage(raw: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
   if (!raw) return null;
   const safe: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
-    if (/key|token|secret|password|authorization|prompt|content|message/i.test(key)) {
+    const k = key.toLowerCase();
+    if (/(?:^|[_-])(secret|password|authorization|credential|bearer|api[_-]?key)(?:$|[_-])/i.test(k)) {
+      continue;
+    }
+    if (
+      k === "prompt" ||
+      k === "content" ||
+      k === "message" ||
+      k === "messages" ||
+      k === "input" ||
+      k === "output" ||
+      k === "system"
+    ) {
       continue;
     }
     safe[key] = value;
@@ -29,10 +50,27 @@ function sanitizeRawUsage(raw: Record<string, unknown> | null | undefined): Reco
   return Object.keys(safe).length > 0 ? safe : null;
 }
 
+function extractProviderReportedCostUsd(raw: Record<string, unknown>): string | null {
+  const ticks = raw.cost_in_usd_ticks ?? raw.costInUsdTicks;
+  const fromTicks = usdTicksToUsdString(ticks as number | string | bigint | null | undefined);
+  if (fromTicks != null) return fromTicks;
+
+  const direct =
+    raw.cost_usd ??
+    raw.costUsd ??
+    raw.provider_cost_usd ??
+    raw.providerReportedCostUsd;
+  if (direct == null) return null;
+  const n = Number(direct);
+  return Number.isFinite(n) && n >= 0 ? String(n) : null;
+}
+
 function baseUsage(
   raw: Record<string, unknown> | null | undefined,
   fields: Partial<NormalizedAIUsage>
 ): NormalizedAIUsage {
+  const providerReportedCostUsd =
+    fields.providerReportedCostUsd ?? (raw ? extractProviderReportedCostUsd(raw) : null);
   return {
     inputTokens: fields.inputTokens ?? null,
     outputTokens: fields.outputTokens ?? null,
@@ -41,6 +79,7 @@ function baseUsage(
     reasoningTokens: fields.reasoningTokens ?? null,
     totalTokens: fields.totalTokens ?? null,
     otherUnits: fields.otherUnits ?? [],
+    providerReportedCostUsd,
     providerRequestId: fields.providerRequestId ?? null,
     rawProviderUsage: sanitizeRawUsage(raw),
   };
@@ -51,13 +90,22 @@ export function normalizeOpenAiUsage(
   providerRequestId?: string | null
 ): NormalizedAIUsage {
   const raw = usage ?? {};
-  const prompt = num(raw.prompt_tokens ?? raw.input_tokens);
-  const completion = num(raw.completion_tokens ?? raw.output_tokens);
-  const total = num(raw.total_tokens);
+  const prompt = num(raw.prompt_tokens ?? raw.input_tokens ?? raw.promptTokens ?? raw.inputTokens);
+  const completion = num(
+    raw.completion_tokens ?? raw.output_tokens ?? raw.completionTokens ?? raw.outputTokens
+  );
+  const total = num(raw.total_tokens ?? raw.totalTokens);
   const details = (raw.prompt_tokens_details as Record<string, unknown>) ?? {};
   const completionDetails = (raw.completion_tokens_details as Record<string, unknown>) ?? {};
-  const cached = num(details.cached_tokens ?? raw.cached_tokens);
-  const reasoning = num(completionDetails.reasoning_tokens ?? raw.reasoning_tokens);
+  const cached = num(
+    details.cached_tokens ??
+      raw.cached_tokens ??
+      raw.cachedTokens ??
+      raw.prompt_cache_hit_tokens
+  );
+  const reasoning = num(
+    completionDetails.reasoning_tokens ?? raw.reasoning_tokens ?? raw.reasoningTokens
+  );
 
   return baseUsage(raw, {
     inputTokens: prompt,
@@ -74,10 +122,16 @@ export function normalizeAnthropicUsage(
   providerRequestId?: string | null
 ): NormalizedAIUsage {
   const raw = usage ?? {};
-  const input = num(raw.input_tokens);
-  const output = num(raw.output_tokens);
-  const cacheRead = num(raw.cache_read_input_tokens);
-  const cacheCreate = num(raw.cache_creation_input_tokens);
+  // Anthropic Messages API: input_tokens / output_tokens.
+  // Canonical ledger path often carries promptTokens / completionTokens.
+  const input = num(
+    raw.input_tokens ?? raw.inputTokens ?? raw.prompt_tokens ?? raw.promptTokens
+  );
+  const output = num(
+    raw.output_tokens ?? raw.outputTokens ?? raw.completion_tokens ?? raw.completionTokens
+  );
+  const cacheRead = num(raw.cache_read_input_tokens ?? raw.cacheReadInputTokens);
+  const cacheCreate = num(raw.cache_creation_input_tokens ?? raw.cacheCreationInputTokens);
 
   return baseUsage(raw, {
     inputTokens: input,
@@ -94,15 +148,71 @@ export function normalizeGeminiUsage(
 ): NormalizedAIUsage {
   const raw = usage ?? {};
   const metadata = (raw.usageMetadata as Record<string, unknown>) ?? raw;
-  const prompt = num(metadata.promptTokenCount ?? metadata.prompt_tokens);
-  const completion = num(metadata.candidatesTokenCount ?? metadata.completion_tokens);
-  const cached = num(metadata.cachedContentTokenCount);
-  const total = num(metadata.totalTokenCount ?? metadata.total_tokens);
+  const prompt = num(
+    metadata.promptTokenCount ??
+      metadata.prompt_tokens ??
+      metadata.promptTokens ??
+      raw.promptTokens ??
+      raw.prompt_tokens
+  );
+  const completion = num(
+    metadata.candidatesTokenCount ??
+      metadata.completion_tokens ??
+      metadata.completionTokens ??
+      raw.completionTokens ??
+      raw.completion_tokens
+  );
+  const cached = num(metadata.cachedContentTokenCount ?? metadata.cached_tokens ?? raw.cachedTokens);
+  const reasoning = num(
+    metadata.thoughtsTokenCount ?? metadata.reasoning_tokens ?? raw.reasoningTokens
+  );
+  const total = num(metadata.totalTokenCount ?? metadata.total_tokens ?? raw.totalTokens);
 
   return baseUsage(raw, {
     inputTokens: prompt,
     outputTokens: completion,
     cachedInputTokens: cached,
+    reasoningTokens: reasoning,
+    totalTokens: total,
+    providerRequestId: providerRequestId ?? null,
+  });
+}
+
+/**
+ * DeepSeek bills cache-hit and cache-miss input separately
+ * (prompt_cache_hit_tokens / prompt_cache_miss_tokens).
+ * See https://api-docs.deepseek.com/guides/kv_cache/
+ */
+export function normalizeDeepSeekUsage(
+  usage: Record<string, unknown> | null | undefined,
+  providerRequestId?: string | null
+): NormalizedAIUsage {
+  const raw = usage ?? {};
+  const cacheHit = num(raw.prompt_cache_hit_tokens ?? raw.promptCacheHitTokens);
+  const cacheMiss = num(raw.prompt_cache_miss_tokens ?? raw.promptCacheMissTokens);
+  const prompt = num(raw.prompt_tokens ?? raw.promptTokens ?? raw.input_tokens);
+  const completion = num(
+    raw.completion_tokens ?? raw.completionTokens ?? raw.output_tokens ?? raw.outputTokens
+  );
+  const reasoning = num(
+    (raw.completion_tokens_details as Record<string, unknown> | undefined)?.reasoning_tokens ??
+      raw.reasoning_tokens ??
+      raw.reasoningTokens
+  );
+  const total = num(raw.total_tokens ?? raw.totalTokens);
+
+  const inputTokens =
+    cacheMiss != null
+      ? cacheMiss
+      : cacheHit != null && prompt != null
+        ? Math.max(0, prompt - cacheHit)
+        : prompt;
+
+  return baseUsage(raw, {
+    inputTokens,
+    outputTokens: completion,
+    cachedInputTokens: cacheHit,
+    reasoningTokens: reasoning,
     totalTokens: total,
     providerRequestId: providerRequestId ?? null,
   });
@@ -224,6 +334,9 @@ export function normalizeProviderUsage(input: {
   if (provider.includes("gemini") || provider.includes("google")) {
     return normalizeGeminiUsage(usage, providerRequestId);
   }
+  if (provider.includes("deepseek")) {
+    return normalizeDeepSeekUsage(usage, providerRequestId);
+  }
 
   return normalizeCompatTextUsage(usage, providerRequestId);
 }
@@ -235,13 +348,23 @@ export function normalizeFromCanonicalUsage(
   providerRequestId?: string | null
 ): NormalizedAIUsage {
   const raw = usage ?? {};
+  // Flatten canonical camelCase + vendor snake_case so every normalizer can read either.
   const mapped: Record<string, unknown> = {
     ...raw,
-    prompt_tokens: raw.promptTokens ?? raw.prompt_tokens,
-    completion_tokens: raw.completionTokens ?? raw.completion_tokens,
+    prompt_tokens: raw.promptTokens ?? raw.prompt_tokens ?? raw.input_tokens ?? raw.inputTokens,
+    completion_tokens:
+      raw.completionTokens ?? raw.completion_tokens ?? raw.output_tokens ?? raw.outputTokens,
+    input_tokens: raw.input_tokens ?? raw.inputTokens ?? raw.promptTokens ?? raw.prompt_tokens,
+    output_tokens: raw.output_tokens ?? raw.outputTokens ?? raw.completionTokens ?? raw.completion_tokens,
     total_tokens: raw.totalTokens ?? raw.total_tokens,
     reasoning_tokens: raw.reasoningTokens ?? raw.reasoning_tokens,
     cached_tokens: raw.cachedTokens ?? raw.cached_tokens,
+    prompt_cache_hit_tokens: raw.promptCacheHitTokens ?? raw.prompt_cache_hit_tokens,
+    prompt_cache_miss_tokens: raw.promptCacheMissTokens ?? raw.prompt_cache_miss_tokens,
+    cache_read_input_tokens: raw.cacheReadInputTokens ?? raw.cache_read_input_tokens,
+    cache_creation_input_tokens: raw.cacheCreationInputTokens ?? raw.cache_creation_input_tokens,
+    cost_in_usd_ticks: raw.costInUsdTicks ?? raw.cost_in_usd_ticks,
+    cost_usd: raw.costUsd ?? raw.cost_usd,
     characters: raw.characters,
     transcriptionSeconds: raw.transcriptionSeconds,
     images: raw.images,

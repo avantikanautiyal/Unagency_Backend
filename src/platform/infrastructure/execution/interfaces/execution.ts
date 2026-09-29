@@ -90,8 +90,18 @@ export interface IQueueBackend {
   list(): readonly JobId[];
 }
 
+/**
+ * Cooperative signal for an in-flight job execution.
+ * ownershipLost is set when durable lease ownership is no longer held by
+ * the executing worker — callers must not treat the run as authoritative.
+ */
+export type JobExecutionSignal = {
+  cancelled: boolean;
+  ownershipLost?: boolean;
+};
+
 export interface IJobExecutor {
-  execute(job: ExecutionJob, signal: { cancelled: boolean }): Promise<
+  execute(job: ExecutionJob, signal: JobExecutionSignal): Promise<
     Result<{
       summary: Readonly<Record<string, unknown>>;
       currentProvider?: string;

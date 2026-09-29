@@ -11,6 +11,11 @@ export interface CreateExecutionRequest {
   readonly providerId?: string;
   /** Routed model — required for async video when set by routing / client. */
   readonly modelId?: string;
+  /**
+   * How `providerId` binds: "preferred" (default) allows declared failover to
+   * another provider; "required" forbids provider substitution.
+   */
+  readonly providerPinPolicy?: "preferred" | "required";
   readonly organizationId: string;
   readonly workspaceId?: string;
   readonly projectId?: string;

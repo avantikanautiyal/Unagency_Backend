@@ -13,6 +13,30 @@ import { OUTPUT_VALIDATION_VERSION } from "../validation-result";
 
 const EVALUATOR_VERSION = `semantic.${OUTPUT_VALIDATION_VERSION}`;
 
+/** Output kinds whose deliverable is media, not text. */
+const MEDIA_OUTPUT_KINDS = new Set([
+  "image",
+  "image_mockup",
+  "image_3d_mockup",
+  "edited_image",
+  "video",
+  "animation",
+]);
+
+const PROXY_EVIDENCE =
+  "text preview is not the media deliverable — semantic evaluation requires visual evaluator or human review";
+
+/**
+ * Evidence basis: for a media deliverable the text preview (provider text
+ * part / placeholder) is a proxy, never the deliverable. Text heuristics must
+ * not measure it as PASS/FAIL.
+ */
+export function previewIsMediaProxy(ctx: ValidationArtifactContext): boolean {
+  const kind = String(ctx.outputKind ?? "").trim().toLowerCase();
+  if (kind) return MEDIA_OUTPUT_KINDS.has(kind);
+  return ctx.mediaArtifactIds.length > 0 && ctx.structuredData == null;
+}
+
 function reqResult(
   req: ContractRequirement,
   status: RequirementValidationResult["status"],
@@ -73,6 +97,10 @@ export function validateSemanticRequirement(
     return reqResult(req, "FAIL", 0, "empty", ["cannot evaluate semantics on empty output"]);
   }
 
+  if (previewIsMediaProxy(ctx)) {
+    return reqResult(req, "UNVERIFIED", undefined, undefined, [PROXY_EVIDENCE]);
+  }
+
   if (hasPlaceholderContent(ctx)) {
     return reqResult(req, "FAIL", 20, "placeholder", ["placeholder content detected"]);
   }
@@ -114,7 +142,9 @@ export function evaluateSemanticQualityDimension(
   let status: QualityDimensionValidationResult["status"] = "UNVERIFIED";
   const evidence: string[] = [];
 
-  if (dim.id.includes("brief") || dim.id.includes("relevance") || dim.id.includes("adherence")) {
+  if (previewIsMediaProxy(ctx)) {
+    evidence.push(PROXY_EVIDENCE);
+  } else if (dim.id.includes("brief") || dim.id.includes("relevance") || dim.id.includes("adherence")) {
     const rel = scoreBriefRelevance(ctx.preview, briefObjective);
     score = rel.score;
     evidence.push(...rel.evidence);

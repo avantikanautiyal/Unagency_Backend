@@ -766,6 +766,7 @@ describe("financial integrity audit", () => {
           reasoningTokens: null,
           totalTokens: null,
           otherUnits: [{ unit: PRICING_UNIT.VIDEO_SECOND, quantity: 5 }],
+          providerReportedCostUsd: null,
           providerRequestId: null,
           rawProviderUsage: null,
         },

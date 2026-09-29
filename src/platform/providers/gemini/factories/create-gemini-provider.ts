@@ -57,6 +57,7 @@ import {
   extractInputAssets,
   validateInputAssetTenancy,
 } from "../../common/input-asset-validator";
+import { extractResponseFormatJsonSchema } from "../../tools/structured/canonical-structured-contract-envelope";
 
 function canonicalToWire(modelId: string): string {
   if (modelId.includes("/")) {
@@ -117,7 +118,15 @@ function mapRequest(request: ProviderAdapterRequest, wireModelId: string): Provi
           : undefined;
 
   const generationConfig: Record<string, unknown> = {};
-  if (wantJson) generationConfig.responseMimeType = "application/json";
+  const structuredSchema = extractResponseFormatJsonSchema(
+    request.input as Record<string, unknown>,
+  );
+  if (wantJson || structuredSchema) {
+    generationConfig.responseMimeType = "application/json";
+  }
+  if (structuredSchema) {
+    generationConfig.responseJsonSchema = structuredSchema.json_schema.schema;
+  }
   if (typeof maxOutputTokens === "number" && maxOutputTokens > 0) {
     generationConfig.maxOutputTokens = Math.min(Math.floor(maxOutputTokens), 8192);
   }
@@ -161,6 +170,12 @@ function mapResponse(
       completionTokens:
         typeof usage.candidatesTokenCount === "number" ? usage.candidatesTokenCount : undefined,
       totalTokens: typeof usage.totalTokenCount === "number" ? usage.totalTokenCount : undefined,
+      reasoningTokens:
+        typeof usage.thoughtsTokenCount === "number" ? usage.thoughtsTokenCount : undefined,
+      cachedTokens:
+        typeof usage.cachedContentTokenCount === "number"
+          ? usage.cachedContentTokenCount
+          : undefined,
     }),
     latencyMs,
     warnings: [],

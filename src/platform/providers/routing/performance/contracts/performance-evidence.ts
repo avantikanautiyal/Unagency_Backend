@@ -20,6 +20,16 @@ export type PerformanceFailureCategory =
   | "authentication"
   | "configuration"
   | "infrastructure"
+  /** Model returned JSON that failed the structured contract — not a provider outage. */
+  | "structured_output_invalid"
+  /** Post-dispatch contract / schema validation failure (alias family of structured_output_invalid). */
+  | "contract_validation_failure"
+  /** Transport / DNS / connection failure before an HTTP status is available. */
+  | "network"
+  /** Generic client HTTP 4xx (when not auth / rate_limit / invalid_request). */
+  | "http_4xx"
+  /** Generic server HTTP 5xx (maps closely to provider_internal). */
+  | "http_5xx"
   | "unknown"
   | "none";
 

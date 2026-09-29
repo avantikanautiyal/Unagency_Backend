@@ -219,3 +219,35 @@ export async function buildAdminAiCostsForUsageRecord(usageRecordId: string) {
   if (!record) return null;
   return { usageRecord: record };
 }
+
+/**
+ * Pull delayed org-level cost reports from providers that expose Admin billing APIs
+ * (OpenAI Costs API, Anthropic Cost Report). Requires admin API keys in env.
+ */
+export async function syncAdminProviderBilling(input?: {
+  readonly start?: string;
+  readonly end?: string;
+  readonly days?: number;
+}) {
+  const { getProviderBillingSyncService } = await import(
+    "../../accounting/reconciliation/provider-billing-sync-service"
+  );
+  const end = input?.end ? new Date(input.end) : new Date();
+  const start = input?.start
+    ? new Date(input.start)
+    : new Date(end.getTime() - Math.max(1, Math.min(input?.days ?? 31, 180)) * 86_400_000);
+  const startTimeSec = Math.floor(start.getTime() / 1000);
+  const endTimeSec = Math.floor(end.getTime() / 1000);
+  const results = await getProviderBillingSyncService().syncConfiguredProviders({
+    startTimeSec,
+    endTimeSec,
+  });
+  const { invalidateAdminCache } = await import("./admin-metrics-cache");
+  invalidateAdminCache();
+  return {
+    period: { start: start.toISOString(), end: end.toISOString() },
+    results,
+    note:
+      "Platform-wide admin AI cost uses these provider cost reports for synced providers (daily UTC buckets, may lag a few minutes). Providers without a cost API remain metered estimates.",
+  };
+}

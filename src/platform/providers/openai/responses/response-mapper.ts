@@ -237,10 +237,18 @@ export function mapOpenAIResponseToCanonical(
     output: Object.freeze(output),
     finishReason: mapFinishReason(finish),
     usage: Object.freeze({
-      promptTokens: numberOrUndef(usage.prompt_tokens),
-      completionTokens: numberOrUndef(usage.completion_tokens),
+      promptTokens: numberOrUndef(usage.prompt_tokens ?? usage.input_tokens),
+      completionTokens: numberOrUndef(usage.completion_tokens ?? usage.output_tokens),
       totalTokens: numberOrUndef(usage.total_tokens),
       reasoningTokens: numberOrUndef(details.reasoning_tokens),
+      cachedTokens: numberOrUndef(
+        (usage.prompt_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ??
+          usage.cached_tokens
+      ),
+      promptCacheHitTokens: numberOrUndef(usage.prompt_cache_hit_tokens),
+      promptCacheMissTokens: numberOrUndef(usage.prompt_cache_miss_tokens),
+      costInUsdTicks: numberOrUndef(usage.cost_in_usd_ticks),
+      costUsd: numberOrUndef(usage.cost_usd),
       ...(normalizeImageUsage(raw) ?? {}),
     }),
     latencyMs,

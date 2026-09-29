@@ -211,6 +211,7 @@ export async function ensureBrandLogoInExecutionMetadata(input: {
     brandId,
     metadata: input.metadata,
     profileLogoAssetId: profileContext.logoAssetId,
+    brief: input.brief,
   });
 
   const vaultCandidates: AuthoritativeLogoCandidate[] = vault.candidates.map(
@@ -224,8 +225,13 @@ export async function ensureBrandLogoInExecutionMetadata(input: {
   );
 
   const resolution = resolveAuthoritativeLogo({
-    vaultCandidates,
+    vaultCandidates: vaultCandidates.map((candidate, index) => ({
+      ...candidate,
+      mimeType: vault.candidates[index]?.mimeType,
+      tags: vault.candidates[index]?.tags,
+    })),
     attachmentLogoAssetIds: attachmentLogoIds,
+    brief: input.brief,
   });
 
   if (resolution.mode === "NEEDS_SELECTION" && resolution.candidates?.length) {

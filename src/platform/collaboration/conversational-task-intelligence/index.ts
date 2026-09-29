@@ -102,6 +102,7 @@ export {
   resolveDeliverables,
   serviceSupportsDeliverable,
   defaultDeliverablesForService,
+  deliverableToOutputKindOverride,
 } from "./deliverable-resolver";
 export type { DeliverableResolutionResult } from "./deliverable-resolver";
 
@@ -172,6 +173,8 @@ export {
   hardConstraintBlockPresent,
   leafConstraintPresent,
   logForensicImageConstraintAudit,
+  observeImageConstraintPlanes,
+  detectLabeledConstraintSectionsInPrompt,
   negativeConstraintBlockFromHandoff,
   negativeConstraintBlockFromMetadata,
   promptFingerprint,

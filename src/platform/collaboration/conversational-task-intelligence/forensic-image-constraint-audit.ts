@@ -139,6 +139,165 @@ export function buildForensicRequirementRecords(
   );
 }
 
+/**
+ * Contract-driven observation of constraint/requirement planes for image audits.
+ *
+ * ExecutionSpec negative/hard constraints are NOT the same surface as CMR
+ * requirements / constraints / output_requirements sections. Forensic counts
+ * that only read ExecutionSpec must not be interpreted as "CMR had no
+ * authoritative requirements."
+ */
+export type ImageConstraintObservationPlanes = Readonly<{
+  /** CTI ExecutionSpec creative.negativeConstraints (legacy forensic counts). */
+  executionSpec: Readonly<{
+    negativeConstraintCount: number;
+    hardConstraintCount: number;
+    present: boolean;
+  }>;
+  /** CDF Canonical Model Request section presence (metadata stamps / sections). */
+  canonicalModelRequest: Readonly<{
+    requirementsPresent: boolean;
+    constraintsPresent: boolean;
+    outputRequirementsPresent: boolean;
+    productionSpecPresent: boolean;
+    outputContractPresent: boolean;
+  }>;
+  /** Labeled prompt projection markers after CMR flatten / append. */
+  promptProjection: Readonly<{
+    labeledSectionsPresent: readonly string[];
+    hardConstraintBlockPresent: boolean;
+    /** Lexical heuristic only — not ExecutionSpec hard-constraint proof. */
+    leafTokenPresent: boolean;
+  }>;
+  /**
+   * A | B | C | D | E classification for empty ExecutionSpec counts when CMR
+   * sections are present.
+   */
+  emptyExecutionSpecInterpretation: Readonly<{
+    code:
+      | "execution_spec_constraints_present"
+      | "execution_spec_constraints_absent"
+      | "cmr_present_execution_spec_absent"
+      | "prompt_has_labeled_requirements_without_execution_spec";
+    detail: string;
+  }>;
+}>;
+
+const LABELED_SECTION_MARKERS: ReadonlyArray<{
+  readonly id: string;
+  readonly re: RegExp;
+}> = [
+  { id: "REQUIREMENTS", re: /(?:^|\n)\s*REQUIREMENTS\s*(?:\n|:)/i },
+  { id: "CONSTRAINTS", re: /(?:^|\n)\s*CONSTRAINTS\s*(?:\n|:)/i },
+  { id: "OUTPUT_REQUIREMENTS", re: /\[Output requirements\]|(?:^|\n)\s*OUTPUT REQUIREMENTS\s*(?:\n|:)/i },
+  { id: "PRODUCTION_SPEC", re: /(?:^|\n)\s*PRODUCTION SPEC\s*(?:\n|:)/i },
+  { id: "OUTPUT_CONTRACT", re: /(?:^|\n)\s*OUTPUT CONTRACT\s*(?:\n|:)/i },
+  {
+    id: "NEGATIVE_CONSTRAINT_BLOCK",
+    re: /\[User requirements — negative constraints\]/i,
+  },
+];
+
+export function detectLabeledConstraintSectionsInPrompt(
+  prompt: string,
+): readonly string[] {
+  const found: string[] = [];
+  for (const marker of LABELED_SECTION_MARKERS) {
+    if (marker.re.test(prompt)) found.push(marker.id);
+  }
+  return Object.freeze(found);
+}
+
+export function observeImageConstraintPlanes(input: {
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly spec?: CanonicalExecutionSpecification;
+  readonly prompt?: string;
+}): ImageConstraintObservationPlanes {
+  const spec =
+    input.spec ??
+    readExecutionSpecFromMetadata(input.metadata) ??
+    readExecutionSpecSnapshot(input.metadata)?.spec;
+  const requirements = buildForensicRequirementRecords(spec);
+  const negativeCount = spec?.creative.negativeConstraints?.length ?? 0;
+  const hardCount = requirements.length;
+
+  const sections =
+    input.metadata &&
+    typeof input.metadata.cdfCanonicalSectionsPresent === "object" &&
+    input.metadata.cdfCanonicalSectionsPresent &&
+    !Array.isArray(input.metadata.cdfCanonicalSectionsPresent)
+      ? (input.metadata.cdfCanonicalSectionsPresent as Record<string, unknown>)
+      : undefined;
+
+  const sectionTrue = (key: string): boolean => sections?.[key] === true;
+
+  const cmr = Object.freeze({
+    requirementsPresent:
+      sectionTrue("requirements") ||
+      input.metadata?.cdfCanonicalRequirementsPresent === true,
+    constraintsPresent: sectionTrue("constraints"),
+    outputRequirementsPresent:
+      sectionTrue("outputRequirements") ||
+      input.metadata?.cdfCanonicalOutputRequirementsPresent === true,
+    productionSpecPresent:
+      sectionTrue("productionSpec") ||
+      input.metadata?.cdfCanonicalProductionSpecPresent === true,
+    outputContractPresent: sectionTrue("outputContract"),
+  });
+
+  const prompt = typeof input.prompt === "string" ? input.prompt : "";
+  const labeled = detectLabeledConstraintSectionsInPrompt(prompt);
+  const promptProjection = Object.freeze({
+    labeledSectionsPresent: labeled,
+    hardConstraintBlockPresent: hardConstraintBlockPresent(prompt),
+    leafTokenPresent: leafConstraintPresent(prompt),
+  });
+
+  const cmrAuthoritativePresent =
+    cmr.requirementsPresent ||
+    cmr.constraintsPresent ||
+    cmr.outputRequirementsPresent ||
+    cmr.productionSpecPresent ||
+    cmr.outputContractPresent;
+
+  let emptyExecutionSpecInterpretation: ImageConstraintObservationPlanes["emptyExecutionSpecInterpretation"];
+  if (negativeCount > 0 || hardCount > 0) {
+    emptyExecutionSpecInterpretation = Object.freeze({
+      code: "execution_spec_constraints_present",
+      detail: "ExecutionSpec negative/hard constraints are present",
+    });
+  } else if (cmrAuthoritativePresent && labeled.length > 0) {
+    emptyExecutionSpecInterpretation = Object.freeze({
+      code: "prompt_has_labeled_requirements_without_execution_spec",
+      detail:
+        "CMR requirement/output surfaces were projected into the labeled prompt; ExecutionSpec negativeConstraints remain empty (not a projection loss)",
+    });
+  } else if (cmrAuthoritativePresent) {
+    emptyExecutionSpecInterpretation = Object.freeze({
+      code: "cmr_present_execution_spec_absent",
+      detail:
+        "CMR reports requirements/outputRequirements present; forensic ExecutionSpec counts are a different plane and may be zero without implying CMR loss",
+    });
+  } else {
+    emptyExecutionSpecInterpretation = Object.freeze({
+      code: "execution_spec_constraints_absent",
+      detail:
+        "No ExecutionSpec negative/hard constraints and no CMR requirement/output section stamps observed",
+    });
+  }
+
+  return Object.freeze({
+    executionSpec: Object.freeze({
+      negativeConstraintCount: negativeCount,
+      hardConstraintCount: hardCount,
+      present: negativeCount > 0 || hardCount > 0,
+    }),
+    canonicalModelRequest: cmr,
+    promptProjection,
+    emptyExecutionSpecInterpretation,
+  });
+}
+
 function contentsHaveInlineImage(body: Readonly<Record<string, unknown>>): boolean {
   const contents = body.contents;
   if (!Array.isArray(contents)) return false;
@@ -232,6 +391,11 @@ export function logForensicImageConstraintAudit(input: {
     input.prompt && spec
       ? resolveProviderPromptConstraintStatus({ prompt: input.prompt, spec })
       : undefined;
+  const planes = observeImageConstraintPlanes({
+    metadata: input.metadata,
+    spec,
+    prompt: input.prompt,
+  });
 
   const payload = Object.freeze({
     audit: "P4.9",
@@ -247,9 +411,11 @@ export function logForensicImageConstraintAudit(input: {
     ...(input.stage ? { stage: input.stage } : {}),
     ...(input.visualOperationKind ? { operation: input.visualOperationKind } : {}),
     planeVersion: spec?.planeVersion,
-    negativeConstraintCount: spec?.creative.negativeConstraints?.length ?? 0,
-    hardConstraintCount: requirements.length,
+    // Backward-compatible ExecutionSpec-only counts (do not reinterpret as CMR loss).
+    negativeConstraintCount: planes.executionSpec.negativeConstraintCount,
+    hardConstraintCount: planes.executionSpec.hardConstraintCount,
     requirements,
+    constraintPlanes: planes,
     ...(spec
       ? {
           hardConstraintFingerprint: requirementConstraintFingerprint(
@@ -261,7 +427,9 @@ export function logForensicImageConstraintAudit(input: {
       ? {
           promptFingerprint: promptFingerprint(input.prompt),
           hardConstraintPresent: hardConstraintBlockPresent(input.prompt),
+          // Lexical heuristic — not proof of ExecutionSpec hard constraints.
           leafConstraintPresent: leafConstraintPresent(input.prompt),
+          leafTokenHeuristicOnly: true,
         }
       : {}),
     ...(handoff ? { providerHandoff: handoff } : {}),

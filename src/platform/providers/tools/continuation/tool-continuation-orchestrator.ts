@@ -220,19 +220,21 @@ export class ToolContinuationOrchestrator {
             input.structuredOutput,
             recoverOpts
           );
+          const websiteSchema = [
+            "websitepage",
+            "webproject",
+            "websiteroutes",
+          ].includes((input.structuredOutput.name ?? "").toLowerCase());
           const truncatedByLength = isProviderOutputTruncated(output);
-          if (truncatedByLength && parsed.ok) {
+          // Truncation is a website completeness concern — do not void an otherwise
+          // contract-valid structured completion for non-website schemas.
+          if (truncatedByLength && parsed.ok && websiteSchema) {
             parsed = {
               ok: false,
               message:
                 "Website generation hit the output token limit (truncated).",
             };
           }
-          const websiteSchema = [
-            "websitepage",
-            "webproject",
-            "websiteroutes",
-          ].includes((input.structuredOutput.name ?? "").toLowerCase());
           const multiRoute =
             (input.structuredOutput.name ?? "").toLowerCase() ===
             "websiteroutes";
@@ -473,6 +475,17 @@ Each body must be at least 2 sentences.`.trim();
           }
           structuredOutputValid = parsed.ok;
           if (!parsed.ok) {
+            // eslint-disable-next-line no-console
+            console.info(
+              JSON.stringify({
+                scope: "provider.structured_output.validate",
+                event: "STRUCTURED_OUTPUT_INVALID",
+                schemaName: input.structuredOutput.name ?? null,
+                providerId: String(lastResult.finalProviderId ?? ""),
+                message: parsed.message,
+                requestId: lastResult.requestId,
+              })
+            );
             return success({
               providerResult: withToolMeta(
                 {
@@ -494,6 +507,7 @@ Each body must be at least 2 sentences.`.trim();
                   structuredOutputValid: false,
                   budgetExhausted,
                   sideEffectExecuted,
+                  // Invalid structured output may still failover to another provider.
                   blockProviderFailover: sideEffectExecuted,
                 }
               ),
@@ -511,6 +525,16 @@ Each body must be at least 2 sentences.`.trim();
               aggregatedUsage,
             });
           }
+          // eslint-disable-next-line no-console
+          console.info(
+            JSON.stringify({
+              scope: "provider.structured_output.validate",
+              event: "STRUCTURED_OUTPUT_VALID",
+              schemaName: input.structuredOutput.name ?? null,
+              providerId: String(lastResult.finalProviderId ?? ""),
+              requestId: lastResult.requestId,
+            })
+          );
           // Attach parsed structured output without leaking raw vendor shape.
           lastResult = {
             ...lastResult,
@@ -577,12 +601,22 @@ Each body must be at least 2 sentences.`.trim();
               string,
               unknown
             >;
+            // Fail-closed: require explicit valid flag + non-array object payload.
+            // Arrays against object schemas (e.g. CdfCreativeDirections) must not
+            // mark the attempt contract-valid or block provider failover.
+            const gatedStructured = gatedOutput.structured;
             structuredOutputValid =
-              gatedOutput.structuredOutputValid !== false &&
-              gatedOutput.structured != null;
+              gatedOutput.structuredOutputValid === true &&
+              gatedStructured != null &&
+              typeof gatedStructured === "object" &&
+              !Array.isArray(gatedStructured);
           }
         }
 
+        // Contract-valid structured completion is terminal — callers must not
+        // provider-failover after this result (same as side-effect safety).
+        const blockFailover =
+          sideEffectExecuted || structuredOutputValid === true;
         return success({
           providerResult: withToolMeta(lastResult, {
             modelRounds,
@@ -594,7 +628,7 @@ Each body must be at least 2 sentences.`.trim();
             structuredOutputValid,
             budgetExhausted,
             sideEffectExecuted,
-            blockProviderFailover: sideEffectExecuted,
+            blockProviderFailover: blockFailover,
           }),
           orchestration: {
             modelRounds,

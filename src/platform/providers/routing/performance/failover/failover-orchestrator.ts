@@ -370,6 +370,7 @@ export class FailoverOrchestrator {
       : classifyExecutionFailure({
           status: result.status,
           error: result.error,
+          httpStatus: result.error?.httpStatus,
         });
 
     const attempt: ProviderAttemptRecord = {
@@ -381,6 +382,7 @@ export class FailoverOrchestrator {
       success: result.success,
       failureCategory,
       latencyMs,
+      durationMs: latencyMs,
       startedAt,
       completedAt,
       status: result.status,
@@ -388,6 +390,8 @@ export class FailoverOrchestrator {
       errorMessage: result.error?.message
         ? result.error.message.slice(0, 240)
         : undefined,
+      httpStatus: result.error?.httpStatus,
+      providerErrorCode: result.error?.providerErrorCode,
       exploratory: exploratory || undefined,
     };
 

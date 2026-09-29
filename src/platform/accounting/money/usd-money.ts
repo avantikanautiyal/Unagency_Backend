@@ -61,3 +61,21 @@ export function roundUsd(amount: string | null): string | null {
   if (micro == null) return null;
   return microToUsdString(micro);
 }
+
+/**
+ * Convert xAI `cost_in_usd_ticks` to a USD decimal string.
+ * Official docs: 1 USD = 10^10 ticks → 1 micro-USD = 10^4 ticks.
+ */
+export function usdTicksToUsdString(ticks: number | string | bigint | null | undefined): string | null {
+  if (ticks == null) return null;
+  try {
+    const raw =
+      typeof ticks === "bigint"
+        ? ticks
+        : BigInt(typeof ticks === "string" ? ticks.trim() : Math.trunc(Number(ticks)));
+    if (raw < ZERO) return null;
+    return microToUsdString(raw / BigInt(10_000));
+  } catch {
+    return null;
+  }
+}

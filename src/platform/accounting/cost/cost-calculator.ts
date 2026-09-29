@@ -37,6 +37,40 @@ export class CostCalculator {
     const lookup = this.pricing.lookup(input.providerId, input.modelId, input.asOf);
     const applied: AppliedUnitPrice[] = [];
 
+    // Prefer exact provider-billed amount when the vendor returns it (e.g. xAI ticks).
+    if (input.usage.providerReportedCostUsd != null) {
+      const reported = input.usage.providerReportedCostUsd;
+      const fx = this.fx.convertToUsd(reported, REPORTING_CURRENCY, input.asOf);
+      applied.push({
+        unit: "PROVIDER_REPORTED",
+        pricePerUnit: reported,
+        quantity: 1,
+        costUsd: reported,
+      });
+      return {
+        estimatedInputCostUsd: null,
+        estimatedOutputCostUsd: null,
+        estimatedCachedCostUsd: null,
+        estimatedReasoningCostUsd: null,
+        estimatedOtherCostUsd: reported,
+        estimatedTotalCostUsd: reported,
+        originalCurrency: REPORTING_CURRENCY,
+        originalAmount: reported,
+        reportingCurrency: REPORTING_CURRENCY,
+        reportingAmountUsd: fx.pendingConversion ? null : fx.amountUsd,
+        exchangeRate: fx.exchangeRate,
+        exchangeRateVersion: fx.exchangeRateVersion,
+        exchangeRateTimestamp: fx.exchangeRateTimestamp,
+        costStatus: fx.pendingConversion
+          ? AI_COST_STATUS.PENDING_CONVERSION
+          : AI_COST_STATUS.CALCULATED,
+        pricingVersion: lookup.record?.pricingVersion ?? "provider-reported",
+        pricingEffectiveAt: lookup.record?.effectiveFrom ?? input.asOf,
+        calculationVersion: CALCULATION_VERSION,
+        unitPricesApplied: applied,
+      };
+    }
+
     if (!lookup.record || lookup.reason !== "found") {
       return this.pendingPricing(lookup.record);
     }

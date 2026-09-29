@@ -531,6 +531,41 @@ export function createEnterpriseApiPlatform(
   }
   // Simulated/in-memory: GET /executions/:id triggers on-demand reconcile (no background timer).
 
+  // CDF Final/materialize: MediaFile ObjectId → blob bytes (generic; all services).
+  try {
+    const {
+      createMediaFileVaultAssetResolver,
+      setDefaultVaultAssetResolver,
+      setCdfRenderedBlobStorage,
+    } = require("../../cdf/rendering") as typeof import("../../cdf/rendering");
+    const { getProductAssetBlobStorage } = require(
+      "../../../services/product-asset-storage",
+    ) as typeof import("../../../services/product-asset-storage");
+    const primary =
+      durableStores.asyncMedia?.blobStorage ?? getProductAssetBlobStorage();
+    const product = getProductAssetBlobStorage();
+    setDefaultVaultAssetResolver(
+      createMediaFileVaultAssetResolver({
+        blobStorage: primary,
+        fallbackBlobStorage: product !== primary ? product : undefined,
+      }),
+    );
+    if (durableStores.asyncMedia?.blobStorage) {
+      setCdfRenderedBlobStorage(durableStores.asyncMedia.blobStorage);
+    }
+    // Production rendered-text OCR (tesseract) on generic proof producer boundary.
+    try {
+      const { registerProductionRenderedTextProofProducer } = require(
+        "../../cdf/generation-validation/register-production-rendered-text-proof",
+      ) as typeof import("../../cdf/generation-validation/register-production-rendered-text-proof");
+      registerProductionRenderedTextProofProducer({ claim: "declared" });
+    } catch {
+      // OCR optional if tesseract/worker assets unavailable in this composition.
+    }
+  } catch {
+    // Rendering deps optional in non-CDF compositions; HTTP render fails closed if unset.
+  }
+
   const gateway = new ApiGatewayEngine({
     auth,
     authorization,

@@ -1,0 +1,313 @@
+{
+  "specId": "unagency.certification.social_media.instagram.feed_post.v1",
+  "version": "1.0.0",
+  "status": "READY_FOR_LIVE_CERTIFICATION",
+  "service": "social-media",
+  "platform": "instagram",
+  "deliverable": "feed-post",
+  "productCategory": "instagram:feed-post",
+  "cdfBindings": {
+    "deliverableKind": "social_creative",
+    "compositionContractKind": "social_creative",
+    "outputArtifactKey": "social-media.output",
+    "routesArtifactKey": "social-media.routes",
+    "productionRuleId": "instagram.feed.square",
+    "coordinateSystem": "social_pixel"
+  },
+  "architecture": {
+    "pipeline": [
+      "cdf",
+      "selected_creative_direction",
+      "structured_communication_content",
+      "brand_context",
+      "visual_generation",
+      "generated_visual",
+      "deterministic_communication_composition",
+      "final_instagram_feed_post",
+      "ocr_structural_verification",
+      "canonical_artifact_version",
+      "presentation_eligibility",
+      "ui"
+    ],
+    "acceptanceSubject": "final_composed_deliverable",
+    "rawProviderVisualRole": "diagnostic_visual_input_only",
+    "fanoutSemantics": {
+      "mode": "one_selected_direction_three_independent_visual_leaves",
+      "providers": ["openai/gpt-image-2.5-sunburst", "google/gemini-3-pro-image", "google/gemini-3.1-flash-image"],
+      "sharedAfterVisual": "deterministic_communication_composition",
+      "forbidden": [
+        "route_per_provider",
+        "sequential_provider_fallback",
+        "cross_leaf_fallback",
+        "provider_decides_deliverable_semantics"
+      ]
+    }
+  },
+  "generationCompositionBoundary": {
+    "abstractionIntent": {
+      "visualGenerationResult": "AI-produced visual plate (subject, environment, mood, treatment)",
+      "communicationCompositionInput": "exact messages, brand mark bytes, canvas, hierarchy, safe areas from contracts",
+      "composedDeliverable": "final communication raster that is the only acceptance subject"
+    },
+    "elementRealizationPolicy": {
+      "primary_message_surface": { "realization": "deterministic", "required": true },
+      "secondary_message_surface": { "realization": "deterministic", "required": false },
+      "call_to_action": { "realization": "deterministic", "required": false },
+      "visual_subject": { "realization": "generated", "required": true },
+      "environment_context": { "realization": "generated", "required": false },
+      "brand_signature": { "realization": "deterministic", "required": true },
+      "identity_mark": { "realization": "deterministic", "required": false },
+      "message_hierarchy": { "realization": "deterministic", "required": false },
+      "layout_zones": { "realization": "deterministic", "required": true }
+    },
+    "notes": [
+      "Realization policy is deliverable/composition authority — not provider adapter logic.",
+      "No InstagramComposer / SocialMediaComposer naming; generic composition boundary only.",
+      "Existing DeliverableCompositionContract lacks realization modes today; certification requires them."
+    ]
+  },
+  "canvas": {
+    "shape": "square",
+    "aspectRatio": "1:1",
+    "widthPx": 1080,
+    "heightPx": 1080,
+    "unit": "px",
+    "colourSpace": "sRGB",
+    "exportMimeTypes": ["image/png", "image/jpeg"],
+    "preferredMimeType": "image/png",
+    "safeArea": {
+      "insetPx": { "top": 72, "right": 72, "bottom": 72, "left": 72 },
+      "policy": "all_required_communication_and_brand_marks_must_lie_entirely_inside_safe_area",
+      "source": "certification_declared; not yet a ProductionRule field"
+    },
+    "productionRuleEvidence": "instagram.feed.square"
+  },
+  "communication": {
+    "primaryMessage": {
+      "element": "primary_message_surface",
+      "required": true,
+      "placement": "on_asset",
+      "realization": "deterministic",
+      "exactness": "exact_authoritative_text_no_paraphrase",
+      "provenanceAllowed": [
+        "current_user_instruction",
+        "selected_semantic_direction"
+      ],
+      "legibility": {
+        "minContrastIntent": "high_contrast_against_local_backdrop",
+        "mustSurviveOcrNormalizedContainment": true
+      }
+    },
+    "supportingMessage": {
+      "element": "secondary_message_surface",
+      "required": false,
+      "placement": "on_asset",
+      "realization": "deterministic",
+      "exactness": "exact_when_present"
+    },
+    "cta": {
+      "element": "call_to_action",
+      "required": false,
+      "placement": "on_asset",
+      "realization": "deterministic",
+      "exactness": "exact_when_present"
+    },
+    "hierarchy": [
+      { "role": "primary_message_surface", "precedence": 1 },
+      { "role": "visual_subject", "precedence": 2 },
+      { "role": "brand_signature", "precedence": 3 }
+    ],
+    "textPlacementPolicy": "on_asset",
+    "semanticSeparation": {
+      "brandSignatureDoesNotSatisfyPrimaryMessage": true,
+      "identityMarkDoesNotSatisfyPrimaryMessage": true,
+      "visualSubjectDoesNotSatisfyPrimaryMessage": true
+    }
+  },
+  "visual": {
+    "subjectRequired": true,
+    "realization": "generated",
+    "layoutIntent": "single_frame_readability",
+    "mayGenerate": [
+      "person",
+      "environment",
+      "illustration",
+      "photography",
+      "visual_mood",
+      "visual_treatment",
+      "supporting_imagery"
+    ],
+    "mustNotBeSoleDeliverable": true,
+    "relationshipToCommunication": "visual_supports_primary_message; does_not_replace_it"
+  },
+  "brand": {
+    "markRole": "signature",
+    "required": true,
+    "realization": "deterministic",
+    "identityMarkMustNotBePrimaryCommunication": true,
+    "logoPlacement": {
+      "zone": "safe_area",
+      "relativeScalePolicy": "secondary_signature_not_hero",
+      "mustBePresentAsAssetBytes": true
+    },
+    "colorsTypography": {
+      "contractuallyApplicableWhenPresentInBrandContext": true,
+      "fallback": "high_legibility_system_defaults_for_deterministic_text"
+    }
+  },
+  "composition": {
+    "goal": "finished_communication_asset_not_branded_illustration",
+    "relationshipTextAndVisual": "primary_message_dominant; visual_subject_supporting; brand_signature_tertiary",
+    "informationDensity": "one_primary_message",
+    "deliberateLayoutRequired": true,
+    "forbiddenOutcomes": [
+      "brand_only_imagery",
+      "logo_as_primary_communication",
+      "raw_provider_art_star_as_canonical",
+      "on_image_copy_metadata_without_pixels",
+      "pass_through_of_uncomposed_provider_visual_when_deterministic_elements_required"
+    ]
+  },
+  "technical": {
+    "validRaster": true,
+    "exactDimensions": { "widthPx": 1080, "heightPx": 1080 },
+    "exactAspectRatio": "1:1",
+    "renderable": true,
+    "noCorruption": true,
+    "canonicalArtifactOnlyAfterComposition": true
+  },
+  "verification": {
+    "reuseExisting": {
+      "structuralEvaluator": "evaluateStructuralCompositionCompliance",
+      "ocrProducer": "createTesseractRenderedTextProofProducer",
+      "verificationRequirements": "deriveVisualVerificationRequirements(social_creative)",
+      "acceptanceStatuses": ["COMPLIANT", "NON_COMPLIANT", "UNVERIFIABLE"],
+      "presentationEligibility": "resolveGeneratedDeliverablePresentationEligibility",
+      "canonicalIngest": "applyCdfCanonicalCompletionIngest"
+    },
+    "criteria": [
+      {
+        "id": "canvas_dimensions",
+        "class": "technical",
+        "required": true,
+        "method": "png_ihdr_or_jpeg_probe_equals_1080x1080",
+        "expressibleInExistingGenericStructuralContract": false,
+        "extensionNeeded": "Add technical canvas criterion or gate via production-spec/canvas check before structural acceptance; do not invent Instagram-specific validator.",
+        "pass": "COMPLIANT",
+        "fail": "NON_COMPLIANT"
+      },
+      {
+        "id": "rendered_text_presence",
+        "class": "rendered_text",
+        "required": true,
+        "method": "OCR_TEXT_RECOGNITION",
+        "expressibleInExistingGenericStructuralContract": true,
+        "existingCriterionId": "rendered_text_presence"
+      },
+      {
+        "id": "rendered_text_match",
+        "class": "rendered_text",
+        "required": true,
+        "method": "OCR normalized_containment against authoritative primary message",
+        "expressibleInExistingGenericStructuralContract": true,
+        "existingCriterionId": "rendered_text_match",
+        "textMatchPolicy": "normalized_containment"
+      },
+      {
+        "id": "brand_signature_present",
+        "class": "brand_identity",
+        "required": true,
+        "method": "composition_provenance_plus_pixel_inclusion_proof",
+        "expressibleInExistingGenericStructuralContract": "partial",
+        "existingCriterionId": "brand_signature",
+        "gap": "VISION_BRAND_MARK_DETECTION is undeclared; criterion currently allow_with_hold/UNVERIFIABLE. For certification, prove logo bytes were composited (deterministic layer evidence) without lowering OCR/text rules.",
+        "proposedGenericFix": "Add composition_layer_evidence proof class for deterministic brand_mark realization; keep vision detector optional."
+      },
+      {
+        "id": "visual_subject",
+        "class": "visual_subject",
+        "required": true,
+        "method": "presence_of_generated_visual_plate_in_composition_input",
+        "expressibleInExistingGenericStructuralContract": "partial",
+        "existingCriterionId": "visual_subject",
+        "gap": "VISION_IMAGE_ANALYSIS undeclared; allow_with_hold today. Certification may accept generated-visual-input evidence for this criterion without claiming pixel subject classification."
+      },
+      {
+        "id": "not_raw_provider_media",
+        "class": "lifecycle",
+        "required": true,
+        "method": "canonical_deliverable_is_composed_asset; art_* diagnostic only",
+        "expressibleInExistingGenericStructuralContract": true,
+        "via": "presentation eligibility + canonical ingest gates"
+      }
+    ]
+  },
+  "acceptance": {
+    "COMPLIANT": {
+      "definition": "Final composed raster satisfies canvas, exact required primary message (OCR match), required brand signature inclusion evidence, valid technical raster, and is eligible for canonical social-media.output ArtifactVersion with presentation AVAILABLE.",
+      "requires": [
+        "deterministic_composition_ran_when_required_elements_are_deterministic",
+        "ocr_normalized_containment_of_primary_message",
+        "canvas_1080x1080",
+        "brand_signature_layer_included",
+        "no_corruption",
+        "canonical_ingest_of_composed_asset_only"
+      ]
+    },
+    "NON_COMPLIANT": {
+      "definition": "Final composed raster (or attempted final) fails a required content/structural/technical rule with conclusive evidence.",
+      "examples": [
+        "required_primary_message_absent_or_mismatched_on_pixels",
+        "wrong_canvas_dimensions",
+        "brand_signature_required_but_not_composited",
+        "brand_only_frame_without_primary_message",
+        "raw_provider_visual_submitted_as_final_when_deterministic_composition_required"
+      ]
+    },
+    "UNVERIFIABLE": {
+      "definition": "Required proof producer unavailable or expected authoritative values missing — not a content pass.",
+      "examples": [
+        "ocr_producer_failure",
+        "expected_primary_message_not_supplied_to_match_criterion",
+        "brand_mark_detector_absent_and_no_composition_layer_evidence"
+      ],
+      "rule": "UNVERIFIABLE must not be coerced to COMPLIANT; must not become PRESENTATION_AVAILABLE"
+    }
+  },
+  "outOfScope": [
+    "instagram_stories",
+    "instagram_reels",
+    "instagram_carousel",
+    "native_caption_hashtags",
+    "linkedin_facebook_other_platforms",
+    "cdf_redesign",
+    "provider_specific_semantic_exceptions"
+  ],
+  "reuseMap": {
+    "existing": [
+      "DeliverableCompositionContract / SOCIAL_CREATIVE_COMPOSITION",
+      "RequiredRenderedCommunicationBlock / composition-authority",
+      "compileDeliverableComposition + CMR",
+      "instagram.feed.square production rule",
+      "ImageExecutionRouter + vendor adapters (visual only)",
+      "generation-fanout (three independent leaves)",
+      "ocr-tesseract-rendered-text-producer",
+      "evaluateStructuralCompositionCompliance",
+      "applyCdfCanonicalCompletionIngest",
+      "resolveGeneratedDeliverablePresentationEligibility",
+      "pngjs/jpeg-js decode-encode",
+      "tests/helpers/rendered-text-png-fixtures.ts (glyph PNG pattern)",
+      "Sunflower copy scenarios in phase14_* tests (seed only — not immutable cert fixture yet)"
+    ],
+    "notReusableAsPixelCompositor": [
+      "social-media-preview-raster (vault pass-through; neverInventLayout)",
+      "packaging preview-raster (pass-through)",
+      "presentation PPTX/PDF compositor (wrong representation for Instagram PNG)"
+    ],
+    "missing": [
+      "live three-provider visual fanout wired through the same compositor (next milestone)",
+      "canonical ArtifactVersion ingest of composed bytes in production path (next milestone)",
+      "presentation AVAILABLE end-to-end with live providers (CERTIFIED gate)"
+    ]
+  }
+}

@@ -127,9 +127,17 @@ export class LumaVideoProtocol implements IVendorVideoProtocol {
       duration,
     };
 
-    const startFrameUrl = imageUrls.map(imageRefFromUrl).find(Boolean);
-    if (startFrameUrl && duration === "5s") {
-      video.start_frame = startFrameUrl;
+    // I2V: storyboard/start image must always reach Luma when present.
+    // Agents API: start_frame/end_frame only work with duration "5s".
+    // For "10s", use multi-keyframe mode with a frame-0 anchor (same ImageRef).
+    const startFrameRef = imageUrls.map(imageRefFromUrl).find(Boolean);
+    if (startFrameRef) {
+      if (duration === "10s") {
+        video.keyframes = [startFrameRef];
+        video.keyframe_indexes = [0];
+      } else {
+        video.start_frame = startFrameRef;
+      }
     }
 
     const body: Record<string, unknown> = {

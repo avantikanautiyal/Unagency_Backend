@@ -756,6 +756,7 @@ const upsertCreativeProject = asyncHandler(async (req: RequestUser) => {
     categoryId: req.body?.categoryId,
     categoryTitle: req.body?.categoryTitle,
     executionId: req.body?.executionId,
+    sessionId: req.body?.sessionId,
     refineFromExecutionId: req.body?.refineFromExecutionId,
     projectId: req.body?.projectId,
     preserveTitle: Boolean(req.body?.preserveTitle),

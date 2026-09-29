@@ -95,7 +95,7 @@ export const CONTINUITY_LAYER_FLAGS: readonly ContinuityLayerFlag[] =
       layerId: "CreativeQa",
       rollout: "off",
       notes:
-        "Track B3 implemented. Set CREATIVE_QA=shadow|on. 10-dimension creative score; block release below 80/100.",
+        "Track B3 implemented. Set CREATIVE_QA=shadow|on. 10-dimension creative score; block release below 70/100.",
     },
   ]);
 

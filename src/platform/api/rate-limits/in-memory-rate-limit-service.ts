@@ -1,18 +1,21 @@
 /**
- * Rate limiting — per org / workspace / user / api key / capability / provider.
+ * Rate limiting — per org / workspace / user / api key / capability / provider,
+ * plus separate poll buckets for BACKGROUND_POLL accounting.
  */
 
 import { success, type Result } from "../../core/result";
 import type { RateLimitDecision, RateLimitDimension, RateLimitPolicy } from "../contracts";
 import type { IRateLimitService } from "../interfaces";
+import {
+  DEFAULT_BACKGROUND_POLL_POLICIES,
+  DEFAULT_USER_REQUEST_POLICIES,
+  resolveRateLimitCheckDimensions,
+} from "../../execution-reliability/rate-limit-accounting";
+import type { RateLimitAccountingClass } from "../../execution-reliability/execution-outcome";
 
 const DEFAULT_POLICIES: readonly RateLimitPolicy[] = [
-  { dimension: "organization", limit: 1000, windowMs: 60_000 },
-  { dimension: "workspace", limit: 500, windowMs: 60_000 },
-  { dimension: "user", limit: 120, windowMs: 60_000 },
-  { dimension: "api_key", limit: 300, windowMs: 60_000 },
-  { dimension: "capability", limit: 200, windowMs: 60_000 },
-  { dimension: "provider", limit: 200, windowMs: 60_000 },
+  ...DEFAULT_USER_REQUEST_POLICIES,
+  ...DEFAULT_BACKGROUND_POLL_POLICIES,
 ];
 
 export class InMemoryRateLimitService implements IRateLimitService {
@@ -31,21 +34,25 @@ export class InMemoryRateLimitService implements IRateLimitService {
     apiKeyId?: string;
     capabilityId?: string;
     providerId?: string;
+    accountingClass?: RateLimitAccountingClass;
   }): Promise<Result<RateLimitDecision>> {
-    const checks: { dimension: RateLimitDimension; value?: string }[] = [
-      { dimension: "organization", value: input.organizationId },
-      { dimension: "workspace", value: input.workspaceId },
-      { dimension: "user", value: input.userId },
-      { dimension: "api_key", value: input.apiKeyId },
-      { dimension: "capability", value: input.capabilityId },
-      { dimension: "provider", value: input.providerId },
-    ];
+    const accountingClass = input.accountingClass ?? "USER_REQUEST";
+    const checks = resolveRateLimitCheckDimensions({
+      accountingClass,
+      organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      apiKeyId: input.apiKeyId,
+      capabilityId: input.capabilityId,
+      providerId: input.providerId,
+    });
 
     let tightest: RateLimitDecision | undefined;
 
     for (const c of checks) {
       if (!c.value) continue;
-      const policy = this.policies.find((p) => p.dimension === c.dimension)!;
+      const policy = this.policies.find((p) => p.dimension === c.dimension);
+      if (!policy) continue;
       const key = `${c.dimension}:${c.value}`;
       const now = this.clockMs();
       let bucket = this.counters.get(key);
@@ -61,6 +68,9 @@ export class InMemoryRateLimitService implements IRateLimitService {
         resetAt: new Date(bucket.windowStart + policy.windowMs).toISOString(),
         dimension: c.dimension,
         key,
+        limit: policy.limit,
+        windowMs: policy.windowMs,
+        accountingClass,
       };
       if (!decision.allowed) return Promise.resolve(success(decision));
       if (!tightest || decision.remaining < tightest.remaining) tightest = decision;
@@ -72,14 +82,11 @@ export class InMemoryRateLimitService implements IRateLimitService {
           allowed: true,
           remaining: 999,
           resetAt: this.nowIso(),
-          dimension: "organization",
+          dimension: "organization" as RateLimitDimension,
           key: "none",
+          accountingClass,
         }
       )
     );
-  }
-
-  isAvailable(): boolean {
-    return true;
   }
 }

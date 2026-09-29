@@ -11,6 +11,7 @@ export type AuthoritativeLogoDiscoveryInput = {
   readonly brandId?: string;
   readonly vaultLogoChoice?: string;
   readonly attachmentLogoAssetIds?: readonly string[];
+  readonly brief?: string;
 };
 
 export type AuthoritativeLogoDiscoveryResult = {
@@ -47,7 +48,12 @@ export async function discoverAuthoritativeLogoInputs(
       ? { vaultLogoChoice: input.vaultLogoChoice.trim() }
       : undefined,
     profileLogoAssetId: profileContext.logoAssetId,
+    brief: input.brief,
   });
+  const vaultDefault =
+    vault.needsChoice || (vault.defaulted && attachmentLogoAssetIds.length > 0)
+      ? undefined
+      : vault.selectedAssetId;
 
   const vaultCandidates: AuthoritativeLogoCandidate[] = vault.candidates.map(
     (candidate) =>
@@ -62,10 +68,7 @@ export async function discoverAuthoritativeLogoInputs(
   const result = Object.freeze({
     vaultCandidates: Object.freeze(vaultCandidates),
     attachmentLogoAssetIds: Object.freeze(attachmentLogoAssetIds),
-    vaultLogoChoice:
-      input.vaultLogoChoice?.trim() ||
-      (vault.needsChoice ? undefined : vault.selectedAssetId) ||
-      undefined,
+    vaultLogoChoice: input.vaultLogoChoice?.trim() || vaultDefault || undefined,
   });
   if (vaultCandidates.length > 1 || attachmentLogoAssetIds.length > 0) {
     console.log(

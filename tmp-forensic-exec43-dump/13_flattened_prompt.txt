@@ -1,0 +1,344 @@
+===== CURRENT USER INSTRUCTION =====
+Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now
+
+Deliverable: Social Media Creative
+
+Create a finished Social Media Creative for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.
+
+STAGE OUTPUT (required): finished single-frame communication asset for the selected platform/size
+
+STAGE FORBIDDEN: Do NOT produce a flat logo lockup, wordmark alone on cream/white, app icon, or logo sheet as the whole image.
+
+Deliver a finished single-frame communication asset with readable on-asset messaging.
+
+Primary communication must be visually prominent; the visual subject supports the message.
+
+Brand identity participates as an integrated signature, not as the sole subject of the frame.
+
+REFERENCE ROLE = identity_mark: An authoritative brand identity mark is attached. Reproduce that exact artwork as a subordinate brand-identity element in the layout. Do not invent a different mark. Do not treat the mark as the full composition, dominant subject, or stylistic template of the creative.
+
+===== CURRENT TASK =====
+ContextHash: 463ba92e
+ContextId: ctx_b5q62iyz_output_cd2351f1
+DeliverableSemantics: Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.
+ExecutionStrategy: canonical
+Format: feed-post
+Modality: image
+Phase: output
+PhaseEntryMessage: Here is your social creative based on the selected route:
+PhaseName: Creative
+Platform: instagram
+SemanticObjective: Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept. Client brand identity: Sunflower. Current user intent: Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now Deliverable: Social Media Creative … Selected creative direction: A Day in the Sun: An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringi… Follow DELIVERABLE COMPOSITION required on-asset communication + CURRENT USER INSTRUCTION; SELECTED SEMANTIC DIRECTION realizes creative HOW; Production Spec supplies technical constraints only.
+SemanticRole: visual
+Service: social-media
+Subtype: content-design
+Target artifact: social-media.output
+
+===== DELIVERABLE COMPOSITION =====
+Deliverable kind: social_creative
+Deliverable identity: Instagram Feed Post
+Communication mode: single_frame_communication
+Required elements: primary_message_surface, visual_subject, brand_signature
+Optional elements: secondary_message_surface, message_hierarchy
+Hierarchy:
+  - primary_message_surface (precedence 1)
+  - visual_subject (precedence 2)
+  - brand_signature (precedence 3)
+Text policy: placement=on_asset, required=true
+Visual policy: subjectRequired=true, layoutIntent=single_frame_readability
+Brand integration: markRole=signature
+REQUIRED RENDERED COMMUNICATION (must appear on asset; distinct from creative direction / brand signature / visual subject):
+  REQUIRED_RENDERED_COMMUNICATION must appear as legible on-asset text with an authoritative non-empty value. Distinct from CREATIVE_DIRECTION, VISUAL_SUBJECT, BRAND_SIGNATURE, and decorative typography.
+  - [required_rendered_communication] primary_message_surface: Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12. [provenance=selected_semantic_direction]
+Semantic role separation: Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication.
+Filled composition slots:
+  - primary_message_surface: Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12. [creative_direction]
+  - secondary_message_surface: Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet. [creative_direction]
+  - visual_subject: One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation. [creative_direction]
+  - message_hierarchy: 1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature. [creative_direction]
+  - layout_zones: Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup. [creative_direction]
+  - brand_signature: Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely. [creative_direction]
+  - identity_mark: Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative. [creative_direction]
+  - typography_treatment: Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible. [creative_direction]
+  - communication_objective: Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions. [creative_direction]
+  - supporting_visual_elements: Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas. [creative_direction]
+  - use_context: Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid. [creative_direction]
+  - user_intent: Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now
+
+Deliverable: Social Media Creative
+
+Create a finished Social Media Creative for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.
+
+STAGE OUTPUT (required): finished single-frame communication asset for the selected platform/size
+
+STAGE FORBIDDEN: Do NOT produce a flat logo lockup, wordmark alone on cream/white, app icon, or logo sheet as the whole image.
+
+Deliver a finished single-frame communication asset with readable on-asset messaging.
+
+Primary communication must be visually prominent; the visual subject supports the message.
+
+Brand identity participates as an integrated signature, not as the sole subject of the frame.
+
+REFERENCE ROLE = identity_mark: An authoritative brand identity mark is attached. Reproduce that exact artwork as a subordinate brand-identity element in the layout. Do not invent a different mark. Do not treat the mark as the full composition, dominant subject, or stylistic template of the creative. [user_instruction]
+  - brand_context_name: Sunflower [brand_context]
+Composition guidance:
+  - Deliver a finished single-frame communication asset with readable on-asset messaging.
+  - Primary communication must be visually prominent; the visual subject supports the message.
+  - Brand identity participates as an integrated signature, not as the sole subject of the frame.
+  - Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication.
+  - When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires.
+Structural completion (not aesthetic quality):
+  - Required semantic element present: primary_message_surface
+  - Required semantic element present: visual_subject
+  - Required semantic element present: brand_signature
+  - Information hierarchy is defined and represented
+  - Deliverable communication mode is represented in the composition
+  - Required on-asset text/communication surface is represented when text policy requires it
+Structural completion criteria describe required semantic elements and hierarchy — not aesthetic quality or model judgment.
+
+COMPOSITION AUTHORITY: When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires. Semantic roles are not interchangeable: brand_signature and identity_mark do not satisfy primary_message_surface; visual_subject does not satisfy required rendered communication. Only elements with declarative role rendered_communication count as required on-asset communication.
+
+===== SELECTED SEMANTIC DIRECTIONS =====
+--- SELECTED DIRECTION 1 ---
+ArtifactId: cdfart_mu1g1wsi_1_social-media-routes
+Version: 1
+ChoiceArrayKey: routes
+SelectedRouteIndex: 2
+audienceSignal: Authentic child imagery immediately signals to parents 'this is for families like mine' while professional execution reassures schools of credibility. The inclusive, joyful tone attracts audiences seeking positive, affirming educational environments. Context: Instagram users respond strongly to genuine human emotion and relatable moments.
+avoidances: Must not appear stock-photo generic, overly posed/artificial, saccharine/cheesy, or staged. Avoid tokenistic diversity, sad/struggling children imagery, or focusing on devices/screens. Don't obscure children's faces with heavy text overlays. Cannot become so lifestyle-focused that educational mission gets lost. Keep identity mark subordinate to the human story.
+brandIntegration: Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.
+communicationObjective: Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.
+composition: Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.
+creativeIdea: An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringing Sunflower's mission to life through authentic human moments rather than abstract concepts.
+focalPoint: The children's faces and expressions, particularly their eyes and genuine smiles, positioned in the upper-middle section of the frame. Natural eye contact or absorbed engagement draws viewers into the emotional moment and brand promise.
+headlineAngle: "Every child deserves to flourish" — leading with the inclusive, child-first values that define Sunflower's approach while creating immediate emotional resonance with parent and educator audiences.
+hierarchy: 1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.
+identityMarkRole: Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.
+name: A Day in the Sun
+primaryMessage: Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.
+rationale: This direction answers the brief's call for aesthetic appeal and proper brand description by showing rather than telling — authentic moments of children thriving create emotional connection while the warm color treatment and sunlit quality reinforce brand colors and name. Most effective for building trust through relatability.
+routeId: route_03_a_day_in_the_sun
+secondaryMessage: Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.
+supportingVisualElements: Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.
+typographyDirection: Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.
+useContextIntent: Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.
+visualConcept: One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.
+visualTreatment: Photographic or illustrated vignette style featuring children in natural, joyful learning moments. Golden hour lighting quality with sunshine yellows, calming blues, and fresh greens. Soft focus backgrounds with sharp, emotion-rich foreground subjects. Human-centered and heartwarming.
+
+SELECTED SEMANTIC DIRECTION is authoritative for creative realization (HOW). Generate from the structured choice object — not from UI labels, Option N, or selection indexes alone. It does not override DELIVERABLE COMPOSITION required elements, hierarchy, or required on-asset textPolicy.
+
+===== BRAND CONTEXT =====
+name: brand_context
+semanticRole: brand_context
+{
+  "brandId": "6a98c471613dce5f8e5b8b9f",
+  "brandName": "Sunflower",
+  "facts": [
+    {
+      "key": "brandName",
+      "provenance": "selected_brand",
+      "value": "Sunflower"
+    },
+    {
+      "key": "brandColors",
+      "provenance": "execution_metadata",
+      "value": "blue, green, yellow, white, cream, #ffd700"
+    },
+    {
+      "key": "brandTone",
+      "provenance": "execution_metadata",
+      "value": "Startup · 2–10 · 3, casual, premium, professional, minimal, friendly, playful, approachable, calm, warm, modern, youthful, confident, nurturing, optimistic, inclusive, trustworthy, child-first, supportive, clean, engaging, cheerful, welcoming, inviting, poetic, heartwarming, human-centered, authentic"
+    },
+    {
+      "key": "brandSummary",
+      "provenance": "execution_metadata",
+      "value": "Sunflower is an educational brand helping school-going children develop mental well-being, emotional resilience, life skills and overall growth. The brand is centered around the concept of helping children learn, grow, connect, express and flourish. Tagline: \"Growing minds. Growing humans.\" The approach is supportive, inclusive, child-first, and focuses on education beyond academics."
+    },
+    {
+      "key": "positioning",
+      "provenance": "execution_metadata",
+      "value": "It is education platform for kids starting from classes 1 to 12"
+    },
+    {
+      "key": "voice",
+      "provenance": "execution_metadata",
+      "value": "Startup · 2–10 · 3, casual, premium, professional, minimal, friendly, playful, approachable, calm, warm, modern, youthful, confident, nurturing, optimistic, inclusive, trustworthy, child-first, supportive, clean, engaging, cheerful, welcoming, inviting, poetic, heartwarming, human-centered, authentic"
+    },
+    {
+      "key": "typography",
+      "provenance": "execution_metadata",
+      "value": "friendly typography, rounded cards, friendly, rounded, clean layouts, clean"
+    },
+    {
+      "key": "photographyStyle",
+      "provenance": "execution_metadata",
+      "value": "not specified"
+    },
+    {
+      "key": "illustrationStyle",
+      "provenance": "execution_metadata",
+      "value": "premium 2D cartoon illustration style with diverse, expressive school children, sunflower motifs, playful doodles, warm school/garden environments"
+    },
+    {
+      "key": "targetAudience",
+      "provenance": "execution_metadata",
+      "value": "school-going students, schools, parents"
+    },
+    {
+      "key": "industry",
+      "provenance": "execution_metadata",
+      "value": "Education"
+    }
+  ],
+  "negatives": [],
+  "note": "SELECTED BRAND CONTEXT is authoritative for brand identity. Historical brand preferences are advisory when CURRENT USER INSTRUCTION intentionally overrides them for this turn. Does NOT replace CURRENT USER INSTRUCTION."
+}
+
+===== PRODUCT GROUNDING =====
+name: product_grounding
+semanticRole: product_grounding
+{
+  "category": "instagram:feed-post",
+  "format": "feed-post",
+  "platform": "instagram",
+  "service": "social",
+  "subtype": "content-design"
+}
+
+===== REQUIREMENTS =====
+- brief.raw: Hi, I want to create an instagram post about my brand. It is an introductory post hence it should be able to describe the brand properly and should be aesthetically good looking and must follow the colour scheme it has been following until now [explicit_current_user_instruction] (explicit)
+- platform: instagram [explicit_current_user_instruction] (explicit)
+
+===== SELECTIONS =====
+- routes: Choice 3
+
+===== APPROVED DECISIONS =====
+- platform: Instagram
+- size-reference: Use Platform Size
+
+===== OUTPUT CONTRACT =====
+Create a finished Instagram Feed Post (Social Media Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.
+Generate ONLY the deliverable for CDF phase "output" (Creative).
+Phase purpose: Here is your social creative based on the selected route:
+Semantic role (uxType): visual
+Execution strategy: canonical
+Modality describes encoding — it does NOT redefine the phase task as generic visual composition.
+Treat UPSTREAM ARTIFACT sections as authoritative structured sources.
+Do not ignore or regenerate approved upstream content from scratch.
+Do not invent facts that contradict REQUIREMENTS or UPSTREAM ARTIFACT data.
+Mode: phase_scoped_generation
+
+===== OUTPUT REQUIREMENTS =====
+[Output requirements]
+Deliverable: Instagram Feed Post
+Deliverable semantics: Create a finished Instagram Feed Post (Creative) for the selected brand. Output modality: image. Follow the selected creative direction, brand context, and identity-mark role. Production constraints are technical only — not the creative concept.
+Format: image
+Modalities: image, video
+Mockup role: optional
+Primary output kind: image.
+Mockup role: optional.
+Create the actual production-ready deliverable — not a device, laptop, browser, business-card, signage, apparel, or presentation mockup of it.
+
+===== MULTIMODAL CONTEXT =====
+User/application-provided multimedia context. Not a replacement for ArtifactVersion UPSTREAM ARTIFACTS. Extracted text is not the original file.
+Item 1:
+  sourceType: product_asset
+  modality: image
+  mimeType: image/jpeg
+  filename: Branding & Logo · Logo design (JPG)
+  assetId: 6a98cb217bc20263f64311aa
+  deliveryStatus: ready
+  hasVisualProviderRef: true
+  relationship: execution_product_asset
+  semanticReferenceRole: identity_mark
+  referenceRoleResolutionSource: persisted_semantic_reference_role
+
+===== ACTIVE BRIEF =====
+activeBriefId: abr_mu1fznc2_4
+activeBriefVersion: 3
+note: ActiveBrief requirements are represented in the REQUIREMENTS part
+
+===== CDF PHASE =====
+activeBriefId: abr_mu1fznc2_4
+activeBriefVersion: 3
+contextHash: ctx:cd2351f1
+contextId: ctx_b5q62iyz_output_cd2351f1
+dependencies: routes
+generationContextHash: 463ba92e
+generationModality: image
+phaseId: output
+serviceId: social-media
+sessionId: cdf_mu1fz0gn_b5q62iyz
+sessionVersion: 4
+status: ready
+uxType: visual
+
+===== UPSTREAM ARTIFACTS =====
+--- UPSTREAM ARTIFACT 1 ---
+Role: selected_reference
+Artifact: social-media.routes
+ArtifactId: cdfart_mu1g1wsi_1_social-media-routes
+Version: 1
+Phase: routes
+Status: selected
+SessionRole: selected
+SchemaVersion: 1
+Required: true
+ProjectedSelectedOnly: true
+ArtifactProjectionMode: selected_only
+Content: (provenance only — creative choice is authoritative in SELECTED SEMANTIC DIRECTIONS)
+ProjectionMode: selected_only
+ChoiceArrayKey: routes
+SelectedIndex: 2
+SiblingChoiceCount: 3
+SchemaId: unagency.social_media.routes.v1
+
+===== PRODUCTION SPEC =====
+TECHNICAL PRODUCTION CONSTRAINTS ONLY.
+Labels and section titles in this block are framework metadata — NOT brand names, logos, or wordmarks to render.
+Render only the selected client brand identity from BRAND CONTEXT and attached brand reference artwork.
+[production_constraints]
+Provenance: format-spec@1.0.0+hygiene-ref@1.0+visual-field-guide@1.0
+Placement:
+- Rule id: instagram.feed.square
+- Service: social
+- Subtype: content-design
+- Platform: instagram
+- Placement: feed.square
+- Name the exact intended placement; never approve or generate a single asset for "All".
+Canvas:
+- Canvas: 1080×1080 px; aspect 1:1
+Authority:
+- Authority: D — House default — use unless booked placement / vendor template overrides
+Export:
+- Export formats: png, jpg
+- Export notes: sRGB digital still
+Technical:
+- Colour space: sRGB
+Universal release gates:
+- [brief] Confirm approved brief: objective, audience, output, channel, quantity, due date.
+- [identity] Use only the approved client brand wordmark and color treatment; no competitor, platform, or unrelated marks.
+- [copy] Use only approved copy: names, grammar, numbers, language, CTA, and required disclosures.
+- [rights] Respect documented rights, expiry, and territory restrictions for all assets.
+- [technical] Match the specified canvas size, ratio, colour space, and output method exactly.
+- [readability] Keep essential content readable at intended size, crop, overlay, and viewing distance.
+- [destination] Every link, QR, and native action must reach the approved destination only.
+- [source_package] Editable sources, dependencies, and exports must correspond to the same revision.
+- [approval] Final output requires creator and independent reviewer approval of the exact version.
+Production note:
+- PNG/JPG; one message.
+
+[Composition authority]
+When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires.
+
+===== AUTHORITY =====
+Canonical ArtifactVersion data above is authoritative for upstream content.
+SELECTED SEMANTIC DIRECTION (when present) is the authoritative creative choice (HOW) — not UI labels, Option N, promptPreview, or route titles alone.
+DELIVERABLE COMPOSITION (when present) defines required structural/communication elements (WHAT) — distinct from creative direction, production spec, and user instruction. Required composition properties outrank lower-authority creative preferences when they conflict.
+BRAND CONTEXT (when present) is the authoritative selected brand — not app/product/organization names.
+Do not treat truncated approval notes as the source of truth when UPSTREAM ARTIFACT Content is present.
+CURRENT USER INSTRUCTION outranks Production Spec defaults when they conflict.
+Production Spec is technical production constraint guidance — not a replacement for explicit user requirements, selected creative direction, or client brand identity.
+Production Spec section titles and framework labels are NOT brand names/logos/wordmarks to render in the creative.
+WORKING MEMORY is contextual conversational evidence only — it does not override CURRENT USER INSTRUCTION, REQUIREMENTS, APPROVED DECISIONS, RESOLVED REFERENCES, SELECTED SEMANTIC DIRECTION, DELIVERABLE COMPOSITION, or UPSTREAM ARTIFACTS.
+MULTIMODAL CONTEXT is user/application attachment context — distinct from UPSTREAM ARTIFACTS (CDF ArtifactVersions). Extracted text is not the original file.

@@ -1,0 +1,507 @@
+[
+  {
+    "line": 8,
+    "keys": [
+      "audit",
+      "executionId",
+      "productAction",
+      "stage",
+      "negativeConstraintCount",
+      "hardConstraintCount",
+      "requirements",
+      "constraintPlanes",
+      "promptFingerprint",
+      "hardConstraintPresent",
+      "leafConstraintPresent",
+      "leafTokenHeuristicOnly"
+    ],
+    "event": "P4.9",
+    "preview": {
+      "executionId": "exec_43_1789402538385",
+      "promptFingerprint": "a47c7e70c313d103",
+      "provider": "provider.ideogram",
+      "model": "ideogram-3"
+    }
+  },
+  {
+    "line": 9,
+    "keys": [
+      "scope",
+      "event",
+      "executionId",
+      "requestId",
+      "provider",
+      "model",
+      "resultKeys",
+      "structuredOutputPresent",
+      "structuredPresent",
+      "dataPresent",
+      "dataStructuredPresent",
+      "textPresent"
+    ],
+    "event": "direct_execution_result",
+    "preview": {
+      "event": "direct_execution_result",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385",
+      "provider": "provider.ideogram",
+      "model": "ideogram-3"
+    }
+  },
+  {
+    "line": 10,
+    "keys": [
+      "scope",
+      "event",
+      "executionId",
+      "jobId",
+      "structuredPresent",
+      "structuredKeyCount",
+      "structuredKeys",
+      "runtimeStructuredPresent",
+      "resultKeys",
+      "path",
+      "ts"
+    ],
+    "event": "job_summary",
+    "preview": {
+      "event": "job_summary",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385"
+    }
+  },
+  {
+    "line": 11,
+    "raw": "\ud83d\uddbc\ufe0f  [Direct] sync image materialized | executionId=exec_43_1789402538385 | artifacts=art_syncimg_53_1789402565789_0"
+  },
+  {
+    "line": 13,
+    "keys": [
+      "event",
+      "executionId",
+      "status",
+      "path",
+      "executionKind",
+      "executionSpecSupplied",
+      "asyncMediaPresent",
+      "structuredDataPresent",
+      "websiteRoutesCount",
+      "materializationAttempted",
+      "exported",
+      "artifactIds"
+    ],
+    "event": "execution.website_materialization.diagnostic",
+    "preview": {
+      "event": "execution.website_materialization.diagnostic",
+      "executionId": "exec_43_1789402538385",
+      "status": "skipped_already_materialized"
+    }
+  },
+  {
+    "line": 14,
+    "keys": [
+      "scope",
+      "event",
+      "executionId",
+      "jobId",
+      "cdfSessionId",
+      "cdfPhaseId",
+      "artifactKey",
+      "candidateSource",
+      "structuredPresent",
+      "structuredKeyCount",
+      "structuredKeys",
+      "resultKind"
+    ],
+    "event": "candidate_resolved",
+    "preview": {
+      "event": "candidate_resolved",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385",
+      "candidateSource": "media_required_for_contract"
+    }
+  },
+  {
+    "line": 16,
+    "keys": [
+      "event",
+      "executionId",
+      "status",
+      "path",
+      "executionKind",
+      "executionSpecSupplied",
+      "asyncMediaPresent",
+      "structuredDataPresent",
+      "websiteRoutesCount",
+      "materializationAttempted",
+      "exported",
+      "artifactIds"
+    ],
+    "event": "execution.website_materialization.diagnostic",
+    "preview": {
+      "event": "execution.website_materialization.diagnostic",
+      "executionId": "exec_43_1789402538385",
+      "status": "skipped_already_materialized"
+    }
+  },
+  {
+    "line": 17,
+    "keys": [
+      "scope",
+      "event",
+      "executionId",
+      "jobId",
+      "cdfSessionId",
+      "cdfPhaseId",
+      "artifactKey",
+      "generationModality",
+      "candidateSource",
+      "structuredPresent",
+      "structuredKeyCount",
+      "structuredKeys"
+    ],
+    "event": "candidate_resolved",
+    "preview": {
+      "event": "candidate_resolved",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385",
+      "candidateSource": "media_required_for_contract"
+    }
+  },
+  {
+    "line": 18,
+    "keys": [
+      "event",
+      "requestId",
+      "executionId",
+      "organizationId",
+      "status"
+    ],
+    "event": "execution.cdf_canonical_image_bridge.succeeded",
+    "preview": {
+      "event": "execution.cdf_canonical_image_bridge.succeeded",
+      "executionId": "exec_43_1789402538385",
+      "status": "succeeded"
+    }
+  },
+  {
+    "line": 19,
+    "keys": [
+      "event",
+      "requestId",
+      "executionId",
+      "organizationId",
+      "status"
+    ],
+    "event": "execution.cdf_canonical_image_bridge.succeeded",
+    "preview": {
+      "event": "execution.cdf_canonical_image_bridge.succeeded",
+      "executionId": "exec_43_1789402538385",
+      "status": "succeeded"
+    }
+  },
+  {
+    "line": 20,
+    "keys": [
+      "scope",
+      "validationId",
+      "artifactId",
+      "artifactVersion",
+      "artifactKey",
+      "status",
+      "candidateGate",
+      "headlessCandidate",
+      "failedRequirementIds",
+      "validatorVersion",
+      "activeBriefVersion",
+      "contextHash"
+    ],
+    "event": "cdf.generation_validation",
+    "preview": {
+      "scope": "cdf.generation_validation",
+      "status": "passed",
+      "artifactId": "__candidate_gate__"
+    }
+  },
+  {
+    "line": 21,
+    "keys": [
+      "scope",
+      "status",
+      "artifactKey",
+      "artifactId",
+      "artifactVersion",
+      "executionId",
+      "cdfContextId",
+      "cdfContextHash",
+      "activeBriefVersion",
+      "normalizationStatus",
+      "validationStatus",
+      "validationId"
+    ],
+    "event": "cdf.generation_artifact",
+    "preview": {
+      "scope": "cdf.generation_artifact",
+      "executionId": "exec_43_1789402538385",
+      "status": "ok",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output",
+      "validationStatus": "passed"
+    }
+  },
+  {
+    "line": 22,
+    "keys": [
+      "scope",
+      "event",
+      "sessionId",
+      "phaseId",
+      "artifactId",
+      "artifactVersion",
+      "artifactKey",
+      "artifactTargetKey",
+      "validationStatus",
+      "generationExecutionId",
+      "sessionMutation",
+      "canonicalPath"
+    ],
+    "event": "ingest_accepted",
+    "preview": {
+      "event": "ingest_accepted",
+      "scope": "cdf.social_media_runtime",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output",
+      "validationStatus": "passed"
+    }
+  },
+  {
+    "line": 23,
+    "keys": [
+      "scope",
+      "event",
+      "sessionId",
+      "sessionVersion",
+      "phaseId",
+      "artifactKey",
+      "artifactId",
+      "artifactVersion",
+      "ts"
+    ],
+    "event": "generated_artifacts_pinned",
+    "preview": {
+      "event": "generated_artifacts_pinned",
+      "scope": "cdf.artifacts",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output"
+    }
+  },
+  {
+    "line": 24,
+    "keys": [
+      "scope",
+      "event",
+      "ok",
+      "sessionId",
+      "phaseId",
+      "artifactKey",
+      "artifactId",
+      "artifactVersion",
+      "sessionVersion",
+      "idempotentReplay",
+      "casAttempt",
+      "ts"
+    ],
+    "event": "m9c_generated_bind",
+    "preview": {
+      "event": "m9c_generated_bind",
+      "scope": "cdf.social_media_runtime",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output"
+    }
+  },
+  {
+    "line": 25,
+    "keys": [
+      "event",
+      "requestId",
+      "executionId",
+      "organizationId",
+      "status"
+    ],
+    "event": "execution.cdf_social_media_session_bind.succeeded",
+    "preview": {
+      "event": "execution.cdf_social_media_session_bind.succeeded",
+      "executionId": "exec_43_1789402538385",
+      "status": "succeeded"
+    }
+  },
+  {
+    "line": 26,
+    "keys": [
+      "scope",
+      "event",
+      "sessionId",
+      "executionId",
+      "artifactId",
+      "artifactVersion",
+      "artifactKey",
+      "generatedArtifactsCount",
+      "exactGenerated",
+      "ts"
+    ],
+    "event": "generated_artifact_bind",
+    "preview": {
+      "event": "generated_artifact_bind",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output"
+    }
+  },
+  {
+    "line": 27,
+    "keys": [
+      "scope",
+      "event",
+      "executionId",
+      "ingestResult",
+      "artifactId",
+      "artifactVersion",
+      "path",
+      "ts"
+    ],
+    "event": "canonical_ingest_after",
+    "preview": {
+      "event": "canonical_ingest_after",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output",
+      "ingestResult": "accepted"
+    }
+  },
+  {
+    "line": 28,
+    "keys": [
+      "scope",
+      "event",
+      "sessionId",
+      "phaseId",
+      "canonicalPath",
+      "fallbackReason",
+      "error",
+      "ts"
+    ],
+    "event": "ingest_failed_legacy_continues",
+    "preview": {
+      "event": "ingest_failed_legacy_continues",
+      "scope": "cdf.social_media_runtime"
+    }
+  },
+  {
+    "line": 29,
+    "keys": [
+      "event",
+      "requestId",
+      "executionId",
+      "organizationId",
+      "status",
+      "errorCode"
+    ],
+    "event": "execution.cdf_canonical_completion.idempotent_replay",
+    "preview": {
+      "event": "execution.cdf_canonical_completion.idempotent_replay",
+      "executionId": "exec_43_1789402538385",
+      "status": "succeeded"
+    }
+  },
+  {
+    "line": 30,
+    "keys": [
+      "scope",
+      "event",
+      "executionId",
+      "ingestResult",
+      "artifactId",
+      "artifactVersion",
+      "path",
+      "ts"
+    ],
+    "event": "canonical_ingest_after",
+    "preview": {
+      "event": "canonical_ingest_after",
+      "scope": "execution.structured_completion",
+      "executionId": "exec_43_1789402538385",
+      "artifactId": "cdfart_mu1g380n_2_social-media-output",
+      "ingestResult": "accepted"
+    }
+  },
+  {
+    "line": 31,
+    "keys": [
+      "event",
+      "requestId",
+      "executionId",
+      "organizationId",
+      "status",
+      "planId",
+      "planVersion"
+    ],
+    "event": "governance.execution_decided",
+    "preview": {
+      "event": "governance.execution_decided",
+      "executionId": "exec_43_1789402538385",
+      "status": "BLOCK"
+    }
+  },
+  {
+    "line": 32,
+    "keys": [
+      "event",
+      "requestId",
+      "executionId",
+      "organizationId",
+      "capabilityId",
+      "status",
+      "lifecycle"
+    ],
+    "event": "execution.background_finalize",
+    "preview": {
+      "event": "execution.background_finalize",
+      "executionId": "exec_43_1789402538385",
+      "status": "succeeded"
+    }
+  },
+  {
+    "line": 33,
+    "raw": "[UNAGENCY-PRODUCTION-EVIDENCE] | execution=exec_43_1789402538385 | request=corr_44_1789402538385 | service=social/content-design | industry=Education | model=provider.ideogram/ideogram-3 | strategy=st"
+  },
+  {
+    "line": 35,
+    "raw": "[UNAGENCY-SHADOW] | execution=exec_43_1789402538385 | status=INSUFFICIENT_EVIDENCE | actual=provider.ideogram/ideogram-3 | strategy=strategy.baseline | knowledge=knowledge.generic | shadow=none | conf"
+  },
+  {
+    "line": 37,
+    "raw": "executionId=exec_43_1789402538385"
+  },
+  {
+    "line": 38,
+    "raw": "correlationId=corr_44_1789402538385"
+  },
+  {
+    "line": 60,
+    "keys": [
+      "executionId",
+      "correlationId",
+      "service",
+      "subtype",
+      "outputKind",
+      "requestedModel",
+      "selectedModel",
+      "actualModel",
+      "fallbackUsed",
+      "fallbackReason",
+      "structuredOutput",
+      "materialization"
+    ],
+    "event": null,
+    "preview": {
+      "executionId": "exec_43_1789402538385",
+      "status": "PASS"
+    }
+  }
+]

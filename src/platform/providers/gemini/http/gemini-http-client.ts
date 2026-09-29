@@ -4,6 +4,7 @@
 
 import { failure, success, type Result } from "../../../core/result";
 import { ProviderError, ValidationError } from "../../../core/errors";
+import { attachProviderNetworkFailureMetadata } from "../../runtime/diagnostics/provider-error-extraction";
 import { GEMINI_BASE_URL } from "../constants";
 
 export interface GeminiAuthConfig {
@@ -84,16 +85,23 @@ export class FetchGeminiHttpClient implements IGeminiHttpClient {
         latencyMs: this.clockMs() - start,
       });
     } catch (err) {
-      const message =
-        err instanceof Error && err.name === "AbortError"
-          ? "Gemini HTTP timeout"
-          : err instanceof Error
-            ? err.message
-            : "Gemini HTTP failed";
+      const durationMs = this.clockMs() - start;
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      const message = isAbort
+        ? "Gemini HTTP timeout"
+        : err instanceof Error
+          ? err.message
+          : "Gemini HTTP failed";
       return failure(
         new ProviderError(message, {
           cause: err,
-          status: err instanceof Error && err.name === "AbortError" ? 408 : undefined,
+          ...(isAbort ? { status: 408, httpStatus: 408 } : {}),
+          ...attachProviderNetworkFailureMetadata({
+            err,
+            vendor: "gemini",
+            providerId: "provider.gemini",
+            durationMs,
+          }),
         })
       );
     }

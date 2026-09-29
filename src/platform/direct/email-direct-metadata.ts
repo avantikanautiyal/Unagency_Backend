@@ -68,6 +68,7 @@ export function stampEmailCreateMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> {
   const meta: Record<string, unknown> = { ...(metadata ?? {}) };
+  if (meta.cdfExecutionAuthorityApplied === true) return meta;
   if (!isEmailDirectCreate(meta)) return meta;
   if (shouldOmitCdfStructuredStamp(meta)) return meta;
 

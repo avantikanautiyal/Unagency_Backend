@@ -15,6 +15,11 @@ export interface NormalizedAIUsage {
   readonly reasoningTokens: number | null;
   readonly totalTokens: number | null;
   readonly otherUnits: readonly NormalizedUsageUnit[];
+  /**
+   * Exact USD cost reported by the provider for this request when available
+   * (e.g. xAI `cost_in_usd_ticks`). Prefer over rate-table estimates.
+   */
+  readonly providerReportedCostUsd: string | null;
   readonly providerRequestId: string | null;
   readonly rawProviderUsage: Readonly<Record<string, unknown>> | null;
 }
@@ -27,6 +32,7 @@ export const EMPTY_NORMALIZED_USAGE: NormalizedAIUsage = Object.freeze({
   reasoningTokens: null,
   totalTokens: null,
   otherUnits: Object.freeze([]),
+  providerReportedCostUsd: null,
   providerRequestId: null,
   rawProviderUsage: null,
 });

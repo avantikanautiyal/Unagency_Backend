@@ -5,6 +5,7 @@
 import { failure, success, type Result } from "../../../core/result";
 import { ProviderError, ValidationError } from "../../../core/errors";
 import { ANTHROPIC_BASE_URL } from "../constants";
+import { attachProviderHttpFailureMetadata } from "../../runtime/diagnostics/provider-error-extraction";
 
 export interface AnthropicAuthConfig {
   readonly apiKey?: string;
@@ -76,8 +77,27 @@ export class FetchAnthropicHttpClient implements IAnthropicHttpClient {
       });
 
       if (!res.ok) {
+        const durationMs = this.clockMs() - start;
+        const errObj =
+          body.error && typeof body.error === "object"
+            ? (body.error as Record<string, unknown>)
+            : undefined;
+        const detail =
+          typeof errObj?.message === "string" && errObj.message.trim()
+            ? errObj.message.trim().slice(0, 240)
+            : undefined;
         return failure(
-          new ProviderError(`Anthropic HTTP ${res.status}`, { status: res.status, body })
+          new ProviderError(
+            detail
+              ? `Anthropic HTTP ${res.status}: ${detail}`
+              : `Anthropic HTTP ${res.status}`,
+            attachProviderHttpFailureMetadata({
+              status: res.status,
+              body,
+              providerId: "provider.anthropic",
+              durationMs,
+            })
+          )
         );
       }
 
@@ -88,16 +108,23 @@ export class FetchAnthropicHttpClient implements IAnthropicHttpClient {
         latencyMs: this.clockMs() - start,
       });
     } catch (err) {
-      const message =
-        err instanceof Error && err.name === "AbortError"
-          ? "Anthropic HTTP timeout"
-          : err instanceof Error
-            ? err.message
-            : "Anthropic HTTP failed";
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      const isNetwork =
+        err instanceof Error &&
+        (/econnrefused|enotfound|econnreset|fetch failed|socket hang up/i.test(err.message) ||
+          err.name === "TypeError");
+      const message = isAbort
+        ? "Anthropic HTTP timeout"
+        : err instanceof Error
+          ? err.message
+          : "Anthropic HTTP failed";
       return failure(
         new ProviderError(message, {
           cause: err,
-          status: err instanceof Error && err.name === "AbortError" ? 408 : undefined,
+          ...(isAbort ? { status: 408, httpStatus: 408 } : {}),
+          ...(isNetwork && !isAbort ? { failureCategoryHint: "network" } : {}),
+          durationMs: this.clockMs() - start,
+          providerId: "provider.anthropic",
         })
       );
     }

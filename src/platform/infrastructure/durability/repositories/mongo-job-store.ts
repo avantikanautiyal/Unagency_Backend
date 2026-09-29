@@ -6,24 +6,97 @@ import type { IJobStore } from "../../execution/interfaces/execution";
 import type { ExecutionJob, JobId, WorkerId } from "../../execution/contracts/job";
 import { EnterpriseJob } from "../mongo/models/enterprise-job.model";
 
+function isClaimedStatus(status: ExecutionJob["status"]): boolean {
+  return status === "reserved" || status === "running";
+}
+
+/** Prefer the later lease expiry so a stale status persist cannot regress renew. */
+function newerLeaseExpiresAt(
+  a: string | undefined,
+  b: string | undefined,
+): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const aMs = Date.parse(a);
+  const bMs = Date.parse(b);
+  if (!Number.isFinite(aMs)) return b;
+  if (!Number.isFinite(bMs)) return a;
+  return aMs >= bMs ? a : b;
+}
+
+/**
+ * Ownership fields are mutated ONLY by tryClaim / renewLease / reclaimExpired
+ * (and intentional release to queued/terminal). Blind full-document $set of a
+ * stale in-memory snapshot must never rewind leaseExpiresAt after a renew —
+ * that is the job_47 regression (running persist overwrote a renewed lease →
+ * reclaim → attempt 2 while execute still active).
+ */
+function stripOwnershipForClaimedPersist(
+  job: ExecutionJob,
+): Record<string, unknown> {
+  const {
+    leaseExpiresAt: _leaseExpiresAt,
+    reservedBy: _reservedBy,
+    reservationId: _reservationId,
+    leaseId: _leaseId,
+    ...rest
+  } = job;
+  return rest as Record<string, unknown>;
+}
+
 export class MongoJobStore implements IJobStore {
   private readonly cache = new Map<string, ExecutionJob>();
 
   save(job: ExecutionJob): void {
-    this.cache.set(String(job.jobId), job);
-    void this.persist(job).catch((err) => {
+    const id = String(job.jobId);
+    const prev = this.cache.get(id);
+    let next = job;
+    if (prev && isClaimedStatus(job.status) && isClaimedStatus(prev.status)) {
+      // Ownership fields are never updated via save — only tryClaim/renew/reclaim.
+      next = {
+        ...job,
+        reservedBy: prev.reservedBy,
+        reservationId: prev.reservationId,
+        leaseId: prev.leaseId,
+        leaseExpiresAt: prev.leaseExpiresAt,
+      };
+    }
+    this.cache.set(id, next);
+    void this.persist(next).catch((err) => {
       console.warn(
-        `[Direct] job persist failed | jobId=${String(job.jobId)} | status=${job.status} | ${err instanceof Error ? err.message : String(err)}`,
+        `[Direct] job persist failed | jobId=${id} | status=${next.status} | ${err instanceof Error ? err.message : String(err)}`,
       );
     });
   }
 
   async persist(job: ExecutionJob): Promise<void> {
+    const id = String(job.jobId);
+    if (isClaimedStatus(job.status)) {
+      // Do not $set ownership fields — renewLease/tryClaim own those paths.
+      await EnterpriseJob.updateOne(
+        { jobId: id },
+        { $set: stripOwnershipForClaimedPersist(job) },
+        { upsert: true, maxTimeMS: 15_000 },
+      );
+      const prev = this.cache.get(id);
+      this.cache.set(id, {
+        ...job,
+        reservedBy: job.reservedBy ?? prev?.reservedBy,
+        reservationId: job.reservationId ?? prev?.reservationId,
+        leaseId: job.leaseId ?? prev?.leaseId,
+        leaseExpiresAt: newerLeaseExpiresAt(
+          prev?.leaseExpiresAt,
+          job.leaseExpiresAt,
+        ),
+      });
+      return;
+    }
     await EnterpriseJob.updateOne(
-      { jobId: String(job.jobId) },
+      { jobId: id },
       { $set: job },
       { upsert: true, maxTimeMS: 15_000 },
     );
+    this.cache.set(id, job);
   }
 
   get(jobId: JobId): ExecutionJob | undefined {
@@ -31,10 +104,12 @@ export class MongoJobStore implements IJobStore {
   }
 
   async hydrate(jobId: JobId): Promise<ExecutionJob | undefined> {
-    const cached = this.cache.get(String(jobId));
-    if (cached) return cached;
+    // Always prefer durable Mongo state for claim/recovery decisions so a
+    // stale in-memory cache cannot keep tryClaim failing forever.
     const doc = await EnterpriseJob.findOne({ jobId: String(jobId) }).lean();
-    if (!doc) return undefined;
+    if (!doc) {
+      return this.cache.get(String(jobId));
+    }
     const job = doc as unknown as ExecutionJob;
     this.cache.set(String(jobId), job);
     return job;
@@ -93,7 +168,10 @@ export class MongoJobStore implements IJobStore {
     ttlMs: number,
     nowIso: string
   ): Promise<ExecutionJob | undefined> {
-    const leaseExpiresAt = new Date(Date.now() + ttlMs).toISOString();
+    const baseMs = Date.parse(nowIso);
+    const leaseExpiresAt = new Date(
+      (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
+    ).toISOString();
     const existing = this.cache.get(String(jobId));
     const nextAttempt = (existing?.attempt ?? 0) + 1;
     const doc = await EnterpriseJob.findOneAndUpdate(
@@ -118,6 +196,10 @@ export class MongoJobStore implements IJobStore {
     return job;
   }
 
+  /**
+   * Reclaim only when durable lease ownership has genuinely expired.
+   * Active owners renew leaseExpiresAt; reclaim CAS fails if renewed.
+   */
   async reclaimExpired(nowIso: string, nowMs: number): Promise<readonly ExecutionJob[]> {
     const nowIsoLease = new Date(nowMs).toISOString();
     const docs = await EnterpriseJob.find({
@@ -127,6 +209,9 @@ export class MongoJobStore implements IJobStore {
 
     const recovered: ExecutionJob[] = [];
     for (const doc of docs) {
+      // CAS: lease must still be expired and status still claimed.
+      // A concurrent renewLease from the owning worker advances leaseExpiresAt
+      // and causes this update to no-op — preserving active ownership.
       const updated = await EnterpriseJob.findOneAndUpdate(
         {
           jobId: doc.jobId,
@@ -169,12 +254,16 @@ export class MongoJobStore implements IJobStore {
     nowIso: string,
     workerId?: WorkerId
   ): Promise<boolean> {
-    const leaseExpiresAt = new Date(Date.now() + ttlMs).toISOString();
+    const baseMs = Date.parse(nowIso);
+    const leaseExpiresAt = new Date(
+      (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
+    ).toISOString();
     const existing = this.cache.get(String(jobId));
     const filter: Record<string, unknown> = {
       jobId: String(jobId),
       status: { $in: ["reserved", "running"] },
     };
+    // Durable ownership: only the reserved worker may renew.
     if (workerId) filter.reservedBy = String(workerId);
     const doc = await EnterpriseJob.findOneAndUpdate(
       filter,

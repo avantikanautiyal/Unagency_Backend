@@ -56,6 +56,11 @@ export type ProductionEvidenceInput = {
   readonly totalTokens?: number;
   readonly estimatedCost?: number | null;
   readonly providerSuccess: boolean;
+  /**
+   * When true, provider generated media but structural compliance blocked
+   * canonical completion — must not classify as PROVIDER_OPERATIONAL_FAILURE.
+   */
+  readonly structuralComplianceBlocked?: boolean;
   readonly operationalFailureCategory?: PerformanceFailureCategory;
   readonly routingMode?: "static" | "adaptive";
   readonly routingPolicyId?: string;
@@ -71,8 +76,13 @@ export type ProductionEvidenceInput = {
 function productionOutcome(input: {
   readonly validation: OutputValidationResult;
   readonly providerSuccess: boolean;
+  readonly structuralComplianceBlocked?: boolean;
   readonly operationalFailureCategory?: PerformanceFailureCategory;
 }): BenchmarkOutcome {
+  // Provider media success + structural block is NOT an operational provider failure.
+  if (input.structuralComplianceBlocked === true) {
+    return "STRUCTURAL_COMPLIANCE_FAILURE";
+  }
   if (input.operationalFailureCategory || !input.providerSuccess) {
     return "PROVIDER_OPERATIONAL_FAILURE";
   }
@@ -153,11 +163,14 @@ export function buildProductionPerformanceRecord(
   const outcome = productionOutcome(input);
 
   let reliabilityStatus: ReliabilityStatus = "success";
-  if (input.operationalFailureCategory) {
+  if (input.structuralComplianceBlocked === true) {
+    reliabilityStatus = "partial";
+  } else if (input.operationalFailureCategory) {
     reliabilityStatus = "operational_failure";
   } else if (
     outcome === "CONTRACT_FAILURE" ||
     outcome === "MODEL_QUALITY_FAILURE" ||
+    outcome === "STRUCTURAL_COMPLIANCE_FAILURE" ||
     v.hardRequirementSummary.unverified > 0 ||
     unmeasuredQuality.length > 0
   ) {

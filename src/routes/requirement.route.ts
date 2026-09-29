@@ -9,6 +9,7 @@ import {
   getRequirmentById,
   openServiceRequirement,
   updateCustomerRequirement,
+  updateRequirementDescription,
 } from "../controllers/requirement.controller";
 
 const router = Router();
@@ -41,6 +42,13 @@ router.get(
   "/:userId",
   VerifyRole(["admin", "superadmin", "servicing", "customer"]),
   getCustomerRequirement
+);
+
+// CS edits the client brief text before sharing to resources
+router.post(
+  "/description/:reqId/:userId",
+  VerifyRole(["servicing"]),
+  updateRequirementDescription
 );
 
 //Desc: It allows servicing to update the status of Requirements

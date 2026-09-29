@@ -51,6 +51,19 @@ export interface ProviderTokenUsage {
   readonly completionTokens?: number;
   readonly totalTokens?: number;
   readonly reasoningTokens?: number;
+  readonly cachedTokens?: number;
+  /** DeepSeek cache-hit input tokens. */
+  readonly promptCacheHitTokens?: number;
+  /** DeepSeek cache-miss input tokens. */
+  readonly promptCacheMissTokens?: number;
+  /** Anthropic cache read tokens. */
+  readonly cacheReadInputTokens?: number;
+  /**
+   * xAI exact billed cost in ticks (1 USD = 10^10 ticks).
+   * See https://docs.x.ai/developers/cost-tracking
+   */
+  readonly costInUsdTicks?: number;
+  readonly costUsd?: number;
 }
 
 export interface ProviderSafetyMarker {

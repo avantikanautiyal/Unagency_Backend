@@ -4,6 +4,7 @@
 
 import { failure, success, type Result } from "../../../core/result";
 import { ProviderError, ValidationError } from "../../../core/errors";
+import { attachProviderNetworkFailureMetadata } from "../../runtime/diagnostics/provider-error-extraction";
 import type { TextProviderAuthConfig, TextProviderConfig } from "../contracts/text-provider-config";
 
 export interface CompatHttpRequest {
@@ -50,6 +51,10 @@ export class FetchCompatHttpClient implements ICompatHttpClient {
       ...(this.auth.extraHeaders ?? {}),
     };
 
+    // Safe request identity for diagnostics — host + model only; never the
+    // Authorization header, key, or request body.
+    const safeIdentity = compatRequestDiagnostics(url, request.body);
+
     const start = this.clockMs();
     try {
       const controller = new AbortController();
@@ -81,7 +86,11 @@ export class FetchCompatHttpClient implements ICompatHttpClient {
         return failure(
           new ProviderError(`${this.config.vendor} HTTP ${res.status}`, {
             status: res.status,
+            httpStatus: res.status,
+            noHttpResponse: false,
             body,
+            ...safeIdentity,
+            ...providerErrorIdentity(body),
           })
         );
       }
@@ -94,18 +103,59 @@ export class FetchCompatHttpClient implements ICompatHttpClient {
         latencyMs: this.clockMs() - start,
       });
     } catch (err) {
-      const message =
-        err instanceof Error && err.name === "AbortError"
-          ? `${this.config.vendor} HTTP timeout`
-          : err instanceof Error
-            ? err.message
-            : `${this.config.vendor} HTTP failed`;
+      const durationMs = this.clockMs() - start;
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      const message = isAbort
+        ? `${this.config.vendor} HTTP timeout`
+        : err instanceof Error
+          ? err.message
+          : `${this.config.vendor} HTTP failed`;
       return failure(
         new ProviderError(message, {
           cause: err,
-          status: err instanceof Error && err.name === "AbortError" ? 408 : undefined,
+          ...(isAbort ? { status: 408, httpStatus: 408 } : {}),
+          ...attachProviderNetworkFailureMetadata({
+            err,
+            vendor: this.config.vendor,
+            providerId: this.config.canonicalProviderId,
+            durationMs,
+          }),
+          ...safeIdentity,
         })
       );
     }
   }
+}
+
+export function compatRequestDiagnostics(
+  url: string,
+  body: unknown,
+): { endpointHost?: string; model?: string } {
+  let endpointHost: string | undefined;
+  try {
+    endpointHost = new URL(url).host;
+  } catch {
+    endpointHost = undefined;
+  }
+  const model =
+    body && typeof body === "object" && typeof (body as { model?: unknown }).model === "string"
+      ? (body as { model: string }).model
+      : undefined;
+  return {
+    ...(endpointHost ? { endpointHost } : {}),
+    ...(model ? { model } : {}),
+  };
+}
+
+/** OpenAI-compatible `{ error: { code, type } }` — typed fields only. */
+export function providerErrorIdentity(
+  body: Record<string, unknown>,
+): { providerErrorCode?: string; providerErrorType?: string } {
+  const e = body.error;
+  if (!e || typeof e !== "object") return {};
+  const { code, type } = e as { code?: unknown; type?: unknown };
+  return {
+    ...(typeof code === "string" && code ? { providerErrorCode: code } : {}),
+    ...(typeof type === "string" && type ? { providerErrorType: type } : {}),
+  };
 }

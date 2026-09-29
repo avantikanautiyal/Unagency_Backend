@@ -48,13 +48,11 @@ Ensure Firebase Admin credentials match the Firebase project the mobile app uses
 | `rm@unagency.test` | servicing (RM) | CS portal + relationship manager chat |
 | `cs2@unagency.test` | servicing | Extra CS portal login |
 | `cs3@unagency.test` | servicing | Extra CS portal login |
-| `cs4@unagency.test` | servicing | Extra CS portal login |
 | `admin@unagency.test` | admin | Admin portal (`/admin`) |
 | `superadmin@unagency.test` | superadmin | Super Admin portal (`/super-admin`) |
 | `resource@unagency.test` | resource | Resource / designer portal (`/resource`) |
 | `resource2@unagency.test` | resource | Extra resource portal login |
 | `resource3@unagency.test` | resource | Extra resource portal login |
-| `resource4@unagency.test` | resource | Extra resource portal login |
 | `teammate@unagency.test` | customer | Accepted team member |
 | `invitee@unagency.test` | customer | Pending team invitation |
 

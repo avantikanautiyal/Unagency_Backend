@@ -11,7 +11,14 @@ import {
 import { sanitizeOperationForPersistence } from "../persistence/sanitize-operation-record";
 import { EnterpriseProviderOperation } from "../../../infrastructure/durability/mongo/models/enterprise-provider-operation.model";
 
-const POLLABLE_STATES = ["pending", "submitted", "completed", "result_ingesting"] as const;
+const POLLABLE_STATES = [
+  "pending",
+  "submitted",
+  "completed",
+  "result_ingesting",
+  // Orphaned submit attempts must be recoverable after process restart.
+  "submitting",
+] as const;
 
 function toRecord(doc: Record<string, unknown>): ProviderOperationRecord {
   const usageRecorded = Boolean(doc.usageRecorded);
@@ -133,7 +140,17 @@ export class MongoProviderOperationStore implements IProviderOperationStore {
           $or: [{ leaseOwner: null }, { leaseOwner: { $exists: false } }],
         },
         {
-          $or: [{ nextPollAt: { $lte: nowIso } }, { nextPollAt: null }, { nextPollAt: { $exists: false } }],
+          $or: [
+            { nextPollAt: { $lte: nowIso } },
+            { nextPollAt: null },
+            { nextPollAt: { $exists: false } },
+            // Local poll-budget suspension — reconciler may auto-extend while
+            // providerJobId is still present (video often needs longer waits).
+            {
+              "safeMetadata.pollBudgetExhausted": true,
+              providerJobId: { $exists: true, $nin: [null, ""] },
+            },
+          ],
         },
       ],
     })

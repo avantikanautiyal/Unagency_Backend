@@ -546,6 +546,9 @@ const sendPhoneOtp = asyncHandler(async (req) => {
   //
   // In development the OTP is returned in the response so you can test without SMS.
   const isDev = process.env.NODE_ENV !== "production";
+  if (isDev) {
+    console.log(`[auth] DEV phone OTP for ${phone}: ${otp}`);
+  }
 
   return new ApiResponse(
     200,

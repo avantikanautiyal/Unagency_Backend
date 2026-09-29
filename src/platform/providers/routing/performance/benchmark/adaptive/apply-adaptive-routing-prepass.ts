@@ -7,6 +7,7 @@ import { resolveAdaptiveRoutingDecision } from "./adaptive-routing-decision-serv
 import type { AdaptiveRoutingDecisionServiceDeps } from "./adaptive-routing-decision-service";
 import type { ProductionRoutingMetadata } from "./adaptive-routing-decision-contract";
 import { logAdaptiveRoutingExecution } from "./adaptive-routing-logger";
+import { isGenerationFanoutLeafMetadata } from "../../../../../generation/generation-fanout";
 
 export type AdaptiveRoutingPrepassDeps = AdaptiveRoutingDecisionServiceDeps;
 
@@ -114,7 +115,11 @@ export async function applyAdaptiveRoutingToPrepass(
 
   let req = input.req;
 
-  if (decision.decision === "USE_ADAPTIVE" && decision.adaptive) {
+  if (
+    decision.decision === "USE_ADAPTIVE" &&
+    decision.adaptive &&
+    !isGenerationFanoutLeafMetadata(meta)
+  ) {
     workingMetadata = {
       ...workingMetadata,
       preferredProviderId: decision.adaptive.providerId,
@@ -144,6 +149,17 @@ export async function applyAdaptiveRoutingToPrepass(
       correlationId: decision.correlationId ?? input.executionId,
       adaptiveSelected: true,
     });
+  } else if (
+    decision.decision === "USE_ADAPTIVE" &&
+    decision.adaptive &&
+    isGenerationFanoutLeafMetadata(meta)
+  ) {
+    // Fanout leaf metadata remains routing authority — never overwrite pins.
+    workingMetadata = {
+      ...workingMetadata,
+      adaptiveSelected: false,
+      adaptiveSkippedReason: "generation_fanout_leaf_authority",
+    };
   }
 
   return Object.freeze({

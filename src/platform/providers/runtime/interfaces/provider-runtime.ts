@@ -13,6 +13,8 @@ import type { ProviderExecutionRequest } from "../contracts/provider-execution-r
 import type { ProviderExecutionResult } from "../contracts/provider-execution-response";
 import type { ProviderExecutionSnapshot } from "../contracts/provider-session";
 import type { ProviderRuntimeSnapshot } from "../contracts/runtime-metrics";
+import type { CircuitBreakerState } from "../contracts/circuit-breaker";
+import type { ProviderHealthSnapshot } from "../diagnostics/provider-health-snapshot";
 
 export interface IProviderRuntime {
   /**
@@ -28,6 +30,18 @@ export interface IProviderRuntime {
   getSession(sessionId: string): Result<ProviderExecutionSnapshot>;
 
   getRuntimeSnapshot(): ProviderRuntimeSnapshot;
+
+  /**
+   * Whether the per-provider circuit breaker currently permits dispatch.
+   * Used by Direct failover to skip OPEN providers before calling execute.
+   */
+  canDispatchToProvider(providerId: string): boolean;
+
+  /** Observability — in-memory breaker snapshots (not Redis-backed). */
+  getCircuitBreakerSnapshots(): readonly CircuitBreakerState[];
+
+  /** Safe provider-health snapshot for internal admin/debugging. */
+  getProviderHealthSnapshots(): readonly ProviderHealthSnapshot[];
 
   dispose(): Promise<void>;
 }

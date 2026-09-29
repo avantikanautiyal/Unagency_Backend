@@ -9,13 +9,19 @@
 
 import type { ProviderId } from "../../../core/identifiers";
 import type { CircuitBreakerState } from "../contracts/circuit-breaker";
+import type { CircuitOutcomeContext } from "../diagnostics/circuit-transition-log";
 
 export interface ICircuitBreaker {
   readonly providerId: ProviderId;
   readonly state: CircuitBreakerState;
-  canDispatch(): boolean;
-  recordSuccess(): void;
-  recordFailure(): void;
+  canDispatch(ctx?: CircuitOutcomeContext): boolean;
+  recordSuccess(ctx?: CircuitOutcomeContext): void;
+  recordFailure(ctx?: CircuitOutcomeContext): void;
+  /**
+   * Log a failure that must not trip the breaker (HTTP 429 policy).
+   * Optional — implementations without it simply no-op via record path omission.
+   */
+  observeNonTrippingFailure?(ctx?: CircuitOutcomeContext): void;
   /** Force closed so a healthy alternate path / cooldown can resume. */
   reset(): void;
   snapshot(): CircuitBreakerState;

@@ -141,7 +141,8 @@ export function readWebsiteMaterializationContext(input: {
   const first = routes[0];
   return {
     executionSpecSupplied,
-    structuredDataPresent: routes.length > 0,
+    // Raw structured presence — not conflated with WebsiteRoutes recovery.
+    structuredDataPresent: input.structuredData != null,
     websiteRoutesCount: routes.length,
     ...(first?.stack ? { providerDeclaredStack: first.stack } : {}),
     metadataPreferredStack: explicitPreferredStackFromMetadata(input.metadata),

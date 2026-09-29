@@ -24,6 +24,7 @@ import {
   buildRepairInfo,
   summarizeHardRequirements,
   summarizeQualityDimensions,
+  MATERIALIZED_DELIVERABLE_QUALITY_GATE_POLICY,
   type QualityGatePolicy,
 } from "./quality-gate";
 import {
@@ -243,11 +244,21 @@ export function validateOutputContract(
 
   const hardSummary = summarizeHardRequirements(requirementResults);
   const qualitySummary = summarizeQualityDimensions(qualityResults);
+  const materializedWebsite =
+    input.buildSucceeded === true &&
+    (input.outputKind === "deferred_website" ||
+      input.outputKind === "website" ||
+      (typeof input.service === "string" &&
+        input.service.trim().toLowerCase() === "website"));
   const gate = applyQualityGate({
     hardSummary,
     qualitySummary,
     requirements: requirementResults,
-    policy: input.qualityGatePolicy,
+    policy:
+      input.qualityGatePolicy ??
+      (materializedWebsite
+        ? MATERIALIZED_DELIVERABLE_QUALITY_GATE_POLICY
+        : undefined),
   });
 
   const result: OutputValidationResult = Object.freeze({

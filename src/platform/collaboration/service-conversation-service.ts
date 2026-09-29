@@ -110,6 +110,74 @@ function toAiMessage(
     ...(meta.failed === true ? { failed: true } : {}),
     ...(typeof meta.intentChip === "string" ? { intentChip: meta.intentChip } : {}),
     ...(typeof meta.mediaUri === "string" ? { mediaUri: meta.mediaUri } : {}),
+    ...(() => {
+      const attachments: ServiceAiMessageRecord["attachments"] = [];
+      const kind = typeof meta.kind === "string" ? meta.kind : undefined;
+      if (
+        (kind === "chat_attachment" || kind === "voice_note") &&
+        (typeof meta.url === "string" || typeof meta.fileName === "string")
+      ) {
+        attachments.push({
+          kind,
+          url: typeof meta.url === "string" ? meta.url : undefined,
+          fileName:
+            typeof meta.fileName === "string" ? meta.fileName : undefined,
+          filename:
+            typeof meta.fileName === "string" ? meta.fileName : undefined,
+          mimeType:
+            typeof meta.mimeType === "string" ? meta.mimeType : undefined,
+          sizeBytes: typeof meta.size === "number" ? meta.size : undefined,
+          size: typeof meta.size === "number" ? meta.size : undefined,
+          assetId:
+            typeof meta.assetId === "string"
+              ? meta.assetId
+              : doc.assetId
+                ? String(doc.assetId)
+                : undefined,
+        });
+      }
+      if (Array.isArray(meta.attachments)) {
+        for (const raw of meta.attachments) {
+          if (!raw || typeof raw !== "object") continue;
+          const a = raw as Record<string, unknown>;
+          attachments.push({
+            kind: typeof a.kind === "string" ? a.kind : undefined,
+            url: typeof a.url === "string" ? a.url : undefined,
+            fileName:
+              typeof a.fileName === "string"
+                ? a.fileName
+                : typeof a.filename === "string"
+                  ? a.filename
+                  : undefined,
+            filename:
+              typeof a.filename === "string"
+                ? a.filename
+                : typeof a.fileName === "string"
+                  ? a.fileName
+                  : undefined,
+            mimeType: typeof a.mimeType === "string" ? a.mimeType : undefined,
+            sizeBytes:
+              typeof a.sizeBytes === "number"
+                ? a.sizeBytes
+                : typeof a.size === "number"
+                  ? a.size
+                  : undefined,
+            assetId: typeof a.assetId === "string" ? a.assetId : undefined,
+            attachmentId:
+              typeof a.attachmentId === "string" ? a.attachmentId : undefined,
+            extractedText:
+              typeof a.extractedText === "string" ? a.extractedText : undefined,
+          });
+        }
+      }
+      if (doc.assetId && attachments.length === 0) {
+        attachments.push({
+          assetId: String(doc.assetId),
+          kind: "message_asset",
+        });
+      }
+      return attachments.length ? { attachments } : {};
+    })(),
   };
 }
 
@@ -155,6 +223,10 @@ export class ServiceConversationService {
 
   async listMessages(input: {
     userId: string;
+    /**
+     * Collaboration channel roomKey OR Conversation ObjectId.
+     * resolveConversation / assertMembership accept both (Phase 7A).
+     */
     channelId: string;
     limit?: number;
   }): Promise<ServiceAiMessageRecord[]> {
@@ -344,6 +416,7 @@ export class ServiceConversationService {
       brandId: state.brandId,
       vaultLogoChoice: input.vaultLogoChoice,
       attachmentLogoAssetIds: input.attachmentLogoAssetIds,
+      brief: input.latestUserMessage,
     });
     const taskState = ensureTaskIntelligenceState(state.taskIntelligence);
     const hasActiveDeliverable = Boolean(
@@ -406,6 +479,7 @@ export class ServiceConversationService {
       brandId: state.brandId,
       vaultLogoChoice: input.vaultLogoChoice,
       attachmentLogoAssetIds: input.attachmentLogoAssetIds,
+      brief: input.latestUserMessage,
     });
     let turn = input.turn;
     if (!turn) {

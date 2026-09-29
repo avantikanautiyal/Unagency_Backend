@@ -92,7 +92,50 @@ describe("brand-vault-logo-resolver", () => {
     expect(vault.selectedAssetId).toBe(logoId.toString());
   });
 
-  it("requires choice when multiple vault logos exist even if one is approved", async () => {
+  it("defaults to the primary logo PNG when multiple vault logos exist", async () => {
+    const systemId = new mongoose.Types.ObjectId();
+    const primaryId = new mongoose.Types.ObjectId();
+    (MediaFile.find as jest.Mock).mockImplementation(() => ({
+      select: () => ({
+        lean: async () => [
+          {
+            _id: systemId,
+            fileName: "branding-logo-logo-system-png",
+            folder: "logos",
+            kind: "image",
+            mimeType: "image/png",
+            approvalStatus: "approved",
+          },
+          {
+            _id: primaryId,
+            fileName: "branding-logo-primary-logo-jpg",
+            folder: "logos",
+            kind: "image",
+            mimeType: "image/jpeg",
+            approvalStatus: "none",
+          },
+          {
+            _id: new mongoose.Types.ObjectId(),
+            fileName: "branding-logo-primary-logo-png",
+            folder: "logos",
+            kind: "image",
+            mimeType: "image/png",
+            approvalStatus: "none",
+          },
+        ],
+      }),
+    }));
+    const vault = await resolveBrandVaultLogos({
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      brandId: new mongoose.Types.ObjectId().toString(),
+    });
+    expect(vault.needsChoice).toBe(false);
+    expect(vault.defaulted).toBe(true);
+    const selected = vault.candidates.find((c) => c.assetId === vault.selectedAssetId);
+    expect(selected?.name).toBe("branding-logo-primary-logo-png");
+  });
+
+  it("requires choice when the brief names a variant no vault logo matches", async () => {
     const approvedId = new mongoose.Types.ObjectId();
     const draftId = new mongoose.Types.ObjectId();
     (MediaFile.find as jest.Mock).mockImplementation(() => ({
@@ -122,6 +165,7 @@ describe("brand-vault-logo-resolver", () => {
     const vault = await resolveBrandVaultLogos({
       organizationId: new mongoose.Types.ObjectId().toString(),
       brandId: new mongoose.Types.ObjectId().toString(),
+      brief: "Tote bag with our monochrome logo",
     });
     expect(vault.needsChoice).toBe(true);
     expect(vault.selectedAssetId).toBeUndefined();

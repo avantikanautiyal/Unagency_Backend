@@ -39,7 +39,11 @@ import type { CanonicalStreamHandoff } from "./canonical-execution-spine";
 import type { WorkflowFollowUpPayload } from "./workflow-follow-up";
 import type { AdaptiveRoutingDecisionServiceDeps } from "../../providers/routing/performance/benchmark/adaptive/adaptive-routing-decision-service";
 
-export const EXECUTION_MAX_PROMPT_CHARS = 100_000;
+/**
+ * Cap for execution *control* metadata only.
+ * Inline media payloads (data-URL audio/image bytes) are excluded — voice
+ * notes and attachments are not prompt-length limits.
+ */
 export const EXECUTION_MAX_METADATA_BYTES = 65_536;
 
 export type ExecutionExtrasRecord = {

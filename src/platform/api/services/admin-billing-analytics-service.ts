@@ -30,7 +30,12 @@ import {
   isDemoTitle,
   loadAdminDemoExclusions,
 } from "./admin-demo-filter";
-import { sumLedgerAiCostByMonth, sumLedgerAiCostUsd } from "./admin-ai-cost-ledger";
+import {
+  type AiCostSource,
+  ensureProviderBillingFresh,
+  sumLedgerAiCostByMonth,
+  sumLedgerAiCostUsd,
+} from "./admin-ai-cost-ledger";
 
 export type RouteBucket = "ai" | "hybrid" | "human";
 
@@ -51,7 +56,12 @@ export type MonthlyTrendPoint = {
 
 export type ProviderCostBreakdown = {
   providerId: string;
+  /** Reporting currency (INR). */
   amount: number;
+  amountUsd: number;
+  /** "provider" = the provider's own cost report; "estimated" = metered usage × rate card. */
+  source: AiCostSource;
+  /** Successful calls only. */
   executions: number;
 };
 
@@ -78,6 +88,14 @@ export type AdminBillingSummary = {
   monthlyTrend: MonthlyTrendPoint[];
   costByProvider: ProviderCostBreakdown[];
   byOrganization: OrgBillingRow[];
+  /** AI cost in USD before FX (provider-reported + estimated). */
+  aiCostUsd: number;
+  /** Portion of aiCostUsd taken from provider cost reports. */
+  aiCostProviderReportedUsd: number;
+  /** Portion of aiCostUsd that is a metered estimate (no provider cost API / not synced). */
+  aiCostEstimatedUsd: number;
+  /** INR per 1 USD applied to every USD amount in this payload. */
+  usdToInrRate: number;
   liveInternalSpendUsd?: number | null;
   pendingSpendUsd?: number | null;
   projectedSpendUsd?: number | null;
@@ -129,7 +147,14 @@ const HYBRID_TASK_COST_INR = Number(
     process.env.ADMIN_HYBRID_TASK_COST_USD ??
     2100
 );
-const DEFAULT_CURRENCY = "USD";
+/** Admin dashboards report in INR; human costs and Razorpay revenue are already INR. */
+const REPORTING_CURRENCY = "INR";
+/** Stripe invoices without an explicit currency. */
+const DEFAULT_INVOICE_CURRENCY = "USD";
+const USD_TO_INR_RATE = (() => {
+  const rate = Number(process.env.ADMIN_USD_TO_INR_RATE ?? process.env.USD_TO_INR_RATE ?? 83);
+  return Number.isFinite(rate) && rate > 0 ? rate : 83;
+})();
 const BILLING_TZ_OFFSET_MS =
   Number(process.env.ADMIN_BILLING_TZ_OFFSET_MINUTES ?? 330) * 60_000;
 
@@ -528,7 +553,12 @@ function estimateCostFromDiagnostics(
 function toInr(amount: number, sourceCurrency?: string | null): number {
   const currency = (sourceCurrency ?? "USD").toUpperCase();
   if (currency === "INR") return amount;
+  if (currency === "USD") return amount * USD_TO_INR_RATE;
   return amount;
+}
+
+function usdToInr(amount: number): number {
+  return toInr(amount, "USD");
 }
 
 function toBillingTz(date: Date): Date {
@@ -610,7 +640,7 @@ function invoiceAmountPaid(inv: {
           const due = finiteCost(inv.amountDue);
           return due != null && due > 0 ? due / 100 : 0;
         })();
-  return toInr(major, inv.currency ?? DEFAULT_CURRENCY);
+  return toInr(major, inv.currency ?? DEFAULT_INVOICE_CURRENCY);
 }
 
 function executionCostInr(
@@ -1085,7 +1115,7 @@ async function buildByOrganizationRollup(
       customerUserId: meta?.customerUserId,
       organizationName: meta?.organizationName,
       revenue: revenueByOrg.get(orgId) ?? 0,
-      aiCost: ai?.aiCostUsd ?? 0,
+      aiCost: usdToInr(ai?.aiCostUsd ?? 0),
       humanCost: humanCostByOrg.get(orgId) ?? 0,
       executions: ai?.executions ?? 0,
     });
@@ -1682,6 +1712,10 @@ export async function buildAdminBillingSummary(
   const yearStart = new Date(now.getFullYear(), 0, 1);
   const trendStart = monthStart(new Date(now.getFullYear(), now.getMonth() - 5, 1));
 
+  if (filter.crossTenant) {
+    await ensureProviderBillingFresh().catch(() => undefined);
+  }
+
   const [periodExecutions, yearExecutions, revenueResult, trendRevenueMap, yearTasksResult, ledger] =
     await Promise.all([
       loadExecutions(filter, range.start),
@@ -1697,18 +1731,21 @@ export async function buildAdminBillingSummary(
       }),
     ]);
 
-  const aiCost = ledger.aiCostUsd;
+  const aiCost = usdToInr(ledger.aiCostUsd);
   const byProvider = ledger.byProvider;
   const humanCost = humanCostInRange(yearTasksResult.tasks, range);
   const totalCost = aiCost + humanCost;
   const revenue = revenueResult.total;
   const profit = revenue - totalCost;
 
-  const aiCostByMonth = await sumLedgerAiCostByMonth({
+  const aiCostUsdByMonth = await sumLedgerAiCostByMonth({
     start: trendStart,
     end: now,
     organizationId: filter.crossTenant ? undefined : filter.organizationId,
   });
+  const aiCostByMonth = new Map(
+    [...aiCostUsdByMonth.entries()].map(([key, usd]) => [key, usdToInr(usd)])
+  );
 
   const humanCostByMonth = bucketHumanCostByMonth(yearTasksResult.tasks, trendStart);
 
@@ -1726,7 +1763,7 @@ export async function buildAdminBillingSummary(
   return writeAdminCache(cacheKey, {
     organizationId: filter.organizationId,
     period: range.label,
-    currency: DEFAULT_CURRENCY,
+    currency: REPORTING_CURRENCY,
     revenue,
     totalCost,
     humanCost,
@@ -1737,11 +1774,17 @@ export async function buildAdminBillingSummary(
     costByProvider: [...byProvider.entries()]
       .map(([providerId, stats]) => ({
         providerId,
-        amount: stats.amount,
+        amount: usdToInr(stats.amount),
+        amountUsd: stats.amount,
+        source: stats.source,
         executions: stats.count,
       }))
       .sort((a, b) => b.amount - a.amount),
     byOrganization,
+    aiCostUsd: ledger.aiCostUsd,
+    aiCostProviderReportedUsd: ledger.providerReportedUsd,
+    aiCostEstimatedUsd: ledger.estimatedUsd,
+    usdToInrRate: USD_TO_INR_RATE,
     liveInternalSpendUsd: Number(ledger.overview.liveInternalSpendUsd ?? 0),
     pendingSpendUsd: ledger.overview.pendingSpendUsd
       ? Number(ledger.overview.pendingSpendUsd)
@@ -1791,7 +1834,7 @@ export async function buildAdminAnalyticsSummary(
     }),
   ]);
 
-  const aiCost = ledger.aiCostUsd;
+  const aiCost = usdToInr(ledger.aiCostUsd);
 
   const routeVolumeEvents = collectRouteVolumeEvents({
     executions,

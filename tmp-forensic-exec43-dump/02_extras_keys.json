@@ -1,0 +1,39 @@
+{
+  "keys": [
+    "_id",
+    "executionId",
+    "__v",
+    "cost",
+    "createMetadataSnapshot",
+    "diagnostics",
+    "evaluation",
+    "experience",
+    "governance",
+    "organizationId",
+    "osLifecycle",
+    "trace",
+    "updatedAt"
+  ],
+  "createMetadataSnapshotKeys": [
+    "service",
+    "subtype",
+    "platform",
+    "format",
+    "category",
+    "outputKind",
+    "outputModalities",
+    "brandName",
+    "productAction",
+    "exampleDeliverable",
+    "preferredProviderId",
+    "preferredModelId",
+    "assetIds",
+    "logoAssetId",
+    "brandLogoAssetId",
+    "vaultLogoChoice",
+    "brandLogoProvenance",
+    "logoAvailable"
+  ],
+  "structuralInSnapshot": null,
+  "structuralTop": null
+}

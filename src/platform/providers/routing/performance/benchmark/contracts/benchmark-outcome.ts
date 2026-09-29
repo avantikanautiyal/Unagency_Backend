@@ -11,7 +11,9 @@ export type BenchmarkOutcome =
   | "EXECUTION_CAPABILITY_UNAVAILABLE"
   | "MODEL_CAPABILITY_UNSUPPORTED"
   | "PROVIDER_OPERATIONAL_FAILURE"
-  | "VALIDATION_UNAVAILABLE";
+  | "STRUCTURAL_COMPLIANCE_FAILURE"
+  | "VALIDATION_UNAVAILABLE"
+  | "VERIFICATION_INCOMPLETE";
 
 export const BENCHMARK_OUTCOME_LABELS: Readonly<Record<BenchmarkOutcome, string>> =
   Object.freeze({
@@ -26,8 +28,12 @@ export const BENCHMARK_OUTCOME_LABELS: Readonly<Record<BenchmarkOutcome, string>
       "Model/provider does not support the required model capability for this benchmark",
     PROVIDER_OPERATIONAL_FAILURE:
       "Provider dispatch failed (timeout, auth, rate limit, infra, etc.)",
+    STRUCTURAL_COMPLIANCE_FAILURE:
+      "Provider generated media but structural/OCR acceptance blocked canonical completion",
     VALIDATION_UNAVAILABLE:
       "Step 2 validation could not run (missing contract composition or service mapping)",
+    VERIFICATION_INCOMPLETE:
+      "Validation ran but required checks/quality could not be verified (unverified / not automated) — no measured failure; not model-quality evidence",
   });
 
 export function isModelQualityEvidence(outcome: BenchmarkOutcome): boolean {

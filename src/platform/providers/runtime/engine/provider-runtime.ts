@@ -13,6 +13,7 @@
 
 import { failure, success } from "../../../core/result";
 import type { Result } from "../../../core/result";
+import { asProviderId } from "../../../core/identifiers";
 import type { ProviderExecutionRequest } from "../contracts/provider-execution-request";
 import type { ProviderExecutionResult } from "../contracts/provider-execution-response";
 import {
@@ -27,6 +28,7 @@ import {
   ProviderSessionNotFoundError,
 } from "../errors";
 import { ExecutionPipeline } from "../execution/execution-pipeline";
+import { buildProviderHealthSnapshots } from "../diagnostics/provider-health-snapshot";
 import type { ICancellationEngine, ICancellationSource } from "../interfaces/cancellation-engine";
 import type { ICircuitBreakerRegistry } from "../interfaces/circuit-breaker";
 import type { IConcurrencyManager } from "../interfaces/concurrency-manager";
@@ -207,6 +209,20 @@ export class ProviderRuntime implements IProviderRuntime {
       this.deps.concurrency.active,
       this.deps.queue.size
     );
+  }
+
+  canDispatchToProvider(providerId: string): boolean {
+    return this.deps.circuitBreakers
+      .forProvider(asProviderId(providerId))
+      .canDispatch();
+  }
+
+  getCircuitBreakerSnapshots() {
+    return this.deps.circuitBreakers.snapshots();
+  }
+
+  getProviderHealthSnapshots() {
+    return buildProviderHealthSnapshots(this.deps.circuitBreakers);
   }
 
   async dispose(): Promise<void> {

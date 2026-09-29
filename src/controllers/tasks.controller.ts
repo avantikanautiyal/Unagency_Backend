@@ -128,24 +128,11 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       projectId: String(project),
       extraMemberUserIds: [resourceUserId],
     });
-
-    // Designer needs read access to the Client ↔ CS brief (service room).
-    const projectDoc = await Projects.findById(project)
-      .select("userId brandId productPath title")
-      .lean();
-    if (projectDoc?.userId && projectDoc?.brandId && projectDoc?.productPath) {
-      await collaborationChannelService.ensureForService({
-        userId: String(projectDoc.userId),
-        brandId: String(projectDoc.brandId),
-        productPath: String(projectDoc.productPath),
-        serviceLabel: title,
-        allowOversightBrandLoad: true,
-        extraViewerUserIds: [resourceUserId],
-      });
-    }
+    // Resources only receive the brief when CS explicitly shares it into the
+    // project room / task description — do not auto-add them to Client ↔ CS chat.
   } catch (err) {
     console.warn(
-      "[CreateTask] project/service chat ensure failed (non-fatal):",
+      "[CreateTask] project chat ensure failed (non-fatal):",
       err instanceof Error ? err.message : err
     );
   }
@@ -790,6 +777,212 @@ const getTaskById = asyncHandler(async (req: RequestUser) => {
   return new ApiResponse(200, task, "Task found");
 });
 
+/**
+ * Client reviews a CS-shared draft:
+ * - APPROVED → notify CS (service + project chat); CS then shares to Admin QC
+ * - REQUEST_CHANGES → back to designer (feedback)
+ */
+const ClientReviewTask = asyncHandler(async (req: RequestUser) => {
+  const taskId = String(req.params.taskId || "").trim();
+  const decision = String(req.body?.decision || "")
+    .toUpperCase()
+    .trim();
+  const notes = String(req.body?.notes || "").trim();
+  const callerUserId = String(req.user?.userId || "");
+
+  if (!taskId || !mongoose.Types.ObjectId.isValid(taskId)) {
+    return new ApiResponse(400, null, "Invalid Task ID");
+  }
+  if (decision !== "APPROVED" && decision !== "REQUEST_CHANGES") {
+    return new ApiResponse(
+      400,
+      null,
+      "decision must be APPROVED or REQUEST_CHANGES"
+    );
+  }
+  if (decision === "REQUEST_CHANGES" && !notes) {
+    return new ApiResponse(400, null, "notes are required for REQUEST_CHANGES");
+  }
+
+  const task = await Tasks.findById(taskId).populate({
+    path: "project",
+    select: "_id userId title brandId productPath",
+  });
+  if (!task) {
+    return new ApiResponse(404, null, "Task not found");
+  }
+
+  const project = task.project as
+    | {
+        _id?: unknown;
+        userId?: unknown;
+        title?: string;
+        brandId?: unknown;
+        productPath?: string;
+      }
+    | null
+    | undefined;
+  const ownerId =
+    project?.userId != null
+      ? String(
+          typeof project.userId === "object" &&
+            project.userId &&
+            "_id" in (project.userId as object)
+            ? (project.userId as { _id: unknown })._id
+            : project.userId
+        )
+      : "";
+  if (!ownerId || ownerId !== callerUserId) {
+    return new ApiResponse(403, null, "Not allowed to review this task");
+  }
+
+  const current = String(task.status || "").toLowerCase();
+  const description = String(task.description ?? "");
+  const alreadyClientApproved = /\[client_approved\]/i.test(description);
+
+  // Idempotent: client already approved (or task already in Admin QC from that approve).
+  if (
+    decision === "APPROVED" &&
+    (alreadyClientApproved || current === "admin_qc")
+  ) {
+    return new ApiResponse(200, task, "Client approval already recorded");
+  }
+
+  // Accept client_review (canonical) and submitted (forward message sent but status lag).
+  const awaitingClient =
+    current === "client_review" || current === "submitted";
+  if (!awaitingClient) {
+    return new ApiResponse(
+      409,
+      null,
+      `Task is not awaiting client review (status: ${current || "unknown"})`
+    );
+  }
+
+  const taskDisplay = String(task._id).slice(-6).toUpperCase();
+  const brand = String(project?.title || task.title || "Creative");
+  const brandId = project?.brandId != null ? String(project.brandId) : "";
+  const productPath = String(project?.productPath || "").trim();
+
+  if (decision === "APPROVED") {
+    // Formal Approved! → Admin QC queue automatically (no CS handoff).
+    task.status = "admin_qc";
+    const base = description
+      .replace(/\n*\s*\[requested_by:client\]\s*/gi, "\n")
+      .replace(/\n*\s*\[client_approved\]\s*/gi, "\n")
+      .trim();
+    task.description = [base, "[client_approved]"].filter(Boolean).join("\n\n");
+  } else {
+    task.status = "feedback";
+    const base = description.trim();
+    task.description = [
+      base,
+      "[requested_by:client]",
+      notes ? `Client change request: ${notes}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  await task.save();
+
+  try {
+    const { collaborationChannelService } = await import(
+      "../services/collaboration/collaboration-channel-service"
+    );
+    const projectId = project?._id ? String(project._id) : "";
+
+    const approvalMeta = {
+      kind: "client_approved_pending_qc",
+      taskId: String(task._id),
+      taskDisplayId: taskDisplay,
+      brand,
+      service: String(task.title || brand),
+      requestedBy: "client",
+      decision: "approved",
+      reviewStatus: "approved",
+      forwardedToAdminQc: true,
+      autoForwardedToAdminQc: true,
+    };
+
+    const approvalText = `Client approved ${brand} (${taskDisplay}) — sent to Admin QC.`;
+
+    // Client ↔ CS service room
+    if (decision === "APPROVED" && brandId && productPath) {
+      try {
+        const serviceChannel = await collaborationChannelService.ensureForService({
+          userId: callerUserId,
+          brandId,
+          productPath,
+          serviceLabel: String(task.title || brand),
+          allowOversightBrandLoad: true,
+        });
+        const serviceChannelId = String(
+          (serviceChannel as { channelId?: string })?.channelId || ""
+        ).trim();
+        if (serviceChannelId) {
+          await collaborationChannelService.sendMessage({
+            userId: callerUserId,
+            channelId: serviceChannelId,
+            text: approvalText,
+            messageType: "notification",
+            metadata: approvalMeta,
+          });
+        }
+      } catch (err) {
+        console.warn(
+          "[ClientReviewTask] service chat notify failed (non-fatal):",
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    // CS ↔ designer project room — same card for Job Tracker.
+    if (projectId) {
+      const channel = await collaborationChannelService.ensureForProject({
+        actorUserId: callerUserId,
+        projectId,
+      });
+      const channelId = String(
+        (channel as { channelId?: string })?.channelId || ""
+      ).trim();
+      if (channelId) {
+        if (decision === "APPROVED") {
+          await collaborationChannelService.sendMessage({
+            userId: callerUserId,
+            channelId,
+            text: approvalText,
+            messageType: "notification",
+            metadata: approvalMeta,
+          });
+        } else {
+          await collaborationChannelService.sendMessage({
+            userId: callerUserId,
+            channelId,
+            text: `Client requested changes on ${brand} (${taskDisplay}):\n\n${notes}\n\nPlease revise and resubmit.`,
+            messageType: "notification",
+            metadata: {
+              kind: "draft_decision",
+              taskId: String(task._id),
+              taskDisplayId: taskDisplay,
+              decision: "rejected",
+              changeNotes: notes,
+              requestedBy: "client",
+            },
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[ClientReviewTask] chat notify failed (non-fatal):",
+      err instanceof Error ? err.message : err
+    );
+  }
+
+  return new ApiResponse(200, task, "Client review recorded");
+});
+
 export {
   CreateTask,
   TaskList,
@@ -797,4 +990,5 @@ export {
   TaskListByUserId,
   TaskListForResource,
   getTaskById,
+  ClientReviewTask,
 };

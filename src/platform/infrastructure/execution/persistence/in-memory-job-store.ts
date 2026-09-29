@@ -1,5 +1,10 @@
 /**
  * In-memory job persistence — Redis/BullMQ-ready via IJobStore later.
+ *
+ * NON-DURABLE / NON-CLAIMABLE: this store intentionally has no tryClaim,
+ * renewLease, or reclaimExpired. It must NOT be used to prove distributed
+ * ownership invariants. Use InMemoryClaimableJobStore (CAS-like) or
+ * MongoJobStore (atomic findOneAndUpdate) for lease/ownership tests.
  */
 
 import type { IJobStore } from "../interfaces/execution";

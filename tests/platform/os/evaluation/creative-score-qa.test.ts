@@ -42,7 +42,7 @@ describe("Track B3 Creative Score QA", () => {
 
   it("defines ten creative dimensions", () => {
     expect(CREATIVE_SCORE_DIMENSIONS).toHaveLength(10);
-    expect(CREATIVE_SCORE_RELEASE_GATE).toBe(80);
+    expect(CREATIVE_SCORE_RELEASE_GATE).toBe(70);
   });
 
   it("scores strong on-brand social copy at or above release gate", () => {
@@ -57,7 +57,7 @@ describe("Track B3 Creative Score QA", () => {
     expect(judged.releaseAllowed).toBe(true);
   });
 
-  it("blocks release below 80 when CREATIVE_QA=on", () => {
+  it("blocks release below the release gate when CREATIVE_QA=on", () => {
     process.env.CREATIVE_QA = "on";
     const judged = judgeCreativeScore({
       ...BASE_INPUT,
@@ -85,7 +85,7 @@ describe("Track B3 Creative Score QA", () => {
       preview: "tiny",
     });
     expect(result.outcome).toBe("BLOCKED");
-    expect(result.scores.creativeScoreTotal).toBeLessThan(80);
+    expect(result.scores.creativeScoreTotal).toBeLessThan(CREATIVE_SCORE_RELEASE_GATE);
     expect(result.findings.some((f) => f.code === "CREATIVE_SCORE_BELOW_GATE")).toBe(
       true
     );

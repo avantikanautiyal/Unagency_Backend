@@ -34,15 +34,6 @@ const EXTRA_CS = [
     minTaskCapacity: 2,
     maxTaskCapacity: 12,
   },
-  {
-    email: DEMO_USERS.cs4,
-    name: "CS Coordinator",
-    designation: "CS Coordinator",
-    experience: 3,
-    specialization: ["Presentations", "Branding"],
-    minTaskCapacity: 1,
-    maxTaskCapacity: 8,
-  },
 ] as const;
 
 async function ensureFirebaseUser(email: string, password: string, name: string) {

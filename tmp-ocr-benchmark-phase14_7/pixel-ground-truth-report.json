@@ -1,0 +1,153 @@
+{
+  "phase": "14.7",
+  "generatedAt": "2026-09-29T19:37:39.299Z",
+  "note": "Human pixel annotations are benchmark-only; not runtime authority.",
+  "capabilityClaimUnchanged": "undeclared",
+  "summary": {
+    "totalArtifacts": 4,
+    "artifactsWithAuthoritativeExpected": 3,
+    "artifactsWithPixelAnnotations": 4,
+    "expectedBlocksPresent": 0,
+    "expectedBlocksAbsent": 3,
+    "expectedBlocksUncertain": 0,
+    "requiredTextRenderedRate": 0,
+    "ocrConditionalOnPixelPresent": {
+      "sampleSizePresent": 0,
+      "messageRecovery": null,
+      "presenceRecovery": null,
+      "falseNegatives": 0,
+      "falsePositives": 0
+    },
+    "generationAbsenceConfirmed": 3
+  },
+  "sunflowerDetermination": {
+    "requiredIntroVisible": false,
+    "pixelPresence": "ABSENT",
+    "conclusion": "Required 'Hello! We're Sunflower…' communication is NOT visible. Only stylized wordmark 'Sunflower' is present. This is a generation/rendering miss, not an OCR miss for the required message."
+  },
+  "visibleTextOcrSpotCheck": [
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "observed": [
+        "Sunflower"
+      ]
+    },
+    {
+      "artifact": "real_02_phase8_bloomsip_refreshment",
+      "observed": [
+        "Instagram",
+        "03.27",
+        "garbled caption resembling 'instagram creative about my brand'"
+      ]
+    },
+    {
+      "artifact": "real_03_exec42_sunflower_metaphor",
+      "observed": [
+        "FORMAT"
+      ]
+    },
+    {
+      "artifact": "real_04_exec43_sunny_introduction",
+      "observed": [
+        "Unagency"
+      ]
+    }
+  ],
+  "reconciliation14_6": [
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "expectedText": "Hello! We're Sunflower – a fresh approach to education for students in Classes 1-12",
+      "pixelPresent": "ABSENT",
+      "previousOcr": "y \\ Sunfls=wer",
+      "previousClassification": "FALSE_NEGATIVE",
+      "correctedInterpretation": "generation_failure — required text not on pixels; prior message FN is not OCR FN",
+      "dualClassification": "GENERATION_ABSENCE_CONFIRMED"
+    },
+    {
+      "artifact": "real_02_phase8_bloomsip_refreshment",
+      "expectedText": "Transform your everyday refresh with real botanicals and sparkling sophistication—meet BloomSip. | Refreshment, Refined. Botanicals, Reimagined. | Premium ingredients. Pure refreshment. Purely you.",
+      "pixelPresent": "ABSENT",
+      "previousOcr": "(garble / UI chrome)",
+      "previousClassification": "FALSE_NEGATIVE",
+      "correctedInterpretation": "generation_failure — required text not on pixels; prior message FN is not OCR FN",
+      "dualClassification": "GENERATION_ABSENCE_CONFIRMED"
+    },
+    {
+      "artifact": "real_03_exec42_sunflower_metaphor",
+      "expectedText": "Sunflower nurtures every aspect of a child's development—helping them build strong foundations, grow confidently, and flourish in all areas of life. | Growing minds. Growing humans.",
+      "pixelPresent": "ABSENT",
+      "previousOcr": "FORMAT",
+      "previousClassification": "FALSE_NEGATIVE",
+      "correctedInterpretation": "generation_failure — required text not on pixels; prior message FN is not OCR FN",
+      "dualClassification": "GENERATION_ABSENCE_CONFIRMED"
+    }
+  ],
+  "rows": [
+    {
+      "artifact": "real_01_phase8_sunflower_hello_sunshine",
+      "expectedText": "Hello! We're Sunflower – a fresh approach to education for students in Classes 1-12",
+      "pixelPresence": "ABSENT",
+      "location": "unknown",
+      "annotationNotes": "GENERATION/RENDERING miss for required intro; brand wordmark only.",
+      "ocrOutput": "y \\ Sunfls=wer",
+      "ocrPresence": true,
+      "ocrMessageMatch": false,
+      "classification": "GENERATION_ABSENCE_CONFIRMED",
+      "observedVisible": [
+        "Sunflower"
+      ],
+      "correctedInterpretation": "generation_failure — required text not on pixels; prior message FN is not OCR FN",
+      "previousClassification": "FALSE_NEGATIVE"
+    },
+    {
+      "artifact": "real_02_phase8_bloomsip_refreshment",
+      "expectedText": "Transform your everyday refresh with real botanicals and sparkling sophistication—meet BloomSip. | Refreshment, Refined. Botanicals, Reimagined. | Premium ingredients. Pure refreshment. Purely you.",
+      "pixelPresence": "ABSENT",
+      "location": "unknown",
+      "annotationNotes": "GENERATION miss — image is an Instagram UI mock with unrelated/garbled caption, not BloomSip communication.",
+      "ocrOutput": "ER 03.27 we - ©® Instagam ~~ @ V : p i} _ QQ \\ y y CCOUANTOVetare - 3 ” ya Qv [A] Colayvloukay C633 aaad2 ituave an imstagatiec creative sbout my brand inssthectred pressb ecouttii mage. insoed coilol imeattteatvedtoaticcatioy onde cocottiiia tiny foreatve coinge- Frecurionen@iisscraatines aobretlii",
+      "ocrPresence": true,
+      "ocrMessageMatch": false,
+      "classification": "GENERATION_ABSENCE_CONFIRMED",
+      "observedVisible": [
+        "Instagram",
+        "03.27",
+        "garbled caption resembling 'instagram creative about my brand'"
+      ],
+      "correctedInterpretation": "generation_failure — required text not on pixels; prior message FN is not OCR FN",
+      "previousClassification": "FALSE_NEGATIVE"
+    },
+    {
+      "artifact": "real_03_exec42_sunflower_metaphor",
+      "expectedText": "Sunflower nurtures every aspect of a child's development—helping them build strong foundations, grow confidently, and flourish in all areas of life. | Growing minds. Growing humans.",
+      "pixelPresence": "ABSENT",
+      "location": "unknown",
+      "annotationNotes": "GENERATION miss — canvas shows 'FORMAT', not required Sunflower communication.",
+      "ocrOutput": "FORMAT",
+      "ocrPresence": true,
+      "ocrMessageMatch": false,
+      "classification": "GENERATION_ABSENCE_CONFIRMED",
+      "observedVisible": [
+        "FORMAT"
+      ],
+      "correctedInterpretation": "generation_failure — required text not on pixels; prior message FN is not OCR FN",
+      "previousClassification": "FALSE_NEGATIVE"
+    },
+    {
+      "artifact": "real_04_exec43_sunny_introduction",
+      "expectedText": null,
+      "pixelPresence": "N/A",
+      "location": "unknown",
+      "annotationNotes": "Cannot score generation adherence against expectedTexts (GROUND_TRUTH_UNAVAILABLE for requirements). Visible text is 'Unagency' only.",
+      "ocrOutput": "Unagency",
+      "ocrPresence": true,
+      "ocrMessageMatch": null,
+      "classification": "REQUIREMENT_GT_UNAVAILABLE",
+      "observedVisible": [
+        "Unagency"
+      ],
+      "correctedInterpretation": "requirement_gt_unavailable",
+      "previousClassification": null
+    }
+  ]
+}

@@ -49,7 +49,6 @@ const USER_SPECS: Record<
   rm: { name: "CS Lead", role: "servicing" },
   cs2: { name: "CS Associate", role: "servicing" },
   cs3: { name: "CS Manager", role: "servicing" },
-  cs4: { name: "CS Coordinator", role: "servicing" },
   teammate: { name: "Demo Teammate", role: "customer" },
   invitee: { name: "Demo Invitee", role: "customer" },
   admin: { name: "Admin", role: "admin" },
@@ -57,7 +56,6 @@ const USER_SPECS: Record<
   resource: { name: "Designer", role: "resource" },
   resource2: { name: "Designer — Brand", role: "resource" },
   resource3: { name: "Designer — Motion", role: "resource" },
-  resource4: { name: "Designer — Web", role: "resource" },
 };
 
 const PLAN_SPECS = [
@@ -1008,8 +1006,8 @@ async function main() {
   const { rmStaff, resourceStaff } = await seedStaff(
     users.rm,
     users.resource,
-    [users.cs2, users.cs3, users.cs4],
-    [users.resource2, users.resource3, users.resource4],
+    [users.cs2, users.cs3],
+    [users.resource2, users.resource3],
   );
   await seedSubscription(users.demo);
   const org = await seedOrganization(users.demo);
@@ -1037,11 +1035,9 @@ async function main() {
   console.log(`  Resource     ${DEMO_USERS.resource}`);
   console.log(`  Resource     ${DEMO_USERS.resource2}`);
   console.log(`  Resource     ${DEMO_USERS.resource3}`);
-  console.log(`  Resource     ${DEMO_USERS.resource4}`);
   console.log(`  CS (RM)      ${DEMO_USERS.rm}`);
   console.log(`  CS           ${DEMO_USERS.cs2}`);
   console.log(`  CS           ${DEMO_USERS.cs3}`);
-  console.log(`  CS           ${DEMO_USERS.cs4}`);
   console.log("\nOther customer accounts:");
   console.log(`  - ${DEMO_USERS.teammate}`);
   console.log(`  - ${DEMO_USERS.invitee}`);

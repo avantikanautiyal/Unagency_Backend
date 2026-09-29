@@ -3,6 +3,10 @@
  * matrix model routing, idempotency. Direct provider path only.
  */
 
+import {
+  parseProviderPinPolicy,
+  providerPinMetadataStamps,
+} from "../../providers/routing/provider-pin-policy";
 import { failure, success, type Result } from "../../core/result";
 import { ValidationError, AuthorizationError } from "../../core/errors";
 import type { AuthPrincipal, CreateExecutionRequest } from "../contracts";
@@ -16,10 +20,12 @@ import {
   resolveServiceOutputSpec,
 } from "../../config/service-output-map";
 import { PRESENTATION_ROUTE_CONCEPTS_SCHEMA } from "../../os/delivery/presentation-schemas";
+import { PRESENTATION_ROUTES_STRUCTURED_SCHEMA } from "../../os/delivery/presentation-schemas";
 import { stampPresentationCreateMetadata } from "../../direct/presentation-direct-metadata";
 import { stampDocumentCreateMetadata } from "../../direct/document-direct-metadata";
 import { stampEmailCreateMetadata } from "../../direct/email-direct-metadata";
 import { shouldOmitCdfStructuredStamp } from "../../cdf/phase-scoped-create";
+import { stampCanonicalStructuredOutputMetadata } from "../../cdf/structured-output-contract";
 import { WEBSITE_ROUTES_STRUCTURED_SCHEMA } from "../../os/delivery/website-generation";
 import {
   isAudioTranscribeCapability,
@@ -31,7 +37,6 @@ import { attachProductAssetsToExecutionMetadata } from "../../../services/produc
 import { ApiError } from "../../../utils/apiError";
 import {
   EXECUTION_MAX_METADATA_BYTES,
-  EXECUTION_MAX_PROMPT_CHARS,
   type ExecutionCreateHost,
 } from "./execution-create-host";
 import {
@@ -84,6 +89,11 @@ import {
   applyVisualModificationPrepass,
   routeImageWithReferenceSupport,
 } from "./apply-visual-modification-prepass";
+import {
+  isGenerationFanoutLeafMetadata,
+  resolveIntraLeafFailoverChain,
+  INTRA_PROVIDER_VIDEO_MODEL_FALLBACKS,
+} from "../../generation/generation-fanout";
 
 function brandDisplayName(
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -136,6 +146,28 @@ function sanitizePassthroughPrompt(raw: string): string {
 }
 
 /** Client route fan-out pins live in metadata — lift them for matrix routers. */
+/**
+ * Requested identity for the execution trace: client pin, else the
+ * routed/declared model before dispatch — provider fallback must not erase
+ * what the execution asked for.
+ */
+export function resolveTraceRequestedIdentity(
+  routingPin: { providerId?: string; modelId?: string },
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): { requestedProviderId?: string; requestedModelId?: string } {
+  const providerId =
+    routingPin.providerId ??
+    (typeof metadata?.preferredProviderId === "string"
+      ? metadata.preferredProviderId
+      : undefined);
+  const modelId =
+    routingPin.modelId ??
+    (typeof metadata?.preferredModelId === "string"
+      ? metadata.preferredModelId
+      : undefined);
+  return { requestedProviderId: providerId, requestedModelId: modelId };
+}
+
 export function resolveClientRoutingPin(
   req: CreateExecutionRequest,
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -145,6 +177,9 @@ export function resolveClientRoutingPin(
     (typeof metadata?.preferredProviderId === "string"
       ? metadata.preferredProviderId.trim()
       : undefined) ||
+    (typeof metadata?.requestedProvider === "string"
+      ? metadata.requestedProvider.trim()
+      : undefined) ||
     (typeof metadata?.providerId === "string"
       ? metadata.providerId.trim()
       : undefined);
@@ -153,11 +188,32 @@ export function resolveClientRoutingPin(
     (typeof metadata?.preferredModelId === "string"
       ? metadata.preferredModelId.trim()
       : undefined) ||
+    (typeof metadata?.requestedModel === "string"
+      ? metadata.requestedModel.trim()
+      : undefined) ||
     (typeof metadata?.modelId === "string" ? metadata.modelId.trim() : undefined);
   return {
     ...(providerId ? { providerId } : {}),
     ...(modelId ? { modelId } : {}),
   };
+}
+
+/**
+ * Byte length of control metadata. Inline media (data-URL audio/image bytes)
+ * is omitted so a voice note or attachment is not treated as metadata bloat.
+ */
+function metadataControlByteLength(metadata: unknown): number {
+  const serialized = JSON.stringify(metadata, (_key, value: unknown) => {
+    if (
+      typeof value === "string" &&
+      value.startsWith("data:") &&
+      value.includes(";base64,")
+    ) {
+      return "";
+    }
+    return value;
+  });
+  return serialized?.length ?? 0;
 }
 
 export async function runCreatePrepass(
@@ -196,14 +252,11 @@ export async function runCreatePrepass(
   if (!req.organizationId) {
     return failure(new ValidationError("organizationId is required"));
   }
-  if (prompt.length > EXECUTION_MAX_PROMPT_CHARS) {
-    return failure(new ValidationError("prompt exceeds maximum length"));
-  }
-  if (req.metadata) {
-    const metaSize = JSON.stringify(req.metadata).length;
-    if (metaSize > EXECUTION_MAX_METADATA_BYTES) {
-      return failure(new ValidationError("metadata exceeds maximum size"));
-    }
+  if (
+    req.metadata &&
+    metadataControlByteLength(req.metadata) > EXECUTION_MAX_METADATA_BYTES
+  ) {
+    return failure(new ValidationError("metadata exceeds maximum size"));
   }
   if (
     req.tokenBudgetLimit != null &&
@@ -256,6 +309,78 @@ export async function runCreatePrepass(
     workingMetadata?.cdfSkipHeavyPrepass === true ||
     (typeof workingMetadata?.cdfPhaseId === "string" &&
       workingMetadata.cdfPhaseId.trim().length > 0);
+
+  // P0 — Canonical CDF phases must never use legacy route_visual / direct_routes_*.
+  {
+    const { resolveCdfPhaseExecutionContract } = await import(
+      "../../cdf/canonical"
+    );
+    const cdfServiceId =
+      typeof workingMetadata?.cdfServiceId === "string"
+        ? workingMetadata.cdfServiceId.trim()
+        : "";
+    const cdfPhaseId =
+      typeof workingMetadata?.cdfPhaseId === "string"
+        ? workingMetadata.cdfPhaseId.trim()
+        : "";
+    const stampedStrategy =
+      typeof workingMetadata?.cdfExecutionStrategy === "string"
+        ? workingMetadata.cdfExecutionStrategy.trim()
+        : "";
+    const contract = resolveCdfPhaseExecutionContract({
+      serviceId: cdfServiceId,
+      phaseId: cdfPhaseId,
+    });
+    const requiresCanonical =
+      stampedStrategy === "canonical" ||
+      contract?.requiresCanonicalCreate === true;
+    if (requiresCanonical && isRouteVisualFanout) {
+      return failure(
+        new ValidationError(
+          "productAction=route_visual is not allowed for a canonical CDF phase; use the phase artifact contract",
+          {
+            reason: "CDF_CANONICAL_ROUTE_VISUAL_FORBIDDEN",
+            cdfServiceId,
+            cdfPhaseId,
+            artifactKey: contract?.artifactKey,
+            executionStrategy: contract?.executionStrategy ?? stampedStrategy,
+          },
+        ),
+      );
+    }
+    const parentTarget =
+      typeof workingMetadata?.parentExecutionId === "string"
+        ? workingMetadata.parentExecutionId.trim()
+        : typeof workingMetadata?.targetExecutionId === "string"
+          ? workingMetadata.targetExecutionId.trim()
+          : "";
+    const refineFrom =
+      typeof workingMetadata?.refineFromExecutionId === "string"
+        ? workingMetadata.refineFromExecutionId.trim()
+        : "";
+    const conversationalRef =
+      typeof workingMetadata?.conversationalReferencedExecutionId === "string"
+        ? workingMetadata.conversationalReferencedExecutionId.trim()
+        : "";
+    if (
+      requiresCanonical &&
+      (parentTarget.startsWith("direct_routes_") ||
+        refineFrom.startsWith("direct_routes_") ||
+        conversationalRef.startsWith("direct_routes_"))
+    ) {
+      return failure(
+        new ValidationError(
+          "direct_routes_* is not a valid execution target for a canonical CDF phase",
+          {
+            reason: "CDF_CANONICAL_DIRECT_ROUTES_FORBIDDEN",
+            cdfServiceId,
+            cdfPhaseId,
+            artifactKey: contract?.artifactKey,
+          },
+        ),
+      );
+    }
+  }
   try {
     const channelId =
       typeof workingMetadata?.channelId === "string"
@@ -335,7 +460,16 @@ export async function runCreatePrepass(
         ctx.requiresExecution &&
         ctx.effectiveInstruction.trim() !== prompt.trim()
       ) {
-        prompt = ctx.effectiveInstruction.trim();
+        // Phase 2: do not replace CDF phase prompts with flat CTI when canonical
+        // generation context will compile the authoritative request.
+        const { isCdfCanonicalGenerationContextEnabled, hasCdfSessionPhaseMetadata } =
+          await import("../../cdf/generation-context");
+        const skipForCanonical =
+          isCdfCanonicalGenerationContextEnabled() &&
+          hasCdfSessionPhaseMetadata(workingMetadata);
+        if (!skipForCanonical) {
+          prompt = ctx.effectiveInstruction.trim();
+        }
       }
       workingMetadata = applyDirectPassthroughMetadata({
         ...workingMetadata,
@@ -596,15 +730,61 @@ export async function runCreatePrepass(
         },
       });
       if (Object.keys(colorExtras).length || prepassBrandExtract.extractionSource) {
+        const extractedName = prepassBrandExtract.brandName?.trim().slice(0, 120);
+        const selectedBrandId =
+          typeof workingMetadata?.brandId === "string"
+            ? workingMetadata.brandId.trim()
+            : "";
+        const existingCanonicalName =
+          typeof workingMetadata?.canonicalBrandName === "string"
+            ? workingMetadata.canonicalBrandName.trim()
+            : typeof workingMetadata?.brandName === "string"
+              ? workingMetadata.brandName.trim()
+              : "";
+        // Prompt extraction may enrich knowledge / reference entities, but MUST NOT
+        // replace selected brand identity (brandId or canonical brandName).
+        const identityMutationAttempted = Boolean(
+          selectedBrandId &&
+            extractedName &&
+            existingCanonicalName &&
+            extractedName.toLowerCase() !== existingCanonicalName.toLowerCase(),
+        );
+        const priorExtracted = Array.isArray(workingMetadata?.extractedBrandEntities)
+          ? workingMetadata.extractedBrandEntities.filter(
+              (x): x is string => typeof x === "string" && Boolean(x.trim()),
+            )
+          : [];
         workingMetadata = applyDirectPassthroughMetadata({
           ...workingMetadata,
           ...colorExtras,
           ...(prepassBrandExtract.extractionSource
             ? { brandExtractSource: prepassBrandExtract.extractionSource }
             : {}),
-          ...(prepassBrandExtract.brandName?.trim()
-            ? { brandName: prepassBrandExtract.brandName.trim().slice(0, 120) }
+          ...(extractedName
+            ? {
+                extractedBrandName: extractedName,
+                extractedBrandEntities: [
+                  ...new Set([...priorExtracted, extractedName]),
+                ],
+                promptReferencedBrandNames: [
+                  ...new Set([...priorExtracted, extractedName]),
+                ],
+                ...(identityMutationAttempted
+                  ? { brandExtractAttemptedIdentityMutation: true }
+                  : {}),
+              }
             : {}),
+          // Never overwrite selected brandName with a prompt-extracted entity.
+          ...(selectedBrandId
+            ? existingCanonicalName
+              ? {
+                  brandName: existingCanonicalName,
+                  canonicalBrandName: existingCanonicalName,
+                }
+              : {}
+            : extractedName
+              ? { brandName: extractedName }
+              : {}),
         });
       }
     } catch {
@@ -777,9 +957,32 @@ export async function runCreatePrepass(
         brandName: profile.brandName,
         brandProfile: profile,
       });
+      const canonicalName =
+        profile.brandName?.trim() ||
+        (typeof workingMetadata?.canonicalBrandName === "string"
+          ? workingMetadata.canonicalBrandName.trim()
+          : "") ||
+        (typeof workingMetadata?.brandName === "string"
+          ? workingMetadata.brandName.trim()
+          : "");
       workingMetadata = applyDirectPassthroughMetadata({
         ...workingMetadata,
         ...jobObjectMetadataExtras(job),
+        // Selected brand's persisted name is authoritative identity.
+        ...(canonicalName
+          ? {
+              brandName: canonicalName,
+              canonicalBrandName: canonicalName,
+            }
+          : {}),
+        ...(profile.positioning
+          ? { positioning: profile.positioning }
+          : {}),
+        ...(profile.voice ? { voice: profile.voice } : {}),
+        ...(profile.targetAudience
+          ? { targetAudience: profile.targetAudience }
+          : {}),
+        ...(profile.industry ? { industry: profile.industry } : {}),
       });
     } catch {
       // Job object must never break thin create.
@@ -926,6 +1129,8 @@ export async function runCreatePrepass(
   }
 
   // Spreadsheet output map — attach output kind metadata for provider prompt enrichment.
+  // CDF execution contract is authoritative when present — product map must not
+  // reinterpret text/structured phases as image (e.g. social/content-design).
   try {
     const outputSpec = resolveServiceOutputSpec({
       service:
@@ -952,21 +1157,59 @@ export async function runCreatePrepass(
       needs3dMockup: outputSpec.needs3dMockup,
       exampleDeliverable: outputSpec.exampleDeliverable,
     };
-    // P4.6 — explicit user deliverables override service default output kind.
+
+    let executionSpecKindOverride: string | undefined;
+    // P4.6 — deliverable-derived output kind. Product-default PNG/JPG must NOT
+    // become phase-level Spec authority for incompatible intermediate CDF phases.
     if (conversationExecutionSpec?.deliverables.length) {
-      const { executionSpecOutputKindOverride } = await import(
-        "../../collaboration/conversational-task-intelligence"
-      );
-      const kindOverride = executionSpecOutputKindOverride(conversationExecutionSpec, {
-        service:
-          typeof workingMetadata?.service === "string"
-            ? workingMetadata.service
-            : undefined,
+      const { executionSpecOutputKindOverride, deliverableToOutputKindOverride } =
+        await import("../../collaboration/conversational-task-intelligence");
+      const {
+        resolveCdfContractFromMetadata,
+        outputKindFromCdfContract,
+        resolvePhaseAuthoritativeExecutionSpecOutputKind,
+      } = await import("../../cdf/execution-authority");
+      const serviceForSpec =
+        typeof workingMetadata?.service === "string"
+          ? workingMetadata.service
+          : undefined;
+      const allKind = executionSpecOutputKindOverride(conversationExecutionSpec, {
+        service: serviceForSpec,
       });
-      if (kindOverride) {
+      const explicitDeliverables = conversationExecutionSpec.deliverables.filter(
+        (d) => d.provenance?.explicit === true,
+      );
+      const explicitKind = explicitDeliverables.length
+        ? deliverableToOutputKindOverride(explicitDeliverables, {
+            service: serviceForSpec,
+          })
+        : undefined;
+      const cdfContract = resolveCdfContractFromMetadata(
+        workingMetadata as Record<string, unknown>,
+      );
+      const cdfKind = cdfContract
+        ? outputKindFromCdfContract(cdfContract)
+        : undefined;
+      const scoped = resolvePhaseAuthoritativeExecutionSpecOutputKind({
+        cdfOutputKind: cdfKind,
+        deliverables: conversationExecutionSpec.deliverables,
+        outputKindFromAllDeliverables: allKind,
+        outputKindFromExplicitDeliverables: explicitKind,
+      });
+      workingMetadata = {
+        ...workingMetadata,
+        cdfExecutionSpecKindAuthority: scoped.authority,
+        ...(scoped.deferredProductOutputKind
+          ? {
+              cdfDeferredProductOutputKind: scoped.deferredProductOutputKind,
+            }
+          : {}),
+      };
+      if (scoped.executionSpecOutputKind) {
+        executionSpecKindOverride = scoped.executionSpecOutputKind;
         workingMetadata = {
           ...workingMetadata,
-          outputKind: kindOverride,
+          outputKind: scoped.executionSpecOutputKind,
         };
       }
       if (conversationExecutionSpec.outputIntent.mode.value === "FINAL") {
@@ -977,6 +1220,259 @@ export async function runCreatePrepass(
         };
       }
     }
+
+    {
+      const { applyCdfExecutionAuthority } = await import(
+        "../../cdf/execution-authority"
+      );
+      const authority = applyCdfExecutionAuthority({
+        metadata: workingMetadata as Record<string, unknown>,
+        proposedOutputKind:
+          typeof workingMetadata?.outputKind === "string"
+            ? workingMetadata.outputKind
+            : undefined,
+        executionSpecOutputKind: executionSpecKindOverride,
+      });
+      // CDF remains authoritative even when Spec is incompatible. Structured
+      // conflict is stamped on metadata (deferredConflict) — do not block the
+      // phase create or allow Spec to rewrite sealed fields.
+      if (!authority.ok) {
+        // Defensive: applyCdfExecutionAuthority soft-defers Spec conflicts.
+        // If a hard fail ever returns, still refuse to let Spec win by
+        // re-applying without Spec kind rather than aborting the CDF spine.
+        const sealed = applyCdfExecutionAuthority({
+          metadata: workingMetadata as Record<string, unknown>,
+          proposedOutputKind:
+            typeof workingMetadata?.outputKind === "string"
+              ? workingMetadata.outputKind
+              : undefined,
+          executionSpecOutputKind: undefined,
+        });
+        if (sealed.ok) {
+          workingMetadata = {
+            ...sealed.metadata,
+            cdfExecutionSpecConflict: true,
+            cdfExecutionSpecConflictCode: authority.code,
+            cdfExecutionSpecConflictMessage: authority.message,
+            cdfExecutionSpecConflictDetails: authority.details,
+            cdfDeferredIncompatibleSpecOutputKind:
+              authority.details.executionSpecOutputKind,
+          };
+        } else {
+          return failure(
+            new ValidationError(authority.message, {
+              code: authority.code,
+              ...authority.details,
+            }),
+          );
+        }
+      } else {
+        workingMetadata = authority.metadata;
+      }
+      if (
+        workingMetadata?.cdfExecutionAuthorityApplied === true &&
+        typeof workingMetadata.capabilityId === "string" &&
+        workingMetadata.capabilityId.trim()
+      ) {
+        capabilityIdRaw = String(workingMetadata.capabilityId);
+        req = {
+          ...req,
+          capabilityId: workingMetadata.capabilityId as never,
+        };
+      }
+    }
+
+    // Phase 2 / Phase 10 — Canonical Generation Context via Context Orchestrator
+    // (flag OFF = no-op). Must run before PresentationRouteConcepts stamp.
+    {
+      const {
+        isCdfCanonicalGenerationContextEnabled,
+        hasCdfSessionPhaseMetadata,
+        CDF_CANONICAL_CONTEXT_META,
+      } = await import("../../cdf/generation-context");
+      const { orchestrateCanonicalGenerationContext } = await import(
+        "../../ai/context-orchestrator"
+      );
+      let conversationMessages:
+        | import("../../ai/conversation-working-memory").WorkingMemorySourceMessage[]
+        | undefined;
+      let handoffObs: Record<string, unknown> = {
+        conversationIdPresent: false,
+        channelIdPresent: false,
+        conversationContextAvailable: false,
+        conversationMessageCountLoaded: 0,
+      };
+      // Phase 7/7A — light load of recent Collaboration OS messages for working memory
+      // (no CTI classify / no second store). Active when flag ON or contract-canonical.
+      const strategyCanonical =
+        typeof workingMetadata?.cdfExecutionStrategy === "string" &&
+        workingMetadata.cdfExecutionStrategy === "canonical";
+      const contractForcesCanonical =
+        hasCdfSessionPhaseMetadata(workingMetadata) && strategyCanonical;
+      if (
+        (isCdfCanonicalGenerationContextEnabled() || contractForcesCanonical) &&
+        hasCdfSessionPhaseMetadata(workingMetadata)
+      ) {
+        // Framework: hydrate CDF session + requirement bag (ActiveBrief X@V)
+        // before sync context resolution. Required after backend restart.
+        const cdfSessionIdRaw = workingMetadata.cdfSessionId;
+        if (typeof cdfSessionIdRaw === "string" && cdfSessionIdRaw.trim()) {
+          const { ensureCdfSessionLoaded } = await import("../../cdf");
+          await ensureCdfSessionLoaded(cdfSessionIdRaw.trim());
+        }
+        const {
+          resolveWorkingMemoryConversationHandoff,
+          workingMemoryHandoffObservability,
+        } = await import("../../cdf/generation-context/resolve-conversation-handoff");
+        const handoff = resolveWorkingMemoryConversationHandoff(workingMetadata);
+        const userId = principal.userId?.trim();
+        let messageCountLoaded = 0;
+        // storeHandle = channelId (roomKey) OR conversationId (ObjectId).
+        // collaborationOsService.resolveConversation accepts both.
+        if (handoff.storeHandle && userId) {
+          try {
+            const { serviceConversationService } = await import(
+              "../../collaboration/service-conversation-service"
+            );
+            const { DEFAULT_WORKING_MEMORY_BOUNDS } = await import(
+              "../../ai/conversation-working-memory"
+            );
+            conversationMessages = await serviceConversationService.listMessages({
+              userId,
+              channelId: handoff.storeHandle,
+              limit: DEFAULT_WORKING_MEMORY_BOUNDS.candidateWindow,
+            });
+            messageCountLoaded = conversationMessages.length;
+          } catch {
+            // Working memory is optional evidence — never block generation.
+            conversationMessages = undefined;
+            messageCountLoaded = 0;
+          }
+        }
+        handoffObs = workingMemoryHandoffObservability({
+          handoff,
+          messageCountLoaded,
+        });
+        workingMetadata = {
+          ...workingMetadata,
+          [CDF_CANONICAL_CONTEXT_META.conversationIdPresent]:
+            handoffObs.conversationIdPresent,
+          [CDF_CANONICAL_CONTEXT_META.channelIdPresent]:
+            handoffObs.channelIdPresent,
+          [CDF_CANONICAL_CONTEXT_META.conversationContextAvailable]:
+            handoffObs.conversationContextAvailable,
+          [CDF_CANONICAL_CONTEXT_META.conversationMessageCountLoaded]:
+            handoffObs.conversationMessageCountLoaded,
+        };
+      }
+
+      // Exact selected upstream visual → multimodal bytes (after session hydrate).
+      // Fail closed rather than text-only continuity for visual emission phases.
+      {
+        const { applyGenerationContinuationVisualPrepass } = await import(
+          "./apply-generation-continuation-visual-prepass"
+        );
+        const modalityHint =
+          typeof workingMetadata?.cdfGenerationModality === "string"
+            ? workingMetadata.cdfGenerationModality.trim()
+            : typeof workingMetadata?.preferredVisualModality === "string"
+              ? workingMetadata.preferredVisualModality.trim()
+              : typeof workingMetadata?.outputKind === "string"
+                ? workingMetadata.outputKind.trim()
+                : "";
+        const looksVisualEmission =
+          modalityHint === "image" ||
+          modalityHint === "video" ||
+          modalityHint === "edited_image" ||
+          modalityHint === "image_mockup" ||
+          modalityHint === "image_3d_mockup" ||
+          Boolean(workingMetadata?.cdfContinuationVisualArtifactId) ||
+          Boolean(workingMetadata?.cdfGenerationContinuation);
+        const contVisual = await applyGenerationContinuationVisualPrepass({
+          metadata: workingMetadata,
+          organizationId: trustedOrganizationId,
+          projectId:
+            typeof req.projectId === "string" ? req.projectId : undefined,
+          artifactsRepo: host.deps.persistence?.artifacts,
+          blobStorage: host.deps.asyncMedia?.blobStorage,
+          artifactStore: host.artifactStore,
+          requireResolvedVisual: looksVisualEmission,
+        });
+        if (!contVisual.ok) {
+          return failure(contVisual.error);
+        }
+        workingMetadata = applyDirectPassthroughMetadata(
+          contVisual.value.metadata,
+        );
+      }
+
+      // Generic upstream visual ArtifactVersion handoff (approved/selected deps).
+      // IMAGE→VIDEO / IMAGE→IMAGE: exact X@V vault media → metadata.assets → CMR.
+      {
+        const { applyUpstreamVisualArtifactHandoff } = await import(
+          "../../cdf/generation-context/upstream-visual-handoff"
+        );
+        const upstreamVisual = await applyUpstreamVisualArtifactHandoff({
+          metadata: workingMetadata,
+          organizationId: trustedOrganizationId,
+          projectId:
+            typeof req.projectId === "string" ? req.projectId : undefined,
+        });
+        if (!upstreamVisual.ok) {
+          return failure(upstreamVisual.error);
+        }
+        workingMetadata = applyDirectPassthroughMetadata(
+          upstreamVisual.value.metadata,
+        );
+        if (upstreamVisual.value.attachedCount > 0) {
+          try {
+            console.info(
+              JSON.stringify({
+                scope: "cdf.upstream_artifact",
+                event: "provider_boundary",
+                executionId:
+                  typeof workingMetadata.executionId === "string"
+                    ? workingMetadata.executionId
+                    : null,
+                cdfSessionId: workingMetadata.cdfSessionId ?? null,
+                targetPhase: workingMetadata.cdfPhaseId ?? null,
+                attachedCount: upstreamVisual.value.attachedCount,
+                provider_received_upstream_visual: true,
+                ts: new Date().toISOString(),
+              }),
+            );
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const { resolveCanonicalConversationalInstruction } = await import(
+        "../../ai/conversational-runtime"
+      );
+      const applied = orchestrateCanonicalGenerationContext({
+        prompt,
+        metadata: workingMetadata,
+        organizationId: trustedOrganizationId,
+        projectId:
+          typeof req.projectId === "string" ? req.projectId : undefined,
+        conversationalInstruction:
+          resolveCanonicalConversationalInstruction(workingMetadata),
+        conversationMessages,
+      });
+      if (!applied.ok) {
+        return failure(
+          new ValidationError(applied.message, {
+            reason: applied.code,
+            ...(applied.details ?? {}),
+          }),
+        );
+      }
+      prompt = applied.prompt;
+      workingMetadata = applied.metadata;
+      req = { ...req, prompt, metadata: workingMetadata };
+    }
+
     const clientStructuredName =
       req.structuredOutput &&
       typeof req.structuredOutput === "object" &&
@@ -986,47 +1482,67 @@ export async function runCreatePrepass(
     const isMediaCapability =
       isImageGenerationCapability(capabilityIdRaw) ||
       isVideoGenerationCapability(capabilityIdRaw);
+    // Prefer CDF-authoritative outputKind after applyCdfExecutionAuthority —
+    // product-map outputSpec.kind may still say "image" for social/content-design.
+    const authoritativeKind =
+      typeof workingMetadata?.outputKind === "string"
+        ? workingMetadata.outputKind
+        : outputSpec.kind;
     const isVisualDeliverableKind =
-      outputSpec.kind === "image" ||
-      outputSpec.kind === "video" ||
-      outputSpec.kind === "edited_image" ||
-      outputSpec.kind === "animation" ||
-      outputSpec.kind === "image_mockup" ||
-      outputSpec.kind === "image_3d_mockup";
+      authoritativeKind === "image" ||
+      authoritativeKind === "video" ||
+      authoritativeKind === "edited_image" ||
+      authoritativeKind === "animation" ||
+      authoritativeKind === "image_mockup" ||
+      authoritativeKind === "image_3d_mockup";
     const needsPresentationExpand =
       !isMediaCapability &&
       !isVisualDeliverableKind &&
-      (outputSpec.kind === "presentation" ||
-        clientStructuredName === "PresentationRouteConcepts");
+      (authoritativeKind === "presentation" ||
+        clientStructuredName === "PresentationRouteConcepts" ||
+        workingMetadata?.cdfCanonicalFullDeck === true);
     const omitCdfStructured = shouldOmitCdfStructuredStamp(workingMetadata);
+    const canonicalFullDeck =
+      workingMetadata?.cdfCanonicalFullDeck === true ||
+      workingMetadata?.cdfOmitConceptsExpansion === true;
+    const cdfAuthoritySealed =
+      workingMetadata?.cdfExecutionAuthorityApplied === true;
     if (needsPresentationExpand && !omitCdfStructured) {
       const subtype =
         typeof workingMetadata?.subtype === "string"
           ? workingMetadata.subtype.trim().toLowerCase()
           : "";
-      // Never honor stale client "lazy" for pitch decks — concepts-only is not
-      // a completed presentation deliverable (PDF/PPTX require full slide decks).
-      // CDF early phases set cdfOmitStructuredOutput / early cdfPhaseId and skip
-      // this block entirely.
-        workingMetadata = {
-          ...workingMetadata,
-          presentationExpandMode: subtype === "gifs" ? "lazy" : "full",
-          deliverableRequired: subtype !== "gifs",
-          ...(outputSpec.kind !== "presentation"
-            ? { outputKind: "presentation" }
-            : {}),
-        };
-      // Server-authoritative schema so Direct always enters the presentation
-      // gate + full expand (client schema omission must not skip tools).
-      if (subtype !== "gifs") {
-        const structuredOutput = {
-          name: "PresentationRouteConcepts",
-          schema: PRESENTATION_ROUTE_CONCEPTS_SCHEMA as unknown as Record<
-            string,
-            unknown
-          >,
-          strict: true,
-        };
+      // Configure expansion behavior from authoritative kind — never rewrite
+      // outputKind after CDF authority has sealed it.
+      workingMetadata = {
+        ...workingMetadata,
+        presentationExpandMode: canonicalFullDeck
+          ? "canonical"
+          : subtype === "gifs"
+            ? "lazy"
+            : "full",
+        deliverableRequired: subtype !== "gifs",
+      };
+      // Non-CDF / unsealed: stamp presentation schemas. CDF sealed path relies
+      // on stampCanonicalStructuredOutputMetadata from the phase contract.
+      if (!cdfAuthoritySealed && subtype !== "gifs") {
+        const structuredOutput = canonicalFullDeck
+          ? {
+              name: "PresentationRoutes",
+              schema: PRESENTATION_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
+                string,
+                unknown
+              >,
+              strict: true,
+            }
+          : {
+              name: "PresentationRouteConcepts",
+              schema: PRESENTATION_ROUTE_CONCEPTS_SCHEMA as unknown as Record<
+                string,
+                unknown
+              >,
+              strict: true,
+            };
         req = { ...req, structuredOutput };
         workingMetadata = {
           ...workingMetadata,
@@ -1035,9 +1551,13 @@ export async function runCreatePrepass(
       }
     }
 
-    // Web Tech — always 3 WebsiteRoutes (content-fill); server expands scaffolds.
-    // Early CDF phases (sitemap / page-structure) stay text-only.
-    if (outputSpec.kind === "deferred_website" && !omitCdfStructured) {
+    // Web Tech — configure WebsiteRoutes only when authoritative kind is website.
+    // Never force outputKind from product catalog after CDF authority.
+    if (
+      authoritativeKind === "deferred_website" &&
+      !omitCdfStructured &&
+      !cdfAuthoritySealed
+    ) {
       const structuredOutput = {
         name: "WebsiteRoutes",
         schema: WEBSITE_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
@@ -1050,7 +1570,6 @@ export async function runCreatePrepass(
       workingMetadata = {
         ...workingMetadata,
         structuredOutput,
-        outputKind: "deferred_website",
       };
     }
   } catch {
@@ -1065,7 +1584,9 @@ export async function runCreatePrepass(
     typeof workingMetadata?.outputKind === "string"
       ? workingMetadata.outputKind.toLowerCase()
       : "";
+  // Non-CDF website correction only — sealed CDF capability already set.
   if (
+    workingMetadata?.cdfExecutionAuthorityApplied !== true &&
     (serviceSlug === "website" ||
       outputKindSlug === "deferred_website" ||
       outputKindSlug === "website") &&
@@ -1078,6 +1599,69 @@ export async function runCreatePrepass(
   }
 
   const clientRoutingPin = resolveClientRoutingPin(req, workingMetadata);
+
+  // Fanout leaves: GenerationFanoutContract leaf metadata is routing authority.
+  // Never proceed with provider-only pins — dual-OpenAI leaves share providerId.
+  if (
+    isGenerationFanoutLeafMetadata(workingMetadata) &&
+    isImageGenerationCapability(capabilityIdRaw)
+  ) {
+    const leafProvider =
+      clientRoutingPin.providerId ||
+      (typeof workingMetadata?.preferredProviderId === "string"
+        ? workingMetadata.preferredProviderId.trim()
+        : "") ||
+      (typeof workingMetadata?.requestedProvider === "string"
+        ? workingMetadata.requestedProvider.trim()
+        : "");
+    const leafModel =
+      clientRoutingPin.modelId ||
+      (typeof workingMetadata?.preferredModelId === "string"
+        ? workingMetadata.preferredModelId.trim()
+        : "") ||
+      (typeof workingMetadata?.requestedModel === "string"
+        ? workingMetadata.requestedModel.trim()
+        : "");
+    if (!leafProvider || !leafModel) {
+      return failure(
+        new ValidationError(
+          "Fanout leaf requires preferredProviderId and preferredModelId (or requestedProvider/requestedModel) — provider-only routing collapses dual-family leaves",
+          {
+            reason: "FANOUT_LEAF_MODEL_REQUIRED",
+            generationFanoutTargetId:
+              typeof workingMetadata?.generationFanoutTargetId === "string"
+                ? workingMetadata.generationFanoutTargetId
+                : undefined,
+            preferredProviderId: leafProvider || undefined,
+            preferredModelId: leafModel || undefined,
+          },
+        ),
+      );
+    }
+    // Re-stamp authority pins before router so drops cannot become matrix first-match.
+    workingMetadata = {
+      ...workingMetadata,
+      preferredProviderId: leafProvider,
+      preferredModelId: leafModel,
+      requestedProvider: leafProvider,
+      requestedModel: leafModel,
+      generationFanoutLeaf: true,
+      disableCrossProviderFailover: true,
+    };
+  }
+
+  // Re-lift pins after fanout authority re-stamp (preferred* may have been restored).
+  const routingPin = resolveClientRoutingPin(req, workingMetadata);
+  // Routing contract: a required provider pin forbids provider substitution.
+  workingMetadata = {
+    ...workingMetadata,
+    ...providerPinMetadataStamps({
+      policy: parseProviderPinPolicy(
+        req.providerPinPolicy ?? workingMetadata?.providerPinPolicy,
+      ),
+      pinnedProviderId: routingPin.providerId,
+    }),
+  };
 
   // Matrix model routing — single router ownership for create (Wave 3).
   // Pins preferredProviderId / preferredModelId on workingMetadata; async/sync
@@ -1102,8 +1686,8 @@ export async function runCreatePrepass(
       prompt,
       capabilityId: capabilityIdRaw || "image.generate",
       imageRouter: host.deps.imageRouter,
-      preferredProviderId: clientRoutingPin.providerId,
-      preferredModelId: clientRoutingPin.modelId,
+      preferredProviderId: routingPin.providerId,
+      preferredModelId: routingPin.modelId,
       // Slot fan-out reintroduces OpenAI/Recraft — skip when a logo is bound.
       ...(!logoBound && Number.isFinite(routeVisualSlot)
         ? { routeVisualSlot }
@@ -1128,6 +1712,57 @@ export async function runCreatePrepass(
           ? workingMetadata.imageUseCase
           : undefined,
     };
+
+    // Composition → capability requirements (generic; no service/platform branches).
+    let capabilityRequirements = null as
+      | import("../../cdf/generation-context/execution-capability-requirements").ExecutionCapabilityRequirements
+      | null;
+    try {
+      const serviceId =
+        typeof workingMetadata?.cdfServiceId === "string"
+          ? workingMetadata.cdfServiceId
+          : typeof workingMetadata?.serviceId === "string"
+            ? workingMetadata.serviceId
+            : "";
+      const phaseId =
+        typeof workingMetadata?.cdfPhaseId === "string"
+          ? workingMetadata.cdfPhaseId
+          : "";
+      if (serviceId && phaseId) {
+        const { resolveDeliverableCompositionForPhase } = await import(
+          "../../cdf/generation-context/resolve-deliverable-composition"
+        );
+        const { deriveExecutionCapabilityRequirements } = await import(
+          "../../cdf/generation-context/execution-capability-requirements"
+        );
+        const resolved = resolveDeliverableCompositionForPhase({
+          serviceId,
+          phaseId,
+          service:
+            typeof workingMetadata?.service === "string"
+              ? workingMetadata.service
+              : null,
+          subtype:
+            typeof workingMetadata?.subtype === "string"
+              ? workingMetadata.subtype
+              : null,
+          productKey:
+            typeof workingMetadata?.productKey === "string"
+              ? workingMetadata.productKey
+              : typeof workingMetadata?.productPath === "string"
+                ? workingMetadata.productPath
+                : null,
+        });
+        if (resolved.contract) {
+          capabilityRequirements = deriveExecutionCapabilityRequirements(
+            resolved.contract,
+          );
+        }
+      }
+    } catch {
+      capabilityRequirements = null;
+    }
+
     const matrixRoute = host.deps.imageRouter.resolve({
       prompt,
       capabilityId: capabilityIdRaw || "image.generate",
@@ -1145,26 +1780,69 @@ export async function runCreatePrepass(
       ...(typeof workingMetadata?.subtype === "string"
         ? { subtype: workingMetadata.subtype }
         : {}),
+      ...(capabilityRequirements
+        ? { capabilityRequirements }
+        : {}),
     });
     if (matrixRoute.ok) {
       const { listReferenceImageProviderIds } = await import(
         "../../providers/image/configs/image-provider-capabilities"
       );
       const refCapable = new Set(listReferenceImageProviderIds());
-      const failoverChain = logoBound
-        ? matrixRoute.value.failoverChain.filter((step) =>
-            refCapable.has(step.providerId)
-          )
-        : matrixRoute.value.failoverChain;
+      const fanoutLeaf = isGenerationFanoutLeafMetadata(workingMetadata);
+      // Fanout leaves: intra-leaf same-provider model fallback only — never sibling families.
+      const failoverChain = fanoutLeaf
+        ? resolveIntraLeafFailoverChain({
+            primaryProviderId: String(
+              routed.value.providerId ??
+                workingMetadata?.preferredProviderId ??
+                "",
+            ),
+            primaryModelId: String(
+              routed.value.modelId ?? workingMetadata?.preferredModelId ?? "",
+            ),
+            matrixChain: matrixRoute.value.failoverChain,
+            excludeModelKeys: new Set(
+              Array.isArray(workingMetadata?.generationFanoutSiblingModelKeys)
+                ? (workingMetadata.generationFanoutSiblingModelKeys as unknown[])
+                    .filter((k): k is string => typeof k === "string")
+                : [],
+            ),
+          })
+        : logoBound
+          ? matrixRoute.value.failoverChain.filter((step) =>
+              refCapable.has(step.providerId),
+            )
+          : matrixRoute.value.failoverChain;
       workingMetadata = {
         ...workingMetadata,
         preferredProviderId: routed.value.providerId,
         preferredModelId: routed.value.modelId,
         imageUseCase: matrixRoute.value.useCase,
         imageProviderLabel: matrixRoute.value.label,
+        ...(capabilityRequirements
+          ? {
+              cdfExecutionCapabilityRequirements: capabilityRequirements,
+            }
+          : {}),
         ...(failoverChain.length
           ? { imageFailoverChain: failoverChain }
           : { imageFailoverChain: [] }),
+        ...(fanoutLeaf
+          ? {
+              disableCrossProviderFailover: true,
+              generationFanoutLeaf: true,
+              // Declared leaf identity survives resolved-model updates.
+              requestedProvider: String(
+                workingMetadata?.requestedProvider ??
+                  routed.value.providerId ??
+                  "",
+              ),
+              requestedModel: String(
+                workingMetadata?.requestedModel ?? routed.value.modelId ?? "",
+              ),
+            }
+          : {}),
       };
     }
   } else if (
@@ -1174,8 +1852,8 @@ export async function runCreatePrepass(
     const routed = await host.deps.videoRouter.resolve({
       prompt,
       capabilityId: capabilityIdRaw || "video.generate",
-      preferredProviderId: clientRoutingPin.providerId,
-      preferredModelId: clientRoutingPin.modelId,
+      preferredProviderId: routingPin.providerId,
+      preferredModelId: routingPin.modelId,
       ...(typeof workingMetadata?.service === "string"
         ? { service: workingMetadata.service }
         : {}),
@@ -1187,12 +1865,31 @@ export async function runCreatePrepass(
         : {}),
     });
     if (routed.ok) {
+      const fanoutLeaf = isGenerationFanoutLeafMetadata(workingMetadata);
+      // Fanout leaves: intra-leaf same-provider model fallback only (parity with image).
+      const videoIntraLeafChain = fanoutLeaf
+        ? resolveIntraLeafFailoverChain({
+            primaryProviderId: String(routed.value.providerId ?? ""),
+            primaryModelId: String(routed.value.modelId ?? ""),
+            declaredModelIds:
+              INTRA_PROVIDER_VIDEO_MODEL_FALLBACKS[
+                String(routed.value.providerId ?? "")
+              ] ?? [],
+          })
+        : null;
       workingMetadata = {
         ...workingMetadata,
         preferredProviderId: routed.value.providerId,
         preferredModelId: routed.value.modelId,
         videoUseCase: routed.value.capabilityId,
         videoProviderLabel: routed.value.providerId,
+        ...(fanoutLeaf
+          ? {
+              imageFailoverChain: videoIntraLeafChain ?? [],
+              disableCrossProviderFailover: true,
+              generationFanoutLeaf: true,
+            }
+          : {}),
       };
     }
   } else if (
@@ -1202,8 +1899,8 @@ export async function runCreatePrepass(
     const routed = host.deps.audioRouter.resolve({
       prompt,
       capabilityId: capabilityIdRaw || "audio.synthesize",
-      preferredProviderId: clientRoutingPin.providerId,
-      preferredModelId: clientRoutingPin.modelId,
+      preferredProviderId: routingPin.providerId,
+      preferredModelId: routingPin.modelId,
       ...(typeof workingMetadata?.service === "string"
         ? { service: workingMetadata.service }
         : {}),
@@ -1236,8 +1933,8 @@ export async function runCreatePrepass(
     workingMetadata = {
       ...workingMetadata,
       preferredProviderId:
-        clientRoutingPin.providerId || existingProvider || "provider.openai",
-      preferredModelId: clientRoutingPin.modelId || existingModel || "whisper-1",
+        routingPin.providerId || existingProvider || "provider.openai",
+      preferredModelId: routingPin.modelId || existingModel || "whisper-1",
     };
   } else if (
     host.deps.textRouter &&
@@ -1249,8 +1946,8 @@ export async function runCreatePrepass(
     const routed = host.deps.textRouter.resolve({
       prompt,
       capabilityId: capabilityIdRaw || "text.generate",
-      preferredProviderId: clientRoutingPin.providerId,
-      preferredModelId: clientRoutingPin.modelId,
+      preferredProviderId: routingPin.providerId,
+      preferredModelId: routingPin.modelId,
       metadata: workingMetadata,
     });
     if (routed.ok) {
@@ -1280,9 +1977,25 @@ export async function runCreatePrepass(
     );
   }
 
-  workingMetadata = stampEmailCreateMetadata(
-    stampDocumentCreateMetadata(stampPresentationCreateMetadata(workingMetadata))
+  workingMetadata = stampCanonicalStructuredOutputMetadata(
+    stampEmailCreateMetadata(
+      stampDocumentCreateMetadata(stampPresentationCreateMetadata(workingMetadata))
+    )
   );
+
+  // Seal: no post-authority stamp may leave mutated semantic fields.
+  {
+    const { reassertCdfExecutionAuthority } = await import(
+      "../../cdf/execution-authority"
+    );
+    workingMetadata = reassertCdfExecutionAuthority(workingMetadata);
+    if (
+      typeof workingMetadata.capabilityId === "string" &&
+      workingMetadata.capabilityId.trim()
+    ) {
+      capabilityIdRaw = String(workingMetadata.capabilityId);
+    }
+  }
 
   const mediaSanitized = sanitizeMediaGenerationCreateMetadata({
     metadata: workingMetadata,
@@ -1290,6 +2003,18 @@ export async function runCreatePrepass(
     structuredOutput: req.structuredOutput,
   });
   workingMetadata = mediaSanitized.metadata;
+  {
+    const { reassertCdfExecutionAuthority } = await import(
+      "../../cdf/execution-authority"
+    );
+    workingMetadata = reassertCdfExecutionAuthority(workingMetadata);
+    if (
+      typeof workingMetadata.capabilityId === "string" &&
+      workingMetadata.capabilityId.trim()
+    ) {
+      capabilityIdRaw = String(workingMetadata.capabilityId);
+    }
+  }
 
   req = {
     ...req,
@@ -1382,43 +2107,61 @@ export async function runCreatePrepass(
   }
 
   // Phase 1 — Format & Production Spec instruct: stamp binding + inject into provider prompt.
+  // Phase 5 — when canonical CMR assembly is complete, stamp binding only (no prompt append).
   let providerPromptAfterSpec = providerPrompt;
   try {
-    const { ensureProviderPromptHasProductionSpec } = await import(
-      "../../config/format-production-spec"
-    );
+    const { ensureProviderPromptHasProductionSpec, applyProductionSpecInstructToMetadata } =
+      await import("../../config/format-production-spec");
     const { shouldSkipEffectiveInstructionPromptReplace } = await import(
       "../../collaboration/conversational-task-intelligence/execution-spec-handoff"
     );
-    const applied = ensureProviderPromptHasProductionSpec({
-      prompt: providerPrompt,
-      metadata: workingMetadata,
-      boundAt: now,
-    });
-    workingMetadata = applied.metadata;
-    providerPromptAfterSpec = applied.prompt;
+    const skipPostCmr =
+      workingMetadata.cdfSkipPostCmrPromptAppends === true ||
+      workingMetadata.cdfCanonicalAssemblyComplete === true ||
+      workingMetadata.cdfCanonicalContextApplied === true;
 
-    // Prefer stamped effective instruction when Spec handoff enriched it and
-    // we are not on a route-visual passthrough that must keep the leaf prompt.
-    if (!shouldSkipEffectiveInstructionPromptReplace(workingMetadata)) {
-      const effective =
-        typeof workingMetadata.conversationalEffectiveInstruction === "string"
-          ? workingMetadata.conversationalEffectiveInstruction.trim()
-          : "";
-      if (
-        effective &&
-        effective !== providerPromptAfterSpec &&
-        effective.includes("[UNAGENCY Production Spec]")
-      ) {
-        providerPromptAfterSpec = effective;
-      }
-    }
-
-    if (providerPromptAfterSpec !== providerPrompt) {
-      providerPromptAfterSpec = sanitizePassthroughPrompt(providerPromptAfterSpec);
-      req = { ...req, prompt: providerPromptAfterSpec, metadata: workingMetadata };
-    } else {
+    if (skipPostCmr) {
+      const metaOnly = applyProductionSpecInstructToMetadata(workingMetadata, {
+        force: true,
+        boundAt: now,
+      });
+      workingMetadata = metaOnly.metadata;
+      // Keep placeholder / CMR prompt untouched — Spec lives inside CMR.
+      providerPromptAfterSpec = providerPrompt;
       req = { ...req, metadata: workingMetadata };
+    } else {
+      const applied = ensureProviderPromptHasProductionSpec({
+        prompt: providerPrompt,
+        metadata: workingMetadata,
+        boundAt: now,
+      });
+      workingMetadata = applied.metadata;
+      providerPromptAfterSpec = applied.prompt;
+
+      // Prefer stamped effective instruction when Spec handoff enriched it and
+      // we are not on a route-visual passthrough that must keep the leaf prompt.
+      if (!shouldSkipEffectiveInstructionPromptReplace(workingMetadata)) {
+        const effective =
+          typeof workingMetadata.conversationalEffectiveInstruction === "string"
+            ? workingMetadata.conversationalEffectiveInstruction.trim()
+            : "";
+        if (
+          effective &&
+          effective !== providerPromptAfterSpec &&
+          effective.includes("[production_constraints]") ||
+          effective.includes("[Format Production Spec]") ||
+          effective.includes("[UNAGENCY Production Spec]")
+        ) {
+          providerPromptAfterSpec = effective;
+        }
+      }
+
+      if (providerPromptAfterSpec !== providerPrompt) {
+        providerPromptAfterSpec = sanitizePassthroughPrompt(providerPromptAfterSpec);
+        req = { ...req, prompt: providerPromptAfterSpec, metadata: workingMetadata };
+      } else {
+        req = { ...req, metadata: workingMetadata };
+      }
     }
   } catch {
     // Production Spec instruct must never block generation.
@@ -1543,8 +2286,7 @@ export async function runCreatePrepass(
     subtype: traceSubtype,
     outputKind: traceOutputKind,
     capabilityId: capabilityIdRaw || "text.generate",
-    requestedProviderId: clientRoutingPin.providerId,
-    requestedModelId: clientRoutingPin.modelId,
+    ...resolveTraceRequestedIdentity(routingPin, workingMetadata),
     adaptiveRoutingEnabled: routingConfig.adaptiveRoutingEnabled,
     usedStructuredOutput: traceStructuredOutput,
     usedOsArtifactPipeline: traceOsPipeline,
@@ -1611,18 +2353,40 @@ export async function runCreatePrepass(
       service: traceService,
       subtype: traceSubtype,
     });
+    const { resolveExecutionOutputAuthority } = await import(
+      "../../cdf/execution-authority"
+    );
+    const authority = resolveExecutionOutputAuthority({
+      metadata: workingMetadata,
+      catalogOutputKind: catalogSpec?.kind,
+      declaredOutputKind: traceOutputKind,
+    });
+    // Classification compares actual vs authoritative contract — not catalog.
     const classificationOk =
-      !traceOutputKind || !catalogSpec || traceOutputKind === catalogSpec.kind;
+      !authority.actualOutputKind ||
+      !authority.authoritativeOutputKind ||
+      authority.actualOutputKind === authority.authoritativeOutputKind;
     recordClassificationTrace({
       executionId,
       service: traceService,
       subtype: traceSubtype,
-      outputKind: traceOutputKind ?? catalogSpec?.kind ?? "unknown",
+      outputKind: authority.authoritativeOutputKind ?? "unknown",
       capabilityId: capabilityIdRaw || "text.generate",
       classificationOk,
       mismatchReason: classificationOk
         ? undefined
-        : `declared outputKind=${traceOutputKind} catalog kind=${catalogSpec?.kind ?? "unknown"}`,
+        : `actual outputKind=${authority.actualOutputKind} authoritative=${authority.authoritativeOutputKind} source=${authority.authoritySource} catalog=${authority.catalogOutputKind ?? "unknown"}`,
+    });
+    recordExecutionTraceStage({
+      executionId,
+      stage: "output_authority",
+      status: "COMPLETED",
+      details: Object.freeze({
+        authoritySource: authority.authoritySource,
+        authoritativeOutputKind: authority.authoritativeOutputKind,
+        catalogOutputKind: authority.catalogOutputKind,
+        actualOutputKind: authority.actualOutputKind,
+      }),
     });
   } else {
     recordExecutionTraceStage({

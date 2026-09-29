@@ -4,7 +4,12 @@
  */
 
 import PDFDocument from "pdfkit";
-import PptxGenJS from "pptxgenjs";
+import { mapWithConcurrency } from "./best-effort-visual-image";
+import {
+  renderDesignedPresentationPdf,
+  renderDesignedPresentationPptx,
+  type PresentationDesignStyle,
+} from "./presentation-design";
 
 export type PresentationSlideLayout =
   | "title_hero"
@@ -48,7 +53,6 @@ const ACCENT = "FF0056";
 const INK = "0B0B0F";
 const INK_SOFT = "F7F4F0";
 const MUTED = "6B7280";
-const WHITE = "FFFFFF";
 
 export type PresentationSlideImage = {
   /** Base64 image bytes (no data: prefix). */
@@ -59,6 +63,8 @@ export type PresentationSlideImage = {
 export type PresentationExportOptions = {
   readonly brandName?: string;
   readonly brandColors?: readonly string[];
+  /** Theme from the chosen design route (Clean Minimal / Bold Executive / Modern Editorial). */
+  readonly designStyle?: PresentationDesignStyle;
   /**
    * Best-effort per-slide image from visualCue. Must never throw —
    * return undefined on failure so export still ships.
@@ -69,92 +75,44 @@ export type PresentationExportOptions = {
   ) => Promise<PresentationSlideImage | undefined>;
 };
 
+/** Image generations per deck — the rest use designed no-image layouts. */
+const MAX_SLIDE_IMAGES = 5;
+const SLIDE_IMAGE_CONCURRENCY = 3;
+const SLIDE_IMAGE_PRIORITY: Record<PresentationSlideLayout, number> = {
+  title_hero: 0,
+  section_divider: 1,
+  key_message: 2,
+  closing: 3,
+  content_bullets: 4,
+};
+
 async function resolveSlideImagesSafe(
   slides: readonly PresentationSlide[],
   resolve?: PresentationExportOptions["resolveSlideImage"]
 ): Promise<(PresentationSlideImage | undefined)[]> {
-  if (!resolve) return slides.map(() => undefined);
-  const out: (PresentationSlideImage | undefined)[] = [];
-  for (const slide of slides) {
-    const cue = slide.visualCue?.trim();
-    if (!cue) {
-      out.push(undefined);
-      continue;
-    }
+  const out: (PresentationSlideImage | undefined)[] = slides.map(() => undefined);
+  if (!resolve) return out;
+  const chosen = slides
+    .map((slide, index) => ({ slide, index, cue: slide.visualCue?.trim() ?? "" }))
+    .filter((item) => item.cue)
+    .sort(
+      (a, b) =>
+        SLIDE_IMAGE_PRIORITY[a.slide.layout ?? "content_bullets"] -
+          SLIDE_IMAGE_PRIORITY[b.slide.layout ?? "content_bullets"] || a.index - b.index
+    )
+    .slice(0, MAX_SLIDE_IMAGES);
+  await mapWithConcurrency(chosen, SLIDE_IMAGE_CONCURRENCY, async ({ slide, index, cue }) => {
     try {
-      out.push(await resolve(cue, slide));
+      out[index] = await resolve(cue, slide);
     } catch (err) {
       console.warn(
         `[presentation-export] slide image failed: ${
           err instanceof Error ? err.message : String(err)
         }`
       );
-      out.push(undefined);
     }
-  }
+  });
   return out;
-}
-
-function pptxColor(raw: string | undefined, fallback: string): string {
-  if (!raw?.trim()) return fallback;
-  const t = raw.trim().replace(/^#/, "");
-  if (/^[0-9a-f]{3}$/i.test(t)) {
-    return t
-      .split("")
-      .map((c) => c + c)
-      .join("")
-      .toUpperCase();
-  }
-  if (/^[0-9a-f]{6}$/i.test(t)) return t.toUpperCase();
-  return fallback;
-}
-
-function pdfHex(raw: string | undefined, fallback: string): string {
-  if (!raw?.trim()) return fallback;
-  const t = raw.trim();
-  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return t.toUpperCase();
-  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t)) return `#${t}`.toUpperCase();
-  return fallback;
-}
-
-function resolvePresentationExportTheme(options?: PresentationExportOptions) {
-  const colors = options?.brandColors?.filter((c) => typeof c === "string" && c.trim()) ?? [];
-  return {
-    accent: pptxColor(colors[0], ACCENT),
-    ink: pptxColor(colors[1], INK),
-    inkSoft: pptxColor(colors[2], INK_SOFT),
-    muted: MUTED,
-    white: WHITE,
-    pdfAccent: pdfHex(colors[0], `#${ACCENT}`),
-    pdfInk: pdfHex(colors[1], `#${INK}`),
-    pdfInkSoft: pdfHex(colors[2], `#${INK_SOFT}`),
-  };
-}
-
-function addPptxSlideImage(
-  slide: { addImage: (opts: Record<string, unknown>) => void },
-  image: PresentationSlideImage | undefined,
-  box: { x: number; y: number; w: number; h: number }
-): boolean {
-  if (!image?.data?.trim()) return false;
-  try {
-    slide.addImage({
-      data: image.data,
-      x: box.x,
-      y: box.y,
-      w: box.w,
-      h: box.h,
-      ...(image.ext ? { extn: image.ext } : {}),
-    });
-    return true;
-  } catch (err) {
-    console.warn(
-      `[presentation-export] pptx addImage failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
-    return false;
-  }
 }
 
 const LAYOUTS = new Set<string>([
@@ -416,491 +374,26 @@ export function parseDocumentPlan(data: unknown): DocumentPlan | null {
   };
 }
 
-function applyNotes(
-  slide: InstanceType<typeof PptxGenJS.prototype.addSlide> extends (
-    ...args: never
-  ) => infer R
-    ? R
-    : never,
-  notes?: string
-): void {
-  if (notes?.trim()) {
-    try {
-      (slide as { addNotes?: (t: string) => void }).addNotes?.(notes.trim());
-    } catch {
-      // optional
-    }
-  }
-}
-
-function paintAccentBar(
-  slide: {
-  addShape: (
-    type: string,
-    opts: Record<string, unknown>
-  ) => void;
-},
-  accent: string
-): void {
-  slide.addShape("rect", {
-    x: 0,
-    y: 0,
-    w: 0.12,
-    h: 5.625,
-    fill: { color: accent },
-    line: { color: accent },
-  });
-}
-
 export async function buildPresentationPptx(
   plan: PresentationPlan,
   options?: PresentationExportOptions
 ): Promise<Buffer> {
-  const theme = resolvePresentationExportTheme(options);
-  const paintBar = (slide: Parameters<typeof paintAccentBar>[0]) =>
-    paintAccentBar(slide, theme.accent);
-  const ACCENT = theme.accent;
-  const INK = theme.ink;
-  const INK_SOFT = theme.inkSoft;
-  const MUTED = theme.muted;
-  const WHITE = theme.white;
-  const brandFooter = options?.brandName?.trim() || "UNAGENCY";
   const slideImages = await resolveSlideImagesSafe(
     plan.slides,
     options?.resolveSlideImage
   );
-  const pptx = new PptxGenJS();
-  pptx.author = "Unagency";
-  pptx.title = plan.title;
-  pptx.defineLayout({ name: "WIDESCREEN", width: 10, height: 5.625 });
-  pptx.layout = "WIDESCREEN";
-
-  // Cover slide — designed hero, not a text dump
-  {
-    const s = pptx.addSlide();
-    s.addShape("rect", {
-      x: 0,
-      y: 0,
-      w: 10,
-      h: 5.625,
-      fill: { color: INK },
-      line: { color: INK },
-    });
-    s.addShape("rect", {
-      x: 0,
-      y: 0,
-      w: 0.18,
-      h: 5.625,
-      fill: { color: ACCENT },
-      line: { color: ACCENT },
-    });
-    s.addShape("rect", {
-      x: 0.6,
-      y: 1.6,
-      w: 1.4,
-      h: 0.08,
-      fill: { color: ACCENT },
-      line: { color: ACCENT },
-    });
-    s.addText(plan.title, {
-      x: 0.6,
-      y: 2.0,
-      w: 8.6,
-      h: 1.2,
-      fontSize: 36,
-      bold: true,
-      color: WHITE,
-      fontFace: "Arial",
-      valign: "middle",
-    });
-    if (plan.subtitle) {
-      s.addText(plan.subtitle, {
-        x: 0.6,
-        y: 3.3,
-        w: 8.2,
-        h: 0.7,
-        fontSize: 16,
-        color: "C4C4CC",
-        fontFace: "Arial",
-      });
-    }
-    s.addText(brandFooter, {
-      x: 0.6,
-      y: 5.05,
-      w: 4,
-      h: 0.3,
-      fontSize: 10,
-      color: ACCENT,
-      bold: true,
-      fontFace: "Arial",
-      charSpacing: 3,
-    });
-  }
-
-  for (let slideIndex = 0; slideIndex < plan.slides.length; slideIndex += 1) {
-    const slide = plan.slides[slideIndex]!;
-    const layout = slide.layout ?? "content_bullets";
-    const s = pptx.addSlide();
-    const image = slideImages[slideIndex];
-    const hasImage =
-      layout === "content_bullets"
-        ? addPptxSlideImage(s, image, { x: 5.4, y: 0.4, w: 4.3, h: 4.8 })
-        : layout === "key_message"
-          ? addPptxSlideImage(s, image, { x: 5.5, y: 0.5, w: 4.2, h: 4.6 })
-          : layout === "section_divider"
-            ? addPptxSlideImage(s, image, { x: 0, y: 0, w: 10, h: 5.625 })
-            : addPptxSlideImage(s, image, { x: 5.2, y: 0, w: 4.8, h: 5.625 });
-
-    if (layout === "title_hero" || layout === "closing") {
-      s.addShape("rect", {
-        x: 0,
-        y: 0,
-        w: hasImage ? 5.2 : 10,
-        h: 5.625,
-        fill: { color: INK },
-        line: { color: INK },
-      });
-      paintBar(s as never);
-      s.addText(slide.title, {
-        x: 0.7,
-        y: layout === "closing" ? 1.8 : 1.5,
-        w: hasImage ? 4.2 : 8.5,
-        h: 1.2,
-        fontSize: hasImage ? 26 : 32,
-        bold: true,
-        color: WHITE,
-        fontFace: "Arial",
-      });
-      if (slide.bullets[0]) {
-        s.addText(slide.bullets.join("\n"), {
-          x: 0.7,
-          y: 3.0,
-          w: hasImage ? 4.0 : 8.2,
-          h: 1.6,
-          fontSize: 16,
-          color: "C4C4CC",
-          fontFace: "Arial",
-          valign: "top",
-        });
-      }
-    } else if (layout === "section_divider") {
-      if (!hasImage) {
-        s.addShape("rect", {
-          x: 0,
-          y: 0,
-          w: 10,
-          h: 5.625,
-          fill: { color: "14141A" },
-          line: { color: "14141A" },
-        });
-      } else {
-        s.addShape("rect", {
-          x: 0,
-          y: 0,
-          w: 10,
-          h: 5.625,
-          fill: { color: "000000", transparency: 45 },
-          line: { color: "000000", transparency: 45 },
-        } as never);
-      }
-      s.addShape("rect", {
-        x: 0.6,
-        y: 2.4,
-        w: 1.2,
-        h: 0.08,
-        fill: { color: ACCENT },
-        line: { color: ACCENT },
-      });
-      s.addText(slide.title, {
-        x: 0.6,
-        y: 2.7,
-        w: 8.6,
-        h: 1,
-        fontSize: 28,
-        bold: true,
-        color: WHITE,
-        fontFace: "Arial",
-      });
-      if (slide.bullets[0]) {
-        s.addText(slide.bullets[0], {
-          x: 0.6,
-          y: 3.8,
-          w: 8.2,
-          h: 0.6,
-          fontSize: 14,
-          color: "A1A1AA",
-          fontFace: "Arial",
-        });
-      }
-    } else if (layout === "key_message") {
-      s.addShape("rect", {
-        x: 0,
-        y: 0,
-        w: hasImage ? 5.5 : 10,
-        h: 5.625,
-        fill: { color: INK_SOFT },
-        line: { color: INK_SOFT },
-      });
-      paintBar(s as never);
-      s.addText(slide.title, {
-        x: 0.7,
-        y: 1.4,
-        w: hasImage ? 4.5 : 8.5,
-        h: 0.6,
-        fontSize: 14,
-        bold: true,
-        color: ACCENT,
-        fontFace: "Arial",
-        charSpacing: 2,
-      });
-      s.addText(slide.bullets[0] ?? "", {
-        x: 0.7,
-        y: 2.1,
-        w: hasImage ? 4.5 : 8.5,
-        h: 2.2,
-        fontSize: hasImage ? 22 : 28,
-        bold: true,
-        color: INK,
-        fontFace: "Arial",
-        valign: "middle",
-      });
-      if (slide.bullets[1]) {
-        s.addText(slide.bullets.slice(1).join(" · "), {
-          x: 0.7,
-          y: 4.5,
-          w: hasImage ? 4.5 : 8.5,
-          h: 0.5,
-          fontSize: 13,
-          color: MUTED,
-          fontFace: "Arial",
-        });
-      }
-    } else {
-      // content_bullets — light editorial slide with accent rail
-      s.addShape("rect", {
-        x: 0,
-        y: 0,
-        w: hasImage ? 5.4 : 10,
-        h: 5.625,
-        fill: { color: WHITE },
-        line: { color: WHITE },
-      });
-      paintBar(s as never);
-      s.addShape("rect", {
-        x: 0.7,
-        y: 0.45,
-        w: 0.9,
-        h: 0.06,
-        fill: { color: ACCENT },
-        line: { color: ACCENT },
-      });
-      s.addText(slide.title, {
-        x: 0.7,
-        y: 0.7,
-        w: hasImage ? 4.4 : 8.6,
-        h: 0.7,
-        fontSize: hasImage ? 22 : 26,
-        bold: true,
-        color: INK,
-        fontFace: "Arial",
-      });
-      s.addText(
-        slide.bullets.map((b) => ({ text: b, options: { bullet: true } })),
-        {
-          x: 0.85,
-          y: 1.6,
-          w: hasImage ? 4.2 : 8.3,
-          h: 3.4,
-          fontSize: 16,
-          color: "1F2937",
-          fontFace: "Arial",
-          valign: "top",
-          paraSpaceAfter: 10,
-        }
-      );
-      if (slide.visualCue && !hasImage) {
-        s.addText(slide.visualCue, {
-          x: 0.7,
-          y: 5.15,
-          w: 8.5,
-          h: 0.28,
-          fontSize: 9,
-          color: "9CA3AF",
-          fontFace: "Arial",
-          italic: true,
-        });
-      }
-    }
-
-    applyNotes(s as never, slide.notes);
-  }
-
-  const out = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
-  return Buffer.isBuffer(out) ? out : Buffer.from(out);
+  return renderDesignedPresentationPptx(plan, slideImages, options);
 }
 
 export async function buildPresentationPdf(
   plan: PresentationPlan,
   options?: PresentationExportOptions
 ): Promise<Buffer> {
-  const theme = resolvePresentationExportTheme(options);
-  const INK = theme.ink;
-  const ACCENT = theme.accent;
-  const INK_SOFT = theme.inkSoft;
-  const brandFooter = options?.brandName?.trim() || "UNAGENCY";
   const slideImages = await resolveSlideImagesSafe(
     plan.slides,
     options?.resolveSlideImage
   );
-
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      margin: 0,
-      size: [842, 595], // landscape A4-ish for deck feel
-    });
-    const chunks: Buffer[] = [];
-    doc.on("data", (c: Buffer) => chunks.push(c));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-
-    const pageW = 842;
-    const pageH = 595;
-
-    const tryDrawImage = (
-      image: PresentationSlideImage | undefined,
-      x: number,
-      y: number,
-      w: number,
-      h: number
-    ): boolean => {
-      if (!image?.data?.trim()) return false;
-      try {
-        const buf = Buffer.from(image.data, "base64");
-        doc.image(buf, x, y, { width: w, height: h, cover: [w, h] } as never);
-        return true;
-      } catch (err) {
-        console.warn(
-          `[presentation-export] pdf image failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`
-        );
-        return false;
-      }
-    };
-
-    const drawCover = () => {
-      doc.rect(0, 0, pageW, pageH).fill(`#${INK}`);
-      doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
-      doc
-        .fillColor("#FFFFFF")
-        .fontSize(32)
-        .font("Helvetica-Bold")
-        .text(plan.title, 48, 220, { width: 720 });
-      if (plan.subtitle) {
-        doc
-          .fillColor("#C4C4CC")
-          .fontSize(14)
-          .font("Helvetica")
-          .text(plan.subtitle, 48, 300, { width: 700 });
-      }
-      doc
-        .fillColor(`#${ACCENT}`)
-        .fontSize(10)
-        .font("Helvetica-Bold")
-        .text(brandFooter, 48, 540);
-    };
-
-    drawCover();
-
-    for (let slideIndex = 0; slideIndex < plan.slides.length; slideIndex += 1) {
-      const slide = plan.slides[slideIndex]!;
-      doc.addPage({ size: [pageW, pageH], margin: 0 });
-      const layout = slide.layout ?? "content_bullets";
-      const image = slideImages[slideIndex];
-
-      if (
-        layout === "title_hero" ||
-        layout === "closing" ||
-        layout === "section_divider"
-      ) {
-        const hasImage =
-          layout === "section_divider"
-            ? tryDrawImage(image, 0, 0, pageW, pageH)
-            : tryDrawImage(image, pageW * 0.52, 0, pageW * 0.48, pageH);
-        if (layout === "section_divider" && hasImage) {
-          doc.save();
-          doc.rect(0, 0, pageW, pageH).fillOpacity(0.45).fill("#000000");
-          doc.restore();
-        }
-        if (!hasImage || layout !== "section_divider") {
-          doc
-            .rect(0, 0, hasImage ? pageW * 0.52 : pageW, pageH)
-            .fill(`#${INK}`);
-        }
-        doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
-        const textW = hasImage && layout !== "section_divider" ? 380 : 720;
-        doc
-          .fillColor("#FFFFFF")
-          .fontSize(26)
-          .font("Helvetica-Bold")
-          .text(slide.title, 48, 200, { width: textW });
-        doc
-          .fillColor("#C4C4CC")
-          .fontSize(13)
-          .font("Helvetica")
-          .text(slide.bullets.join("\n\n"), 48, 280, { width: textW - 20 });
-      } else if (layout === "key_message") {
-        const hasImage = tryDrawImage(
-          image,
-          pageW * 0.55,
-          24,
-          pageW * 0.42,
-          pageH - 48
-        );
-        doc
-          .rect(0, 0, hasImage ? pageW * 0.55 : pageW, pageH)
-          .fill(`#${INK_SOFT}`);
-        doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
-        const textW = hasImage ? 400 : 720;
-        doc
-          .fillColor(`#${ACCENT}`)
-          .fontSize(12)
-          .font("Helvetica-Bold")
-          .text(slide.title.toUpperCase(), 48, 160, { width: textW });
-        doc
-          .fillColor(`#${INK}`)
-          .fontSize(hasImage ? 20 : 24)
-          .font("Helvetica-Bold")
-          .text(slide.bullets[0] ?? "", 48, 220, { width: textW });
-      } else {
-        const hasImage = tryDrawImage(
-          image,
-          pageW * 0.54,
-          24,
-          pageW * 0.43,
-          pageH - 48
-        );
-        doc
-          .rect(0, 0, hasImage ? pageW * 0.54 : pageW, pageH)
-          .fill("#FFFFFF");
-        doc.rect(0, 0, 14, pageH).fill(`#${ACCENT}`);
-        const textW = hasImage ? 400 : 720;
-        doc
-          .fillColor(`#${INK}`)
-          .fontSize(22)
-          .font("Helvetica-Bold")
-          .text(slide.title, 48, 48, { width: textW });
-        doc.fillColor("#1F2937").fontSize(13).font("Helvetica");
-        let y = 110;
-        for (const bullet of slide.bullets) {
-          doc.text(`•  ${bullet}`, 56, y, { width: textW - 20 });
-          y += 28;
-        }
-      }
-    }
-
-    doc.end();
-  });
+  return renderDesignedPresentationPdf(plan, slideImages, options);
 }
 
 export async function buildDocumentPdf(plan: DocumentPlan): Promise<Buffer> {

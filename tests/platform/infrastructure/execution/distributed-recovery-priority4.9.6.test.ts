@@ -201,6 +201,76 @@ describe("P4.9.6 — distributed worker recovery loop", () => {
     expect(getExecuteCount()).toBe(1);
   });
 
+  it("orphaned recoveryDispatched without queue entry is reclaimable", async () => {
+    const store = new InMemoryClaimableJobStore();
+    store.save(sampleJob("job_orphan496", "orphaned dispatch"));
+    const { platform, getExecuteCount } = createRecoveryPlatform(store);
+    // Simulate the hang defect: marked dispatched but missing from every queue.
+    (
+      platform.rawEngine as unknown as { recoveryDispatched: Set<string> }
+    ).recoveryDispatched.add("job_orphan496");
+    expect(
+      (platform.rawEngine as unknown as { isJobEnqueued(id: unknown): boolean })
+        .isJobEnqueued?.(asJobId("job_orphan496")) ?? false,
+    ).toBe(false);
+
+    await platform.engine.tick(1);
+    expect(getExecuteCount()).toBe(1);
+    expect(store.get(asJobId("job_orphan496"))?.status).toBe("completed");
+  });
+
+  it("queued job with valid active in-flight attempt is skipped with explicit reason", async () => {
+    const store = new InMemoryClaimableJobStore();
+    store.save(sampleJob("job_inflight496", "active lease"));
+    const { platform, getExecuteCount } = createRecoveryPlatform(store);
+    const raw = platform.rawEngine as unknown as {
+      recoveryDispatched: Set<string>;
+      inFlightJobIds: Set<string>;
+      queues: { get(kind: string): { enqueue(id: unknown): void; list(): unknown[] } };
+    };
+    raw.recoveryDispatched.add("job_inflight496");
+    raw.inFlightJobIds.add("job_inflight496");
+    raw.queues.get("immediate").enqueue(asJobId("job_inflight496"));
+
+    await platform.engine.tick(1);
+    // Must not execute a second copy while in-flight.
+    expect(getExecuteCount()).toBe(0);
+    // Must remain queued in memory for the active attempt (not dropped/orphaned).
+    expect(raw.queues.get("immediate").list()).toContain(asJobId("job_inflight496"));
+    expect(store.get(asJobId("job_inflight496"))?.status).toBe("queued");
+  });
+
+  it("terminal durable job is skipped and not re-executed", async () => {
+    const store = new InMemoryClaimableJobStore();
+    store.save({
+      ...sampleJob("job_terminal496", "already done"),
+      status: "completed",
+      completedAt: "2026-09-03T10:01:00.000Z",
+    });
+    const { platform, getExecuteCount } = createRecoveryPlatform(store);
+    await platform.engine.tick(1);
+    expect(getExecuteCount()).toBe(0);
+  });
+
+  it("enqueue persists before tick can claim (no lost claim race)", async () => {
+    const store = new InMemoryClaimableJobStore();
+    const persistCalls: string[] = [];
+    const origPersist = store.persist.bind(store);
+    store.persist = async (job) => {
+      persistCalls.push(String(job.jobId));
+      await origPersist(job);
+    };
+    const { platform, getExecuteCount } = createRecoveryPlatform(store);
+    const enq = await platform.engine.enqueue({
+      payload: { rawPrompt: "persist then claim", organizationId: "org_recovery496" },
+    });
+    expect(enq.ok).toBe(true);
+    if (!enq.ok) return;
+    expect(persistCalls).toContain(String(enq.value.jobId));
+    await platform.engine.tick(1);
+    expect(getExecuteCount()).toBe(1);
+  });
+
   it("worker tick executes jobs instead of only scanning recovery", async () => {
     const store = new InMemoryClaimableJobStore();
     store.save(sampleJob("job_progress496", "must execute"));

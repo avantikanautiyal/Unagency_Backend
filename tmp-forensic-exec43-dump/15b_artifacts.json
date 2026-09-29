@@ -1,0 +1,36 @@
+[
+  {
+    "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+    "projectId": null,
+    "organizationId": "6a89ff83ae22a3d696a169e6",
+    "workspaceId": null,
+    "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+    "serviceId": "social-media",
+    "phaseId": "routes",
+    "artifactKey": "social-media.routes",
+    "artifactType": "text_choice",
+    "schemaVersion": "1",
+    "latestVersion": 1,
+    "status": "selected",
+    "createdAt": "2026-09-14T16:15:09.378Z",
+    "updatedAt": "2026-09-14T16:15:17.631Z",
+    "selectedVersion": 1,
+    "approvedVersion": null
+  },
+  {
+    "artifactId": "cdfart_mu1g380n_2_social-media-output",
+    "projectId": null,
+    "organizationId": "6a89ff83ae22a3d696a169e6",
+    "workspaceId": "ws_8_1789402358271",
+    "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+    "serviceId": "social-media",
+    "phaseId": "output",
+    "artifactKey": "social-media.output",
+    "artifactType": "image",
+    "schemaVersion": "1",
+    "latestVersion": 1,
+    "status": "candidate",
+    "createdAt": "2026-09-14T16:16:10.583Z",
+    "updatedAt": "2026-09-14T16:16:10.583Z"
+  }
+]

@@ -24,6 +24,11 @@ export interface ProviderAttemptRecord {
   readonly errorCode?: string;
   readonly errorMessage?: string;
   readonly exploratory?: boolean;
+  readonly httpStatus?: number;
+  readonly providerErrorCode?: string;
+  readonly circuitStateBefore?: string;
+  readonly circuitStateAfter?: string;
+  readonly durationMs?: number;
 }
 
 export interface FailoverExecutionOutcome {

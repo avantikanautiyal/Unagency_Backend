@@ -4,6 +4,7 @@
 
 import { failure, success, type Result } from "../core/result";
 import { ValidationError } from "../core/errors";
+import { applyProviderPinPolicy } from "../providers/routing/provider-pin-policy";
 import {
   asCapabilityId,
   asExecutionId,
@@ -12,10 +13,17 @@ import {
   asWorkspaceId,
 } from "../core/identifiers";
 import type { IProviderRuntime } from "../providers/runtime/interfaces/provider-runtime";
-import type { ProviderExecutionResult } from "../providers/runtime/contracts/provider-execution-response";
+import type {
+  ProviderAttemptHistoryEntry,
+  ProviderExecutionResult,
+} from "../providers/runtime/contracts/provider-execution-response";
 import type { ProviderExecutionRequest } from "../providers/runtime/contracts/provider-execution-request";
 import { sampleRequest } from "../providers/runtime/testing";
-import { resolveExecutableModelId } from "../providers/routing/performance/failover/executable-model-id";
+import {
+  resolveExecutableModelId,
+  resolveExecutedModelIdentity,
+} from "../providers/routing/performance/failover/executable-model-id";
+import { classifyExecutionFailure } from "../providers/routing/performance/failover/failure-classification";
 import {
   executeToolAwareRequest,
   parseToolRequestMetadata,
@@ -28,7 +36,19 @@ import {
   websiteIncompleteErrorMessage,
 } from "../os/delivery/website-generation";
 import { appendOutputRequirementsToPrompt } from "./append-output-requirements";
+import { emitCanonicalProviderBoundaryTrace } from "../cdf/generation-context/trace";
 import {
+  CANONICAL_MODEL_REQUEST_PROMPT_PLACEHOLDER,
+  resolveCanonicalModelRequestFromCarrier,
+  type CanonicalModelRequest,
+} from "../ai/canonical-model-request";
+import {
+  prepareCanonicalModelRuntime,
+  buildProviderRepresentationPlan,
+  summarizeRepresentationPlan,
+} from "../ai/model-runtime";
+import {
+  applyProductionSpecInstructToMetadata,
   ensureProviderPromptHasProductionSpec,
   evaluateProductionPregenHold,
   readConfirmedOverrideFromMetadata,
@@ -48,6 +68,7 @@ import {
 import {
   providerSupportsReferenceImage,
   providerSupportsReferenceImageEdit,
+  resolveSelectedImageOperationCapability,
 } from "../providers/image/configs/image-provider-capabilities";
 import {
   stampDocumentCreateMetadata,
@@ -61,6 +82,10 @@ import {
   isEmailDirectCreate,
   stampEmailCreateMetadata,
 } from "./email-direct-metadata";
+import {
+  assertCanonicalStructuredSchemaBeforeProvider,
+  stampCanonicalStructuredOutputMetadata,
+} from "../cdf/structured-output-contract";
 import { buildDirectProviderBag } from "./build-direct-provider-bag";
 import {
   ensurePresentationExpandedForDeliverable,
@@ -84,6 +109,16 @@ import type {
 
 const DIRECT_EXECUTION_VERSION = "direct.1";
 const MAX_DIRECT_IMAGE_FAILOVERS = 2;
+/** Text/structured failover budget — vendor-diverse, not image-leaf capped. */
+const MAX_DIRECT_TEXT_FAILOVERS = 4;
+
+const WEBSITE_STRUCTURED_CONTRACT_NAMES = new Set([
+  "websitepage",
+  "webproject",
+  "websiteroutes",
+  "cdfwebsitesitemap",
+  "cdfwebsitepagestructure",
+]);
 
 function mergeDirectStructuredFeatures(
   request: ProviderExecutionRequest,
@@ -166,8 +201,12 @@ const DOCUMENT_DIRECT_TIMEOUT_MS = 300_000;
 function stampDirectCreateMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> {
-  return stampEmailCreateMetadata(
-    stampDocumentCreateMetadata(stampPresentationCreateMetadata(metadata))
+  // Legacy product stamps first (may omit early CDF phases), then contract-derived
+  // canonical structured stamp so phase artifact schemas always win when required.
+  return stampCanonicalStructuredOutputMetadata(
+    stampEmailCreateMetadata(
+      stampDocumentCreateMetadata(stampPresentationCreateMetadata(metadata))
+    )
   );
 }
 
@@ -190,14 +229,109 @@ function isWebsiteDirectRequest(
           .trim()
           .toLowerCase()
       : "";
-  return (
-    service === "website" ||
-    outputKind === "deferred_website" ||
-    outputKind === "website" ||
-    structuredName === "websitepage" ||
-    structuredName === "webproject" ||
-    structuredName === "websiteroutes"
-  );
+  // CDF website phases seal outputKind=text but remain website failover work
+  // (CdfWebsiteSitemap / CdfWebsitePageStructure / CdfWebsiteWireframe / legacy Website*).
+  if (WEBSITE_STRUCTURED_CONTRACT_NAMES.has(structuredName)) return true;
+  if (service === "website") return true;
+  // CDF-sealed / authoritative non-website kinds are not website code-gen.
+  if (
+    outputKind === "text" ||
+    outputKind === "document" ||
+    outputKind === "email" ||
+    outputKind === "presentation" ||
+    outputKind === "image" ||
+    outputKind === "video"
+  ) {
+    return false;
+  }
+  return outputKind === "deferred_website" || outputKind === "website";
+}
+
+/**
+ * Full WebProject / HTML completeness is only required for final website
+ * code-gen — not for CDF intermediate contracts (sitemap / page structure).
+ */
+function requiresCompleteWebsiteDeliverable(
+  metadata?: Readonly<Record<string, unknown>>
+): boolean {
+  const structuredName =
+    metadata?.structuredOutput &&
+    typeof metadata.structuredOutput === "object" &&
+    typeof (metadata.structuredOutput as { name?: unknown }).name === "string"
+      ? String((metadata.structuredOutput as { name: string }).name)
+          .trim()
+          .toLowerCase()
+      : "";
+  if (
+    structuredName === "cdfwebsitesitemap" ||
+    structuredName === "cdfwebsitepagestructure"
+  ) {
+    return false;
+  }
+  return isWebsiteDirectRequest(metadata);
+}
+
+/**
+ * Read toolOrchestration.blockProviderFailover from a provider result.
+ * Structured-contract validation failures are never terminal for the declared
+ * failover chain unless a real side-effect already ran.
+ */
+function providerResultBlocksFailover(
+  result: ProviderExecutionResult
+): boolean {
+  const output = result.response?.output as Record<string, unknown> | undefined;
+  const orch = output?.toolOrchestration as Record<string, unknown> | undefined;
+  if (orch?.blockProviderFailover !== true) return false;
+  const code = String(result.error?.code ?? "");
+  if (
+    code === "STRUCTURED_OUTPUT_INVALID" ||
+    code === "STRUCTURED_OUTPUT_TRUNCATED"
+  ) {
+    return orch.sideEffectExecuted === true;
+  }
+  if (
+    result.success === false &&
+    (output?.structuredOutputValid === false ||
+      orch.structuredOutputValid === false)
+  ) {
+    return orch.sideEffectExecuted === true;
+  }
+  return true;
+}
+
+/**
+ * True when the provider result already satisfies a requested structured-output
+ * contract (normalized + validated). Failover MUST stop when this is true.
+ * Fail-closed: arrays, failed attempts, and STRUCTURED_OUTPUT_INVALID never
+ * count as satisfied — even if a stale valid flag is present.
+ */
+export function providerResultSatisfiesStructuredContract(
+  result: ProviderExecutionResult,
+  structured?: StructuredOutputRequest
+): boolean {
+  if (!structured) return false;
+  if (result.success === false) return false;
+  const code = String(result.error?.code ?? "");
+  if (
+    code === "STRUCTURED_OUTPUT_INVALID" ||
+    code === "STRUCTURED_OUTPUT_TRUNCATED"
+  ) {
+    return false;
+  }
+  const output = result.response?.output as Record<string, unknown> | undefined;
+  if (!output) return false;
+  const payload = output.structured;
+  // Object schemas (e.g. CdfCreativeDirections) must not treat arrays as valid.
+  if (
+    payload == null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
+    return false;
+  }
+  if (output.structuredOutputValid === true) return true;
+  const orch = output.toolOrchestration as Record<string, unknown> | undefined;
+  return orch?.structuredOutputValid === true;
 }
 
 function resolveDirectTimeoutMs(
@@ -245,6 +379,46 @@ function parseImageFailoverChain(
     if (!providerId || !modelId) continue;
     out.push({ providerId, modelId });
     if (out.length >= MAX_DIRECT_IMAGE_FAILOVERS) break;
+  }
+  return out;
+}
+
+/**
+ * Text/structured failover from prepass metadata.
+ * Prefer vendor diversity so two Anthropic models cannot exhaust the budget
+ * before Gemini/DeepSeek are reached (CdfWebsiteSitemap regression).
+ */
+function parseTextFailoverChain(
+  metadata?: Readonly<Record<string, unknown>>,
+  primary?: { providerId: string; modelId: string }
+): readonly { providerId: string; modelId: string }[] {
+  const raw = metadata?.failoverChain;
+  if (!Array.isArray(raw)) return [];
+  const out: { providerId: string; modelId: string }[] = [];
+  const seenProviders = new Set<string>(
+    primary?.providerId ? [primary.providerId] : []
+  );
+  const seenKeys = new Set<string>(
+    primary ? [`${primary.providerId}::${primary.modelId}`] : []
+  );
+  for (const step of raw) {
+    if (!step || typeof step !== "object") continue;
+    const providerId =
+      typeof (step as { providerId?: unknown }).providerId === "string"
+        ? (step as { providerId: string }).providerId.trim()
+        : "";
+    const modelId =
+      typeof (step as { modelId?: unknown }).modelId === "string"
+        ? (step as { modelId: string }).modelId.trim()
+        : "";
+    if (!providerId || !modelId) continue;
+    const key = `${providerId}::${modelId}`;
+    if (seenKeys.has(key)) continue;
+    if (seenProviders.has(providerId)) continue;
+    seenKeys.add(key);
+    seenProviders.add(providerId);
+    out.push({ providerId, modelId });
+    if (out.length >= MAX_DIRECT_TEXT_FAILOVERS) break;
   }
   return out;
 }
@@ -345,13 +519,228 @@ function isRateLimitFailureMessage(message: string | undefined): boolean {
     m.includes("http 429") ||
     m.includes("rate limit") ||
     m.includes("too many requests") ||
-    m.includes("429")
+    m.includes("rate_limit")
+  );
+}
+
+/** True when the attempt is credit/billing exhaustion (typed quota). */
+function isQuotaExhaustionFailure(input: {
+  readonly failureCategory?: string;
+  readonly providerErrorCode?: string;
+  readonly message?: string;
+}): boolean {
+  if (input.failureCategory === "quota") return true;
+  const code = (input.providerErrorCode ?? "").toLowerCase();
+  if (
+    code === "credit_balance_exhausted" ||
+    code.includes("credit_balance") ||
+    code.includes("insufficient_quota") ||
+    code.includes("billing_not_active")
+  ) {
+    return true;
+  }
+  const m = (input.message ?? "").toLowerCase();
+  return (
+    m.includes("credit_balance_exhausted") ||
+    m.includes("credit balance") ||
+    m.includes("exhausted your credit") ||
+    m.includes("insufficient_quota") ||
+    m.includes("insufficient balance") ||
+    m.includes("out of credit")
+  );
+}
+
+const STRUCTURED_CONTRACT_USER_MESSAGE =
+  "Structured generation could not satisfy the required output contract. Please retry.";
+
+function isStructuredContractFailure(input: {
+  readonly failureCategory?: string;
+  readonly errorCode?: string;
+  readonly message?: string;
+}): boolean {
+  const cat = (input.failureCategory ?? "").toLowerCase();
+  if (
+    cat === "structured_output_invalid" ||
+    cat === "contract_validation_failure"
+  ) {
+    return true;
+  }
+  const code = (input.errorCode ?? "").toUpperCase();
+  if (
+    code === "STRUCTURED_OUTPUT_INVALID" ||
+    code === "STRUCTURED_OUTPUT_TRUNCATED" ||
+    code.includes("STRUCTURED_OUTPUT")
+  ) {
+    return true;
+  }
+  const m = (input.message ?? "").toLowerCase();
+  return (
+    m.includes("structured_output_invalid") ||
+    m.includes("structured output") ||
+    m.includes("json schema") ||
+    m.includes("expected type object") ||
+    m.includes("missing required")
   );
 }
 
 function isCircuitOpenFailureMessage(message: string | undefined): boolean {
   const m = (message ?? "").toLowerCase();
-  return m.includes("circuit breaker") || m.includes("circuit_open");
+  return (
+    m.includes("circuit breaker") ||
+    m.includes("circuit_open") ||
+    // Exact pipeline message — avoid matching rewritten UX "cooling down" copy
+    // that is applied only after the candidate loop completes.
+    m === "circuit breaker is open"
+  );
+}
+
+/**
+ * User-facing circuit-open copy.
+ * Claims automatic alternate-model retry ONLY when this execution's candidate
+ * list actually includes failover steps AND at least one candidate remained
+ * eligible. Fanout leaves may declare intra-leaf same-provider model fallbacks
+ * — never sibling-leaf providers.
+ */
+export function userFacingCircuitOpenMessage(input: {
+  readonly candidateCount: number;
+  readonly eligibleRemaining?: number;
+}): string {
+  if (
+    input.candidateCount > 1 &&
+    (input.eligibleRemaining === undefined || input.eligibleRemaining > 0)
+  ) {
+    return "AI providers are temporarily cooling down after recent failures. Wait about 30 seconds, then retry — we will try alternate models automatically.";
+  }
+  if (input.candidateCount > 1 && input.eligibleRemaining === 0) {
+    return "All eligible AI providers are temporarily unavailable. Please retry shortly.";
+  }
+  return "The selected provider is temporarily cooling down after recent failures. Wait about 30 seconds, then retry.";
+}
+
+export const ALL_PROVIDERS_COOLING_DOWN_CODE = "ALL_PROVIDERS_COOLING_DOWN";
+
+export function allProvidersCoolingDownMessage(): string {
+  return "All eligible AI providers are temporarily unavailable. Please retry shortly.";
+}
+
+export function userFacingProviderFailureMessage(input: {
+  readonly category: string;
+  readonly candidateCount: number;
+  readonly eligibleRemaining?: number;
+  readonly originalMessage?: string;
+}): string {
+  switch (input.category) {
+    case "quota":
+      return "Provider quota or credits are exhausted. Check billing for this provider, then retry.";
+    case "rate_limit":
+      return "Provider rate limit reached. Wait briefly, then retry.";
+    case "authentication":
+      return "Provider authentication failed. Check API credentials, then retry.";
+    case "unavailable":
+      return "Provider service is temporarily unavailable. Retry shortly.";
+    case "timeout":
+      return "Provider request timed out. Retry shortly.";
+    case "structured_output_invalid":
+    case "contract_validation_failure":
+      return STRUCTURED_CONTRACT_USER_MESSAGE;
+    case "circuit_open":
+      return userFacingCircuitOpenMessage({
+        candidateCount: input.candidateCount,
+        eligibleRemaining: input.eligibleRemaining,
+      });
+    default: {
+      if (
+        isStructuredContractFailure({
+          failureCategory: input.category,
+          message: input.originalMessage,
+        })
+      ) {
+        return STRUCTURED_CONTRACT_USER_MESSAGE;
+      }
+      const original = input.originalMessage?.trim();
+      if (
+        original &&
+        !isCircuitOpenFailureMessage(original) &&
+        original.toLowerCase() !== "provider execution failed"
+      ) {
+        return original;
+      }
+      return "The selected provider could not generate this creative.";
+    }
+  }
+}
+
+/**
+ * Stamp the Direct candidate/failover loop winner onto ProviderExecutionResult.
+ * Same identity semantics as FailoverOrchestrator.wrapOutcome:
+ * final* always comes from the winning candidate — never from routed primary.
+ */
+export function stampDirectWinnerIdentity(input: {
+  readonly result: ProviderExecutionResult;
+  readonly attemptHistory: readonly ProviderAttemptHistoryEntry[];
+  readonly winner: { readonly providerId: string; readonly modelId: string };
+}): ProviderExecutionResult {
+  const failoverCount = input.attemptHistory.filter(
+    (a) => a.primaryOrFailover === "failover",
+  ).length;
+  const primary = input.attemptHistory.find((a) => a.primaryOrFailover === "primary");
+  const fallbackDiagnostics =
+    failoverCount > 0 && primary
+      ? {
+          primaryProvider: primary.providerId,
+          primaryModel: primary.modelId,
+          primaryFailure: primary.success
+            ? undefined
+            : primary.failureCategory !== "none"
+              ? primary.failureCategory
+              : primary.errorMessage,
+          fallbackProvider: input.winner.providerId,
+          fallbackModel: input.winner.modelId,
+          fallbackReason: primary.success
+            ? "provider_failover"
+            : primary.failureCategory || "provider_failover",
+          fallbackEligible: true,
+          fallbackCircuitState: input.attemptHistory.find(
+            (a) =>
+              a.providerId === input.winner.providerId &&
+              a.modelId === input.winner.modelId,
+          )?.circuitStateBefore,
+        }
+      : undefined;
+  if (fallbackDiagnostics) {
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        scope: "provider.failover",
+        event: "fallback_diagnostics",
+        ...fallbackDiagnostics,
+        requestId: input.result.requestId,
+      }),
+    );
+  }
+  return {
+    ...input.result,
+    attemptHistory: input.attemptHistory,
+    finalProviderId: input.winner.providerId,
+    finalModelId: input.winner.modelId,
+    failoverCount,
+    ...(fallbackDiagnostics ? { fallbackDiagnostics } : {}),
+  };
+}
+
+function classifyDirectAttemptFailure(
+  message: string | undefined,
+  errorCode?: string,
+): string {
+  // Reuse the canonical failover taxonomy — do not invent a second one.
+  return classifyExecutionFailure({
+    message,
+    error: errorCode
+      ? { code: errorCode, message: message ?? "" }
+      : message
+        ? { code: "PROVIDER_ERROR", message }
+        : undefined,
+  });
 }
 
 /** Reject "success" text that is not a valid WebProject (or complete HTML wrap). */
@@ -414,14 +803,33 @@ function toProviderExecutionRequest(
 
   const meta = request.metadata ?? {};
   const timeoutMs = resolveDirectTimeoutMs(meta);
+  const cmr =
+    request.canonicalModelRequest ??
+    resolveCanonicalModelRequestFromCarrier(meta as Record<string, unknown>);
+  const basePayload: Record<string, unknown> = {
+    prompt: promptText,
+    text: promptText,
+    input: promptText,
+  };
+  if (cmr) {
+    // Structured request travels with the payload; string fields already
+    // projected by Model Runtime (Phase 11) earlier in DirectEngine.run.
+    basePayload.canonicalModelRequest = cmr;
+    basePayload.canonicalModelRequestApplied = true;
+    if (meta.flattenedByProvider === true) {
+      basePayload.flattenedByProvider = true;
+    }
+    if (meta.modelRuntimeApplied === true) {
+      basePayload.modelRuntimeApplied = true;
+      basePayload.modelRuntimeSource = meta.modelRuntimeSource;
+      basePayload.modelRuntimeRepresentationStrategy =
+        meta.modelRuntimeRepresentationStrategy;
+    }
+  }
   const base = sampleRequest({
     requestId: `${request.requestId}_rt`,
     providerId: String(providerId),
-    payload: {
-      prompt: promptText,
-      text: promptText,
-      input: promptText,
-    },
+    payload: basePayload,
     timeoutPolicy: {
       executionTimeoutMs: timeoutMs,
       streamingTimeoutMs: timeoutMs,
@@ -503,13 +911,75 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     if (!request.requestId?.trim()) {
       return failure(new ValidationError("requestId is required"));
     }
-    if (!request.rawPrompt?.trim()) {
-      return failure(new ValidationError("rawPrompt is required"));
-    }
 
     let stampedMetadata: Record<string, unknown> = {
       ...stampDirectCreateMetadata(request.metadata),
     };
+
+    // Phase 11 — provider-neutral Model Runtime boundary (representation only).
+    const cmr: CanonicalModelRequest | undefined =
+      request.canonicalModelRequest ??
+      resolveCanonicalModelRequestFromCarrier(stampedMetadata);
+    let workingPrompt = request.rawPrompt ?? "";
+    const skipPostCmrAppends = Boolean(cmr);
+
+    if (cmr) {
+      const prepared = prepareCanonicalModelRuntime({
+        modelRequest: cmr,
+        metadata: stampedMetadata,
+        executionId:
+          typeof stampedMetadata.apiExecutionId === "string"
+            ? stampedMetadata.apiExecutionId
+            : typeof stampedMetadata.executionId === "string"
+              ? stampedMetadata.executionId
+              : request.requestId,
+        correlationId:
+          typeof stampedMetadata.correlationId === "string"
+            ? stampedMetadata.correlationId
+            : request.correlationId,
+        providerId:
+          typeof stampedMetadata.providerId === "string"
+            ? stampedMetadata.providerId
+            : typeof stampedMetadata.preferredProviderId === "string"
+              ? stampedMetadata.preferredProviderId
+              : undefined,
+        modelId:
+          typeof stampedMetadata.modelId === "string"
+            ? stampedMetadata.modelId
+            : typeof stampedMetadata.preferredModelId === "string"
+              ? stampedMetadata.preferredModelId
+              : undefined,
+      });
+      if (!prepared.ok) {
+        return failure(
+          new ValidationError(prepared.message, {
+            reason: prepared.code,
+            capabilityAssessmentApplied: true,
+            requiredUnrepresentableCount:
+              prepared.plan.requiredUnrepresentableCount,
+            capabilityStatuses: prepared.plan.capabilityStatuses,
+          }),
+        );
+      }
+      workingPrompt = prepared.prompt;
+      stampedMetadata = {
+        ...stampedMetadata,
+        ...prepared.metadataStamps,
+      };
+    } else if (
+      workingPrompt.trim() === CANONICAL_MODEL_REQUEST_PROMPT_PLACEHOLDER
+    ) {
+      return failure(
+        new ValidationError(
+          "canonicalModelRequest metadata required when using canonical prompt placeholder",
+        ),
+      );
+    }
+
+    if (!workingPrompt?.trim()) {
+      return failure(new ValidationError("rawPrompt is required"));
+    }
+
     const executionSpec = readExecutionSpecFromMetadata(stampedMetadata);
     logRequirementConstraintTrace({
       phase: "EXECUTION_SPEC",
@@ -526,17 +996,86 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       metadata: stampedMetadata,
       spec: executionSpec,
     });
-    const productionInstruct = ensureProviderPromptHasProductionSpec({
-      prompt: request.rawPrompt,
-      metadata: stampedMetadata,
-    });
-    stampedMetadata = {
-      ...stampedMetadata,
-      ...productionInstruct.metadata,
-    };
 
-    // Phase 5 — do not spend provider budget on unconfirmed R/H placements.
-    {
+    let finalProviderPrompt = workingPrompt;
+    if (skipPostCmrAppends) {
+      // Phase 5 — CMR already contains Production Spec + output requirements.
+      // Stamp Spec binding metadata only; still project ExecutionSpec HARD
+      // constraints onto the wire (CMR Requirement Engine plane ≠ CTI Spec).
+      const metaOnly = applyProductionSpecInstructToMetadata(stampedMetadata, {
+        force: true,
+      });
+      stampedMetadata = { ...stampedMetadata, ...metaOnly.metadata };
+      const {
+        mergeHardConstraintsIntoProviderPrompt,
+      } = await import("../cdf/generation-context/provider-requirement-projection");
+      const merged = mergeHardConstraintsIntoProviderPrompt({
+        prompt: workingPrompt,
+        metadata: stampedMetadata,
+        executionSpec,
+      });
+      finalProviderPrompt = merged.prompt;
+      if (merged.projection.hardConstraintCount > 0) {
+        stampedMetadata = {
+          ...stampedMetadata,
+          executionSpecConstraintHash:
+            merged.projection.executionSpecConstraintHash,
+          canonicalModelRequestConstraintHash:
+            merged.projection.canonicalModelRequestConstraintHash,
+          providerWireConstraintHash:
+            merged.projection.providerWireConstraintHash,
+          hardConstraintsSurvivedToWire:
+            merged.projection.hardConstraintsSurvivedToWire,
+          ...(merged.projection.representationFailure
+            ? {
+                providerRequirementRepresentationFailure:
+                  merged.projection.representationFailure,
+              }
+            : {}),
+        };
+      }
+    } else {
+      const productionInstruct = ensureProviderPromptHasProductionSpec({
+        prompt: workingPrompt,
+        metadata: stampedMetadata,
+      });
+      stampedMetadata = {
+        ...stampedMetadata,
+        ...productionInstruct.metadata,
+      };
+
+      // Phase 5 (legacy) — do not spend provider budget on unconfirmed R/H placements.
+      {
+        const pregen = evaluateProductionPregenHold({
+          ...resolveProductionInstructInputFromMetadata(stampedMetadata),
+          confirmedOverride: readConfirmedOverrideFromMetadata(stampedMetadata),
+          organizationId: String(
+            request.organizationId ?? stampedMetadata.organizationId ?? "",
+          ),
+          executionId:
+            typeof stampedMetadata.executionId === "string"
+              ? stampedMetadata.executionId
+              : request.requestId,
+          requestId: request.requestId,
+        });
+        if (pregen.blocked) {
+          return failure(
+            new ValidationError(
+              pregen.reason ??
+                "Production Spec pre-gen hold: confirmedOverride required for R/H placement",
+            ),
+          );
+        }
+      }
+
+      finalProviderPrompt = appendOutputRequirementsToPrompt({
+        prompt: productionInstruct.prompt,
+        metadata: stampedMetadata,
+      });
+    }
+
+    // Pregen hold still applies on canonical path (metadata / binding only).
+    if (skipPostCmrAppends) {
       const pregen = evaluateProductionPregenHold({
         ...resolveProductionInstructInputFromMetadata(stampedMetadata),
         confirmedOverride: readConfirmedOverrideFromMetadata(stampedMetadata),
@@ -559,10 +1098,6 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       }
     }
 
-    const promptWithOutputRequirements = appendOutputRequirementsToPrompt({
-      prompt: productionInstruct.prompt,
-      metadata: stampedMetadata,
-    });
     logRequirementConstraintTrace({
       phase: "FINAL_PROVIDER_REQUEST",
       executionId:
@@ -575,15 +1110,62 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
           : undefined,
       metadata: stampedMetadata,
       spec: executionSpec,
-      prompt: promptWithOutputRequirements,
+      prompt: finalProviderPrompt,
     });
-    const providerRequest: DirectExecutionRequest = {
+    let providerRequest: DirectExecutionRequest = {
       ...request,
-      rawPrompt: promptWithOutputRequirements,
+      rawPrompt: finalProviderPrompt,
+      ...(cmr ? { canonicalModelRequest: cmr } : {}),
       metadata: stampedMetadata,
     };
 
     const bag = buildDirectProviderBag(providerRequest) as IntegrationArtifactBag;
+
+    // Phase 12 — after existing provider selection, re-assess CMR representation
+    // for the selected provider (no second selector; fail if required unrepresentable).
+    if (cmr) {
+      const selectedProviderId = String(
+        bag.routing?.plan?.primary?.providerId ?? "",
+      );
+      const selectedModelId = bag.routing?.plan?.primary?.modelId
+        ? String(bag.routing.plan.primary.modelId)
+        : undefined;
+      if (selectedProviderId) {
+        const selectedPlan = buildProviderRepresentationPlan({
+          modelRequest: cmr,
+          providerId: selectedProviderId,
+          modelId: selectedModelId,
+        });
+        stampedMetadata = {
+          ...stampedMetadata,
+          ...summarizeRepresentationPlan(selectedPlan),
+          modelRuntimeSelectedProviderId: selectedProviderId,
+          ...(selectedModelId
+            ? { modelRuntimeSelectedModelId: selectedModelId }
+            : {}),
+        };
+        providerRequest = {
+          ...providerRequest,
+          metadata: stampedMetadata,
+        };
+        if (selectedPlan.requiredUnrepresentableCount > 0) {
+          return failure(
+            new ValidationError(
+              `Required CMR context cannot be represented for selected provider ${selectedProviderId}`,
+              {
+                reason: "REQUIRED_BUT_UNREPRESENTABLE",
+                capabilityAssessmentApplied: true,
+                providerId: selectedProviderId,
+                requiredUnrepresentableCount:
+                  selectedPlan.requiredUnrepresentableCount,
+                capabilityStatuses: selectedPlan.capabilityStatuses,
+              },
+            ),
+          );
+        }
+      }
+    }
+
     const stages: StageTraceRecord[] = [];
     const completed: DirectExecutionStageKind[] = [];
     const correlationId = request.correlationId ?? request.requestId;
@@ -620,9 +1202,22 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     const presentationDeliverableRequired =
       presentationCreate && stampedMetadata.deliverableRequired !== false;
 
+    // Framework invariant: canonical + structured → schema before provider, or fail closed.
+    const structuredSchemaGate =
+      assertCanonicalStructuredSchemaBeforeProvider(stampedMetadata);
+    if (!structuredSchemaGate.ok) {
+      return failure(structuredSchemaGate.error);
+    }
+
     if (!structuredOutput && presentationDeliverableRequired) {
-      console.warn(
-        `📑 [Presentation] structured schema missing after stamp | requestId=${request.requestId}`
+      return failure(
+        new ValidationError(
+          `Presentation deliverable requires structured output schema before provider | requestId=${request.requestId}`,
+          {
+            reason: "PRESENTATION_STRUCTURED_SCHEMA_REQUIRED",
+            requestId: request.requestId,
+          },
+        ),
       );
     } else if (
       !structuredOutput &&
@@ -656,7 +1251,7 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       : undefined;
 
     const primary = bag.routing!.plan.primary;
-    const failover = parseImageFailoverChain(request.metadata);
+    const imageFailover = parseImageFailoverChain(request.metadata);
     const isImage = isImageGenerationCapability(primaryCap);
     const visualOperationKind = String(
       stampedMetadata?.visualOperationKind ?? ""
@@ -683,14 +1278,23 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         : undefined;
     let textFailover = [...websiteFailover, ...presentationFailover];
     if (!isImage && textFailover.length === 0) {
-      // Prefer matrix failoverChain from prepass; else vendor-diverse general chain.
-      textFailover =
-        failover.length > 0
-          ? [...failover]
-          : [...generalTextFailoverChain(primaryCandidate, textUseCase)];
+      // Prefer vendor-diverse text failover from prepass; never reuse the
+      // image-leaf 2-slot parser (it starved Gemini behind two Anthropic models).
+      // If metadata.failoverChain is explicitly present (even empty), honor it —
+      // do not silently expand to the general matrix (breaks single-candidate tests).
+      const rawFailover = request.metadata?.failoverChain;
+      if (Array.isArray(rawFailover)) {
+        textFailover = [
+          ...parseTextFailoverChain(request.metadata, primaryCandidate),
+        ];
+      } else {
+        textFailover = [
+          ...generalTextFailoverChain(primaryCandidate, textUseCase),
+        ];
+      }
     }
     const candidates: { providerId: string; modelId: string }[] = isImage
-      ? [primaryCandidate, ...failover]
+      ? [primaryCandidate, ...imageFailover]
       : [primaryCandidate, ...textFailover];
     const seen = new Set<string>();
     let uniqueCandidates = candidates.filter((c) => {
@@ -699,6 +1303,24 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       seen.add(key);
       return true;
     });
+
+    // One authoritative model identity: candidates carry the model that will
+    // actually be dispatched (executable remap), so attempt history, winner,
+    // fallback diagnostics and actualModel all agree with the wire request.
+    {
+      const executedSeen = new Set<string>();
+      uniqueCandidates = uniqueCandidates
+        .map((c) => ({
+          ...c,
+          modelId: resolveExecutedModelIdentity(c.providerId, c.modelId),
+        }))
+        .filter((c) => {
+          const key = `${c.providerId}::${c.modelId}`;
+          if (executedSeen.has(key)) return false;
+          executedSeen.add(key);
+          return true;
+        });
+    }
 
     if (isImage && referenceEditRequired) {
       uniqueCandidates = [...reorderImageCandidatesForReferenceEdit(uniqueCandidates)];
@@ -753,16 +1375,167 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       ];
     }
 
+    // Routing contract: a required provider pin never substitutes another
+    // provider (same-provider model alternates remain eligible).
+    const pinApplied = applyProviderPinPolicy(uniqueCandidates, stampedMetadata);
+    if (pinApplied.pinnedProviderId) {
+      uniqueCandidates = [...pinApplied.candidates];
+      if (pinApplied.removed.length > 0) {
+        // eslint-disable-next-line no-console
+        console.info(
+          JSON.stringify({
+            scope: "provider.routing",
+            event: "provider_pin_required",
+            pinnedProviderId: pinApplied.pinnedProviderId,
+            excludedCandidates: pinApplied.removed.map(
+              (c) => `${c.providerId}/${c.modelId}`,
+            ),
+            requestId: request.requestId,
+          }),
+        );
+      }
+      if (uniqueCandidates.length === 0) {
+        return failure(
+          new ValidationError(
+            `Required provider pin '${pinApplied.pinnedProviderId}' has no eligible candidate — no provider substitution is permitted`,
+            {
+              reason: "provider_pin_unavailable",
+              pinnedProviderId: pinApplied.pinnedProviderId,
+            },
+          ),
+        );
+      }
+    }
+
     let result: Result<ProviderExecutionResult> | undefined;
+    let authoritativeContractValid: Result<ProviderExecutionResult> | undefined;
+    let winnerCandidate: { providerId: string; modelId: string } | undefined;
+    const attemptHistory: ProviderAttemptHistoryEntry[] = [];
     let execMs = 0;
     let lastFailureMessage = "Provider execution failed";
+    // Provider-wide circuit breaker (cooling) vs per-model rate-limit skip
+    // vs provider-wide credit/quota skip for the rest of this execution.
     const circuitOpenProviders = new Set<string>();
+    const rateLimitedCandidateKeys = new Set<string>();
+    const quotaExhaustedProviders = new Set<string>();
 
-    for (const candidate of uniqueCandidates) {
-      if (circuitOpenProviders.has(candidate.providerId)) {
+    for (let candidateIndex = 0; candidateIndex < uniqueCandidates.length; candidateIndex++) {
+      const candidate = uniqueCandidates[candidateIndex]!;
+      const candidateKey = `${candidate.providerId}::${candidate.modelId}`;
+      const runtimeCircuitOpen = !this.deps.runtime.canDispatchToProvider(
+        candidate.providerId,
+      );
+      if (
+        circuitOpenProviders.has(candidate.providerId) ||
+        runtimeCircuitOpen ||
+        rateLimitedCandidateKeys.has(candidateKey) ||
+        quotaExhaustedProviders.has(candidate.providerId)
+      ) {
+        if (runtimeCircuitOpen) {
+          circuitOpenProviders.add(candidate.providerId);
+        }
+        const now = this.nowIso();
+        const skipReason = quotaExhaustedProviders.has(candidate.providerId)
+          ? "quota_exhausted_provider"
+          : rateLimitedCandidateKeys.has(candidateKey)
+            ? "rate_limited_candidate"
+            : "circuit_open";
+        // eslint-disable-next-line no-console
+        console.info(
+          JSON.stringify({
+            scope: "provider.failover",
+            event: "skip_ineligible_candidate",
+            reason: skipReason,
+            providerId: candidate.providerId,
+            modelId: candidate.modelId,
+            capability: primaryCap,
+            circuitStateBefore: runtimeCircuitOpen ? "open" : "closed_or_local",
+            requestId: request.requestId,
+            executionId:
+              typeof stampedMetadata?.apiExecutionId === "string"
+                ? stampedMetadata.apiExecutionId
+                : typeof stampedMetadata?.executionId === "string"
+                  ? stampedMetadata.executionId
+                  : request.requestId,
+            correlationId,
+          }),
+        );
+        attemptHistory.push({
+          attemptId: `direct_attempt_${candidateIndex}_skipped`,
+          positionInRoute: candidateIndex,
+          primaryOrFailover: candidateIndex === 0 ? "primary" : "failover",
+          providerId: candidate.providerId,
+          modelId: candidate.modelId,
+          success: false,
+          failureCategory:
+            skipReason === "quota_exhausted_provider"
+              ? "quota"
+              : skipReason === "rate_limited_candidate"
+                ? "rate_limit"
+                : "circuit_open",
+          latencyMs: 0,
+          durationMs: 0,
+          startedAt: now,
+          completedAt: now,
+          status: "failed",
+          errorCode:
+            skipReason === "quota_exhausted_provider"
+              ? "QUOTA_EXHAUSTED"
+              : skipReason === "rate_limited_candidate"
+                ? "RATE_LIMIT"
+                : "CIRCUIT_OPEN",
+          errorMessage:
+            skipReason === "quota_exhausted_provider"
+              ? "candidate skipped — provider credits exhausted earlier in this execution"
+              : skipReason === "rate_limited_candidate"
+                ? "candidate skipped — model rate-limited earlier in this execution"
+                : "circuit breaker is open — skipped before execution",
+          circuitStateBefore: runtimeCircuitOpen ? "open" : "closed",
+          circuitStateAfter: runtimeCircuitOpen ? "open" : "closed",
+        });
+        lastFailureMessage =
+          skipReason === "quota_exhausted_provider"
+            ? "Provider quota or credits are exhausted. Check billing for this provider, then retry."
+            : skipReason === "rate_limited_candidate"
+              ? "Provider rate limit reached. Wait briefly, then retry."
+              : "circuit breaker is open";
         continue;
       }
+      // A prior provider already produced a contract-valid structured completion.
+      // Never continue failover or let later errors overwrite that result.
+      if (authoritativeContractValid) {
+        break;
+      }
+      const primaryOrFailover: "primary" | "failover" =
+        candidateIndex === 0 ? "primary" : "failover";
+      const attemptStartedAt = this.nowIso();
       const execReq = toProviderExecutionRequest(providerRequest, bag, candidate);
+      // Phase 3 — provider-boundary proof for canonical CDF context (privacy-safe).
+      try {
+        const promptText = String(
+          execReq.payload?.prompt ??
+            execReq.payload?.text ??
+            execReq.payload?.input ??
+            providerRequest.rawPrompt ??
+            "",
+        );
+        emitCanonicalProviderBoundaryTrace({
+          prompt: promptText,
+          metadata: stampedMetadata,
+          executionId:
+            typeof stampedMetadata?.apiExecutionId === "string"
+              ? stampedMetadata.apiExecutionId
+              : typeof stampedMetadata?.executionId === "string"
+                ? stampedMetadata.executionId
+                : request.requestId,
+          correlationId: correlationId,
+          providerId: String(candidate.providerId),
+          modelId: String(candidate.modelId),
+          payloadKeys: Object.keys(execReq.payload ?? {}),
+        });
+      } catch {
+        // Observability must never block provider dispatch.
+      }
       if (isMediaGeneration) {
         const assetIds = Array.isArray(stampedMetadata?.assetIds)
           ? stampedMetadata.assetIds.filter((id): id is string => typeof id === "string")
@@ -798,9 +1571,16 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
           providerId: String(candidate.providerId),
           modelId: String(candidate.modelId),
           capabilityId: primaryCap,
-          providerCapability: providerSupportsReferenceImageEdit(candidate.providerId)
-            ? "REFERENCE_IMAGE_EDIT"
-            : "TEXT_TO_IMAGE",
+          providerCapability: resolveSelectedImageOperationCapability({
+            providerId: String(candidate.providerId),
+            referenceImageAttached: Boolean(refImage),
+            referenceInputPresent: stampedMetadata?.referenceInputPresent === true,
+            visualOperationKind:
+              typeof stampedMetadata?.visualOperationKind === "string"
+                ? stampedMetadata.visualOperationKind
+                : undefined,
+            capabilityId: primaryCap,
+          }),
           generationPath: "DirectExecutionEngine→ProviderRuntime→VendorSyncImageDispatcher",
           referenceImageAttached: Boolean(refImage),
           referenceInputPresent: stampedMetadata?.referenceInputPresent === true,
@@ -831,6 +1611,21 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         ) {
           lastFailureMessage =
             "Provider does not support reference-image input for brand logo continuity";
+          const now = this.nowIso();
+          attemptHistory.push({
+            attemptId: `direct_attempt_${candidateIndex}`,
+            positionInRoute: candidateIndex,
+            primaryOrFailover,
+            providerId: candidate.providerId,
+            modelId: candidate.modelId,
+            success: false,
+            failureCategory: "unsupported_capability",
+            latencyMs: 0,
+            startedAt: attemptStartedAt,
+            completedAt: now,
+            status: "failed",
+            errorMessage: lastFailureMessage.slice(0, 240),
+          });
           continue;
         }
       }
@@ -872,45 +1667,211 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         result = await this.deps.runtime.execute(execReq);
       }
       execMs = Math.max(0, this.clockMs() - execStart);
+      const attemptCompletedAt = this.nowIso();
+      if (!result) {
+        lastFailureMessage = "Provider execution returned no result";
+        continue;
+      }
+      const attemptResult = result;
+      const circuitBeforeSnap = this.deps.runtime
+        .getCircuitBreakerSnapshots()
+        .find((s) => String(s.providerId) === candidate.providerId);
+      const circuitStateBefore = circuitBeforeSnap?.state ?? "closed";
+      const pushAttempt = (entry: {
+        readonly success: boolean;
+        readonly failureCategory: string;
+        readonly status: string;
+        readonly errorCode?: string;
+        readonly errorMessage?: string;
+        readonly httpStatus?: number;
+        readonly providerErrorCode?: string;
+      }) => {
+        const circuitAfterSnap = this.deps.runtime
+          .getCircuitBreakerSnapshots()
+          .find((s) => String(s.providerId) === candidate.providerId);
+        attemptHistory.push({
+          attemptId: `direct_attempt_${candidateIndex}`,
+          positionInRoute: candidateIndex,
+          primaryOrFailover,
+          providerId: candidate.providerId,
+          modelId: candidate.modelId,
+          success: entry.success,
+          failureCategory: entry.failureCategory,
+          latencyMs: execMs,
+          durationMs: execMs,
+          startedAt: attemptStartedAt,
+          completedAt: attemptCompletedAt,
+          status: entry.status,
+          errorCode: entry.errorCode,
+          errorMessage: entry.errorMessage?.slice(0, 240),
+          httpStatus: entry.httpStatus,
+          providerErrorCode: entry.providerErrorCode,
+          circuitStateBefore,
+          circuitStateAfter: circuitAfterSnap?.state ?? circuitStateBefore,
+        });
+      };
 
-      if (!result.ok) {
-        lastFailureMessage = String(result.error.message);
-        if (
-          isCircuitOpenFailureMessage(lastFailureMessage) ||
+      if (!attemptResult.ok) {
+        lastFailureMessage = String(attemptResult.error.message);
+        const errMeta =
+          attemptResult.error &&
+          typeof attemptResult.error === "object" &&
+          "metadata" in attemptResult.error
+            ? ((attemptResult.error as { metadata?: Record<string, unknown> })
+                .metadata ?? {})
+            : {};
+        const transportProviderCode =
+          typeof errMeta.providerErrorCode === "string"
+            ? errMeta.providerErrorCode
+            : typeof (attemptResult.error as { providerErrorCode?: string })
+                  ?.providerErrorCode === "string"
+              ? (attemptResult.error as { providerErrorCode?: string })
+                  .providerErrorCode
+              : undefined;
+        const failCat = classifyExecutionFailure({
+          message: lastFailureMessage,
+          error: {
+            code: "PROVIDER_ERROR",
+            message: lastFailureMessage,
+            ...(transportProviderCode
+              ? { providerErrorCode: transportProviderCode }
+              : {}),
+            ...(typeof errMeta.httpStatus === "number"
+              ? { httpStatus: errMeta.httpStatus }
+              : {}),
+          },
+        });
+        pushAttempt({
+          success: false,
+          failureCategory: failCat,
+          status: "failed",
+          errorMessage: lastFailureMessage,
+          providerErrorCode: transportProviderCode,
+          httpStatus:
+            typeof errMeta.httpStatus === "number"
+              ? errMeta.httpStatus
+              : undefined,
+        });
+        if (isCircuitOpenFailureMessage(lastFailureMessage)) {
+          // Local skip state for subsequent candidates of THIS execution only.
+          circuitOpenProviders.add(candidate.providerId);
+        } else if (
+          isQuotaExhaustionFailure({
+            failureCategory: failCat,
+            providerErrorCode: transportProviderCode,
+            message: lastFailureMessage,
+          })
+        ) {
+          quotaExhaustedProviders.add(candidate.providerId);
+        } else if (
+          failCat === "rate_limit" ||
           isRateLimitFailureMessage(lastFailureMessage)
         ) {
-          circuitOpenProviders.add(candidate.providerId);
+          // Per-model only — preserve same-provider model fallback inside a leaf.
+          // Quota exhaustion must NOT land here (classified as quota above).
+          rateLimitedCandidateKeys.add(
+            `${candidate.providerId}::${candidate.modelId}`,
+          );
+        }
+        // HTTP/transport failure only triggers failover when no contract-valid
+        // completion has already been produced.
+        if (authoritativeContractValid) {
+          result = authoritativeContractValid;
+          break;
         }
         continue;
       }
-      if (result.value.success === false) {
+      if (attemptResult.value.success === false) {
+        const errCode = String(attemptResult.value.error?.code ?? "");
         lastFailureMessage =
-          result.value.error?.message ?? "Provider execution failed";
-        if (
-          isCircuitOpenFailureMessage(lastFailureMessage) ||
-          isRateLimitFailureMessage(lastFailureMessage)
-        ) {
+          attemptResult.value.error?.message ?? "Provider execution failed";
+        const failCat = classifyExecutionFailure({
+          error: attemptResult.value.error,
+          message: lastFailureMessage,
+          httpStatus: attemptResult.value.error?.httpStatus,
+        });
+        pushAttempt({
+          success: false,
+          failureCategory: failCat,
+          status: attemptResult.value.status ?? "failed",
+          errorCode: attemptResult.value.error?.code,
+          errorMessage: lastFailureMessage,
+          httpStatus: attemptResult.value.error?.httpStatus,
+          providerErrorCode: attemptResult.value.error?.providerErrorCode,
+        });
+        if (isCircuitOpenFailureMessage(lastFailureMessage)) {
           circuitOpenProviders.add(candidate.providerId);
+        } else if (
+          isQuotaExhaustionFailure({
+            failureCategory: failCat,
+            providerErrorCode: attemptResult.value.error?.providerErrorCode,
+            message: lastFailureMessage,
+          })
+        ) {
+          quotaExhaustedProviders.add(candidate.providerId);
+        } else if (isRateLimitFailureMessage(lastFailureMessage)) {
+          rateLimitedCandidateKeys.add(
+            `${candidate.providerId}::${candidate.modelId}`,
+          );
         }
         // Concepts may have succeeded — do not re-run the whole pipeline on Mistral etc.
         if (
           presentationDeliverableRequired &&
-          isPresentationExpansionFailure(result.value)
+          isPresentationExpansionFailure(attemptResult.value)
         ) {
           lastFailureMessage =
             "Pitch deck slide expansion failed. Please try again — your concepts were generated but full slides could not be built.";
           break;
         }
+        // Side-effect block only — structured-contract invalidation must continue.
+        if (providerResultBlocksFailover(attemptResult.value)) {
+          // eslint-disable-next-line no-console
+          console.info(
+            JSON.stringify({
+              scope: "provider.failover",
+              event: "stop_on_structured_side_effect_block",
+              schemaName: structuredOutput?.name ?? null,
+              errorCode: errCode || null,
+              providerId: String(candidate.providerId),
+              modelId: String(candidate.modelId),
+              requestId: request.requestId,
+            }),
+          );
+          break;
+        }
+        // STRUCTURED_OUTPUT_INVALID (and peers) are provider-attempt failures —
+        // continue to the next declared failover candidate with the SAME schema.
+        if (
+          structuredOutput &&
+          (errCode === "STRUCTURED_OUTPUT_INVALID" ||
+            errCode === "STRUCTURED_OUTPUT_TRUNCATED")
+        ) {
+          // eslint-disable-next-line no-console
+          console.info(
+            JSON.stringify({
+              scope: "provider.failover",
+              event: "continue_on_structured_schema_mismatch",
+              schemaName: structuredOutput.name ?? null,
+              errorCode: errCode || null,
+              providerId: String(candidate.providerId),
+              modelId: String(candidate.modelId),
+              requestId: request.requestId,
+            }),
+          );
+        }
+        if (authoritativeContractValid) {
+          result = authoritativeContractValid;
+          break;
+        }
         continue;
       }
 
-      if (
-        presentationDeliverableRequired &&
-        structuredOutput &&
-        result.value.success !== false
-      ) {
+      // Successful dispatch — keep `result` as the authoritative attempt Result.
+      result = attemptResult;
+
+      if (presentationDeliverableRequired && structuredOutput) {
         const expanded = await ensurePresentationExpandedForDeliverable({
-          executed: result.value,
+          executed: attemptResult.value,
           structured: structuredOutput,
           providerRequest: execReq,
           nowIso: this.nowIso,
@@ -918,32 +1879,300 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         });
         if (!expanded.ok) {
           lastFailureMessage = expanded.error.message;
+          pushAttempt({
+            success: false,
+            failureCategory: classifyDirectAttemptFailure(lastFailureMessage),
+            status: "failed",
+            errorMessage: lastFailureMessage,
+          });
           continue;
         }
         if (expanded.value.success === false) {
           lastFailureMessage =
             expanded.value.error?.message ??
             "Presentation deck expansion failed";
+          pushAttempt({
+            success: false,
+            failureCategory: classifyDirectAttemptFailure(lastFailureMessage),
+            status: expanded.value.status ?? "failed",
+            errorCode: expanded.value.error?.code,
+            errorMessage: lastFailureMessage,
+          });
           continue;
         }
         result = expanded;
       }
 
-      // Website runs must produce a valid WebProject for the chosen stack.
+      const settled = result;
+      if (!settled?.ok) {
+        continue;
+      }
+
+      // Website code-gen must produce a valid WebProject for the chosen stack.
+      // CDF sitemap / page-structure phases validate via structured contract only.
       if (
-        isWebsiteDirectRequest(request.metadata) &&
-        !providerResultHasCompleteWebsite(result.value, request.metadata)
+        requiresCompleteWebsiteDeliverable(request.metadata) &&
+        !providerResultHasCompleteWebsite(settled.value, request.metadata)
       ) {
         const stack = websiteContextFromMetadata(request.metadata, "").stack;
         lastFailureMessage = websiteIncompleteErrorMessage(stack);
+        pushAttempt({
+          success: false,
+          failureCategory: "invalid_request",
+          status: "failed",
+          errorMessage: lastFailureMessage,
+        });
         continue;
       }
+
+      // Structured-output contract: only a validated structured completion is
+      // terminal. Invalid emission against the same schema may failover to the
+      // next declared candidate — schema identity is preserved (never weakened).
+      if (structuredOutput) {
+        if (
+          providerResultSatisfiesStructuredContract(
+            settled.value,
+            structuredOutput
+          )
+        ) {
+          pushAttempt({
+            success: true,
+            failureCategory: "none",
+            status: settled.value.status ?? "succeeded",
+          });
+          authoritativeContractValid = settled;
+          winnerCandidate = {
+            providerId: candidate.providerId,
+            modelId: candidate.modelId,
+          };
+          // Only after schema-valid structured completion — never on
+          // STRUCTURED_OUTPUT_INVALID / array-vs-object mismatches.
+          // eslint-disable-next-line no-console
+          console.info(
+            JSON.stringify({
+              scope: "provider.failover",
+              event: "stop_on_structured_contract",
+              schemaName: structuredOutput.name ?? null,
+              providerId: String(candidate.providerId),
+              modelId: String(candidate.modelId),
+              requestId: request.requestId,
+              reason: "contract_satisfied",
+            })
+          );
+          break;
+        }
+        const errCode = String(settled.value.error?.code ?? "");
+        lastFailureMessage =
+          settled.value.error?.message ??
+          "Structured output contract was not satisfied";
+        pushAttempt({
+          success: false,
+          failureCategory: "structured_output_invalid",
+          status: "failed",
+          errorCode: errCode || undefined,
+          errorMessage: lastFailureMessage,
+        });
+        // Side-effect / paid-submit guards still block further failover.
+        if (providerResultBlocksFailover(settled.value)) {
+          // eslint-disable-next-line no-console
+          console.info(
+            JSON.stringify({
+              scope: "provider.failover",
+              event: "stop_on_structured_side_effect_block",
+              schemaName: structuredOutput.name ?? null,
+              errorCode: errCode || null,
+              providerId: String(candidate.providerId),
+              modelId: String(candidate.modelId),
+              requestId: request.requestId,
+            }),
+          );
+          break;
+        }
+        // eslint-disable-next-line no-console
+        console.info(
+          JSON.stringify({
+            scope: "provider.failover",
+            event: "continue_on_structured_schema_mismatch",
+            schemaName: structuredOutput.name ?? null,
+            errorCode: errCode || null,
+            providerId: String(candidate.providerId),
+            modelId: String(candidate.modelId),
+            requestId: request.requestId,
+          }),
+        );
+        continue;
+      }
+
+      // Unstructured text / image / video — preserve existing stop-on-success.
+      pushAttempt({
+        success: true,
+        failureCategory: "none",
+        status: settled.value.status ?? "succeeded",
+      });
+      winnerCandidate = {
+        providerId: candidate.providerId,
+        modelId: candidate.modelId,
+      };
       break;
     }
 
-    if (isCircuitOpenFailureMessage(lastFailureMessage)) {
-      lastFailureMessage =
-        "AI providers are temporarily cooling down after recent failures. Wait about 30 seconds, then retry — we will try alternate models automatically.";
+    if (authoritativeContractValid) {
+      result = authoritativeContractValid;
+    }
+
+    if (
+      result?.ok &&
+      result.value.success !== false &&
+      winnerCandidate
+    ) {
+      result = success(
+        stampDirectWinnerIdentity({
+          result: result.value,
+          attemptHistory,
+          winner: winnerCandidate,
+        }),
+      );
+    } else if (result?.ok && attemptHistory.length > 0) {
+      // Terminal failure still carries attempt history for evidence.
+      result = success({
+        ...result.value,
+        attemptHistory,
+        finalProviderId:
+          result.value.finalProviderId ??
+          attemptHistory[attemptHistory.length - 1]?.providerId,
+        finalModelId:
+          result.value.finalModelId ??
+          attemptHistory[attemptHistory.length - 1]?.modelId,
+        failoverCount: attemptHistory.filter(
+          (a) => a.primaryOrFailover === "failover",
+        ).length,
+      });
+    } else if (
+      !result &&
+      attemptHistory.length > 0 &&
+      !winnerCandidate
+    ) {
+      // All candidates skipped (circuit open / rate-limited) without a stamped
+      // result — synthesize a typed terminal failure with history.
+      const last = attemptHistory[attemptHistory.length - 1]!;
+      const allCircuitOpen = attemptHistory.every(
+        (a) => a.failureCategory === "circuit_open",
+      );
+      const snaps = this.deps.runtime.getCircuitBreakerSnapshots();
+      const maxCooldown = snaps.reduce((max, s) => {
+        if (s.state !== "open") return max;
+        const openedMs = s.openedAtMs ?? (s.openedAt ? Date.parse(s.openedAt) : NaN);
+        const reset = s.resetTimeoutMs ?? 30_000;
+        if (!Number.isFinite(openedMs)) return Math.max(max, reset);
+        return Math.max(max, Math.max(0, reset - (Date.now() - openedMs)));
+      }, 0);
+      const retryAfterMs = allCircuitOpen ? Math.max(maxCooldown, 1_000) : undefined;
+      result = success({
+        requestId: `${request.requestId}_rt`,
+        sessionId: `direct_synth_${request.requestId}`,
+        status: "failed",
+        success: false,
+        error: {
+          code: allCircuitOpen
+            ? ALL_PROVIDERS_COOLING_DOWN_CODE
+            : last.errorCode ?? "PROVIDER_ERROR",
+          message: allCircuitOpen
+            ? allProvidersCoolingDownMessage()
+            : lastFailureMessage,
+          failureCategory: allCircuitOpen
+            ? "circuit_open"
+            : last.failureCategory,
+          retryAfterMs,
+        },
+        statistics: {
+          queueWaitMs: 0,
+          dispatchMs: 0,
+          executionMs: 0,
+          streamingMs: 0,
+          totalMs: execMs,
+          attempts: attemptHistory.length,
+          retries: 0,
+          timeouts: 0,
+          streamingChunks: 0,
+        },
+        completedAt: this.nowIso(),
+        attemptHistory,
+        finalProviderId: last.providerId,
+        finalModelId: last.modelId,
+        failoverCount: attemptHistory.filter(
+          (a) => a.primaryOrFailover === "failover",
+        ).length,
+      });
+      if (allCircuitOpen) {
+        lastFailureMessage = allProvidersCoolingDownMessage();
+      }
+    }
+
+    if (!result?.ok || result.value.success === false) {
+      const historyCategory =
+        attemptHistory.length > 0 &&
+        attemptHistory.every((a) => a.failureCategory === "circuit_open")
+          ? "circuit_open"
+          : attemptHistory.length > 0
+            ? attemptHistory[attemptHistory.length - 1]?.failureCategory
+            : undefined;
+      const category =
+        historyCategory === "circuit_open" ||
+        historyCategory === "rate_limit" ||
+        historyCategory === "quota" ||
+        historyCategory === "authentication" ||
+        historyCategory === "unavailable" ||
+        historyCategory === "timeout"
+          ? historyCategory
+          : classifyDirectAttemptFailure(
+              lastFailureMessage,
+              !result?.ok ? undefined : result.value.error?.code,
+            );
+      // Never collapse quota / rate-limit / auth into circuit "cooling down".
+      // Circuit-open copy is only for genuine circuit_open category.
+      const eligibleRemaining = uniqueCandidates.filter(
+        (c) =>
+          !circuitOpenProviders.has(c.providerId) &&
+          !quotaExhaustedProviders.has(c.providerId) &&
+          this.deps.runtime.canDispatchToProvider(c.providerId) &&
+          !rateLimitedCandidateKeys.has(`${c.providerId}::${c.modelId}`),
+      ).length;
+      const allCoolingDown =
+        category === "circuit_open" &&
+        uniqueCandidates.length > 1 &&
+        eligibleRemaining === 0;
+      lastFailureMessage = allCoolingDown
+        ? allProvidersCoolingDownMessage()
+        : userFacingProviderFailureMessage({
+            category,
+            candidateCount: uniqueCandidates.length,
+            eligibleRemaining,
+            originalMessage: lastFailureMessage,
+          });
+      if (result?.ok && result.value.error) {
+        const snaps = this.deps.runtime.getCircuitBreakerSnapshots();
+        const maxCooldown = snaps.reduce((max, s) => {
+          if (s.state !== "open") return max;
+          const openedMs = s.openedAtMs ?? (s.openedAt ? Date.parse(s.openedAt) : NaN);
+          const reset = s.resetTimeoutMs ?? 30_000;
+          if (!Number.isFinite(openedMs)) return Math.max(max, reset);
+          return Math.max(max, Math.max(0, reset - (Date.now() - openedMs)));
+        }, 0);
+        result = success({
+          ...result.value,
+          error: {
+            ...result.value.error,
+            code: allCoolingDown
+              ? ALL_PROVIDERS_COOLING_DOWN_CODE
+              : result.value.error.code,
+            message: lastFailureMessage,
+            failureCategory: category,
+            ...(allCoolingDown
+              ? { retryAfterMs: result.value.error.retryAfterMs ?? Math.max(maxCooldown, 1_000) }
+              : {}),
+          },
+        });
+      }
     }
 
     if (!result) {
@@ -999,6 +2228,54 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       artifactRefs: [],
     });
     completed.push("provider_runtime");
+
+    try {
+      const out = (result.value.response?.output ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const structured = out.structured ?? out.structuredOutput ?? out.data;
+      const keys =
+        structured && typeof structured === "object" && !Array.isArray(structured)
+          ? Object.keys(structured as object).slice(0, 24)
+          : [];
+      const meta = request.metadata ?? {};
+      const executionId =
+        typeof meta.apiExecutionId === "string"
+          ? meta.apiExecutionId
+          : typeof meta.executionId === "string"
+            ? meta.executionId
+            : request.requestId;
+      // eslint-disable-next-line no-console
+      console.info(
+        JSON.stringify({
+          scope: "execution.structured_completion",
+          event: "direct_execution_result",
+          executionId,
+          requestId: request.requestId,
+          provider:
+            result.value.finalProviderId ?? result.value.response?.providerId,
+          model: result.value.finalModelId,
+          resultKeys: Object.keys(out).slice(0, 24),
+          structuredOutputPresent: out.structured != null,
+          structuredPresent: out.structured != null,
+          dataPresent: out.data != null,
+          dataStructuredPresent:
+            out.data != null &&
+            typeof out.data === "object" &&
+            !Array.isArray(out.data) &&
+            (out.data as Record<string, unknown>).structured != null,
+          textPresent:
+            typeof out.content === "string" || typeof out.text === "string",
+          mediaPresent: Array.isArray(out.outputs) && out.outputs.length > 0,
+          structuredKeyCount: keys.length,
+          structuredKeys: keys,
+          ts: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      // ignore
+    }
 
     return success(this.report(request, completedBag, stages, completed, start, true));
   }

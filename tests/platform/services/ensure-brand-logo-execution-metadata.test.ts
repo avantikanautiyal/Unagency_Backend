@@ -91,7 +91,7 @@ describe("ensure-brand-logo-execution-metadata", () => {
     expect(meta.brandLogoAssetId).toBe("logo_asset_1");
   });
 
-  it("asks when vault logo and attachment logo both exist", async () => {
+  it("uses the attached logo when vault logo and attachment logo both exist", async () => {
     const vaultId = new mongoose.Types.ObjectId();
     const attachedId = new mongoose.Types.ObjectId().toString();
     (MediaFile.find as jest.Mock).mockImplementation(() => ({
@@ -122,11 +122,8 @@ describe("ensure-brand-logo-execution-metadata", () => {
       },
     });
 
-    expect(meta.logoChoiceRequired).toBe(true);
-    const candidates = meta.logoChoiceCandidates as Array<{ assetId: string }>;
-    expect(candidates.map((c) => c.assetId).sort()).toEqual(
-      [vaultId.toString(), attachedId].sort()
-    );
+    expect(meta.logoChoiceRequired).toBeUndefined();
+    expect(meta.brandLogoAssetId).toBe(attachedId);
   });
 
   it("honors vaultLogoChoice without re-asking", async () => {

@@ -76,7 +76,10 @@ export type RateLimitDimension =
   | "user"
   | "api_key"
   | "capability"
-  | "provider";
+  | "provider"
+  /** Background poll / hydration — separate from user-facing request bucket. */
+  | "organization_poll"
+  | "user_poll";
 
 export type ApiDomain =
   | "authentication"

@@ -15,10 +15,19 @@ import {
   resolvePayloadAspectRatio,
 } from "../../image/common/image-aspect-ratio";
 import {
+  applyReferenceRolePromptGuidance,
   extractReferenceImages,
   referenceImageToDataUrl,
 } from "../../image/common/vendor-image-protocol";
 import { normalizeOpenAiCompletionTokenParams } from "./openai-completion-params";
+import {
+  isCanonicalModelRequest,
+  mapCanonicalModelRequestToProviderPayload,
+  extractCanonicalMultimodalProviderHandoff,
+  canonicalImageDeliveriesToOpenAIContentParts,
+  CANONICAL_MULTIMODAL_MAPPING_SOURCE,
+} from "../../../ai/canonical-model-request";
+import { normalizeSchemaForOpenAiStrict } from "../../tools/structured/structured-output-execution";
 
 export function mapCanonicalToOpenAIRequest(
   request: ProviderAdapterRequest,
@@ -26,11 +35,64 @@ export function mapCanonicalToOpenAIRequest(
   profile?: DesiredCapabilityProfile
 ): ProviderWirePayload {
   const operation = resolveOperation(request, profile);
+
+  // Phase 4 / 9A — CanonicalModelRequest → labeled prompt + multimodal from CMR.
+  let inputForMessages = request.input as Record<string, unknown>;
+  const cmr = inputForMessages.canonicalModelRequest;
+  let multimodalMapped = 0;
+  let multimodalOmitted = 0;
+  let multimodalMappingSource: string | undefined;
+  if (isCanonicalModelRequest(cmr) && !inputForMessages.messages) {
+    const handoff = extractCanonicalMultimodalProviderHandoff(cmr, {
+      supportsImageInput: true,
+    });
+    multimodalMappingSource = handoff.applied
+      ? CANONICAL_MULTIMODAL_MAPPING_SOURCE
+      : undefined;
+    multimodalMapped = handoff.mappedCount;
+    multimodalOmitted = handoff.omitted.length;
+    const projected = mapCanonicalModelRequestToProviderPayload(cmr, {
+      multimodalProviderMappedCount: multimodalMapped,
+      multimodalProviderOmittedCount: multimodalOmitted,
+    });
+    // Phase 9A: image parts from CMR multimodal_context only — not input.assets.
+    const imageParts = canonicalImageDeliveriesToOpenAIContentParts(
+      handoff.imageDeliveries,
+    );
+    const messages =
+      imageParts.length > 0
+        ? [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: projected.prompt },
+                ...imageParts,
+              ],
+            },
+          ]
+        : [...projected.messages];
+    inputForMessages = {
+      ...inputForMessages,
+      prompt: projected.prompt,
+      text: projected.prompt,
+      input: projected.prompt,
+      messages,
+      multimodalProviderMappedCount: multimodalMapped,
+      multimodalProviderOmittedCount: multimodalOmitted,
+      multimodalContextPresent: projected.multimodalContextPresent,
+      canonicalMultimodalProviderMappingApplied: handoff.applied,
+      canonicalMultimodalMappingSource: multimodalMappingSource,
+      canonicalMultimodalMappedCount: multimodalMapped,
+      canonicalMultimodalOmittedCount: multimodalOmitted,
+      canonicalMultimodalItemCount: handoff.itemCount,
+    };
+  }
+
   const messages =
-    (request.input.messages as unknown[]) ??
-    (request.input.prompt
-      ? [{ role: "user", content: request.input.prompt }]
-      : [{ role: "user", content: JSON.stringify(request.input) }]);
+    (inputForMessages.messages as unknown[]) ??
+    (inputForMessages.prompt
+      ? [{ role: "user", content: inputForMessages.prompt }]
+      : [{ role: "user", content: JSON.stringify(inputForMessages) }]);
 
   const params = { ...(request.parameters ?? {}) } as Record<string, unknown>;
   // Internal adapter options — never forward to vendor HTTP bodies.
@@ -75,6 +137,8 @@ export function mapCanonicalToOpenAIRequest(
       );
     }
 
+    applyOpenAiStrictJsonSchemaOnWire(body);
+
     if (request.input.tools) body.tools = request.input.tools;
     if (request.input.tool_choice) body.tool_choice = request.input.tool_choice;
   } else if (operation === "embeddings") {
@@ -114,6 +178,33 @@ export function mapCanonicalToOpenAIRequest(
   });
 }
 
+/**
+ * OpenAI's images.generate/images.edit `prompt` param has a documented hard
+ * cap (currently 32000 chars) — independent of any phase or brand. A
+ * compiled canonical prompt (brand context + composition requirements +
+ * upstream refs) can legitimately cross this for any image phase, not just
+ * one. Truncating here (provider-boundary, not phase-specific) is the
+ * generic fix — never silent: logged so an oversized compiled prompt stays
+ * diagnosable rather than just quietly shorter.
+ */
+const OPENAI_IMAGE_PROMPT_MAX_LENGTH = 32000;
+
+function fitOpenAiImagePrompt(prompt: string, correlationId?: string): string {
+  if (prompt.length <= OPENAI_IMAGE_PROMPT_MAX_LENGTH) return prompt;
+  const truncated = prompt.slice(0, OPENAI_IMAGE_PROMPT_MAX_LENGTH);
+  console.warn(
+    JSON.stringify({
+      scope: "provider.openai.image_prompt_truncated",
+      correlationId,
+      originalLength: prompt.length,
+      truncatedLength: truncated.length,
+      maxLength: OPENAI_IMAGE_PROMPT_MAX_LENGTH,
+      droppedLength: prompt.length - truncated.length,
+    }),
+  );
+  return truncated;
+}
+
 function applyOpenAiImageBody(
   body: Record<string, unknown>,
   request: ProviderAdapterRequest,
@@ -144,7 +235,10 @@ function applyOpenAiImageBody(
   ).trim();
 
   if (operation === "images.edits") {
-    const refs = extractReferenceImages(request.input as Record<string, unknown>);
+    const refs = extractReferenceImages(
+      request.input as Record<string, unknown>,
+      request.metadata as Readonly<Record<string, unknown>> | undefined,
+    );
     const imageUrls = refs
       .map((ref) => referenceImageToDataUrl(ref))
       .filter((url): url is string => Boolean(url))
@@ -153,15 +247,15 @@ function applyOpenAiImageBody(
     if (body.input_fidelity == null) {
       body.input_fidelity = "high";
     }
-    body.prompt = /\breference\b|\battached\b|\blogo\b|\bbrand\s*mark\b/i.test(
-      basePrompt
-    )
-      ? basePrompt
-      : `${basePrompt}\n\nUse the attached reference image(s) faithfully in the result — do not invent a different mark or substitute.`;
+    const { prompt: rolePrompt } = applyReferenceRolePromptGuidance({
+      basePrompt,
+      references: refs,
+    });
+    body.prompt = fitOpenAiImagePrompt(rolePrompt, request.requestId);
   } else {
     delete body.images;
     delete body.input_fidelity;
-    body.prompt = basePrompt;
+    body.prompt = fitOpenAiImagePrompt(basePrompt, request.requestId);
   }
 
   if (body.size == null) {
@@ -265,4 +359,25 @@ function ensureJsonHintInMessages(
     },
     ...messages,
   ];
+}
+
+/** OpenAI strict json_schema normalization — wire only, never mutates canonical envelope. */
+function applyOpenAiStrictJsonSchemaOnWire(body: Record<string, unknown>): void {
+  const rf = body.response_format;
+  if (!rf || typeof rf !== "object") return;
+  const typed = rf as {
+    type?: string;
+    json_schema?: { name?: string; strict?: boolean; schema?: unknown };
+  };
+  if (typed.type !== "json_schema" || !typed.json_schema?.schema) return;
+  if (typeof typed.json_schema.schema !== "object") return;
+  body.response_format = {
+    ...typed,
+    json_schema: {
+      ...typed.json_schema,
+      schema: normalizeSchemaForOpenAiStrict(
+        typed.json_schema.schema as Record<string, unknown>,
+      ),
+    },
+  };
 }

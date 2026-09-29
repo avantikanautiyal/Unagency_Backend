@@ -37,6 +37,14 @@ export interface ProviderInvocationAccountingEvent {
   readonly service?: string | null;
   readonly retryCount?: number;
   readonly timedOut?: boolean;
+  /** Safe failure diagnostics — never secrets/prompts. */
+  readonly failureDiagnostics?: {
+    readonly httpStatus?: number;
+    readonly providerErrorCode?: string;
+    readonly failureCategory?: string;
+    readonly circuitState?: string;
+    readonly sanitizedMessage?: string;
+  };
 }
 
 export interface IUsageAccountingService {
@@ -135,6 +143,7 @@ export class UsageAccountingService implements IUsageAccountingService {
       reasoningTokens: null,
       totalTokens: null,
       otherUnits: [],
+      providerReportedCostUsd: null,
       providerRequestId: null,
       rawProviderUsage: null,
     };
@@ -212,8 +221,22 @@ export class UsageAccountingService implements IUsageAccountingService {
           reasoningTokens: null,
           totalTokens: null,
           otherUnits: [],
+          providerReportedCostUsd: null,
           providerRequestId: null,
-          rawProviderUsage: null,
+          rawProviderUsage: event.failureDiagnostics
+            ? {
+                failureDiagnostics: {
+                  httpStatus: event.failureDiagnostics.httpStatus ?? null,
+                  providerErrorCode: event.failureDiagnostics.providerErrorCode ?? null,
+                  failureCategory: event.failureDiagnostics.failureCategory ?? null,
+                  circuitState: event.failureDiagnostics.circuitState ?? null,
+                  sanitizedMessage: event.failureDiagnostics.sanitizedMessage
+                    ? String(event.failureDiagnostics.sanitizedMessage).slice(0, 240)
+                    : null,
+                  success: false,
+                },
+              }
+            : null,
         };
 
     const idempotencyKey = deriveIdempotencyKey({

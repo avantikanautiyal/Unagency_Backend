@@ -131,6 +131,25 @@ export class MediaArtifactService {
     return [...this.finalized.values()].filter((r) => r.operationId === operationId);
   }
 
+  /** Resolve durable blob storage key for a finalized media artifact. */
+  async resolveBlobStorageKey(
+    artifactId: string,
+    executionId: string,
+  ): Promise<string | undefined> {
+    for (const rec of this.finalized.values()) {
+      if (rec.artifactId === artifactId && rec.executionId === executionId) {
+        return rec.blob.storageKey;
+      }
+    }
+    const existing = await this.artifacts.get(artifactId);
+    if (!existing || existing.executionId !== executionId) return undefined;
+    const label = existing.artifact.label;
+    if (typeof label === "string" && label.startsWith("blob:")) {
+      return label.slice(5);
+    }
+    return undefined;
+  }
+
   clear(): void {
     this.finalized.clear();
   }

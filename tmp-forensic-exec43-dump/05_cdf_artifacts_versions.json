@@ -1,0 +1,211 @@
+{
+  "arts": [
+    {
+      "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+      "projectId": null,
+      "organizationId": "6a89ff83ae22a3d696a169e6",
+      "workspaceId": null,
+      "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+      "serviceId": "social-media",
+      "phaseId": "routes",
+      "artifactKey": "social-media.routes",
+      "artifactType": "text_choice",
+      "schemaVersion": "1",
+      "latestVersion": 1,
+      "status": "selected",
+      "createdAt": "2026-09-14T16:15:09.378Z",
+      "updatedAt": "2026-09-14T16:15:17.631Z",
+      "selectedVersion": 1,
+      "approvedVersion": null
+    },
+    {
+      "artifactId": "cdfart_mu1g380n_2_social-media-output",
+      "projectId": null,
+      "organizationId": "6a89ff83ae22a3d696a169e6",
+      "workspaceId": "ws_8_1789402358271",
+      "sessionId": "cdf_mu1fz0gn_b5q62iyz",
+      "serviceId": "social-media",
+      "phaseId": "output",
+      "artifactKey": "social-media.output",
+      "artifactType": "image",
+      "schemaVersion": "1",
+      "latestVersion": 1,
+      "status": "candidate",
+      "createdAt": "2026-09-14T16:16:10.583Z",
+      "updatedAt": "2026-09-14T16:16:10.583Z"
+    }
+  ],
+  "vers": [
+    {
+      "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+      "version": 1,
+      "artifactType": "text_choice",
+      "artifactKey": "social-media.routes",
+      "schemaVersion": "1",
+      "status": "selected",
+      "data": {
+        "schemaId": "unagency.social_media.routes.v1",
+        "routes": [
+          {
+            "routeId": "route_01_blooming_introduction",
+            "name": "Blooming Introduction",
+            "creativeIdea": "A warm, sunlit visual narrative that introduces Sunflower as a nurturing space where children's minds and hearts grow together, using the sunflower metaphor as a gentle guide to the brand's holistic educational philosophy.",
+            "visualTreatment": "Soft, gradient-rich photography or illustration blending yellow, cream, and warm whites with subtle blue and green accents. Dreamy, light-filled aesthetic with gentle shadows and organic shapes that evoke growth and warmth.",
+            "headlineAngle": "\"Where young minds bloom into their brightest selves\" — positioning Sunflower as the caring partner in children's complete development journey beyond academics.",
+            "rationale": "This direction perfectly aligns with the introductory post requirement by clearly communicating the brand essence through the sunflower-growth metaphor while maintaining the established warm, optimistic color palette. The approachable visual language speaks directly to parents and schools, establishing trust and nurturing credentials.",
+            "visualCharacteristics": null,
+            "communicationObjective": "Introduce Sunflower as a holistic educational platform that helps school-going children (grades 1-12) develop emotional resilience, life skills, and mental well-being alongside academic growth.",
+            "primaryMessage": "Sunflower helps your child learn, grow, connect, express, and flourish — education for the whole human, not just the student.",
+            "secondaryMessage": "Growing minds. Growing humans. (Tagline reinforcement showing our child-first, supportive approach to development from grades 1-12)",
+            "visualConcept": "Central sunflower illustration or photographic element surrounded by abstract representations of children's activities (learning, playing, connecting) rendered in the brand's blue-green-yellow-cream palette. Sunlit, uplifting composition with breathing room.",
+            "focalPoint": "The sunflower element positioned slightly off-center in the upper or middle third, drawing the eye naturally to the growth metaphor before guiding viewers to supporting text and brand mark.",
+            "composition": "Balanced asymmetric layout with generous white/cream space. Sunflower visual anchors the composition with supporting elements (icons, text blocks, gentle shapes) arranged organically around it, creating movement from top-left to bottom-right reading flow.",
+            "hierarchy": "1) Sunflower visual focal point, 2) Primary headline in friendly sans-serif, 3) Brief descriptive copy explaining the brand promise, 4) Tagline in smaller type, 5) Sunflower logo lockup with modest scale in corner or footer area.",
+            "typographyDirection": "Modern, warm sans-serif family (approachable yet professional). Primary headline in medium weight, body copy in regular weight with comfortable line spacing. Yellow or deep blue color for headline creating contrast against cream/white background. Avoid overly playful or childish fonts — keep it trustworthy and modern.",
+            "supportingVisualElements": "Subtle line illustrations of books, hearts, hands holding, speech bubbles, or puzzle pieces in muted blue and green tones. Soft circular shapes and organic swooshes suggesting growth rings or petals. Light texture overlays for depth without clutter.",
+            "brandIntegration": "The sunflower visual element directly references the brand name while reinforcing the growth metaphor. Color palette consistency throughout creates immediate brand recognition. The overall tone — optimistic, clean, nurturing — embodies brand personality.",
+            "identityMarkRole": "Sunflower logo appears as a modest lockup in bottom-right or top-left corner (approximately 10-12% of composition height), maintaining visibility without competing with the educational content and primary visual story. Functions as a signature, not the hero.",
+            "audienceSignal": "The warm, professional aesthetic appeals to parents seeking trustworthy educational partners while the playful elements and child-centric language signal inclusion and approachability. Schools recognize the premium yet accessible positioning. Use-context: scrolling Instagram feed requires immediate emotional connection and clarity.",
+            "useContextIntent": "Designed for Instagram feed stop-scroll impact — visually calming yet distinctive in a crowded feed. Invites deeper reading while communicating core brand promise at a glance. Shareable by parents and schools. Works equally well as first brand touchpoint or reinforcement.",
+            "avoidances": "Must not look like generic stock education imagery, overly corporate/cold, too childish/cartoon-heavy, or cluttered with excessive icons. Avoid aggressive colors, hard edges, academic clichés (apples, chalkboards), or making the logo the dominant visual. Do not sacrifice breathing room for content overload."
+          },
+          {
+            "routeId": "route_02_the_full_spectrum",
+            "name": "The Full Spectrum",
+            "creativeIdea": "A vibrant, color-blocked design that visualizes Sunflower's five pillars (learn, grow, connect, express, flourish) as interconnected segments of a complete educational ecosystem, celebrating the multidimensional nature of child development.",
+            "visualTreatment": "Bold, segmented color blocks using blue, green, yellow, white, and cream in geometric yet organic divisions. Clean, modern graphic design with intentional color transitions suggesting flow and connection. Confident use of brand palette with balanced saturation.",
+            "headlineAngle": "\"Education for every part of them\" — emphasizing Sunflower's comprehensive approach to developing the whole child across emotional, social, mental, and academic dimensions.",
+            "rationale": "This direction leverages the complete brand color scheme as requested while structurally representing the brand's holistic value proposition. The segmented visual immediately communicates comprehensiveness and organization, appealing to the analytical mindset of parents and educators evaluating programs.",
+            "visualCharacteristics": null,
+            "communicationObjective": "Position Sunflower as the complete educational solution addressing all aspects of child development (mental well-being, emotional resilience, life skills, academics) for grades 1-12 students.",
+            "primaryMessage": "Five ways to flourish: Learn, Grow, Connect, Express, Flourish. Sunflower brings them all together in one supportive platform.",
+            "secondaryMessage": "For school-going children grades 1-12 — because education is about building humans, not just students.",
+            "visualConcept": "Five distinct color sections (representing the five pillars) arranged as panels, petals, or flowing segments across the canvas. Each contains subtle iconography or abstract representation of its pillar. Central white/cream space holds headline and key message.",
+            "focalPoint": "Central white or cream intersection/hub where all color segments meet, containing the primary headline. This negative space creates breathing room and draws attention to the unifying message before eyes explore the individual pillars.",
+            "composition": "Radial or horizontal segmented layout with five distinct yet connected color zones. Geometric precision balanced with curved transitions. Text centralized or positioned in the neutral zone. Visual rhythm created through color alternation and size variation of segments.",
+            "hierarchy": "1) Central headline in neutral space commanding immediate attention, 2) Color segments providing visual interest and structure, 3) Five pillar labels and icons supporting the narrative, 4) Descriptive tagline below, 5) Brand mark in corner as signature element.",
+            "typographyDirection": "Clean, contemporary sans-serif with geometric proportions matching the visual structure. Bold or semi-bold weight for headline in dark blue or charcoal for maximum contrast against cream/white. Pillar labels in lighter weight. Consistent sizing creates cohesion across segments.",
+            "supportingVisualElements": "Minimalist line icons within each color segment (book for learn, sprout for grow, linked hands for connect, paintbrush/voice for express, sun rays for flourish). Subtle gradient overlays within each block adding dimension. Connecting lines or dots suggesting ecosystem relationships.",
+            "brandIntegration": "The five-segment structure directly maps to Sunflower's educational framework while the complete color palette creates immediate brand recognition. The balanced, organized yet warm aesthetic reflects the professional-yet-nurturing brand personality. Visual metaphor reinforces positioning.",
+            "identityMarkRole": "Logo lockup positioned in bottom-left or top-right area outside the main color segmentation (approximately 10% of total height), set against white or cream background for clarity. Acts as visual anchor and brand signature without interrupting the pillar story.",
+            "audienceSignal": "The structured, comprehensive visual appeals to parents and schools seeking systematic, well-organized educational approaches. Modern aesthetic signals innovation while balanced palette maintains warmth and approachability. Context: Instagram feed viewers respond to bold, scroll-stopping color while seeking substance.",
+            "useContextIntent": "Optimized for mobile Instagram feed viewing with bold color contrasts that stand out in thumbnail and full view. Encourages save/share behavior through clear information architecture. Works as brand introduction that invites curiosity about each pillar. Credibility builder for B2B school audiences.",
+            "avoidances": "Must not become too corporate/technical, lose warmth through excessive geometry, create visual chaos through poor color balance, or allow segments to compete rather than harmonize. Avoid making it look like a chart/infographic rather than an inviting brand story. Don't let structure overpower emotion."
+          },
+          {
+            "routeId": "route_03_a_day_in_the_sun",
+            "name": "A Day in the Sun",
+            "creativeIdea": "An inviting, story-driven visual showing diverse children engaged in moments of learning, expression, and connection within a warm, sunlit environment — bringing Sunflower's mission to life through authentic human moments rather than abstract concepts.",
+            "visualTreatment": "Photographic or illustrated vignette style featuring children in natural, joyful learning moments. Golden hour lighting quality with sunshine yellows, calming blues, and fresh greens. Soft focus backgrounds with sharp, emotion-rich foreground subjects. Human-centered and heartwarming.",
+            "headlineAngle": "\"Every child deserves to flourish\" — leading with the inclusive, child-first values that define Sunflower's approach while creating immediate emotional resonance with parent and educator audiences.",
+            "rationale": "This direction answers the brief's call for aesthetic appeal and proper brand description by showing rather than telling — authentic moments of children thriving create emotional connection while the warm color treatment and sunlit quality reinforce brand colors and name. Most effective for building trust through relatability.",
+            "visualCharacteristics": null,
+            "communicationObjective": "Emotionally introduce Sunflower as a trustworthy, inclusive educational partner that sees and supports each child's unique journey toward complete development across all life dimensions.",
+            "primaryMessage": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+            "secondaryMessage": "Growing minds. Growing humans. Education that nurtures the whole child, not just the grade sheet.",
+            "visualConcept": "One to three children shown in authentic moments (reading together, expressing creativity, outdoor exploration, collaborative play) with warm, natural lighting. Composition bathed in golden yellows and creams with blue sky and green nature elements. Genuine smiles and engagement, diverse representation.",
+            "focalPoint": "The children's faces and expressions, particularly their eyes and genuine smiles, positioned in the upper-middle section of the frame. Natural eye contact or absorbed engagement draws viewers into the emotional moment and brand promise.",
+            "composition": "Rule-of-thirds placement with children offset to left or right, creating negative space in cream/white sky or background for headline and copy overlay. Foreground-to-background depth with soft bokeh effect. Natural, uncontrived arrangement suggesting documentary authenticity rather than staged setup.",
+            "hierarchy": "1) Children's emotional expressions as primary visual anchor, 2) Headline positioned in negative space capturing attention, 3) Brief supporting copy describing the brand mission, 4) Tagline in complementary position, 5) Logo lockup small-scale in corner maintaining professional signature.",
+            "typographyDirection": "Friendly, readable sans-serif with humanist proportions (slightly rounded terminals acceptable for warmth). Medium to semi-bold headline weight in deep blue or warm charcoal creating contrast against light backgrounds. Body copy in comfortable reading size with ample leading. Approachable yet credible.",
+            "supportingVisualElements": "Subtle environmental details suggesting learning and growth (books, art supplies, nature elements, sunlight rays) integrated naturally into the scene. Soft sun flare or glow effects in yellow reinforcing the sunflower/sunshine theme. Optional subtle geometric shapes or circles as overlays framing text areas.",
+            "brandIntegration": "Golden hour lighting and prominent yellows/creams directly echo the sunflower brand name and palette. The authentic, child-first visual storytelling embodies brand values of inclusivity, warmth, and human-centered education. Emotional tone matches the nurturing, supportive brand personality completely.",
+            "identityMarkRole": "Logo appears as a refined lockup in the lower-right corner or subtly in top-left (roughly 8-10% of composition height), allowing the human story to lead while providing clear brand identification. Functions as a trust seal rather than competing with emotional narrative.",
+            "audienceSignal": "Authentic child imagery immediately signals to parents 'this is for families like mine' while professional execution reassures schools of credibility. The inclusive, joyful tone attracts audiences seeking positive, affirming educational environments. Context: Instagram users respond strongly to genuine human emotion and relatable moments.",
+            "useContextIntent": "Designed to create emotional stop-scroll moments in Instagram feeds through authentic human connection. Highly shareable among parent networks. Positions Sunflower as relatable and trustworthy from first impression. Effective as profile introduction that invites follow and deeper exploration. Works across feed, stories, and profile grid.",
+            "avoidances": "Must not appear stock-photo generic, overly posed/artificial, saccharine/cheesy, or staged. Avoid tokenistic diversity, sad/struggling children imagery, or focusing on devices/screens. Don't obscure children's faces with heavy text overlays. Cannot become so lifestyle-focused that educational mission gets lost. Keep identity mark subordinate to the human story."
+          }
+        ],
+        "platformRef": null,
+        "sizeReferenceRef": null,
+        "sourceRefs": {
+          "activeBriefId": "abr_mu1fznc2_4",
+          "activeBriefVersion": 1,
+          "contextId": "ctx_b5q62iyz_routes_060db74e",
+          "contextHash": "ctx:060db74e",
+          "executionId": "exec_14_1789402421619"
+        }
+      },
+      "lineage": {
+        "sourceArtifacts": []
+      },
+      "provenance": {
+        "sourceInputIds": null,
+        "activeBriefId": "abr_mu1fznc2_4",
+        "activeBriefVersion": 1,
+        "contextId": "ctx_b5q62iyz_routes_060db74e",
+        "contextHash": "ctx:060db74e",
+        "sessionVersion": 2,
+        "executionId": "exec_14_1789402421619",
+        "candidateRequestId": "m9b_ingest_exec_14_1789402421619_routes"
+      },
+      "createdBy": "6a89ff5aae22a3d696a16732",
+      "createdAt": "2026-09-14T16:15:09.378Z",
+      "selectedAt": "2026-09-14T16:15:17.631Z"
+    },
+    {
+      "artifactId": "cdfart_mu1g380n_2_social-media-output",
+      "version": 1,
+      "artifactType": "image",
+      "artifactKey": "social-media.output",
+      "schemaVersion": "1",
+      "status": "candidate",
+      "data": {
+        "schemaId": "unagency.social_media.output.v1",
+        "creativeId": "creative_01",
+        "routesRef": {
+          "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+          "version": 1,
+          "artifactKey": "social-media.routes"
+        },
+        "platformRef": null,
+        "sizeReferenceRef": null,
+        "canvas": null,
+        "onImageCopy": null,
+        "compositionNotes": null,
+        "previewAssetRef": {
+          "vaultAssetId": "6aa81dc9ce0535b89af9bf73",
+          "role": "creative_preview"
+        },
+        "captionUnresolved": true,
+        "multiAssetUnresolved": true,
+        "sourceRefs": {
+          "activeBriefId": "abr_mu1fznc2_4",
+          "activeBriefVersion": 3,
+          "contextId": "ctx_b5q62iyz_output_cd2351f1",
+          "contextHash": "ctx:cd2351f1",
+          "executionId": "exec_43_1789402538385",
+          "upstreamArtifactRefs": [
+            {
+              "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+              "version": 1,
+              "artifactKey": "social-media.routes"
+            }
+          ]
+        }
+      },
+      "lineage": {
+        "sourceArtifacts": [
+          {
+            "artifactId": "cdfart_mu1g1wsi_1_social-media-routes",
+            "version": 1,
+            "artifactKey": "social-media.routes",
+            "relationship": "uses"
+          }
+        ]
+      },
+      "provenance": {
+        "sourceInputIds": null,
+        "activeBriefId": "abr_mu1fznc2_4",
+        "activeBriefVersion": 3,
+        "contextId": "ctx_b5q62iyz_output_cd2351f1",
+        "contextHash": "ctx:cd2351f1",
+        "sessionVersion": 4,
+        "executionId": "exec_43_1789402538385",
+        "candidateRequestId": "m9b_ingest_exec_43_1789402538385_output"
+      },
+      "createdBy": "6a89ff5aae22a3d696a16732",
+      "createdAt": "2026-09-14T16:16:10.583Z"
+    }
+  ]
+}

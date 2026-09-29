@@ -16,12 +16,18 @@ export type RequirementValidationStatus =
   | "UNVERIFIED"
   | "NOT_AUTOMATED";
 
-/** Quality gate status for completion decisions. */
+/**
+ * Quality gate status for completion decisions.
+ * - NEEDS_REVISION / FAIL / BLOCKED: a *measured* failure exists.
+ * - UNVERIFIED: no measured failure, but required checks or quality dimensions
+ *   could not be verified (UNVERIFIED / NOT_AUTOMATED). Not a quality verdict.
+ */
 export type ValidationGateStatus =
   | "PASS"
   | "NEEDS_REVISION"
   | "FAIL"
-  | "BLOCKED";
+  | "BLOCKED"
+  | "UNVERIFIED";
 
 export type RequirementValidationResult = {
   readonly requirementId: string;
@@ -71,7 +77,10 @@ export type QualitySummary = {
   readonly totalDimensions: number;
   readonly evaluated: number;
   readonly unverified: number;
+  /** Weighted over all dimensions — unmeasured dimensions contribute 0. */
   readonly overallScore: number;
+  /** Weighted over measured (PASS/FAIL) dimensions only; null when none measured. */
+  readonly measuredScore: number | null;
   readonly thresholdMet: boolean;
   readonly belowThresholdIds: readonly string[];
 };

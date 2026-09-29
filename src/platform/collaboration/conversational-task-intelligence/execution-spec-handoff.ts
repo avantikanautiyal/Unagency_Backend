@@ -178,5 +178,9 @@ async function inheritSpecFromParentExecution(
 export function shouldSkipEffectiveInstructionPromptReplace(
   metadata?: Readonly<Record<string, unknown>>,
 ): boolean {
-  return isRouteVisualProductAction(metadata);
+  if (isRouteVisualProductAction(metadata)) return true;
+  // Phase 2 — canonical CDF generation context must not be replaced by flat CTI.
+  if (metadata?.cdfSkipEffectiveInstructionReplace === true) return true;
+  if (metadata?.cdfCanonicalContextApplied === true) return true;
+  return false;
 }

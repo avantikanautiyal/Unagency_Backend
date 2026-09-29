@@ -1,0 +1,611 @@
+{
+  "purpose": "cdf_fanout_c5_c6_live_certification_lifecycle",
+  "startedAt": "2026-09-20T22:15:25.827Z",
+  "phases": [
+    {
+      "phase": {
+        "key": "logo.logo-options",
+        "serviceId": "logo",
+        "phaseId": "logo-options",
+        "artifactKey": "logo.logo-options",
+        "brief": "Logo for a modern tea brand called Leaf & Co. Premium, clean wordmark with a simple leaf mark."
+      },
+      "sessionId": "cdf_muadkux9_o0dcnhoa",
+      "upstream": [
+        {
+          "step": "session",
+          "sid": "cdf_muadkux9_o0dcnhoa",
+          "phaseId": null
+        },
+        {
+          "step": "brief",
+          "phaseId": "logo-type"
+        },
+        {
+          "step": "logo-type",
+          "phaseId": "territories",
+          "status": 201
+        },
+        {
+          "step": "territories_gen",
+          "pin": {
+            "artifactKey": "logo.territories",
+            "artifactId": "cdfart_muadl6wg_1_logo-territories",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "territories",
+            "generationFanoutTargetId": null,
+            "generationExecutionId": "exec_9_1789942553419"
+          }
+        },
+        {
+          "step": "territories_select",
+          "phaseId": "logo-options",
+          "selected": {
+            "artifactKey": "logo.territories",
+            "artifactId": "cdfart_muadl6wg_1_logo-territories",
+            "version": 1,
+            "role": "selected",
+            "phaseId": "territories",
+            "generationFanoutTargetId": null,
+            "generationExecutionId": null
+          },
+          "status": 201
+        }
+      ],
+      "selectedUpstreamXv": {
+        "artifactKey": "logo.territories",
+        "artifactId": "cdfart_muadl6wg_1_logo-territories",
+        "version": 1,
+        "role": "selected",
+        "phaseId": "territories",
+        "generationFanoutTargetId": null,
+        "generationExecutionId": null
+      },
+      "counts": {
+        "DECLARED": 3,
+        "CREATED": 3,
+        "EXECUTED": 3,
+        "CANONICAL": 3,
+        "PERSISTED": 3,
+        "HYDRATED": 3,
+        "DISPLAYED": 3
+      },
+      "firstDivergence": null,
+      "layers": {
+        "A_fanoutExecution": {
+          "declared": 3,
+          "created": 3,
+          "executed": 3,
+          "uniqueTargetIds": 3,
+          "uniqueExecutionIds": 3,
+          "ok": true
+        },
+        "B_canonicalCompletion": {
+          "canonical": 3,
+          "uniqueXv": 3,
+          "ok": true
+        },
+        "C_persistence": {
+          "persisted": 3,
+          "sessionPinCount": 3,
+          "ok": true
+        },
+        "D_hydration": {
+          "hydrated": 3,
+          "reloadPinCount": 3,
+          "ok": true
+        },
+        "E_uiProjection": {
+          "displayed": 3,
+          "ok": true
+        }
+      },
+      "leaves": [
+        {
+          "index": 0,
+          "targetId": "fanout_0_openai",
+          "requestedProvider": "provider.openai",
+          "requestedModel": "gpt-image-2.5-sunburst",
+          "droppedPreferredModelId": false,
+          "createStatus": 201,
+          "executionId": "exec_27_1789942571349",
+          "createMetadataEcho": {
+            "preferredModelId": "gpt-image-2.5-sunburst",
+            "requestedModel": "gpt-image-2.5-sunburst",
+            "preferredProviderId": "provider.openai",
+            "generationFanoutTargetId": "fanout_0_openai"
+          },
+          "terminalStatus": "succeeded",
+          "artifactIds": [
+            "art_syncimg_65_1789942597374_0"
+          ],
+          "cdfArtifactId": "cdfart_muadlwn8_4_logo-logo-options",
+          "cdfArtifactVersion": 1,
+          "cdfArtifactKey": "logo.logo-options",
+          "presentationEligibility": "AVAILABLE_WITH_WARNINGS",
+          "generationFanoutTargetId": "fanout_0_openai",
+          "canonicalIngestDecision": null,
+          "cdfFallbackReason": null,
+          "ingestFailure": null,
+          "sessionPin": {
+            "artifactKey": "logo.logo-options",
+            "artifactId": "cdfart_muadlwn8_4_logo-logo-options",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "logo-options",
+            "generationFanoutTargetId": "fanout_0_openai",
+            "generationExecutionId": "exec_27_1789942571349"
+          },
+          "hydratedXv": "cdfart_muadlwn8_4_logo-logo-options@1",
+          "displayedPointsToExact": true
+        },
+        {
+          "index": 1,
+          "targetId": "fanout_1_google",
+          "requestedProvider": "provider.google",
+          "requestedModel": "gemini-3-pro-image",
+          "droppedPreferredModelId": false,
+          "createStatus": 201,
+          "executionId": "exec_30_1789942571407",
+          "createMetadataEcho": {
+            "preferredModelId": "gemini-3-pro-image",
+            "requestedModel": "gemini-3-pro-image",
+            "preferredProviderId": "provider.google",
+            "generationFanoutTargetId": "fanout_1_google"
+          },
+          "terminalStatus": "succeeded",
+          "artifactIds": [
+            "art_syncimg_50_1789942589512_0"
+          ],
+          "cdfArtifactId": "cdfart_muadlqoi_2_logo-logo-options",
+          "cdfArtifactVersion": 1,
+          "cdfArtifactKey": "logo.logo-options",
+          "presentationEligibility": "AVAILABLE_WITH_WARNINGS",
+          "generationFanoutTargetId": "fanout_1_google",
+          "canonicalIngestDecision": null,
+          "cdfFallbackReason": null,
+          "ingestFailure": null,
+          "sessionPin": {
+            "artifactKey": "logo.logo-options",
+            "artifactId": "cdfart_muadlqoi_2_logo-logo-options",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "logo-options",
+            "generationFanoutTargetId": "fanout_1_google",
+            "generationExecutionId": "exec_30_1789942571407"
+          },
+          "hydratedXv": "cdfart_muadlqoi_2_logo-logo-options@1",
+          "displayedPointsToExact": true
+        },
+        {
+          "index": 2,
+          "targetId": "fanout_2_openai",
+          "requestedProvider": "provider.openai",
+          "requestedModel": "gpt-image-1.5",
+          "droppedPreferredModelId": true,
+          "createStatus": 201,
+          "executionId": "exec_37_1789942571566",
+          "createMetadataEcho": {
+            "preferredModelId": null,
+            "requestedModel": "gpt-image-1.5",
+            "preferredProviderId": "provider.openai",
+            "generationFanoutTargetId": "fanout_2_openai"
+          },
+          "terminalStatus": "succeeded",
+          "artifactIds": [
+            "art_syncimg_62_1789942596479_0"
+          ],
+          "cdfArtifactId": "cdfart_muadlw2e_3_logo-logo-options",
+          "cdfArtifactVersion": 1,
+          "cdfArtifactKey": "logo.logo-options",
+          "presentationEligibility": "AVAILABLE_WITH_WARNINGS",
+          "generationFanoutTargetId": "fanout_2_openai",
+          "canonicalIngestDecision": null,
+          "cdfFallbackReason": null,
+          "ingestFailure": null,
+          "sessionPin": {
+            "artifactKey": "logo.logo-options",
+            "artifactId": "cdfart_muadlw2e_3_logo-logo-options",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "logo-options",
+            "generationFanoutTargetId": "fanout_2_openai",
+            "generationExecutionId": "exec_37_1789942571566"
+          },
+          "hydratedXv": "cdfart_muadlw2e_3_logo-logo-options@1",
+          "displayedPointsToExact": true
+        }
+      ],
+      "sessionPinsAfterFanout": [
+        {
+          "artifactKey": "logo.logo-options",
+          "artifactId": "cdfart_muadlqoi_2_logo-logo-options",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "logo-options",
+          "generationFanoutTargetId": "fanout_1_google",
+          "generationExecutionId": "exec_30_1789942571407"
+        },
+        {
+          "artifactKey": "logo.logo-options",
+          "artifactId": "cdfart_muadlw2e_3_logo-logo-options",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "logo-options",
+          "generationFanoutTargetId": "fanout_2_openai",
+          "generationExecutionId": "exec_37_1789942571566"
+        },
+        {
+          "artifactKey": "logo.logo-options",
+          "artifactId": "cdfart_muadlwn8_4_logo-logo-options",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "logo-options",
+          "generationFanoutTargetId": "fanout_0_openai",
+          "generationExecutionId": "exec_27_1789942571349"
+        }
+      ],
+      "sessionPinsAfterReload": [
+        {
+          "artifactKey": "logo.logo-options",
+          "artifactId": "cdfart_muadlqoi_2_logo-logo-options",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "logo-options",
+          "generationFanoutTargetId": "fanout_1_google",
+          "generationExecutionId": "exec_30_1789942571407"
+        },
+        {
+          "artifactKey": "logo.logo-options",
+          "artifactId": "cdfart_muadlw2e_3_logo-logo-options",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "logo-options",
+          "generationFanoutTargetId": "fanout_2_openai",
+          "generationExecutionId": "exec_37_1789942571566"
+        },
+        {
+          "artifactKey": "logo.logo-options",
+          "artifactId": "cdfart_muadlwn8_4_logo-logo-options",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "logo-options",
+          "generationFanoutTargetId": "fanout_0_openai",
+          "generationExecutionId": "exec_27_1789942571349"
+        }
+      ],
+      "reloadCollapsed3to1": false,
+      "c6MissingTarget": {
+        "attempted": true,
+        "failedClosed": true,
+        "status": 400,
+        "errorCode": "VALIDATION_ERROR",
+        "errorMessage": "Approve requires generationFanoutTargetId when 3 fanout leaf pin(s) exist for logo.logo-options"
+      },
+      "invariants": {
+        "uniqueTargetIds": true,
+        "uniqueExecutionIds": true,
+        "noSharedArtifactVersion": true,
+        "uniqueProviderModelPairs": 0,
+        "openaiDualModelsDistinct": true,
+        "noCrossLeafFallback": true,
+        "c5Leaf2RetainedRequestedModel": true,
+        "c5Leaf2ResolvedDistinctFromLeaf0": true,
+        "c6FailedClosed": true,
+        "reloadRetainedThreePins": true,
+        "sessionPinScopedToTarget": true
+      },
+      "allLayersOk": true
+    },
+    {
+      "phase": {
+        "key": "packaging.3d-direction",
+        "serviceId": "packaging",
+        "phaseId": "3d-direction",
+        "artifactKey": "packaging.3d-direction",
+        "brief": "Premium mango juice carton packaging. Bright fruit-forward shelf presence, clear brand lockup."
+      },
+      "sessionId": "cdf_muadm1mg_jmqbldkm",
+      "upstream": [
+        {
+          "step": "session",
+          "sid": "cdf_muadm1mg_jmqbldkm",
+          "phaseId": null
+        },
+        {
+          "step": "brief",
+          "phaseId": "dieline"
+        },
+        {
+          "step": "dieline_select",
+          "phaseId": "routes",
+          "status": 201,
+          "dielinePin": {
+            "artifactKey": "packaging.dieline",
+            "artifactId": "cdfart_muadm2nd_5_packaging-dieline",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "dieline",
+            "generationFanoutTargetId": null,
+            "generationExecutionId": null
+          }
+        },
+        {
+          "step": "routes_gen",
+          "pin": {
+            "artifactKey": "packaging.routes",
+            "artifactId": "cdfart_muadmc4n_6_packaging-routes",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "routes",
+            "generationFanoutTargetId": null,
+            "generationExecutionId": "exec_84_1789942608394"
+          }
+        },
+        {
+          "step": "routes_select",
+          "phaseId": "3d-direction",
+          "selected": {
+            "artifactKey": "packaging.routes",
+            "artifactId": "cdfart_muadmc4n_6_packaging-routes",
+            "version": 1,
+            "role": "selected",
+            "phaseId": "routes",
+            "generationFanoutTargetId": null,
+            "generationExecutionId": null
+          },
+          "status": 201
+        }
+      ],
+      "selectedUpstreamXv": {
+        "artifactKey": "packaging.routes",
+        "artifactId": "cdfart_muadmc4n_6_packaging-routes",
+        "version": 1,
+        "role": "selected",
+        "phaseId": "routes",
+        "generationFanoutTargetId": null,
+        "generationExecutionId": null
+      },
+      "counts": {
+        "DECLARED": 3,
+        "CREATED": 3,
+        "EXECUTED": 3,
+        "CANONICAL": 3,
+        "PERSISTED": 3,
+        "HYDRATED": 3,
+        "DISPLAYED": 3
+      },
+      "firstDivergence": null,
+      "layers": {
+        "A_fanoutExecution": {
+          "declared": 3,
+          "created": 3,
+          "executed": 3,
+          "uniqueTargetIds": 3,
+          "uniqueExecutionIds": 3,
+          "ok": true
+        },
+        "B_canonicalCompletion": {
+          "canonical": 3,
+          "uniqueXv": 3,
+          "ok": true
+        },
+        "C_persistence": {
+          "persisted": 3,
+          "sessionPinCount": 3,
+          "ok": true
+        },
+        "D_hydration": {
+          "hydrated": 3,
+          "reloadPinCount": 3,
+          "ok": true
+        },
+        "E_uiProjection": {
+          "displayed": 3,
+          "ok": true
+        }
+      },
+      "leaves": [
+        {
+          "index": 0,
+          "targetId": "fanout_0_openai",
+          "requestedProvider": "provider.openai",
+          "requestedModel": "gpt-image-2.5-sunburst",
+          "droppedPreferredModelId": false,
+          "createStatus": 201,
+          "executionId": "exec_105_1789942622563",
+          "createMetadataEcho": {
+            "preferredModelId": "gpt-image-2.5-sunburst",
+            "requestedModel": "gpt-image-2.5-sunburst",
+            "preferredProviderId": "provider.openai",
+            "generationFanoutTargetId": "fanout_0_openai"
+          },
+          "terminalStatus": "succeeded",
+          "artifactIds": [
+            "art_syncimg_149_1789942662021_0"
+          ],
+          "cdfArtifactId": "cdfart_muadnci2_9_packaging-3d-direction",
+          "cdfArtifactVersion": 1,
+          "cdfArtifactKey": "packaging.3d-direction",
+          "presentationEligibility": "DIAGNOSTIC_PREVIEW_AVAILABLE",
+          "generationFanoutTargetId": "fanout_0_openai",
+          "canonicalIngestDecision": null,
+          "cdfFallbackReason": null,
+          "ingestFailure": null,
+          "sessionPin": {
+            "artifactKey": "packaging.3d-direction",
+            "artifactId": "cdfart_muadnci2_9_packaging-3d-direction",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "3d-direction",
+            "generationFanoutTargetId": "fanout_0_openai",
+            "generationExecutionId": "exec_105_1789942622563"
+          },
+          "hydratedXv": "cdfart_muadnci2_9_packaging-3d-direction@1",
+          "displayedPointsToExact": true
+        },
+        {
+          "index": 1,
+          "targetId": "fanout_1_google",
+          "requestedProvider": "provider.google",
+          "requestedModel": "gemini-3-pro-image",
+          "droppedPreferredModelId": false,
+          "createStatus": 201,
+          "executionId": "exec_112_1789942622787",
+          "createMetadataEcho": {
+            "preferredModelId": "gemini-3-pro-image",
+            "requestedModel": "gemini-3-pro-image",
+            "preferredProviderId": "provider.google",
+            "generationFanoutTargetId": "fanout_1_google"
+          },
+          "terminalStatus": "succeeded",
+          "artifactIds": [
+            "art_syncimg_125_1789942643267_0"
+          ],
+          "cdfArtifactId": "cdfart_muadmwtr_7_packaging-3d-direction",
+          "cdfArtifactVersion": 1,
+          "cdfArtifactKey": "packaging.3d-direction",
+          "presentationEligibility": "AVAILABLE_WITH_WARNINGS",
+          "generationFanoutTargetId": "fanout_1_google",
+          "canonicalIngestDecision": null,
+          "cdfFallbackReason": null,
+          "ingestFailure": null,
+          "sessionPin": {
+            "artifactKey": "packaging.3d-direction",
+            "artifactId": "cdfart_muadmwtr_7_packaging-3d-direction",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "3d-direction",
+            "generationFanoutTargetId": "fanout_1_google",
+            "generationExecutionId": "exec_112_1789942622787"
+          },
+          "hydratedXv": "cdfart_muadmwtr_7_packaging-3d-direction@1",
+          "displayedPointsToExact": true
+        },
+        {
+          "index": 2,
+          "targetId": "fanout_2_openai",
+          "requestedProvider": "provider.openai",
+          "requestedModel": "gpt-image-1.5",
+          "droppedPreferredModelId": true,
+          "createStatus": 201,
+          "executionId": "exec_102_1789942622538",
+          "createMetadataEcho": {
+            "preferredModelId": null,
+            "requestedModel": "gpt-image-1.5",
+            "preferredProviderId": "provider.openai",
+            "generationFanoutTargetId": "fanout_2_openai"
+          },
+          "terminalStatus": "succeeded",
+          "artifactIds": [
+            "art_syncimg_137_1789942650368_0"
+          ],
+          "cdfArtifactId": "cdfart_muadn20s_8_packaging-3d-direction",
+          "cdfArtifactVersion": 1,
+          "cdfArtifactKey": "packaging.3d-direction",
+          "presentationEligibility": "AVAILABLE_WITH_WARNINGS",
+          "generationFanoutTargetId": "fanout_2_openai",
+          "canonicalIngestDecision": null,
+          "cdfFallbackReason": null,
+          "ingestFailure": null,
+          "sessionPin": {
+            "artifactKey": "packaging.3d-direction",
+            "artifactId": "cdfart_muadn20s_8_packaging-3d-direction",
+            "version": 1,
+            "role": "generated",
+            "phaseId": "3d-direction",
+            "generationFanoutTargetId": "fanout_2_openai",
+            "generationExecutionId": "exec_102_1789942622538"
+          },
+          "hydratedXv": "cdfart_muadn20s_8_packaging-3d-direction@1",
+          "displayedPointsToExact": true
+        }
+      ],
+      "sessionPinsAfterFanout": [
+        {
+          "artifactKey": "packaging.3d-direction",
+          "artifactId": "cdfart_muadmwtr_7_packaging-3d-direction",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "3d-direction",
+          "generationFanoutTargetId": "fanout_1_google",
+          "generationExecutionId": "exec_112_1789942622787"
+        },
+        {
+          "artifactKey": "packaging.3d-direction",
+          "artifactId": "cdfart_muadn20s_8_packaging-3d-direction",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "3d-direction",
+          "generationFanoutTargetId": "fanout_2_openai",
+          "generationExecutionId": "exec_102_1789942622538"
+        },
+        {
+          "artifactKey": "packaging.3d-direction",
+          "artifactId": "cdfart_muadnci2_9_packaging-3d-direction",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "3d-direction",
+          "generationFanoutTargetId": "fanout_0_openai",
+          "generationExecutionId": "exec_105_1789942622563"
+        }
+      ],
+      "sessionPinsAfterReload": [
+        {
+          "artifactKey": "packaging.3d-direction",
+          "artifactId": "cdfart_muadmwtr_7_packaging-3d-direction",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "3d-direction",
+          "generationFanoutTargetId": "fanout_1_google",
+          "generationExecutionId": "exec_112_1789942622787"
+        },
+        {
+          "artifactKey": "packaging.3d-direction",
+          "artifactId": "cdfart_muadn20s_8_packaging-3d-direction",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "3d-direction",
+          "generationFanoutTargetId": "fanout_2_openai",
+          "generationExecutionId": "exec_102_1789942622538"
+        },
+        {
+          "artifactKey": "packaging.3d-direction",
+          "artifactId": "cdfart_muadnci2_9_packaging-3d-direction",
+          "version": 1,
+          "role": "generated",
+          "phaseId": "3d-direction",
+          "generationFanoutTargetId": "fanout_0_openai",
+          "generationExecutionId": "exec_105_1789942622563"
+        }
+      ],
+      "reloadCollapsed3to1": false,
+      "c6MissingTarget": {
+        "attempted": true,
+        "failedClosed": true,
+        "status": 400,
+        "errorCode": "VALIDATION_ERROR",
+        "errorMessage": "Approve requires generationFanoutTargetId when 3 fanout leaf pin(s) exist for packaging.3d-direction"
+      },
+      "invariants": {
+        "uniqueTargetIds": true,
+        "uniqueExecutionIds": true,
+        "noSharedArtifactVersion": true,
+        "uniqueProviderModelPairs": 0,
+        "openaiDualModelsDistinct": true,
+        "noCrossLeafFallback": true,
+        "c5Leaf2RetainedRequestedModel": true,
+        "c5Leaf2ResolvedDistinctFromLeaf0": true,
+        "c6FailedClosed": true,
+        "reloadRetainedThreePins": true,
+        "sessionPinScopedToTarget": true
+      },
+      "allLayersOk": true
+    }
+  ],
+  "verdict": "LIVE_CERT_PASS",
+  "note": "LIVE_CERT_PASS requires A–E layer evidence for every phase",
+  "orgId": "6aaaa6b9616bbf3dc2997fbf",
+  "finishedAt": "2026-09-20T22:17:51.407Z"
+}

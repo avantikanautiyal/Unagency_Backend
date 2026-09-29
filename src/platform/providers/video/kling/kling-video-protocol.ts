@@ -22,11 +22,36 @@ import type {
 } from "../common/vendor-video-protocol";
 import { truncateVideoPrompt } from "../common/video-prompt-limits";
 
+/** Current default Kling wire id (kling-v2-1 was discontinued by the vendor). */
+export const KLING_DEFAULT_WIRE_MODEL = "kling-v2-6";
+
+/**
+ * Ordered within-Kling wire fallbacks when a requested model is retired/unavailable.
+ * Cross-provider failover (Luma → MiniMax) remains the outer recovery path.
+ */
+export const KLING_WIRE_FALLBACK_CHAIN: readonly string[] = [
+  "kling-v2-6",
+  "kling-v2-5-turbo",
+  "kling-v3",
+  "kling-v2-1-master",
+];
+
 const WIRE_MODELS: Record<string, string> = {
-  "kling-2-1": "kling-v2-1",
-  "kling-v2-1": "kling-v2-1",
+  // Current inventory + wire aliases
+  "kling-2-6": "kling-v2-6",
+  "kling-v2-6": "kling-v2-6",
+  "kling-2-5-turbo": "kling-v2-5-turbo",
+  "kling-v2-5-turbo": "kling-v2-5-turbo",
+  "kling-3": "kling-v3",
+  "kling-v3": "kling-v3",
   "kling-v2-1-master": "kling-v2-1-master",
-  "kling-v1": "kling-v1",
+  // Discontinued / legacy inventory → current default
+  "kling-2-1": KLING_DEFAULT_WIRE_MODEL,
+  "kling-v2-1": KLING_DEFAULT_WIRE_MODEL,
+  "kling-v1": KLING_DEFAULT_WIRE_MODEL,
+  "kling-v1-5": KLING_DEFAULT_WIRE_MODEL,
+  "kling-v1-6": KLING_DEFAULT_WIRE_MODEL,
+  "kling-v2-master": KLING_DEFAULT_WIRE_MODEL,
 };
 
 /** Resolve Kling API key from auth context (apiKey or legacy accessKey field). */
@@ -44,7 +69,14 @@ export class KlingVideoProtocol implements IVendorVideoProtocol {
     const suffix = canonicalModelId.includes("/")
       ? canonicalModelId.split("/").pop()!
       : canonicalModelId;
-    return WIRE_MODELS[suffix];
+    return WIRE_MODELS[suffix] ?? KLING_DEFAULT_WIRE_MODEL;
+  }
+
+  /** Next wire models to try after a discontinued/unavailable submit for `wireModel`. */
+  resolveWireFallbacks(wireModel: string): readonly string[] {
+    const start = KLING_WIRE_FALLBACK_CHAIN.indexOf(wireModel);
+    if (start < 0) return KLING_WIRE_FALLBACK_CHAIN.filter((id) => id !== wireModel);
+    return KLING_WIRE_FALLBACK_CHAIN.slice(start + 1);
   }
 
   buildAuthHeaders(auth: VendorVideoAuthContext): Result<Readonly<Record<string, string>>> {
@@ -178,6 +210,15 @@ function decodeKlingJobId(providerJobId: string): {
     return { mode: "text2video", taskId: providerJobId.slice("text2video:".length) };
   }
   return { mode: "text2video", taskId: providerJobId };
+}
+
+export function isKlingDiscontinuedModelError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("discontinued") ||
+    m.includes("no longer available") ||
+    (m.includes("model") && (m.includes("not available") || m.includes("unsupported")))
+  );
 }
 
 export { WIRE_MODELS as KLING_WIRE_MODELS, decodeKlingJobId };

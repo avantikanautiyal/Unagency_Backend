@@ -37,12 +37,23 @@ function stripUnsupportedConstraints(
   path: string
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  const hints: string[] = [];
 
   const type = node.type;
-  if (typeof type === "string") out.type = type;
+  if (typeof type === "string") {
+    // Anthropic tool input_schema rejects JSON Schema "integer" — wire as number.
+    if (type === "integer") {
+      out.type = "number";
+      hints.push("integer");
+    } else {
+      out.type = type;
+    }
+  } else if (Array.isArray(type)) {
+    out.type = type.map((t) => (t === "integer" ? "number" : t));
+    if (type.includes("integer")) hints.push("integer");
+  }
 
   const description = node.description;
-  const hints: string[] = [];
 
   for (const key of UNSUPPORTED_SCALAR_KEYS) {
     if (node[key] !== undefined) {

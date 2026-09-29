@@ -25,6 +25,7 @@ import {
   providerSupportsReferenceImageEdit,
 } from "../../providers/image/configs/image-provider-capabilities";
 import type { ImageExecutionRouter } from "../../providers/image/routing/image-execution-router";
+import { isGenerationFanoutLeafMetadata } from "../../generation/generation-fanout";
 
 function inlineArtifactFromStore(
   artifactStore: Map<string, ExecutionArtifactRef[]> | undefined,
@@ -56,6 +57,55 @@ export async function applyVisualModificationPrepass(input: {
     typeof meta.conversationalAction === "string"
       ? meta.conversationalAction
       : input.executionSpec?.task.action?.value;
+
+  const cdfServiceId =
+    typeof meta.cdfServiceId === "string"
+      ? meta.cdfServiceId.trim()
+      : typeof meta.service === "string"
+        ? meta.service.trim()
+        : "";
+  const cdfPhaseId =
+    typeof meta.cdfPhaseId === "string" ? meta.cdfPhaseId.trim() : "";
+
+  const referencedExecutionId =
+    typeof meta.conversationalReferencedExecutionId === "string"
+      ? meta.conversationalReferencedExecutionId.trim()
+      : typeof meta.refineFromExecutionId === "string"
+        ? meta.refineFromExecutionId.trim()
+        : typeof meta.parentExecutionId === "string"
+          ? meta.parentExecutionId.trim()
+          : "";
+
+  try {
+    const {
+      resolveCdfPhaseExecutionContract,
+      isValidCdfPhaseExecutionTarget,
+    } = await import("../../cdf/canonical");
+    const contract = resolveCdfPhaseExecutionContract({
+      serviceId: cdfServiceId,
+      phaseId: cdfPhaseId,
+    });
+    if (
+      contract &&
+      isGroundedVisualAction(typeof action === "string" ? action : undefined)
+    ) {
+      const targetOk = isValidCdfPhaseExecutionTarget({
+        contract,
+        executionId: referencedExecutionId,
+      });
+      if (!targetOk.ok) {
+        return failure(
+          new ValidationError(targetOk.reason, {
+            reason: "CDF_CANONICAL_MODIFY_LINEAGE_FORBIDDEN",
+            referencedExecutionId,
+            artifactKey: contract.artifactKey,
+          }),
+        );
+      }
+    }
+  } catch {
+    // Contract module optional in constrained hosts — fall through.
+  }
 
   const referencedArtifactId =
     typeof meta.conversationalReferencedArtifactId === "string"
@@ -185,10 +235,14 @@ export function resolveReferenceCapableImageRouting(input: {
     operationKind === "MODIFY" ||
     operationKind === "REGENERATE";
 
+  // Fanout leaves: never remap to a sibling fanout family / global first
+  // reference-capable provider. Intra-leaf same-provider recovery only.
+  const fanoutLeaf = isGenerationFanoutLeafMetadata(input.metadata);
+  const primaryProvider = input.routedProviderId.trim();
   const candidates = [
     { providerId: input.routedProviderId, modelId: input.routedModelId },
     ...input.failoverChain,
-  ];
+  ].filter((c) => !fanoutLeaf || c.providerId.trim() === primaryProvider);
 
   // Logo continuity on generate needs REFERENCE_IMAGE only; artifact edits need edit+ref.
   const capable = isArtifactEdit
@@ -204,7 +258,8 @@ export function resolveReferenceCapableImageRouting(input: {
   }
 
   // Brand-logo bind: prefer any verified reference-image provider as last resort.
-  if (!isArtifactEdit) {
+  // Forbidden on fanout leaves — that would be cross-leaf provider collapse.
+  if (!isArtifactEdit && !fanoutLeaf) {
     const logoFallbackId = listReferenceImageProviderIds()[0];
     if (logoFallbackId) {
       return success({

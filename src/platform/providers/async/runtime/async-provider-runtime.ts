@@ -20,7 +20,9 @@ export interface AsyncProviderRuntimeOptions {
   readonly ingestion: MediaIngestionService;
   readonly artifacts: MediaArtifactService;
   readonly usageStore?: ITenantUsageStore;
-  readonly blobAccess?: import("../../../../media/blob/blob-access-service").BlobAccessService;
+  readonly blobAccess?: import("../../../media/blob/blob-access-service").BlobAccessService;
+  readonly blobStorage?: import("../../../persistence/interfaces/persistence").IBlobStorage;
+  readonly blobMetadata?: import("../../../media/blob/blob-metadata-repository").IBlobMetadataRepository;
   readonly leaseTtlMs?: number;
   readonly maxOperationDurationMs?: number;
 }
@@ -40,6 +42,9 @@ export class AsyncProviderRuntime {
       ingestion: deps.ingestion,
       artifacts: deps.artifacts,
       usageStore: deps.usageStore,
+      blobStorage: deps.blobStorage,
+      blobMetadata: deps.blobMetadata,
+      blobAccess: deps.blobAccess,
       leaseTtlMs: deps.leaseTtlMs,
       maxOperationDurationMs: deps.maxOperationDurationMs,
     });
@@ -81,10 +86,20 @@ export class AsyncProviderRuntime {
     maxTicks = 100
   ): Promise<void> {
     for (let i = 0; i < maxTicks; i += 1) {
-      const asOf = Date.now() + 86_400_000;
-      const tick = await this.reconcile(workerId, resolveDispatcher, buildRequest, token, 20, asOf);
+      // Use real time for reconcile age/budget. Force-due only for listDueForPoll
+      // so tests can drain nextPollAt without falsifying provider_poll_max_duration.
+      const nowMs = Date.now();
+      const dueAsOf = nowMs + 86_400_000;
+      const tick = await this.reconcile(
+        workerId,
+        resolveDispatcher,
+        buildRequest,
+        token,
+        20,
+        nowMs,
+      );
       if (!tick.ok) throw tick.error;
-      const due = await this.deps.store.listDueForPoll(asOf, 500);
+      const due = await this.deps.store.listDueForPoll(dueAsOf, 500);
       const stillRunning = due.some((o) => !isTerminalProviderOperationState(o.state));
       if (!stillRunning) break;
       await sleep(5);

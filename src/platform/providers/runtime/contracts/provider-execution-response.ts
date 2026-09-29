@@ -28,6 +28,16 @@ export interface ProviderExecutionResponse {
 export interface ProviderExecutionError {
   readonly code: string;
   readonly message: string;
+  /** HTTP status when the provider HTTP request failed. */
+  readonly httpStatus?: number;
+  /** Vendor error code (e.g. insufficient_quota) — never secrets. */
+  readonly providerErrorCode?: string;
+  /** Canonical failure taxonomy for diagnostics / attempt history. */
+  readonly failureCategory?: string;
+  /** Sanitized provider error message (no prompts / secrets). */
+  readonly providerErrorMessage?: string;
+  /** Hint for clients when providers are cooling down. */
+  readonly retryAfterMs?: number;
 }
 
 /**
@@ -48,6 +58,26 @@ export interface ProviderAttemptHistoryEntry {
   readonly errorCode?: string;
   readonly errorMessage?: string;
   readonly exploratory?: boolean;
+  readonly httpStatus?: number;
+  readonly providerErrorCode?: string;
+  readonly circuitStateBefore?: string;
+  readonly circuitStateAfter?: string;
+  readonly durationMs?: number;
+}
+
+/**
+ * Fallback diagnostics when selectedModel != actualModel (or primary failed).
+ * Safe — no credentials/prompts.
+ */
+export interface ProviderFallbackDiagnostics {
+  readonly primaryProvider: string;
+  readonly primaryModel: string;
+  readonly primaryFailure?: string;
+  readonly fallbackProvider: string;
+  readonly fallbackModel: string;
+  readonly fallbackReason: string;
+  readonly fallbackEligible: boolean;
+  readonly fallbackCircuitState?: string;
 }
 
 /**
@@ -68,4 +98,6 @@ export interface ProviderExecutionResult {
   readonly finalModelId?: string;
   readonly failoverCount?: number;
   readonly budgetExhausted?: boolean;
+  /** Populated when failover actually ran (primary failed → alternate succeeded or tried). */
+  readonly fallbackDiagnostics?: ProviderFallbackDiagnostics;
 }

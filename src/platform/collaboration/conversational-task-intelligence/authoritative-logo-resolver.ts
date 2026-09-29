@@ -13,6 +13,7 @@ import type {
   ConversationalClarification,
   LogoClarificationCandidate,
 } from "./conversational-task-contract";
+import { selectDefaultLogoCandidate } from "../../../services/default-logo-selection";
 
 export type AuthoritativeLogoResolution = AuthoritativeLogoSpec;
 
@@ -50,6 +51,7 @@ export function resolveAuthoritativeLogo(input: {
   readonly vaultLogoChoice?: string;
   readonly generateNewRequested?: boolean;
   readonly prior?: AuthoritativeLogoSpec;
+  readonly brief?: string;
 }): AuthoritativeLogoResolution {
   if (input.generateNewRequested) {
     return Object.freeze({
@@ -124,6 +126,25 @@ export function resolveAuthoritativeLogo(input: {
       mode: "USE_EXISTING",
       assetId: selected.assetId,
       source: selected.source,
+      authoritative: true,
+    });
+  }
+
+  const attachments = merged.filter((c) => c.source === "ATTACHMENT");
+  const selectionPending = input.prior?.mode === "NEEDS_SELECTION";
+  const picked =
+    selectionPending
+      ? { candidate: undefined, ask: true }
+      : attachments.length === 1
+        ? { candidate: attachments[0], ask: false }
+        : attachments.length === 0
+          ? selectDefaultLogoCandidate(merged, input.brief)
+          : { candidate: undefined, ask: true };
+  if (picked.candidate) {
+    return Object.freeze({
+      mode: "USE_EXISTING",
+      assetId: picked.candidate.assetId,
+      source: picked.candidate.source,
       authoritative: true,
     });
   }

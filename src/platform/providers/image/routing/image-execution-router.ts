@@ -1,6 +1,6 @@
 /**
- * Cap → use-case preference → executable image.generate leaf.
- * Sync image vendors (OpenAI / Imagen / Ideogram / Recraft).
+ * Cap → use-case preference → hard capability filter → soft rank → executable leaf.
+ * Composition-derived requirements are optional; use-case matrix remains soft ranking.
  */
 
 import { failure, success, type Result } from "../../../core/result";
@@ -16,6 +16,12 @@ import {
   type ImageCreativeUseCase,
   type ImageProviderPreference,
 } from "./image-use-case-routing";
+import type { ExecutionCapabilityRequirements } from "../../../cdf/generation-context/execution-capability-requirements";
+import {
+  filterProvidersByHardCapabilities,
+  softRankProviderPreferences,
+} from "../../../cdf/generation-context/execution-capability-requirements";
+import { providerHasImageCapability } from "../configs/image-provider-capabilities";
 
 export interface ImageRouteDecision {
   readonly providerId: string;
@@ -24,6 +30,7 @@ export interface ImageRouteDecision {
   readonly useCase: ImageCreativeUseCase;
   readonly label: string;
   readonly failoverChain: readonly { providerId: string; modelId: string }[];
+  readonly capabilityRequirements?: ExecutionCapabilityRequirements;
 }
 
 export class ImageExecutionRouter {
@@ -39,10 +46,10 @@ export class ImageExecutionRouter {
     subtype?: string;
     /** Parallel route fan-out slot (0–2) from mobile route_visual metadata. */
     routeVisualSlot?: number;
+    /** Composition-derived hard/soft requirements (optional). */
+    capabilityRequirements?: ExecutionCapabilityRequirements | null;
   }): Result<ImageRouteDecision> {
     const rawCapability = input.capabilityId?.trim() || "image.generate";
-    // image.edit uses the same LIVE image providers; keep the edit capability
-    // on the decision so prompts/dispatch can treat retouching distinctly.
     const capabilityId =
       rawCapability === "image.edit" ? "image.edit" : rawCapability;
     const matchCapability =
@@ -51,12 +58,29 @@ export class ImageExecutionRouter {
     if (executable.length === 0) {
       return failure(
         new ValidationError(
-          "No LIVE-executable image provider available — add OpenAI / Gemini (Imagen) / Recraft / Ideogram credentials"
-        )
+          "No LIVE-executable image provider available — add OpenAI / Gemini (Imagen) / Recraft / Ideogram credentials",
+        ),
       );
     }
 
-    const allowed = new Set(executable.map(String));
+    const reqs = input.capabilityRequirements ?? null;
+    const hardFiltered = reqs
+      ? filterProvidersByHardCapabilities({
+          providerIds: executable.map(String),
+          hardCapabilities: reqs.hardCapabilities,
+          providerHasCapability: providerHasImageCapability,
+        })
+      : executable.map(String);
+
+    const allowed = new Set(hardFiltered);
+    if (allowed.size === 0) {
+      return failure(
+        new ValidationError(
+          "No image provider satisfies composition-derived hard capabilities",
+        ),
+      );
+    }
+
     const useCase = resolveImageCreativeUseCase(input.prompt, {
       service: input.service,
       platform: input.platform,
@@ -66,8 +90,23 @@ export class ImageExecutionRouter {
           : input.subtype,
     });
     void matchCapability;
-    const preferences = this.preferenceChain(useCase, allowed);
-    const executableSlots = listDistinctExecutableImageProviders(useCase, allowed, 3);
+
+    let preferences = this.preferenceChain(useCase, allowed);
+    if (reqs) {
+      preferences = [
+        ...softRankProviderPreferences({
+          preferences,
+          soft: reqs.softPreferences,
+          providerHasCapability: providerHasImageCapability,
+        }),
+      ];
+    }
+
+    const executableSlots = listDistinctExecutableImageProviders(
+      useCase,
+      allowed,
+      3,
+    );
 
     let selected: ImageProviderPreference | undefined;
 
@@ -76,22 +115,43 @@ export class ImageExecutionRouter {
         ? input.routeVisualSlot
         : undefined;
 
-    // Parallel route fan-out: slot index always maps to a distinct LIVE provider.
-    if (slotIndex != null && executableSlots[slotIndex]) {
+    const pref = input.preferredProviderId?.trim() || "";
+    const preferredModel = input.preferredModelId?.trim() || "";
+
+    // Exact preferred provider+model (fanout leaf authority) wins over route slots.
+    // Provider-only pins must not matrix-fill — that collapses dual-OpenAI leaves.
+    // Legacy route_visual may pin provider without model and rely on routeVisualSlot.
+    if (pref && allowed.has(pref) && preferredModel) {
+      const matrixMatch = preferences.find(
+        (p) => p.providerId === pref && p.modelId === preferredModel,
+      );
+      selected = {
+        providerId: pref,
+        modelId: preferredModel,
+        label: matrixMatch?.label ?? `${pref}/${preferredModel}`,
+      };
+    } else if (
+      pref &&
+      allowed.has(pref) &&
+      !preferredModel &&
+      slotIndex != null &&
+      executableSlots[slotIndex]
+    ) {
       selected = executableSlots[slotIndex]!;
-    } else if (input.preferredProviderId?.trim()) {
-      const pref = input.preferredProviderId.trim();
-      if (allowed.has(pref)) {
-        const matrixMatch = preferences.find((p) => p.providerId === pref);
-        selected = {
-          providerId: pref,
-          modelId:
-            input.preferredModelId?.trim() ||
-            matrixMatch?.modelId ||
-            "default",
-          label: matrixMatch?.label ?? pref,
-        };
-      } else if (
+    } else if (pref && allowed.has(pref) && !preferredModel) {
+      return failure(
+        new ValidationError(
+          "preferredModelId is required when preferredProviderId is set — provider-only routing collapses dual-family fanout leaves",
+          {
+            reason: "FANOUT_LEAF_MODEL_REQUIRED",
+            preferredProviderId: pref,
+          },
+        ),
+      );
+    } else if (slotIndex != null && executableSlots[slotIndex]) {
+      selected = executableSlots[slotIndex]!;
+    } else if (pref) {
+      if (
         typeof input.routeVisualSlot === "number" &&
         input.routeVisualSlot >= 0 &&
         executableSlots[input.routeVisualSlot]
@@ -105,8 +165,8 @@ export class ImageExecutionRouter {
             : 0;
         selected =
           executableSlots[slotIdx] ??
-          pickPreferredImageProvider(useCase, allowed) ??
-          preferences[0];
+          preferences[0] ??
+          pickPreferredImageProvider(useCase, allowed);
       }
     } else if (
       typeof input.routeVisualSlot === "number" &&
@@ -115,12 +175,14 @@ export class ImageExecutionRouter {
     ) {
       selected = executableSlots[input.routeVisualSlot];
     } else {
-      selected = pickPreferredImageProvider(useCase, allowed) ?? preferences[0];
+      selected = preferences[0] ?? pickPreferredImageProvider(useCase, allowed);
     }
 
     if (!selected) {
       return failure(
-        new ValidationError("No image.generate preference matched executable providers")
+        new ValidationError(
+          "No image.generate preference matched executable providers",
+        ),
       );
     }
 
@@ -130,7 +192,10 @@ export class ImageExecutionRouter {
       const key = `${step.providerId}::${step.modelId}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      failoverChain.push({ providerId: step.providerId, modelId: step.modelId });
+      failoverChain.push({
+        providerId: step.providerId,
+        modelId: step.modelId,
+      });
     }
 
     return success({
@@ -140,15 +205,16 @@ export class ImageExecutionRouter {
       useCase,
       label: selected.label,
       failoverChain,
+      ...(reqs ? { capabilityRequirements: reqs } : {}),
     });
   }
 
   private preferenceChain(
     useCase: ImageCreativeUseCase,
-    allowed: ReadonlySet<string>
+    allowed: ReadonlySet<string>,
   ): ImageProviderPreference[] {
     return IMAGE_USE_CASE_PREFERENCES[useCase].filter((p) =>
-      allowed.has(p.providerId)
+      allowed.has(p.providerId),
     );
   }
 

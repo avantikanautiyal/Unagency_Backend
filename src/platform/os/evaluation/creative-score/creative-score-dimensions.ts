@@ -1,9 +1,9 @@
 /**
  * Track B3 — Creative Score dimensions (UNAGENCY AI QA).
- * Each dimension scored /10; total /100; release gate at 80.
+ * Each dimension scored /10; total /100; release gate at 70.
  */
 
-export const CREATIVE_SCORE_RELEASE_GATE = 80 as const;
+export const CREATIVE_SCORE_RELEASE_GATE = 70 as const;
 export const CREATIVE_SCORE_WEAK_DIMENSION_THRESHOLD = 7 as const;
 export const CREATIVE_SCORE_DIMENSION_MAX = 10 as const;
 

@@ -143,7 +143,10 @@ export class AsyncExecutionCoordinator {
         }),
       token,
       5,
-      Date.now() + 86_400_000
+      // Real wall clock — never Date.now()+1d. That value was used to force
+      // nextPollAt due-ness in tests, but the reconciler also uses asOfMs for
+      // poll-budget age, which immediately false-triggers PROVIDER_TIMEOUT.
+      Date.now()
     );
 
     const refreshed = await this.deps.store.get(op.operationId);

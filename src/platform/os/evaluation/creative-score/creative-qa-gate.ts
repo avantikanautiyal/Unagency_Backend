@@ -3,6 +3,7 @@
  */
 
 import type { EvaluationResult } from "../contracts/evaluation-result";
+import { effectiveEvaluationOutcome } from "../contracts/evaluation-result";
 import {
   CREATIVE_SCORE_RELEASE_GATE,
   CREATIVE_SCORE_DIMENSION_LABELS,
@@ -41,7 +42,12 @@ export function creativeQaFromEvaluationResult(
     .filter(([, v]) => typeof v === "number" && v < 7)
     .map(([k]) => k as CreativeScoreDimension);
   const releaseAllowed = total >= CREATIVE_SCORE_RELEASE_GATE;
-  const blocks = creativeQaBlocksRelease(rollout) && !releaseAllowed;
+  // Release is blocked only when the evaluation blocked AND is authorised to
+  // (release gate on deliverable evidence) — proxy evidence is advisory.
+  const blocks =
+    creativeQaBlocksRelease(rollout) &&
+    !releaseAllowed &&
+    effectiveEvaluationOutcome(result) === "BLOCKED";
   const shadow = creativeQaObservesOnly(rollout);
   const suggestRefine = weak.length > 0;
 

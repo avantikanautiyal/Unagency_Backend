@@ -49,6 +49,11 @@ export interface DistributedExecutionEngineDeps {
   readonly nowIso?: () => string;
   readonly clockMs?: () => number;
   readonly createId?: (prefix: string) => string;
+  /**
+   * Durable claim lease TTL. Heartbeat renews at ~TTL/4 so an active
+   * execute never becomes durably runnable via reclaimExpired.
+   */
+  readonly leaseTtlMs?: number;
 }
 
 export class DistributedExecutionEngine implements IDistributedExecutionEngine {
@@ -68,18 +73,28 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
   private readonly nowIso: () => string;
   private readonly clockMs: () => number;
   private readonly createId: (prefix: string) => string;
+  private readonly leaseTtlMs: number;
   private shutDown = false;
   /** retryAtMs by jobId for scheduled retries */
   private readonly retryAt = new Map<string, number>();
   /** Jobs already handed to the in-memory queue this process (avoid duplicate recovery). */
   private readonly recoveryDispatched = new Set<string>();
-  /** Jobs this process is currently executing — never reclaim/re-claim them. */
+  /**
+   * Process-local diagnostic/optimization guard — NOT distributed ownership.
+   * Durable ownership is reservedBy + leaseExpiresAt on the job store.
+   */
   private readonly inFlightJobIds = new Set<string>();
+  /** Serializes reclaim + runnable recovery across concurrent tick() callers. */
+  private recoveryLock: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: DistributedExecutionEngineDeps) {
     this.nowIso = deps.nowIso ?? (() => new Date().toISOString());
     this.clockMs = deps.clockMs ?? (() => Date.now());
     this.createId = deps.createId ?? ((p) => `${p}_${this.clockMs()}`);
+    this.leaseTtlMs =
+      typeof deps.leaseTtlMs === "number" && deps.leaseTtlMs > 0
+        ? deps.leaseTtlMs
+        : DEFAULT_LEASE_TTL_MS;
     this.store = deps.store ?? new InMemoryJobStore();
     this.queues = new QueueRegistry(this.clockMs);
     this.scheduler = new JobScheduler(this.store, this.queues, this.clockMs);
@@ -138,8 +153,30 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     };
 
     this.store.save(job);
+    // Durable claim requires the row to exist before any tick/tryClaim race.
+    if (typeof this.store.persist === "function") {
+      try {
+        await this.store.persist(job);
+      } catch (err) {
+        console.warn(
+          `[Direct] job persist failed on enqueue | jobId=${String(job.jobId)} | ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return failure(
+          new ValidationError(
+            `failed to persist queued job: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      }
+    }
     this.enqueueToQueue(job);
     this.publishProgress(job, "queued", 0, "queued");
+    this.logLifecycle("job_enqueued", {
+      jobId: String(job.jobId),
+      status: "queued",
+      queueKind: job.queueKind,
+      executionId: executionIdFromJobPayload(job),
+      capabilityId: capabilityIdFromJobPayload(job),
+    });
     return success(job);
   }
 
@@ -241,62 +278,66 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
       return failure(new ValidationError("execution platform is shut down"));
     }
 
-    await this.ensureRunnableJobsQueued();
+    // Serialize reclaim + runnable recovery across concurrent tick callers.
+    // Claim/execute remain concurrent; durable CAS is the correctness boundary.
+    await this.withRecoveryLock(async () => {
+      await this.ensureRunnableJobsQueued();
 
-    this.scheduler.promoteDue();
-    for (const job of this.store.list()) {
-      if (job.status === "retrying") {
-        const due = this.retryAt.get(String(job.jobId));
-        if (due != null && due <= this.clockMs()) {
-          const reset: ExecutionJob = {
-            ...job,
-            status: "queued",
-            queueKind: "immediate",
-            updatedAt: this.nowIso(),
-          };
-          this.store.save(reset);
-          this.retryAt.delete(String(job.jobId));
-          // ensure on immediate queue (scheduled may have already promoted)
-          if (!this.queues.get("immediate").list().includes(job.jobId)) {
-            this.queues.get("immediate").enqueue(job.jobId);
+      this.scheduler.promoteDue();
+      for (const job of this.store.list()) {
+        if (job.status === "retrying") {
+          const due = this.retryAt.get(String(job.jobId));
+          if (due != null && due <= this.clockMs()) {
+            const reset: ExecutionJob = {
+              ...job,
+              status: "queued",
+              queueKind: "immediate",
+              updatedAt: this.nowIso(),
+            };
+            this.store.save(reset);
+            this.retryAt.delete(String(job.jobId));
+            // ensure on immediate queue (scheduled may have already promoted)
+            if (!this.queues.get("immediate").list().includes(job.jobId)) {
+              this.queues.get("immediate").enqueue(job.jobId);
+            }
           }
         }
       }
-    }
-    this.promoteReadyRetries();
+      this.promoteReadyRetries();
 
-    // M9.4A: reclaim stale leases before claiming new work
-    if (typeof this.store.reclaimExpired === "function") {
-      try {
-        const recovered = await this.store.reclaimExpired(
-          this.nowIso(),
-          this.clockMs()
-        );
-        for (const job of recovered) {
-          if (this.inFlightJobIds.has(String(job.jobId))) {
+      // Reclaim only genuinely expired durable leases (active owners renew).
+      if (typeof this.store.reclaimExpired === "function") {
+        try {
+          const recovered = await this.store.reclaimExpired(
+            this.nowIso(),
+            this.clockMs()
+          );
+          for (const job of recovered) {
+            if (this.inFlightJobIds.has(String(job.jobId))) {
+              console.log(
+                `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight`,
+              );
+              continue;
+            }
+            if (
+              !this.queues.get("immediate").list().includes(job.jobId) &&
+              !this.recoveryDispatched.has(String(job.jobId))
+            ) {
+              this.recoveryDispatched.add(String(job.jobId));
+              this.queues.get("immediate").enqueue(job.jobId);
+            }
             console.log(
-              `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight`,
+              `[Direct] job recovery reclaimed | jobId=${String(job.jobId)} | reason=stale`,
             );
-            continue;
           }
-          if (
-            !this.queues.get("immediate").list().includes(job.jobId) &&
-            !this.recoveryDispatched.has(String(job.jobId))
-          ) {
-            this.recoveryDispatched.add(String(job.jobId));
-            this.queues.get("immediate").enqueue(job.jobId);
-          }
-          console.log(
-            `[Direct] job recovery reclaimed | jobId=${String(job.jobId)} | reason=stale`,
+        } catch (err) {
+          // Reclaim must not abort the tick — new jobs still need to run.
+          console.warn(
+            `⚙️  [Direct] lease reclaim failed | ${err instanceof Error ? err.message : String(err)}`
           );
         }
-      } catch (err) {
-        // Reclaim must not abort the tick — new jobs still need to run.
-        console.warn(
-          `⚙️  [Direct] lease reclaim failed | ${err instanceof Error ? err.message : String(err)}`
-        );
       }
-    }
+    });
 
     const completed: ExecutionJob[] = [];
     for (let i = 0; i < maxJobs; i += 1) {
@@ -343,9 +384,13 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         continue;
       }
       if (this.inFlightJobIds.has(String(job.jobId))) {
-        this.dispatcher.drop(candidate.jobId, candidate.queueKind);
+        // Do NOT drop from the queue while in-flight — that orphans durable
+        // queued rows when recoveryDispatched stays set (skipped forever).
         this.concurrency.release();
-        continue;
+        console.log(
+          `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight`,
+        );
+        break;
       }
 
       if (!this.dispatcher.take(candidate.jobId, candidate.queueKind)) {
@@ -378,7 +423,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           const claimed = await this.store.tryClaim(
             job.jobId,
             worker.workerId,
-            DEFAULT_LEASE_TTL_MS,
+            this.leaseTtlMs,
             this.nowIso(),
           );
           if (!claimed) {
@@ -390,11 +435,16 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
               fresh &&
               (fresh.status === "queued" || fresh.status === "retrying")
             ) {
+              // Allow recovery to redispatch if this copy is lost again.
+              this.recoveryDispatched.delete(String(job.jobId));
               this.enqueueToQueue({ ...fresh, queueKind: next.queueKind });
+              console.log(
+                `[Direct] job claim failed requeued | jobId=${String(job.jobId)} | reason=claim_race`,
+              );
             } else {
               this.recoveryDispatched.delete(String(job.jobId));
               console.log(
-                `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=already_claimed`,
+                `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=already_claimed | status=${fresh?.status ?? "missing"}`,
               );
             }
             continue;
@@ -406,7 +456,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           lease = this.leases.acquire(
             worker.workerId,
             claimed.jobId,
-            DEFAULT_LEASE_TTL_MS,
+            this.leaseTtlMs,
           );
           running = {
             ...claimed,
@@ -425,7 +475,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           lease = this.leases.acquire(
             worker.workerId,
             job.jobId,
-            DEFAULT_LEASE_TTL_MS,
+            this.leaseTtlMs,
           );
           running = {
             ...job,
@@ -470,27 +520,90 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           continue;
         }
 
-        const signal: { cancelled: boolean } = {
+        const signal: { cancelled: boolean; ownershipLost?: boolean } = {
           cancelled: running.cancelRequested,
         };
         const latest = this.store.get(running.jobId);
         if (latest?.cancelRequested) signal.cancelled = true;
 
         this.inFlightJobIds.add(String(running.jobId));
-        const heartbeatMs = Math.max(5_000, Math.floor(DEFAULT_LEASE_TTL_MS / 3));
         const leaseId = lease?.leaseId;
+        // Immediate renew so reclaim cannot race before the first heartbeat.
+        if (leaseId) {
+          const renewed = await this.renewInFlightLease(
+            running,
+            worker.workerId,
+            leaseId,
+          );
+          if (!renewed) {
+            const owns = await this.verifyDurableOwnership(
+              running,
+              worker.workerId,
+            );
+            if (!owns) {
+              signal.ownershipLost = true;
+              signal.cancelled = true;
+            }
+          }
+        }
+        const heartbeatMs = Math.max(50, Math.floor(this.leaseTtlMs / 4));
         const heartbeat = leaseId
           ? setInterval(() => {
-              void this.renewInFlightLease(running, worker.workerId, leaseId);
+              void this.renewInFlightLease(
+                running!,
+                worker.workerId,
+                leaseId,
+              )
+                .then(async (ok) => {
+                  if (ok) return;
+                  // Transient renew failure must not mark ownership lost while
+                  // the durable lease is still valid. Only durable loss does.
+                  const owns = await this.verifyDurableOwnership(
+                    running!,
+                    worker.workerId,
+                  );
+                  if (!owns) {
+                    signal.ownershipLost = true;
+                    signal.cancelled = true;
+                  }
+                })
+                .catch((err) => {
+                  console.warn(
+                    `[Direct] lease heartbeat failed | jobId=${String(running!.jobId)} | ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                });
             }, heartbeatMs)
           : undefined;
         if (heartbeat && typeof heartbeat.unref === "function") heartbeat.unref();
         let result: Awaited<ReturnType<IJobExecutor["execute"]>>;
+        let stillOwns = false;
         try {
           result = await this.deps.executor.execute(running, signal);
+          // Final renew while still in-flight so verify sees a live lease.
+          if (leaseId && !signal.ownershipLost) {
+            await this.renewInFlightLease(running, worker.workerId, leaseId);
+          }
+          stillOwns = await this.verifyDurableOwnership(
+            running,
+            worker.workerId,
+          );
         } finally {
           if (heartbeat) clearInterval(heartbeat);
           this.inFlightJobIds.delete(String(running.jobId));
+        }
+
+        // Durable ownership is source of truth — never finalize after reclaim/steal.
+        if (!stillOwns || signal.ownershipLost) {
+          console.log(
+            `[Direct] job execution discarded | jobId=${String(running.jobId)} | reason=ownership_lost | attempt=${running.attempt}`,
+          );
+          this.logLifecycle("ownership_lost", {
+            jobId: String(running.jobId),
+            status: this.store.get(running.jobId)?.status ?? "unknown",
+            executionId: executionIdFromJobPayload(running),
+            recoverySkipReason: "ownership_lost",
+          });
+          continue;
         }
 
         const owner = this.store.get(running.jobId);
@@ -679,41 +792,66 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
 
   async shutdown(): Promise<Result<void>> {
     this.shutDown = true;
-    // Graceful: release in-flight claims to recoverable queued state (not permanent RUNNING)
+    // Graceful: release orphaned claims to recoverable queued state.
+    // NEVER make an actively executing job durably runnable — that would
+    // allow another worker to tryClaim while executor.execute is still live.
     for (const job of this.store.list()) {
-      if (job.status === "running" || job.status === "reserved") {
-        this.store.save({
-          ...job,
-          status: "queued",
-          reservedBy: undefined,
-          reservationId: undefined,
-          leaseId: undefined,
-          leaseExpiresAt: undefined,
-          cancelRequested: false,
-          updatedAt: this.nowIso(),
-          lastError: job.lastError ?? "shutdown_interrupted",
-        });
+      if (job.status !== "running" && job.status !== "reserved") continue;
+      if (this.inFlightJobIds.has(String(job.jobId))) {
+        // Active execute on this process: keep durable ownership intact.
+        // The in-progress execute finishes exactly once (or discards on
+        // ownership loss). Process-local inFlight is only a gate for this
+        // local transition — durable reservedBy/lease remain authoritative.
+        console.log(
+          `[Direct] shutdown skipped release | jobId=${String(job.jobId)} | reason=active_execution`,
+        );
+        continue;
       }
+      const released: ExecutionJob = {
+        ...job,
+        status: "queued",
+        reservedBy: undefined,
+        reservationId: undefined,
+        leaseId: undefined,
+        leaseExpiresAt: undefined,
+        cancelRequested: false,
+        updatedAt: this.nowIso(),
+        lastError: job.lastError ?? "shutdown_interrupted",
+      };
+      this.store.save(released);
+      await this.persistJobIfSupported(released);
     }
     return success(undefined);
   }
 
-  /** Simulate worker crash — releases lease; recovery worker can requeue. */
+  /**
+   * Simulate worker crash — releases orphaned durable claims so another
+   * worker can reclaim. Must not queue a job whose executor.execute is
+   * still active on this process (would create duplicate execution).
+   */
   failWorker(workerId: string): void {
     this.workers.markUnhealthy(workerId as never);
     for (const job of this.store.list()) {
-      if (String(job.reservedBy) === workerId && job.status === "running") {
-        const recovered: ExecutionJob = {
-          ...job,
-          status: "queued",
-          reservedBy: undefined,
-          reservationId: undefined,
-          leaseId: undefined,
-          updatedAt: this.nowIso(),
-        };
-        this.store.save(recovered);
-        this.queues.get("immediate").enqueue(recovered.jobId);
+      if (String(job.reservedBy) !== workerId) continue;
+      if (job.status !== "running" && job.status !== "reserved") continue;
+      if (this.inFlightJobIds.has(String(job.jobId))) {
+        console.log(
+          `[Direct] failWorker skipped release | jobId=${String(job.jobId)} | reason=active_execution`,
+        );
+        continue;
       }
+      const recovered: ExecutionJob = {
+        ...job,
+        status: "queued",
+        reservedBy: undefined,
+        reservationId: undefined,
+        leaseId: undefined,
+        leaseExpiresAt: undefined,
+        updatedAt: this.nowIso(),
+      };
+      this.store.save(recovered);
+      void this.persistJobIfSupported(recovered);
+      this.queues.get("immediate").enqueue(recovered.jobId);
     }
   }
 
@@ -724,32 +862,74 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
       const jobs = await this.store.listRunnableFromDatabase();
       let enqueued = 0;
       let skipped = 0;
+      const skipReasons: Record<string, number> = {};
+      const bump = (reason: string) => {
+        skipped += 1;
+        skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+      };
       for (const job of jobs) {
         let fresh = job;
         if (typeof this.store.hydrate === "function") {
           const hydrated = await this.store.hydrate(job.jobId);
           if (hydrated) fresh = hydrated;
         }
+        const jobId = String(fresh.jobId);
         if (fresh.status !== "queued" && fresh.status !== "retrying") {
-          skipped += 1;
-          this.recoveryDispatched.delete(String(fresh.jobId));
+          this.recoveryDispatched.delete(jobId);
+          bump(`terminal_${fresh.status}`);
+          this.logLifecycle("recovery_skipped", {
+            jobId,
+            status: fresh.status,
+            recoverySkipReason: `terminal_${fresh.status}`,
+            executionId: executionIdFromJobPayload(fresh),
+          });
           continue;
         }
-        if (
-          this.isJobEnqueued(fresh.jobId) ||
-          this.recoveryDispatched.has(String(fresh.jobId))
-        ) {
-          skipped += 1;
+        if (this.inFlightJobIds.has(jobId)) {
+          bump("in_flight");
+          this.logLifecycle("recovery_skipped", {
+            jobId,
+            status: fresh.status,
+            recoverySkipReason: "in_flight",
+            executionId: executionIdFromJobPayload(fresh),
+          });
           continue;
+        }
+        const alreadyQueued = this.isJobEnqueued(fresh.jobId);
+        if (alreadyQueued) {
+          bump("already_enqueued");
+          continue;
+        }
+        // CRITICAL: recoveryDispatched without an in-memory queue entry is an
+        // orphan — the prior dispatch was lost (drop/claim-race) and must be
+        // reclaimed or jobs stay queued forever with reclaimable=0.
+        if (this.recoveryDispatched.has(jobId)) {
+          this.recoveryDispatched.delete(jobId);
+          this.logLifecycle("recovery_orphaned_redispatch", {
+            jobId,
+            status: fresh.status,
+            recoverySkipReason: "orphaned_redispatch",
+            executionId: executionIdFromJobPayload(fresh),
+            capabilityId: capabilityIdFromJobPayload(fresh),
+          });
+          console.log(
+            `[Direct] job recovery orphaned redispatch | jobId=${jobId} | reason=dispatched_not_enqueued`,
+          );
         }
         if (!fresh.payload?.rawPrompt?.trim()) {
-          skipped += 1;
+          bump("invalid_payload");
           console.log(
-            `[Direct] job recovery skipped | jobId=${String(fresh.jobId)} | reason=invalid_payload`,
+            `[Direct] job recovery skipped | jobId=${jobId} | reason=invalid_payload`,
           );
+          this.logLifecycle("recovery_skipped", {
+            jobId,
+            status: fresh.status,
+            recoverySkipReason: "invalid_payload",
+            executionId: executionIdFromJobPayload(fresh),
+          });
           continue;
         }
-        this.recoveryDispatched.add(String(fresh.jobId));
+        this.recoveryDispatched.add(jobId);
         this.enqueueToQueue({
           ...fresh,
           queueKind:
@@ -758,10 +938,20 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
               : fresh.queueKind,
         });
         enqueued += 1;
+        this.logLifecycle("recovery_reclaimed", {
+          jobId,
+          status: fresh.status,
+          recoverySkipReason: "requeued",
+          executionId: executionIdFromJobPayload(fresh),
+          capabilityId: capabilityIdFromJobPayload(fresh),
+        });
       }
       if (jobs.length > 0) {
+        const reasonSummary = Object.entries(skipReasons)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(",") || "none";
         console.log(
-          `[Direct] recovery scan | queued=${jobs.length} | reclaimable=${enqueued} | skipped=${skipped}`,
+          `[Direct] recovery scan | queued=${jobs.length} | reclaimable=${enqueued} | skipped=${skipped} | reasons=${reasonSummary}`,
         );
       }
     } catch (err) {
@@ -783,36 +973,103 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     }
   }
 
+  /** Serialize reclaim / runnable recovery across concurrent tick() callers. */
+  private async withRecoveryLock<T>(fn: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const previous = this.recoveryLock;
+    this.recoveryLock = previous.then(() => gate, () => gate);
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Durable ownership check — claimed status + reservedBy + attempt +
+   * unexpired leaseExpiresAt. An expired lease is not owned merely because
+   * reclaimExpired has not yet run. Process-local inFlightJobIds is NOT
+   * authoritative.
+   */
+  private async verifyDurableOwnership(
+    running: ExecutionJob,
+    workerId: WorkerId,
+  ): Promise<boolean> {
+    const fresh =
+      typeof this.store.hydrate === "function"
+        ? await this.store.hydrate(running.jobId)
+        : this.store.get(running.jobId);
+    if (!fresh) return false;
+    if (fresh.status !== "running" && fresh.status !== "reserved") return false;
+    if (String(fresh.reservedBy ?? "") !== String(workerId)) return false;
+    if (fresh.attempt !== running.attempt) return false;
+    if (!fresh.leaseExpiresAt) return false;
+    const expiresMs = Date.parse(fresh.leaseExpiresAt);
+    if (!Number.isFinite(expiresMs) || expiresMs <= this.clockMs()) return false;
+    return true;
+  }
+
   private async renewInFlightLease(
     running: ExecutionJob,
     workerId: WorkerId,
     leaseId: LeaseId,
-  ): Promise<void> {
-    if (!this.inFlightJobIds.has(String(running.jobId))) return;
-    const latest = this.store.get(running.jobId);
-    if (
-      !latest ||
-      (latest.status !== "running" && latest.status !== "reserved") ||
-      latest.attempt !== running.attempt
-    ) {
-      return;
-    }
-    this.leases.renew(leaseId, DEFAULT_LEASE_TTL_MS);
-    if (typeof this.store.renewLease === "function") {
-      await this.store.renewLease(
-        running.jobId,
-        DEFAULT_LEASE_TTL_MS,
-        this.nowIso(),
-        workerId,
+  ): Promise<boolean> {
+    if (!this.inFlightJobIds.has(String(running.jobId))) return false;
+    try {
+      const latest =
+        typeof this.store.hydrate === "function"
+          ? await this.store.hydrate(running.jobId)
+          : this.store.get(running.jobId);
+      if (
+        !latest ||
+        (latest.status !== "running" && latest.status !== "reserved") ||
+        latest.attempt !== running.attempt ||
+        String(latest.reservedBy ?? "") !== String(workerId)
+      ) {
+        console.log(
+          `[Direct] lease renew refused | jobId=${String(running.jobId)} | reason=durable_ownership_mismatch | status=${latest?.status ?? "missing"} | attempt=${latest?.attempt ?? "n/a"}`,
+        );
+        return false;
+      }
+      this.leases.renew(leaseId, this.leaseTtlMs);
+      if (typeof this.store.renewLease === "function") {
+        const ok = await this.store.renewLease(
+          running.jobId,
+          this.leaseTtlMs,
+          this.nowIso(),
+          workerId,
+        );
+        if (!ok) {
+          const terminal =
+            latest?.status === "completed" ||
+            latest?.status === "failed" ||
+            latest?.status === "cancelled" ||
+            latest?.status === "dead_letter";
+          console.log(
+            `[Direct] lease renew CAS missed | jobId=${String(running.jobId)} | worker=${String(workerId)} | attempt=${running.attempt} | status=${latest?.status ?? "missing"} | postTerminalHarmless=${terminal}`,
+          );
+        }
+        return ok;
+      }
+      const leaseExpiresAt = new Date(
+        this.clockMs() + this.leaseTtlMs,
+      ).toISOString();
+      const next = { ...latest, leaseExpiresAt, updatedAt: this.nowIso() };
+      this.store.save(next);
+      await this.persistJobIfSupported(next);
+      return true;
+    } catch (err) {
+      console.warn(
+        `[Direct] lease renew error | jobId=${String(running.jobId)} | ${err instanceof Error ? err.message : String(err)}`,
       );
-      return;
+      // Store errors must NOT be treated as successful renew — durable lease
+      // may still be near expiry. Heartbeat will verify ownership separately.
+      return false;
     }
-    const leaseExpiresAt = new Date(
-      this.clockMs() + DEFAULT_LEASE_TTL_MS,
-    ).toISOString();
-    const next = { ...latest, leaseExpiresAt, updatedAt: this.nowIso() };
-    this.store.save(next);
-    await this.persistJobIfSupported(next);
   }
 
   private isJobEnqueued(jobId: JobId): boolean {
@@ -901,4 +1158,73 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
             : "queued",
     });
   }
+
+  private logLifecycle(
+    event: string,
+    fields: {
+      readonly jobId?: string;
+      readonly status?: string;
+      readonly queueKind?: string;
+      readonly executionId?: string;
+      readonly capabilityId?: string;
+      readonly recoverySkipReason?: string;
+      readonly workerId?: string;
+      readonly attempt?: number;
+      readonly queueLengths?: Record<string, number>;
+      readonly inFlightCount?: number;
+      readonly concurrencyActive?: number;
+      readonly workerCount?: number;
+    },
+  ): void {
+    try {
+      // eslint-disable-next-line no-console
+      console.info(
+        JSON.stringify({
+          scope: "execution.lifecycle",
+          event,
+          ...fields,
+          ts: this.nowIso(),
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function executionIdFromJobPayload(
+  job: ExecutionJob | undefined,
+): string | undefined {
+  if (!job?.payload) return undefined;
+  const meta = job.payload.metadata;
+  if (meta && typeof meta === "object") {
+    const row = meta as Record<string, unknown>;
+    if (typeof row.apiExecutionId === "string" && row.apiExecutionId.trim()) {
+      return row.apiExecutionId.trim();
+    }
+    if (typeof row.executionId === "string" && row.executionId.trim()) {
+      return row.executionId.trim();
+    }
+  }
+  return undefined;
+}
+
+function capabilityIdFromJobPayload(
+  job: ExecutionJob | undefined,
+): string | undefined {
+  if (!job?.payload) return undefined;
+  if (
+    typeof job.payload.capabilityHint === "string" &&
+    job.payload.capabilityHint.trim()
+  ) {
+    return job.payload.capabilityHint.trim();
+  }
+  const meta = job.payload.metadata;
+  if (meta && typeof meta === "object") {
+    const row = meta as Record<string, unknown>;
+    if (typeof row.capabilityId === "string" && row.capabilityId.trim()) {
+      return row.capabilityId.trim();
+    }
+  }
+  return undefined;
 }

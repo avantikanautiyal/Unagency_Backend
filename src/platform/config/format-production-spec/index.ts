@@ -130,9 +130,12 @@ export type { UniversalReleaseGate } from "./universal-release-gates";
 
 export {
   PRODUCTION_PROMPT_BLOCK_HEADER,
+  PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY,
+  PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY_FORMAT,
   PRODUCTION_PROMPT_BLOCK_VERSION,
   buildProductionPromptBlock,
   buildProductionPromptBlockText,
+  type ProductionPromptProjection,
 } from "./production-prompt-block";
 
 export type {

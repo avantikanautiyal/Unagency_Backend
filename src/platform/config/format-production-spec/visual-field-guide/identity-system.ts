@@ -1,5 +1,9 @@
 /**
  * Visual Field Guide — identity, layout, placement, format logic (pages 2–5).
+ *
+ * These lines are injected into provider-facing production prompts for ALL
+ * client brands. They must stay brand-agnostic: never name a platform/house
+ * wordmark as the creative identity to render.
  */
 
 import type {
@@ -49,9 +53,9 @@ export const VISUAL_IDENTITY_SYSTEM: VisualIdentitySystemPack = Object.freeze({
   id: "identity_system",
   title: "Identity system",
   lines: Object.freeze([
-    "Keep the supplied UNAGENCY wordmark intact; never retype, stretch, trace, invent a monogram, or add effects.",
-    "Identity base is black/white contrast with a clear alignment grid and generous breathing room.",
-    "Muted teal in guides is annotation-only — not an approved brand palette expansion.",
+    "Keep the supplied brand wordmark/logo intact; never retype, stretch, trace, invent a monogram, or add effects.",
+    "Give the approved mark clear contrast, alignment, and generous breathing room.",
+    "Guide/annotation colors in templates are not an approved brand palette expansion.",
     "House clear-space proposal: 0.5 × logo-height on every side; starting minimum 180 px digital / 35 mm print — test actual size.",
   ]),
 });
@@ -61,7 +65,7 @@ export const VISUAL_LAYOUT_HYGIENE: VisualLayoutHygienePack = Object.freeze({
   title: "Layout hygiene",
   lines: Object.freeze([
     "A grid is a guide, not decoration — adapt strong focal point, large headline, and separated identity zone.",
-    "Keep sample copy and branding UNAGENCY-only unless the brief supplies approved client identity.",
+    "Use only the approved client brand identity from the brief and brand context — never invent a substitute mark or platform brand.",
     "Construction / guide lines appear in explanations only — never in the final campaign export.",
   ]),
 });
@@ -81,7 +85,7 @@ export const VISUAL_FORMAT_LOGIC: VisualFormatLogicPack = Object.freeze({
   title: "Format logic",
   lines: Object.freeze([
     "Recompose for every ratio — do not squeeze a long wordmark, headline and hero into one stretched master.",
-    "UNAGENCY master presets: 1080×1080 square; 1080×1350 portrait; 1080×1920 vertical; 1920×1080 landscape video.",
+    "Master presets: 1080×1080 square; 1080×1350 portrait; 1080×1920 vertical; 1920×1080 landscape video.",
     "Specific platform delivery may differ — resolve the booked placement and use the matching Spec card.",
   ]),
   masters: VISUAL_FORMAT_MASTERS,

@@ -75,6 +75,8 @@ export interface FinalizeTaskGovernanceInput {
   readonly buildSucceeded?: boolean;
   readonly buildOutput?: string;
   readonly runtimeErrors?: readonly string[];
+  readonly skipOutputRequirements?: boolean;
+  readonly generationModality?: string;
   readonly policy?: GovernancePolicy;
   readonly nowIso?: () => string;
   readonly createId?: (prefix: string) => string;
@@ -120,6 +122,8 @@ export interface FinalizeExecutionGovernanceInput {
   readonly buildSucceeded?: boolean;
   readonly buildOutput?: string;
   readonly runtimeErrors?: readonly string[];
+  readonly skipOutputRequirements?: boolean;
+  readonly generationModality?: string;
   readonly providerSuccess?: boolean;
   readonly policy?: GovernancePolicy;
   readonly nowIso?: () => string;
@@ -394,6 +398,8 @@ export class GovernanceFinalizeService {
       buildSucceeded: input.buildSucceeded,
       buildOutput: input.buildOutput,
       runtimeErrors: input.runtimeErrors,
+      skipOutputRequirements: input.skipOutputRequirements,
+      generationModality: input.generationModality,
       nowIso,
       createId,
     });

@@ -83,12 +83,32 @@ export class AsyncFailoverOrchestrator {
       (a.terminalAt ?? a.updatedAt) < (b.terminalAt ?? b.updatedAt) ? 1 : -1
     )[0];
 
+    // Local poll-budget / autoRetryForbidden must never start another paid job.
+    if (
+      latest.safeMetadata?.autoRetryForbidden === true ||
+      latest.safeMetadata?.pollBudgetExhausted === true ||
+      latest.safeMetadata?.localPollTimeout === true
+    ) {
+      return success({
+        submitted: false,
+        reason: "auto_retry_forbidden",
+      });
+    }
+
     const category = classifyExecutionFailure({
       error: latest.errorCode
         ? { code: latest.errorCode, message: latest.errorMessage ?? "" }
         : undefined,
       message: latest.errorMessage,
     });
+
+    // Poll-budget exhaustion codes are local timeouts, not provider terminals.
+    if (
+      latest.errorCode === "provider_poll_max_duration" ||
+      latest.errorCode === "provider_job_timeout"
+    ) {
+      return success({ submitted: false, reason: "local_poll_timeout" });
+    }
 
     if (!shouldFailover(category)) {
       return success({ submitted: false, reason: `no_failover_for_${category}` });
@@ -204,7 +224,9 @@ export class AsyncFailoverOrchestrator {
 export function parseFailoverChainFromPayload(
   payload: Readonly<Record<string, unknown>> | undefined
 ): AsyncFailoverCandidate[] {
-  const raw = payload?.failoverChain;
+  // Prefer explicit failoverChain; also honor imageFailoverChain (fanout leaves
+  // clear that key to []). Never invent a chain from provider inventory.
+  const raw = payload?.failoverChain ?? payload?.imageFailoverChain;
   if (!Array.isArray(raw)) return [];
   return raw
     .map((row) => {
@@ -215,4 +237,30 @@ export function parseFailoverChainFromPayload(
       return undefined;
     })
     .filter((x): x is AsyncFailoverCandidate => Boolean(x));
+}
+
+/**
+ * Resume polling after local poll-budget exhaustion / process restart.
+ * Clears suspension markers and schedules an immediate poll. Does not
+ * create a new paid provider submission.
+ */
+export function resumePollingAfterLocalTimeout(
+  op: ProviderOperationRecord,
+  nowIso: string,
+): ProviderOperationRecord {
+  const meta = { ...(op.safeMetadata ?? {}) };
+  delete meta.pollBudgetExhausted;
+  delete meta.localPollTimeout;
+  // Keep autoRetryForbidden so failover cannot start a second paid job.
+  return {
+    ...op,
+    updatedAt: nowIso,
+    nextPollAt: nowIso,
+    safeMetadata: {
+      ...meta,
+      pollResumedAt: nowIso,
+      pollBudgetAnchorAt: nowIso,
+      autoRetryForbidden: true,
+    },
+  };
 }

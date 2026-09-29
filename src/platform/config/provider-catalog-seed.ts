@@ -142,7 +142,7 @@ export const PROVIDER_CATALOG_SEED: readonly CatalogProviderEntry[] = [
     displayName: "Meta",
     department: "llm",
     discoveryEndpoint: "/v1/models",
-    baseUrl: "https://api.llama.meta.com",
+    baseUrl: "https://api.llama.com",
     envVarHint: "META_API_KEY",
     models: [
       m("Llama 4 Maverick", "Open-weight reasoning", "Campaigns"),
@@ -266,7 +266,7 @@ export const PROVIDER_CATALOG_SEED: readonly CatalogProviderEntry[] = [
     discoveryEndpoint: "/v1/models",
     baseUrl: "https://api.klingai.com",
     envVarHint: "KLING_API_KEY",
-    models: [m("Kling 2.1", "Cinematic videos", "Campaigns")],
+    models: [m("Kling 2.6", "Cinematic videos", "Campaigns")],
   },
   {
     providerId: "luma",

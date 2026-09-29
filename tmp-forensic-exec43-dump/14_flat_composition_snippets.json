@@ -1,0 +1,37 @@
+[
+  {
+    "token": "REQUIRED_RENDERED",
+    "i": 3753,
+    "snippet": " asset; distinct from creative direction / brand signature / visual subject):\n  REQUIRED_RENDERED_COMMUNICATION must appear as legible on-asset text with an authoritative non-empty value. Distinct from CREATIVE_DIRECTION, VISUAL_SUBJECT, BRAND_SIGNATURE, and decorative typography.\n  - [required_rendered_communication] primary_message_surface: Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from"
+  },
+  {
+    "token": "COMPOSITION",
+    "i": 2763,
+    "snippet": ", and connection within a warm, sunlit environment — bringi… Follow DELIVERABLE COMPOSITION required on-asset communication + CURRENT USER INSTRUCTION; SELECTED SEMANTIC DIRECTION realizes creative HOW; Production Spec supplies technical constraints only.\nSemanticRole: visual\nService: social-media\nSubtype: content-design\nTarget artifact: social-media.output\n\n===== DELIVERABLE COMPOSITION =====\nDeliverable kind: social_creative\nDeliverable identity: Instagram Feed Post\nCommuni"
+  },
+  {
+    "token": "COMPOSITION",
+    "i": 3062,
+    "snippet": "Subtype: content-design\nTarget artifact: social-media.output\n\n===== DELIVERABLE COMPOSITION =====\nDeliverable kind: social_creative\nDeliverable identity: Instagram Feed Post\nCommunication mode: single_frame_communication\nRequired elements: primary_message_surface, visual_subject, brand_signature\nOptional elements: secondary_message_surface, message_hierarchy\nHierarchy:\n  - primary_message_surface (precedence 1)\n  - visual_subject (precedence 2)\n  - brand_signature (precedence"
+  },
+  {
+    "token": "COMPOSITION",
+    "i": 10826,
+    "snippet": "red semantic elements and hierarchy — not aesthetic quality or model judgment.\n\nCOMPOSITION AUTHORITY: When textPolicy requires on-asset communication, lower-authority preferences that minimize decorative or non-essential text still apply only to non-required text. Required rendered communication surfaces must remain on the asset. Selected creative direction defines HOW to realize the frame; it does not cancel WHAT the deliverable composition requires. Semantic roles are not "
+  },
+  {
+    "token": "COMPOSITION",
+    "i": 17103,
+    "snippet": " labels, Option N, or selection indexes alone. It does not override DELIVERABLE COMPOSITION required elements, hierarchy, or required on-asset textPolicy.\n\n===== BRAND CONTEXT =====\nname: brand_context\nsemanticRole: brand_context\n{\n  \"brandId\": \"6a98c471613dce5f8e5b8b9f\",\n  \"brandName\": \"Sunflower\",\n  \"facts\": [\n    {\n      \"key\": \"brandName\",\n      \"provenance\": \"selected_brand\",\n      \"value\": \"Sunflower\"\n    },\n    {\n      \"key\": \"brandColors\",\n      \"provenance\": \"executi"
+  },
+  {
+    "token": "COMPOSITION",
+    "i": 26322,
+    "snippet": "W) — not UI labels, Option N, promptPreview, or route titles alone.\nDELIVERABLE COMPOSITION (when present) defines required structural/communication elements (WHAT) — distinct from creative direction, production spec, and user instruction. Required composition properties outrank lower-authority creative preferences when they conflict.\nBRAND CONTEXT (when present) is the authoritative selected brand — not app/product/organization names.\nDo not treat truncated approval notes as"
+  },
+  {
+    "token": "COMPOSITION",
+    "i": 27350,
+    "snippet": "PROVED DECISIONS, RESOLVED REFERENCES, SELECTED SEMANTIC DIRECTION, DELIVERABLE COMPOSITION, or UPSTREAM ARTIFACTS.\nMULTIMODAL CONTEXT is user/application attachment context — distinct from UPSTREAM ARTIFACTS (CDF ArtifactVersions). Extracted text is not the original file."
+  }
+]

@@ -12,6 +12,15 @@ import { synthesizeDocumentPlanFromText } from "../../../os/delivery/document-ge
 import { recoverPresentationRoutesPayload } from "../../../os/delivery/document-export-service";
 import type { DirectExecutionReport } from "../../../direct/contracts";
 import type { EnterpriseApiExecutionMode } from "../../../api/runtime/execution-mode";
+import { resolveCdfPhaseExecutionContract } from "../../../cdf/canonical";
+import { requiresCanonicalEmissionSchema } from "../../../cdf/structured-output-contract";
+import {
+  CDF_STRUCTURED_PAYLOAD_MISSING,
+  hashStructuredPayload,
+} from "../../../cdf/structured-execution-result";
+import { isDocumentDirectCreate } from "../../../direct/document-direct-metadata";
+
+export const CDF_STRUCTURED_OUTPUT_MISSING = "CDF_STRUCTURED_OUTPUT_MISSING";
 
 export function buildIntegrationJobSummary(input: {
   report: DirectExecutionReport;
@@ -40,17 +49,62 @@ export function buildIntegrationJobSummary(input: {
         ? "live"
         : "simulated";
 
+  const metaEarly = (report.request?.metadata ??
+    (report.artifacts as { task?: { metadata?: unknown } } | undefined)?.task
+      ?.metadata) as Readonly<Record<string, unknown>> | undefined;
   const resultText = extractSafeResultText(response?.output);
-  let structuredData = extractStructuredData(response?.output);
+  const emissionContractEarly = resolveCdfPhaseExecutionContract({
+    serviceId:
+      typeof metaEarly?.cdfServiceId === "string"
+        ? metaEarly.cdfServiceId
+        : typeof metaEarly?.serviceId === "string"
+          ? metaEarly.serviceId
+          : undefined,
+    phaseId:
+      typeof metaEarly?.cdfPhaseId === "string"
+        ? metaEarly.cdfPhaseId
+        : undefined,
+  });
+  const emissionRequired =
+    emissionContractEarly != null &&
+    requiresCanonicalEmissionSchema(emissionContractEarly);
+  let structuredData = extractStructuredData(response?.output, {
+    emissionRequired,
+  });
+  let structuredEmissionData: unknown | undefined;
+  let structuredContractName: string | undefined;
+  let structuredPayloadHash: string | undefined;
+  let structuredSchemaVersion: string | undefined;
   if (structuredData != null) {
+    if (emissionRequired) {
+      structuredEmissionData = structuredData;
+      structuredContractName =
+        emissionContractEarly?.structuredOutputContract?.name ??
+        (typeof metaEarly?.structuredOutput === "object" &&
+        metaEarly.structuredOutput &&
+        typeof (metaEarly.structuredOutput as { name?: unknown }).name ===
+          "string"
+          ? String((metaEarly.structuredOutput as { name: string }).name)
+          : undefined);
+      structuredSchemaVersion =
+        emissionContractEarly?.structuredOutputContract?.version ?? "1";
+      structuredPayloadHash = hashStructuredPayload(structuredData);
+    }
     structuredData = recoverPresentationRoutesPayload(structuredData);
+    if (structuredEmissionData != null) {
+      structuredEmissionData = recoverPresentationRoutesPayload(
+        structuredEmissionData,
+      );
+      structuredPayloadHash = hashStructuredPayload(structuredEmissionData);
+    }
   }
-  const metaEarly = report.request?.metadata as
-    | Readonly<Record<string, unknown>>
-    | undefined;
   const preferredStack = explicitPreferredStackFromMetadata(metaEarly);
   const recoverOpts = preferredStack ? { preferredStack } : {};
-  if (!parseWebsiteLike(structuredData, recoverOpts)) {
+  // Never rewrite CDF text_choice / creative route payloads into WebProjects.
+  // Never rewrite canonical emission structured payloads via website recovery.
+  const skipWebsiteRecovery =
+    looksLikeTextChoiceStructured(structuredData) || emissionRequired;
+  if (!skipWebsiteRecovery && !parseWebsiteLike(structuredData, recoverOpts)) {
     const recovered =
       recoverWebsiteRoutesPlan(structuredData, recoverOpts)?.[0] ??
       recoverWebProjectPlan(structuredData, recoverOpts) ??
@@ -70,22 +124,41 @@ export function buildIntegrationJobSummary(input: {
           .trim()
           .toLowerCase()
       : "";
-  const isWebsiteJob =
-    (typeof meta?.service === "string" &&
-      meta.service.trim().toLowerCase() === "website") ||
-    (typeof meta?.outputKind === "string" &&
-      /^(deferred_)?website$/i.test(meta.outputKind.trim())) ||
+  const outputKindEarly =
+    typeof meta?.outputKind === "string"
+      ? meta.outputKind.trim().toLowerCase()
+      : "";
+  const serviceEarly =
+    typeof meta?.service === "string"
+      ? meta.service.trim().toLowerCase()
+      : "";
+  const websiteContractName =
     structuredName === "websitepage" ||
     structuredName === "webproject" ||
     structuredName === "websiteroutes";
-  const isDocumentJob =
-    structuredName === "documentplan" ||
-    (typeof meta?.outputKind === "string" &&
-      meta.outputKind.trim().toLowerCase() === "document") ||
-    (typeof meta?.service === "string" &&
-      meta.service.trim().toLowerCase() === "print" &&
-      typeof meta?.subtype === "string" &&
-      /brochure|leaflet|guideline/i.test(meta.subtype));
+  // Align with resolveWebsiteExport / isWebsiteGenerationMetadata:
+  // product service=website must not force website-job rewriting when CDF
+  // sealed outputKind to text (structured approval docs, sitemaps, etc.).
+  const isWebsiteJob =
+    websiteContractName ||
+    outputKindEarly === "deferred_website" ||
+    outputKindEarly === "website" ||
+    (serviceEarly === "website" &&
+      !outputKindEarly &&
+      !websiteContractName &&
+      structuredName !== "cdfwebsitesitemap" &&
+      structuredName !== "cdfstructuredapprovaldoc");
+  // Contract/modality/capability over product subtype — print+leaflet must never
+  // classify CDF master-artwork (image.generate) or text_choice routes as DocumentPlan.
+  const capabilityId =
+    typeof report.artifacts.task?.capabilityMap?.primary === "string"
+      ? report.artifacts.task.capabilityMap.primary
+      : typeof meta?.capabilityId === "string"
+        ? meta.capabilityId
+        : undefined;
+  const isDocumentJob = isDocumentDirectCreate(meta ?? undefined, {
+    capabilityId,
+  });
   const websiteMissingDeliverable =
     isWebsiteJob && !parseWebsiteLike(structuredData, recoverOpts);
   let documentPlanRecovered = false;
@@ -106,12 +179,6 @@ export function buildIntegrationJobSummary(input: {
   }
   const documentMissingDeliverable =
     isDocumentJob && !looksLikeDocumentPlan(structuredData);
-  const effectiveSuccess =
-    awaitingToolApproval ||
-    websiteMissingDeliverable ||
-    documentMissingDeliverable
-      ? false
-      : report.success;
 
   const runtimeError =
     typeof runtime?.error?.message === "string" && runtime.error.message.trim()
@@ -129,10 +196,70 @@ export function buildIntegrationJobSummary(input: {
     : response?.providerId
       ? String(response.providerId)
       : undefined;
+  // Authoritative actual model comes ONLY from winner stamp / attempt history.
+  // Never reconstruct from routedModelId (cross-vendor mismatch under failover).
   const actualModelId = runtime?.finalModelId
     ? String(runtime.finalModelId)
-    : resolveActualModelFromAttemptHistory(runtime?.attemptHistory) ??
-      routedModelId;
+    : resolveActualModelFromAttemptHistory(runtime?.attemptHistory);
+
+  // Canonical CDF emission phases require real structured JSON — provider
+  // success without structuredData is an execution failure (not observational).
+  let cdfStructuredMissing = false;
+  let cdfStructuredMissingDetail: Record<string, unknown> | undefined;
+  {
+    const contract = resolveCdfPhaseExecutionContract({
+      serviceId:
+        typeof meta?.cdfServiceId === "string"
+          ? meta.cdfServiceId
+          : typeof meta?.serviceId === "string"
+            ? meta.serviceId
+            : undefined,
+      phaseId:
+        typeof meta?.cdfPhaseId === "string" ? meta.cdfPhaseId : undefined,
+    });
+    if (
+      contract &&
+      requiresCanonicalEmissionSchema(contract) &&
+      report.success &&
+      !awaitingToolApproval &&
+      structuredData == null
+    ) {
+      cdfStructuredMissing = true;
+      const outputContractName =
+        typeof meta?.structuredOutput === "object" &&
+        meta.structuredOutput &&
+        typeof (meta.structuredOutput as { name?: unknown }).name === "string"
+          ? String((meta.structuredOutput as { name: string }).name)
+          : contract.structuredOutputContract?.name;
+      cdfStructuredMissingDetail = {
+        reason: CDF_STRUCTURED_PAYLOAD_MISSING,
+        legacyReason: CDF_STRUCTURED_OUTPUT_MISSING,
+        executionId:
+          typeof meta?.apiExecutionId === "string"
+            ? meta.apiExecutionId
+            : typeof meta?.executionId === "string"
+              ? meta.executionId
+              : undefined,
+        artifactKey: contract.artifactKey,
+        outputContractName,
+        structuredContractName: outputContractName,
+        provider: actualProviderId,
+        model: actualModelId,
+        schemaIdentity: outputContractName ?? contract.artifactKey,
+        responseKind: "unstructured",
+        responseParsingStatus: "missing_structured_data",
+      };
+    }
+  }
+
+  const effectiveSuccess =
+    awaitingToolApproval ||
+    websiteMissingDeliverable ||
+    documentMissingDeliverable ||
+    cdfStructuredMissing
+      ? false
+      : report.success;
+
   const fallbackUsed =
     Boolean(
       actualProviderId &&
@@ -149,7 +276,22 @@ export function buildIntegrationJobSummary(input: {
     awaitingToolApproval,
     ...(resultText !== undefined ? { resultText } : {}),
     ...(structuredData !== undefined ? { structuredData } : {}),
+    ...(structuredEmissionData !== undefined
+      ? { structuredEmissionData }
+      : {}),
+    ...(structuredContractName
+      ? { structuredContractName }
+      : {}),
+    ...(structuredSchemaVersion
+      ? { structuredSchemaVersion }
+      : {}),
+    ...(structuredPayloadHash
+      ? { structuredPayloadHash }
+      : {}),
     ...(documentPlanRecovered ? { documentPlanRecovered: true } : {}),
+    ...(cdfStructuredMissingDetail
+      ? { cdfStructuredOutputMissing: cdfStructuredMissingDetail }
+      : {}),
     toolInvocationKey: Array.isArray(toolApproval?.invocationKeys)
       ? toolApproval.invocationKeys.find((key): key is string => typeof key === "string")
       : undefined,
@@ -165,29 +307,21 @@ export function buildIntegrationJobSummary(input: {
     durationMs: report.durationMs || input.durationMs,
     stagesCompleted: report.stagesCompleted.length,
     postProcessingComplete: report.stagesCompleted.includes("provider_runtime"),
+    // A provider failure is the failure — "missing deliverable" messages only
+    // describe a provider success that lacked the contract output.
     errorMessage: effectiveSuccess
       ? undefined
+      : report.success !== true
+        ? providerFailureMessage(report, failedStage)
+      : cdfStructuredMissing
+        ? `${CDF_STRUCTURED_OUTPUT_MISSING}: canonical CDF phase completed without structured output`
       : websiteMissingDeliverable
         ? runtimeError && !/missing <\/html>/i.test(runtimeError)
           ? runtimeError
           : websiteIncompleteErrorMessage(preferredStack)
         : documentMissingDeliverable
           ? "Document generation finished without a valid DocumentPlan (title + sections)."
-        : (() => {
-          const stageMsg = report.trace.stages
-            ?.slice()
-            .reverse()
-            .find(
-              (s) =>
-                s.stage === failedStage &&
-                s.status === "failed" &&
-                typeof s.message === "string" &&
-                s.message.trim().length > 0
-            )?.message;
-          if (failedStage && stageMsg) return `failed at ${failedStage}: ${stageMsg}`;
-          if (failedStage) return `failed at ${failedStage}`;
-          return "direct execution failed";
-        })(),
+        : providerFailureMessage(report, failedStage),
     executionMode,
     providerMode,
     capabilityId: report.artifacts.task?.capabilityMap?.primary,
@@ -199,6 +333,13 @@ export function buildIntegrationJobSummary(input: {
     actualModelId,
     routedProviderId,
     routedModelId,
+    failoverCount: runtime?.failoverCount ?? 0,
+    ...(runtime?.attemptHistory?.length
+      ? { attemptHistory: runtime.attemptHistory }
+      : {}),
+    ...(runtime?.fallbackDiagnostics
+      ? { fallbackDiagnostics: runtime.fallbackDiagnostics }
+      : {}),
     fallbackUsed,
     ...(fallbackUsed
       ? {
@@ -262,6 +403,27 @@ function parseWebsiteLike(
     recoverWebsiteRoutesPlan(data, options)?.length ||
       recoverWebProjectPlan(data, options),
   );
+}
+
+/** Creative / CDF text_choice route cards — do not website-recover. */
+function looksLikeTextChoiceStructured(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  if (!Array.isArray(d.routes) || d.routes.length === 0) return false;
+  if (Array.isArray(d.files) && d.files.length > 0) return false;
+  if (typeof d.html === "string" && d.html.trim()) return false;
+  if (typeof d.stack === "string" && d.stack.trim()) return false;
+  return d.routes.some((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const r = item as Record<string, unknown>;
+    return (
+      typeof r.creativeIdea === "string" ||
+      typeof r.visualTreatment === "string" ||
+      typeof r.headlineAngle === "string" ||
+      typeof r.idea === "string" ||
+      typeof r.rationale === "string"
+    );
+  });
 }
 
 function looksLikeDocumentPlan(data: unknown): boolean {
@@ -359,14 +521,52 @@ function extractSafeResultText(
 }
 
 function extractStructuredData(
-  output: Readonly<Record<string, unknown>> | undefined
+  output: Readonly<Record<string, unknown>> | undefined,
+  options?: { readonly emissionRequired?: boolean },
 ): unknown | undefined {
   if (!output) return undefined;
-  if (output.structured != null) return output.structured;
-  if (output.structuredOutput != null) return output.structuredOutput;
-  if (output.data != null && typeof output.data === "object") return output.data;
 
-  // Anthropic json_schema → tool_use often lands only as content JSON.
+  const validFlag =
+    output.structuredOutputValid === true ||
+    (output.toolOrchestration &&
+      typeof output.toolOrchestration === "object" &&
+      (output.toolOrchestration as { structuredOutputValid?: unknown })
+        .structuredOutputValid === true);
+  const explicitlyInvalid =
+    output.structuredOutputValid === false ||
+    (output.toolOrchestration &&
+      typeof output.toolOrchestration === "object" &&
+      (output.toolOrchestration as { structuredOutputValid?: unknown })
+        .structuredOutputValid === false);
+
+  // Authoritative provider-attached structured payload.
+  if (output.structured != null) {
+    if (options?.emissionRequired && explicitlyInvalid && !validFlag) {
+      return undefined;
+    }
+    return output.structured;
+  }
+  if (output.structuredOutput != null) {
+    if (options?.emissionRequired && explicitlyInvalid && !validFlag) {
+      return undefined;
+    }
+    return output.structuredOutput;
+  }
+  if (output.data != null && typeof output.data === "object") {
+    if (options?.emissionRequired && explicitlyInvalid && !validFlag) {
+      return undefined;
+    }
+    return output.data;
+  }
+
+  // Canonical emission phases must not treat content-parsed JSON as structured
+  // success when the provider never attached validated output.structured —
+  // that creates structuredPresent=true with runtimeStructuredPresent=false.
+  if (options?.emissionRequired) {
+    return undefined;
+  }
+
+  // Anthropic json_schema → tool_use often lands only as content JSON (legacy).
   const fromContent = tryParseJsonObject(output.content);
   if (fromContent) return fromContent;
   const fromText = tryParseJsonObject(output.text);
@@ -406,4 +606,23 @@ export function assertRoutingMatchesDispatch(
       `routing/dispatch mismatch: routed ${routedProvider} but dispatched ${actualProvider}`
     );
   }
+}
+
+function providerFailureMessage(
+  report: { readonly trace: { readonly stages?: readonly { readonly stage: string; readonly status: string; readonly message?: string }[] } },
+  failedStage: string | undefined,
+): string {
+  const stageMsg = report.trace.stages
+    ?.slice()
+    .reverse()
+    .find(
+      (s) =>
+        s.stage === failedStage &&
+        s.status === "failed" &&
+        typeof s.message === "string" &&
+        s.message.trim().length > 0
+    )?.message;
+  if (failedStage && stageMsg) return `failed at ${failedStage}: ${stageMsg}`;
+  if (failedStage) return `failed at ${failedStage}`;
+  return "direct execution failed";
 }

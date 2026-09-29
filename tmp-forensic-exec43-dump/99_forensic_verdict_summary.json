@@ -1,0 +1,50 @@
+{
+  "executionId": "exec_43_1789402538385",
+  "exactRequiredCommunication": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+  "boundaries": {
+    "A_compiledComposition_via_CMR_deliverable_composition": {
+      "present": true,
+      "rrcActive": true,
+      "allRequiredResolved": true,
+      "surfaceText": "Sunflower is where children discover their voice, build resilience, develop life skills, and grow into confident, capable humans — from grades 1 through 12.",
+      "provenance": "selected_semantic_direction"
+    },
+    "B_CMR_deliverable_composition": {
+      "present": true,
+      "partName": "deliverable_composition"
+    },
+    "C_flattened_provider_request": {
+      "present": true,
+      "length": 27543,
+      "normalizedFingerprint": "a47c7e70c313d103",
+      "forensicWireFingerprint": "a47c7e70c313d103",
+      "fingerprintMatch": true,
+      "hasRequiredRenderedSection": true
+    },
+    "D_provider_adapter_input": "same CMR flatten path; wire length 27543 matches flat length",
+    "E_provider_wire_prompt": {
+      "fingerprint": "a47c7e70c313d103",
+      "promptLength": 27543,
+      "matchesFlat": true
+    },
+    "F_rendered_text_verification_expectation": {
+      "cdfExpectedOnAssetTexts": null,
+      "cdfSelectedPrimaryMessage": null,
+      "cdfSelectedHeadlineAngle": null,
+      "preFixExpectedTextsFromMeta": [],
+      "rrcWasOnCmrButNotRead": true
+    }
+  },
+  "structuralStampsOnJob": null,
+  "artifactVersion": {
+    "id": "cdfart_mu1g380n_2_social-media-output@1",
+    "onImageCopy": null,
+    "previewVaultAssetId": "6aa81dc9ce0535b89af9bf73",
+    "validationStatus_M4": "passed"
+  },
+  "observationalPlane": {
+    "quality": 24,
+    "validation": "FAIL",
+    "mode": "observational"
+  }
+}

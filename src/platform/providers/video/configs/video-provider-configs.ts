@@ -58,7 +58,7 @@ export const RUNWAY_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("runway", [
 ]);
 
 export const KLING_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("kling", [
-  { label: "Kling 2.1" },
+  { label: "Kling 2.6" },
 ]);
 
 export const LUMA_VIDEO_CONFIG: VideoProviderConfig = fromCatalog("luma", [

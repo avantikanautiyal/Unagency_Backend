@@ -172,6 +172,10 @@ export async function dispatchController(
       capabilityId: body.capabilityId ? String(body.capabilityId) : undefined,
       providerId: body.providerId ? String(body.providerId) : undefined,
       modelId: body.modelId ? String(body.modelId) : undefined,
+      ...(body.providerPinPolicy === "required" ||
+      body.providerPinPolicy === "preferred"
+        ? { providerPinPolicy: body.providerPinPolicy }
+        : {}),
       budgetLimit: body.budgetLimit != null ? Number(body.budgetLimit) : undefined,
       tokenBudgetLimit:
         body.tokenBudgetLimit != null ? Number(body.tokenBudgetLimit) : undefined,
@@ -219,6 +223,37 @@ export async function dispatchController(
       includeDeleted: q.includeDeleted === "true",
     });
   }
+  if (routeId.includes("_artifacts_bundles") && request.method === "POST" && tenant) {
+    const delivery =
+      getEnterpriseApiRuntime()?.platform.durableStores?.asyncMedia?.mediaDelivery;
+    if (!delivery) {
+      return failure(new ValidationError("Media delivery unavailable"));
+    }
+    const items = (Array.isArray(body.items) ? body.items : []).flatMap((raw) => {
+      const item = (raw ?? {}) as Record<string, unknown>;
+      const artifactId = String(item.artifactId ?? "").trim();
+      if (!artifactId || artifactId.startsWith("cdfart_")) return [];
+      const name = String(item.name ?? "").trim() || artifactId;
+      return [{ artifactId, name }];
+    });
+    if (items.length === 0) {
+      return failure(new ValidationError("items must include at least one art_* artifactId"));
+    }
+    const formats = (Array.isArray(body.formats) ? body.formats : [])
+      .map((f) => String(f).trim().toLowerCase())
+      .filter((f): f is "png" | "jpg" | "pdf" => f === "png" || f === "jpg" || f === "pdf");
+    return delivery.createArtifactBundleUrl({
+      organizationId: tenant.organizationId,
+      bundleName: String(body.name ?? "").trim() || "download",
+      items,
+      ...(formats.length ? { formats } : {}),
+      ...(typeof body.readme === "string" && body.readme.trim()
+        ? { readme: body.readme }
+        : {}),
+      publicOrigin: publicOriginFromRequest(request),
+    });
+  }
+
   if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_content")) {
     const apiRuntime = getEnterpriseApiRuntime();
     const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
@@ -457,6 +492,31 @@ export async function dispatchController(
     }
     return success(payload);
   }
+  if (routeId.includes("_admin_ai-costs_sync-provider-billing")) {
+    const { syncAdminProviderBilling } = await import("../services/admin-ai-costs-service");
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const payload = await syncAdminProviderBilling({
+      start: typeof body.start === "string" ? body.start : undefined,
+      end: typeof body.end === "string" ? body.end : undefined,
+      days: typeof body.days === "number" ? body.days : undefined,
+    });
+    return success(payload);
+  }
+  if (routeId.includes("_admin_provider-health")) {
+    const apiRuntime = getEnterpriseApiRuntime();
+    const runtime = apiRuntime?.platform.toolRuntime?.runtime;
+    if (!runtime || typeof runtime.getProviderHealthSnapshots !== "function") {
+      return success({
+        providers: [],
+        note: "provider runtime not available in this process",
+        timestamp: new Date().toISOString(),
+      });
+    }
+    return success({
+      providers: runtime.getProviderHealthSnapshots(),
+      timestamp: new Date().toISOString(),
+    });
+  }
   if (routeId.includes("_admin_dashboard")) {
     const roles = principal?.roles ?? [];
     const { buildAdminDashboard } = await import("../services/admin-dashboard-service");
@@ -519,6 +579,12 @@ export async function dispatchController(
       monthlyTrend: summary.monthlyTrend,
       costByProvider: summary.costByProvider,
       byOrganization: summary.byOrganization,
+      aiCostUsd: summary.aiCostUsd,
+      aiCostProviderReportedUsd: summary.aiCostProviderReportedUsd,
+      aiCostEstimatedUsd: summary.aiCostEstimatedUsd,
+      usdToInrRate: summary.usdToInrRate,
+      lastProviderReconciliationAt: summary.lastProviderReconciliationAt,
+      providerDataThrough: summary.providerDataThrough,
     });
   }
   if (routeId.includes("_notifications")) return success([]);
@@ -645,7 +711,6 @@ export async function dispatchController(
 
   if (routeId.includes("_cdf_") && tenant) {
     const {
-      applyCdfTransition,
       getCdfSessionResult,
       listCdfServiceIds,
       resolveCdfServiceConfig,
@@ -675,17 +740,38 @@ export async function dispatchController(
     }
 
     if (routeId.includes("_cdf_sessions") && request.method === "POST") {
-      const started = applyCdfTransition({
+      const { executeCdfActionAsync } = await import(
+        "../../cdf/state-machine/execute-action"
+      );
+      const started = await executeCdfActionAsync({
         action: "start",
         serviceId: String(body.serviceId ?? ""),
         productMode: body.productMode as "ai" | "hybrid" | "human" | undefined,
         projectId: body.projectId ? String(body.projectId) : undefined,
+        contractVersion: body.contractVersion
+          ? String(body.contractVersion)
+          : undefined,
+        requestId: body.requestId
+          ? String(body.requestId)
+          : ((request.headers["idempotency-key"] ??
+              request.headers["x-idempotency-key"]) as string | undefined),
         organizationId: tenant.organizationId,
         workspaceId: tenant.workspaceId,
         userId: principal?.principalId,
       });
       if (started.ok) {
-        await persistCdfSession(started.value.session);
+        try {
+          await persistCdfSession(started.value.session);
+        } catch (err) {
+          return failure(
+            err instanceof ValidationError
+              ? err
+              : new ValidationError(
+                  err instanceof Error ? err.message : String(err),
+                  { reason: "CDF_SESSION_DURABILITY_FAILED" },
+                ),
+          );
+        }
       }
       return started;
     }
@@ -700,7 +786,10 @@ export async function dispatchController(
       if (sessionId) {
         await ensureCdfSessionLoaded(sessionId);
       }
-      const transitioned = applyCdfTransition({
+      const {
+        executeCdfActionAsync,
+      } = await import("../../cdf/state-machine/execute-action");
+      const transitioned = await executeCdfActionAsync({
         sessionId,
         serviceId: body.serviceId ? String(body.serviceId) : undefined,
         action: body.action as never,
@@ -710,21 +799,200 @@ export async function dispatchController(
           body.routeIndex != null && Number.isFinite(Number(body.routeIndex))
             ? Number(body.routeIndex)
             : undefined,
+        choiceId: body.choiceId ? String(body.choiceId) : undefined,
+        routeTitle: body.routeTitle ? String(body.routeTitle) : undefined,
+        routeLabel: body.routeLabel ? String(body.routeLabel) : undefined,
+        routeDesc: body.routeDesc ? String(body.routeDesc) : undefined,
+        routeInput: body.routeInput ? String(body.routeInput) : undefined,
         refinePrompt: body.refinePrompt ? String(body.refinePrompt) : undefined,
+        refineScope: body.refineScope ? String(body.refineScope) : undefined,
         finalAction: body.finalAction ? String(body.finalAction) : undefined,
+        finalActionId: body.finalActionId
+          ? String(body.finalActionId)
+          : undefined,
         artifactId: body.artifactId ? String(body.artifactId) : undefined,
+        artifactVersion:
+          body.artifactVersion != null &&
+          Number.isFinite(Number(body.artifactVersion))
+            ? Number(body.artifactVersion)
+            : undefined,
+        artifactKey: body.artifactKey ? String(body.artifactKey) : undefined,
+        contextId: body.contextId ? String(body.contextId) : undefined,
+        contextHash: body.contextHash ? String(body.contextHash) : undefined,
         executionId: body.executionId ? String(body.executionId) : undefined,
         note: body.note ? String(body.note) : undefined,
         projectId: body.projectId ? String(body.projectId) : undefined,
         productMode: body.productMode as "ai" | "hybrid" | "human" | undefined,
+        platform: body.platform ? String(body.platform) : undefined,
+        format: body.format ? String(body.format) : undefined,
+        subtype: body.subtype ? String(body.subtype) : undefined,
+        category: body.category ? String(body.category) : undefined,
+        generationFanoutGroupId: body.generationFanoutGroupId
+          ? String(body.generationFanoutGroupId)
+          : undefined,
+        generationFanoutTargetId: body.generationFanoutTargetId
+          ? String(body.generationFanoutTargetId)
+          : undefined,
+        visualArtifactId: body.visualArtifactId
+          ? String(body.visualArtifactId)
+          : undefined,
+        visualArtifactVersion:
+          body.visualArtifactVersion != null &&
+          Number.isFinite(Number(body.visualArtifactVersion))
+            ? Number(body.visualArtifactVersion)
+            : undefined,
+        presentationEligibilityStatus: body.presentationEligibilityStatus
+          ? String(body.presentationEligibilityStatus)
+          : undefined,
+        providerId: body.providerId ? String(body.providerId) : undefined,
+        modelId: body.modelId ? String(body.modelId) : undefined,
+        expectedVersion:
+          body.expectedVersion != null &&
+          Number.isFinite(Number(body.expectedVersion))
+            ? Number(body.expectedVersion)
+            : undefined,
+        requestId: body.requestId
+          ? String(body.requestId)
+          : ((request.headers["idempotency-key"] ??
+              request.headers["x-idempotency-key"]) as string | undefined),
+        contractVersion: body.contractVersion
+          ? String(body.contractVersion)
+          : undefined,
         organizationId: tenant.organizationId,
         workspaceId: tenant.workspaceId,
         userId: principal?.principalId,
       });
+      // CAS path already persists when mutating; start still needs durability.
       if (transitioned.ok) {
-        await persistCdfSession(transitioned.value.session);
+        try {
+          await persistCdfSession(transitioned.value.session);
+        } catch (err) {
+          return failure(
+            err instanceof ValidationError
+              ? err
+              : new ValidationError(
+                  err instanceof Error ? err.message : String(err),
+                  { reason: "CDF_SESSION_DURABILITY_FAILED" },
+                ),
+          );
+        }
       }
       return transitioned;
+    }
+
+    if (
+      routeId.includes("_cdf_artifacts_") &&
+      routeId.includes("_render") &&
+      request.method === "POST" &&
+      params.artifactId &&
+      params.version
+    ) {
+      const {
+        httpRenderArtifact,
+        CdfRenderError,
+        createMediaFileVaultAssetResolver,
+        getDefaultVaultAssetResolver,
+        setDefaultVaultAssetResolver,
+      } = await import("../../cdf/rendering");
+      // Fail-closed durability: ensure MediaFile→blob resolver is bound for render.
+      if (!getDefaultVaultAssetResolver()) {
+        try {
+          const { getProductAssetBlobStorage } = await import(
+            "../../../services/product-asset-storage"
+          );
+          const asyncMedia =
+            getEnterpriseApiRuntime()?.platform.durableStores?.asyncMedia;
+          const primary =
+            asyncMedia?.blobStorage ?? getProductAssetBlobStorage();
+          const product = getProductAssetBlobStorage();
+          setDefaultVaultAssetResolver(
+            createMediaFileVaultAssetResolver({
+              blobStorage: primary,
+              fallbackBlobStorage: product !== primary ? product : undefined,
+            }),
+          );
+        } catch {
+          // renderArtifact fails closed with ASSET_NOT_FOUND if still unset
+        }
+      }
+      try {
+        const file = await httpRenderArtifact({
+          artifactId: String(params.artifactId),
+          artifactVersion: Number(params.version),
+          body: {
+            format: body.format as never,
+            purpose: body.purpose as never,
+            options: body.options as never,
+            rendererVersion: body.rendererVersion
+              ? String(body.rendererVersion)
+              : undefined,
+            requestId: body.requestId
+              ? String(body.requestId)
+              : ((request.headers["idempotency-key"] ??
+                  request.headers["x-idempotency-key"]) as string | undefined),
+            artifactKey: body.artifactKey
+              ? String(body.artifactKey)
+              : undefined,
+          },
+          organizationId: tenant.organizationId,
+          workspaceId: tenant.workspaceId,
+          projectId: body.projectId ? String(body.projectId) : undefined,
+          deps: {
+            vaultAssetResolver: getDefaultVaultAssetResolver(),
+          },
+        });
+        return success({
+          ...file,
+          /** Compatibility aliases — FE still may look for media art_* elsewhere. */
+          renderedFileId: file.fileId,
+          downloadPath: `/v1/cdf/rendered-files/${file.fileId}/content`,
+        });
+      } catch (err) {
+        if (err instanceof CdfRenderError) {
+          return failure(err);
+        }
+        throw err;
+      }
+    }
+
+    if (
+      routeId.includes("_cdf_rendered-files_") &&
+      params.fileId &&
+      request.method === "GET"
+    ) {
+      const {
+        httpGetRenderedFile,
+        httpGetRenderedFileBytes,
+        CdfRenderError,
+      } = await import("../../cdf/rendering");
+      try {
+        if (routeId.includes("_content")) {
+          const { file, bytes } = await httpGetRenderedFileBytes({
+            fileId: String(params.fileId),
+            organizationId: tenant.organizationId,
+          });
+          return success({
+            fileId: file.fileId,
+            mimeType: file.mimeType,
+            checksum: file.checksum,
+            byteLength: file.byteLength,
+            artifactId: file.artifactId,
+            artifactVersion: file.artifactVersion,
+            /** Base64 payload for gateway streaming adapters. */
+            contentBase64: Buffer.from(bytes).toString("base64"),
+          });
+        }
+        const file = httpGetRenderedFile({
+          fileId: String(params.fileId),
+          organizationId: tenant.organizationId,
+        });
+        return success(file);
+      } catch (err) {
+        if (err instanceof CdfRenderError) {
+          return failure(err);
+        }
+        throw err;
+      }
     }
   }
 

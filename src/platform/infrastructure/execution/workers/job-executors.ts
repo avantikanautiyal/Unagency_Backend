@@ -18,6 +18,7 @@ import { isImageGenerationCapability } from "../../../providers/common/resolve-e
 import {
   isRequiredDocumentOrPresentationExport,
   isSoftDocumentExportMiss,
+  shouldRunDocumentExportMaterialization,
 } from "../../../api/services/document-export-materializer";
 import {
   resolveWebsiteExport,
@@ -43,7 +44,7 @@ export type DocumentExportMaterializer = (input: {
 }) => Promise<
   Result<{
     readonly artifactIds: readonly string[];
-    readonly structuredData?: unknown;
+    readonly documentExportPlan?: unknown;
     readonly exportKind?: string;
   }>
 >;
@@ -115,9 +116,24 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
         job.jobId
     );
 
+    const jobMetadata = {
+      ...(job.payload.metadata ?? {}),
+      distributedJobId: String(job.jobId),
+      queueKind: job.queueKind,
+      enterpriseExecutionMode: executionMode,
+      capabilityHint: capabilityId,
+      capabilityId,
+    };
+    const { resolveCanonicalModelRequestFromCarrier } = await import(
+      "../../../ai/canonical-model-request"
+    );
+    const canonicalModelRequest =
+      resolveCanonicalModelRequestFromCarrier(jobMetadata);
+
     const integrationRequest = {
       requestId: apiExecutionId,
       rawPrompt: job.payload.rawPrompt,
+      ...(canonicalModelRequest ? { canonicalModelRequest } : {}),
       organizationId: job.payload.organizationId
         ? asOrganizationId(job.payload.organizationId)
         : undefined,
@@ -129,14 +145,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       tokenBudgetLimit: job.payload.tokenBudgetLimit,
       correlationId: job.payload.correlationId ?? String(job.jobId),
       mode: integrationMode,
-      metadata: {
-        ...(job.payload.metadata ?? {}),
-        distributedJobId: String(job.jobId),
-        queueKind: job.queueKind,
-        enterpriseExecutionMode: executionMode,
-        capabilityHint: capabilityId,
-        capabilityId,
-      },
+      metadata: jobMetadata,
     } as const;
 
     const result = await runDirectProviderExecution({
@@ -162,6 +171,43 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
         durationMs: Date.now() - start,
       }),
     };
+    try {
+      const sd =
+        summary.structuredEmissionData ?? summary.structuredData;
+      const keys =
+        sd && typeof sd === "object" && !Array.isArray(sd)
+          ? Object.keys(sd as object).slice(0, 24)
+          : [];
+      const runtimeOut = report.artifacts.runtime?.response?.output as
+        | Readonly<Record<string, unknown>>
+        | undefined;
+      // eslint-disable-next-line no-console
+      console.info(
+        JSON.stringify({
+          scope: "execution.structured_completion",
+          event: "job_summary",
+          executionId: apiExecutionId,
+          jobId: String(job.jobId),
+          structuredPresent: sd != null,
+          structuredKeyCount: keys.length,
+          structuredKeys: keys,
+          runtimeStructuredPresent: runtimeOut?.structured != null,
+          structuredPayloadHash:
+            typeof summary.structuredPayloadHash === "string"
+              ? summary.structuredPayloadHash
+              : undefined,
+          structuredContractName:
+            typeof summary.structuredContractName === "string"
+              ? summary.structuredContractName
+              : undefined,
+          resultKeys: runtimeOut ? Object.keys(runtimeOut).slice(0, 24) : [],
+          path: "distributed_worker",
+          ts: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      // ignore
+    }
 
     const capability =
       (typeof job.payload.capabilityHint === "string" &&
@@ -195,7 +241,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       );
       const modelId = String(
         report.artifacts.runtime?.finalModelId ??
-          summary.routedModelId ??
+          summary.actualModelId ??
           summary.model ??
           "unknown"
       );
@@ -239,6 +285,9 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       (job.payload.metadata?.structuredOutput as { name?: unknown } | undefined)
         ?.name ?? ""
     ).toLowerCase();
+    const metaForExport = job.payload.metadata as
+      | Readonly<Record<string, unknown>>
+      | undefined;
     const likelyDocumentExport =
       summary.structuredData != null ||
       structuredNameHint === "documentplan" ||
@@ -246,9 +295,15 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       structuredNameHint === "presentationroutes" ||
       structuredNameHint === "presentationrouteconcepts" ||
       structuredNameHint === "emailplan";
+    const runDocumentExport =
+      likelyDocumentExport &&
+      shouldRunDocumentExportMaterialization({
+        metadata: metaForExport,
+        structuredData: summary.structuredData,
+      });
     if (
       report.success &&
-      likelyDocumentExport &&
+      runDocumentExport &&
       this.options.materializeDocumentExport
     ) {
       const executionId = String(
@@ -269,7 +324,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       );
       const modelId = String(
         report.artifacts.runtime?.finalModelId ??
-          summary.routedModelId ??
+          summary.actualModelId ??
           summary.model ??
           "unknown"
       );
@@ -285,8 +340,8 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       if (exported.ok) {
         summary = {
           ...summary,
-          ...(exported.value.structuredData !== undefined
-            ? { structuredData: exported.value.structuredData }
+          ...(exported.value.documentExportPlan !== undefined
+            ? { documentExportPlan: exported.value.documentExportPlan }
             : {}),
           ...(exported.value.exportKind
             ? { documentExportKind: exported.value.exportKind }
@@ -380,7 +435,7 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
       );
       const modelId = String(
         report.artifacts.runtime?.finalModelId ??
-          summary.routedModelId ??
+          summary.actualModelId ??
           summary.model ??
           "unknown"
       );
@@ -455,17 +510,21 @@ export class IntegrationLayerJobExecutor implements IJobExecutor {
     }
 
     const provider =
-      typeof summary.routedProviderId === "string"
-        ? summary.routedProviderId
+      typeof summary.actualProviderId === "string"
+        ? summary.actualProviderId
         : typeof summary.provider === "string"
           ? summary.provider
-          : "unresolved";
+          : typeof summary.routedProviderId === "string"
+            ? summary.routedProviderId
+            : "unresolved";
     const model =
-      typeof summary.routedModelId === "string"
-        ? summary.routedModelId
+      typeof summary.actualModelId === "string"
+        ? summary.actualModelId
         : typeof summary.model === "string"
           ? summary.model
-          : "unresolved";
+          : typeof summary.finalModelId === "string"
+            ? summary.finalModelId
+            : "unresolved";
     const evaluationScore =
       typeof summary.evaluationScore === "number"
         ? summary.evaluationScore

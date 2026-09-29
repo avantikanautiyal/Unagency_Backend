@@ -22,7 +22,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Social Media",
       mantra: "Make one idea worth stopping for.",
       compositionPrompt:
-        "Create a 5-page UNAGENCY service carousel: cover, problem, approach, deliverables, Start a project. Preserve one heading position across all pages.",
+        "Compose a focused social creative for the approved brand (carousel only when the brief requests multiple frames): one idea, clear hierarchy, and consistent heading position across frames.",
       coverage: Object.freeze([
         "Strategy",
         "Content design",
@@ -60,7 +60,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Web Tech",
       mantra: "Design the action, not just the screen.",
       compositionPrompt:
-        "UNAGENCY landing page: concise service promise, three outcomes, process, proof placeholders labeled as examples, and Start a project. Never fabricate testimonials.",
+        "Landing page for the approved brand: concise promise, three outcomes, process, proof placeholders labeled as examples, and a clear next-step CTA. Never fabricate testimonials.",
       coverage: Object.freeze([
         "Corporate website",
         "E-com website",
@@ -100,7 +100,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Branding & Logo",
       mantra: "One identity. Recognizable everywhere.",
       compositionPrompt:
-        "Use only the supplied UNAGENCY wordmark. Black and white are the identity base; muted teal is annotation-only, not a confirmed brand palette.",
+        "Use only the supplied brand wordmark/artwork. Prefer clear contrast; do not invent a monogram or expand the palette from guide annotations.",
       coverage: Object.freeze([
         "Logo design",
         "Visual identity",
@@ -135,7 +135,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Packaging Design",
       mantra: "Respect the structure. Protect the truth.",
       compositionPrompt:
-        "UNAGENCY sample carton: front identity and purpose; side panel for supporting information; back panel for approved details. Sample dimensions are illustrative, not manufacturing approval.",
+        "Sample carton for the approved brand: front identity and purpose; side panel for supporting information; back panel for approved details. Sample dimensions are illustrative, not manufacturing approval.",
       coverage: Object.freeze([
         "Boxes & cartons",
         "Pouches / wrappers",
@@ -173,7 +173,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Print & OOH",
       mantra: "Read at the distance it will live.",
       compositionPrompt:
-        "UNAGENCY A3 poster: one large headline, one central visual, the wordmark and Start a project. Show trim, bleed and live area on the proof, not the final creative.",
+        "A3 poster for the approved brand: one large headline, one central visual, the wordmark and a clear CTA. Show trim, bleed and live area on the proof, not the final creative.",
       coverage: Object.freeze([
         "Brochures",
         "Leaflets",
@@ -210,7 +210,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Video & Motion",
       mantra: "Make every second earn its place.",
       compositionPrompt:
-        "UNAGENCY 15-second promo: 0–1 s identity/hook; 1–5 s problem; 5–11 s solution; 11–15 s Start a project. Timing is an example house format.",
+        "15-second promo for the approved brand: 0–1 s identity/hook; 1–5 s problem; 5–11 s solution; 11–15 s CTA. Timing is an example house format.",
       coverage: Object.freeze([
         "Corporate films",
         "Explainer / promo videos",
@@ -249,7 +249,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Presentations",
       mantra: "One slide. One useful conclusion.",
       compositionPrompt:
-        "UNAGENCY pitch slide: headline on top, one proof visual below, a one-sentence implication and a clear next step.",
+        "Pitch slide for the approved brand: headline on top, one proof visual below, a one-sentence implication and a clear next step.",
       coverage: Object.freeze([
         "Corporate",
         "Pitch decks",
@@ -287,7 +287,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Email Design",
       mantra: "One message that survives the inbox.",
       compositionPrompt:
-        "UNAGENCY newsletter: concise masthead, feature story, three service updates and Start a project. Keep the primary action above the long editorial tail.",
+        "Newsletter for the approved brand: concise masthead, feature story, supporting updates and a clear CTA. Keep the primary action above the long editorial tail.",
       coverage: Object.freeze(["Emailers", "Newsletters", "GIFs", "Other"]),
       checkFirst: [
         hygieneCheck({
@@ -317,7 +317,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "POS / In-Store",
       mantra: "Win the glance. Help the next action.",
       compositionPrompt:
-        "UNAGENCY booth: wordmark at approach level, one offer at eye level, clear consultation CTA on the counter and separate operational signage.",
+        "Booth for the approved brand: wordmark at approach level, one offer at eye level, clear consultation CTA on the counter and separate operational signage.",
       coverage: Object.freeze([
         "Product display units",
         "Branding elements",
@@ -354,7 +354,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Merchandise",
       mantra: "Design for the material, not the mockup.",
       compositionPrompt:
-        "UNAGENCY black T-shirt with white wordmark, centered in the approved chest area. Use the actual garment sample to validate size and contrast.",
+        "Apparel mock for the approved brand: wordmark centered in the approved print area. Use the actual garment sample to validate size and contrast.",
       coverage: Object.freeze([
         "T-shirts / jackets",
         "Caps",
@@ -392,7 +392,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Illustration",
       mantra: "Keep the visual language consistent.",
       compositionPrompt:
-        "UNAGENCY infographic: three stages, consistent stroke weight, short labels and one source note. No invented research statistic.",
+        "Infographic for the approved brand: three stages, consistent stroke weight, short labels and one source note. No invented research statistic.",
       coverage: Object.freeze([
         "Concept art",
         "Mascot design",
@@ -427,7 +427,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Visual Production",
       mantra: "Preserve what is real and approved.",
       compositionPrompt:
-        "UNAGENCY production example: retain full subject, clean edges and realistic shadow. Show crop boundaries separately from the final export.",
+        "Production cutout for the approved subject: retain full subject, clean edges and realistic shadow. Show crop boundaries separately from the final export.",
       coverage: Object.freeze([
         "Product",
         "Lifestyle",
@@ -465,7 +465,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Brand Strategy",
       mantra: "Make a decision the work can follow.",
       compositionPrompt:
-        "UNAGENCY strategy map: audience need → promise → proof → creative direction → measurement. Use example labels instead of fictional market findings.",
+        "Strategy map for the approved brand: audience need → promise → proof → creative direction → measurement. Use example labels instead of fictional market findings.",
       coverage: Object.freeze([
         "Research / audit",
         "Positioning",
@@ -502,7 +502,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Ad Campaigns",
       mantra: "Connect the idea to the outcome.",
       compositionPrompt:
-        "UNAGENCY concept test: identical placement, headline and CTA; compare two compositions. Record the hypothesis before comparing campaign outcomes.",
+        "Concept test for the approved brand: identical placement, headline and CTA; compare two compositions. Record the hypothesis before comparing campaign outcomes.",
       coverage: Object.freeze([
         "Performance ads",
         "Campaign concept",
@@ -536,7 +536,7 @@ export const SERVICE_VISUAL_RECIPES: readonly ServiceVisualRecipe[] =
       title: "Event Branding",
       mantra: "One identity across the whole journey.",
       compositionPrompt:
-        "UNAGENCY event system: invitation → arrival → registration → stage → follow-up. Preserve the same wordmark and core hierarchy at each touchpoint.",
+        "Event system for the approved brand: invitation → arrival → registration → stage → follow-up. Preserve the same wordmark and core hierarchy at each touchpoint.",
       coverage: Object.freeze([
         "Event concept",
         "Event identity",

@@ -22,7 +22,8 @@ const VAULT_LOGO_B = "bbbbbbbbbbbbbbbbbbbbbbbb";
 const ATTACHED_LOGO = "cccccccccccccccccccccccc";
 const ATTACHED_LOGO_2 = "dddddddddddddddddddddddd";
 
-const ORIGINAL_PROMPT = "Create a merchandise mockup using our brand logo.";
+// Names a variant no vault logo matches, so the logo question is still asked.
+const ORIGINAL_PROMPT = "Create a merchandise mockup using our stacked logo.";
 
 function brandingState(
   overrides: Partial<ServiceAiConversationState> = {},
@@ -131,7 +132,7 @@ describe("P4.9.7.1 — logo clarification presentation + selection", () => {
     expect(turn.clarification?.question).not.toMatch(/deliverable or version/i);
   });
 
-  it("2. Vault + attachment with different logos → clarification contains both", () => {
+  it("2. Vault + attachment with different logos → the attached logo wins", () => {
     const turn = resolveTurn("Design packaging with our logo.", {
       logoDiscovery: {
         vaultCandidates: [
@@ -140,12 +141,26 @@ describe("P4.9.7.1 — logo clarification presentation + selection", () => {
         attachmentLogoAssetIds: [ATTACHED_LOGO],
       },
     });
-    expect(turn.clarification?.kind).toBe("logo_selection");
-    const assetIds = turn.clarification?.logoCandidates?.map((c) => c.assetId);
-    expect(assetIds).toEqual(expect.arrayContaining([VAULT_LOGO_A, ATTACHED_LOGO]));
-    expect(turn.clarification?.logoCandidates?.find((c) => c.assetId === ATTACHED_LOGO)?.source).toBe(
-      "ATTACHMENT",
-    );
+    expect(turn.clarification).toBeUndefined();
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(ATTACHED_LOGO);
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.source).toBe("ATTACHMENT");
+  });
+
+  it("2b. multiple Vault logos, no stated preference → primary logo, no question", () => {
+    const turn = resolveTurn("Create a merchandise mockup using our brand logo.", {
+      logoDiscovery: multiLogoDiscovery(),
+    });
+    expect(turn.clarification).toBeUndefined();
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("USE_EXISTING");
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(VAULT_LOGO_A);
+  });
+
+  it("2c. brief names a variant that matches one Vault logo → that logo", () => {
+    const turn = resolveTurn("Create a merchandise mockup using our white logo.", {
+      logoDiscovery: multiLogoDiscovery(),
+    });
+    expect(turn.clarification).toBeUndefined();
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(VAULT_LOGO_B);
   });
 
   it("3. multiple attachments → clarification contains all candidates", () => {
@@ -211,16 +226,13 @@ describe("P4.9.7.1 — logo clarification presentation + selection", () => {
   it('8. "Use the attached logo." → resolves attachment when unambiguous', () => {
     const first = resolveTurn("Design packaging with our logo.", {
       logoDiscovery: {
-        vaultCandidates: [
-          { assetId: VAULT_LOGO_A, source: "VAULT", name: "Vault Logo" },
-        ],
-        attachmentLogoAssetIds: [ATTACHED_LOGO],
+        attachmentLogoAssetIds: [ATTACHED_LOGO, ATTACHED_LOGO_2],
       },
     });
-    const second = resolveTurn("Use the attached logo.", {
+    const second = resolveTurn("Use the second one.", {
       state: brandingState({ taskIntelligence: first.updatedTaskState }),
     });
-    expect(second.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(ATTACHED_LOGO);
+    expect(second.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(ATTACHED_LOGO_2);
     expect(second.executionSpec?.referenceAssets?.logo?.value.source).toBe("ATTACHMENT");
   });
 
@@ -306,7 +318,7 @@ describe("P4.9.7.1 — logo clarification presentation + selection", () => {
 
   it("15. substantive BloomSip brief prefers logo selection over generic deictic ASK", () => {
     const brief =
-      "Brand: BloomSip. Create a vertical conversion ad with the chilled can in the center, peach and basil in motion around it. CTA: Shop Now.";
+      "Brand: BloomSip. Create a vertical conversion ad with the chilled can in the center, peach and basil in motion around it. Use our stacked logo. CTA: Shop Now.";
     const turn = resolveTurn(brief, {
       messages: [
         userMsg("Brief 1", { executionId: "exec_a" }),
@@ -330,7 +342,7 @@ describe("P4.9.7.1 — logo clarification presentation + selection", () => {
 
   it("16. CONVERSATIONAL_RESPONSE + substantive brief still prefers logo selection", () => {
     const brief =
-      "Brand: BloomSip. Deliverable: Meta Story conversion ad. Create a vertical conversion ad with peach and basil in motion around it. CTA: Shop Now.";
+      "Brand: BloomSip. Deliverable: Meta Story conversion ad. Create a vertical conversion ad with peach and basil in motion around it. Use our stacked logo. CTA: Shop Now.";
     const first = resolveTurn(brief, {
       messages: [
         userMsg("Brief 1", { executionId: "exec_a" }),

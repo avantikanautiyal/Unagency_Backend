@@ -167,17 +167,33 @@ export function mapOpenAiCompatSseData(
   const usage = json.usage as Record<string, unknown> | undefined;
   if (usage && typeof usage === "object") {
     const promptTokens =
-      typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null;
+      typeof usage.prompt_tokens === "number"
+        ? usage.prompt_tokens
+        : typeof usage.input_tokens === "number"
+          ? usage.input_tokens
+          : null;
     const completionTokens =
       typeof usage.completion_tokens === "number"
         ? usage.completion_tokens
-        : null;
+        : typeof usage.output_tokens === "number"
+          ? usage.output_tokens
+          : null;
     const totalTokens =
       typeof usage.total_tokens === "number"
         ? usage.total_tokens
         : promptTokens != null || completionTokens != null
           ? (promptTokens ?? 0) + (completionTokens ?? 0)
           : null;
+    const costInUsdTicks =
+      typeof usage.cost_in_usd_ticks === "number" ? usage.cost_in_usd_ticks : null;
+    const promptCacheHitTokens =
+      typeof usage.prompt_cache_hit_tokens === "number"
+        ? usage.prompt_cache_hit_tokens
+        : null;
+    const promptCacheMissTokens =
+      typeof usage.prompt_cache_miss_tokens === "number"
+        ? usage.prompt_cache_miss_tokens
+        : null;
     events.push({
       ...base,
       type: "usage.final",
@@ -186,6 +202,9 @@ export function mapOpenAiCompatSseData(
         promptTokens,
         completionTokens,
         totalTokens,
+        ...(costInUsdTicks != null ? { costInUsdTicks } : {}),
+        ...(promptCacheHitTokens != null ? { promptCacheHitTokens } : {}),
+        ...(promptCacheMissTokens != null ? { promptCacheMissTokens } : {}),
       },
       at,
     });

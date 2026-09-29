@@ -82,6 +82,12 @@ function normalizeUsage(
     ),
     totalTokens: num(pick(u, ["totalTokens", "total_tokens"])),
     reasoningTokens: num(pick(u, ["reasoningTokens", "reasoning_tokens"])),
+    cachedTokens: num(pick(u, ["cachedTokens", "cached_tokens"])),
+    promptCacheHitTokens: num(pick(u, ["promptCacheHitTokens", "prompt_cache_hit_tokens"])),
+    promptCacheMissTokens: num(pick(u, ["promptCacheMissTokens", "prompt_cache_miss_tokens"])),
+    cacheReadInputTokens: num(pick(u, ["cacheReadInputTokens", "cache_read_input_tokens"])),
+    costInUsdTicks: num(pick(u, ["costInUsdTicks", "cost_in_usd_ticks"])),
+    costUsd: num(pick(u, ["costUsd", "cost_usd"])),
   };
 }
 

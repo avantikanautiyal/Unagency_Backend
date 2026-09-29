@@ -10,8 +10,8 @@ const DEFAULTS: Readonly<Record<string, string>> = {
   anthropic: "anthropic/claude-sonnet-4-5",
   "provider.gemini": "gemini/gemini-3.6-flash",
   gemini: "gemini/gemini-3.6-flash",
-  "provider.google": "google/gemini-2.5-flash-image",
-  google: "google/gemini-2.5-flash-image",
+  "provider.google": "google/gemini-3.1-flash-image",
+  google: "google/gemini-3.1-flash-image",
   "provider.groq": "groq/llama-3.3-70b-versatile",
   groq: "groq/llama-3.3-70b-versatile",
   "provider.deepseek": "deepseek/deepseek-chat",
@@ -80,8 +80,8 @@ const GEMINI_SAFE_REMAP: Readonly<Record<string, string>> = {
   "gemini-1.5-pro": "gemini-pro-latest",
 };
 
-const OPENAI_IMAGE_DEFAULT = "openai/gpt-image-1.5";
-const GOOGLE_IMAGE_DEFAULT = "google/gemini-2.5-flash-image";
+const OPENAI_IMAGE_DEFAULT = "openai/gpt-image-2.5-sunburst";
+const GOOGLE_IMAGE_DEFAULT = "google/gemini-3.1-flash-image";
 const IDEOGRAM_IMAGE_DEFAULT = "ideogram/ideogram-3";
 
 function wireOf(modelId: string): string {
@@ -182,4 +182,18 @@ export function resolveExecutableModelId(
   }
 
   return modelId.includes("/") ? modelId : withVendorPrefix(providerId, wire);
+}
+
+/**
+ * The model that will actually be dispatched, expressed in the caller's form
+ * (vendor prefix only when the input carried one). Authoritative identity for
+ * attempt history / winner / actualModel — never the pre-remap routing id.
+ * Idempotent.
+ */
+export function resolveExecutedModelIdentity(
+  providerId: string,
+  modelId: string,
+): string {
+  const executable = resolveExecutableModelId(providerId, modelId);
+  return modelId.includes("/") ? executable : wireOf(executable);
 }

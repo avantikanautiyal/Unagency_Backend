@@ -112,6 +112,13 @@ export function createAsyncMediaPlatform(
     artifacts,
     usageStore: options.tenantUsage,
     blobAccess,
+    blobStorage,
+    blobMetadata,
+    // Video vendors (Luma / Hailuo) routinely need 10–30+ minutes; keep a
+    // generous local poll window. Exhaustion auto-extends a few times.
+    maxOperationDurationMs: 7_200_000,
+    // Multi-clip compose holds the claim while continue segments run.
+    leaseTtlMs: 2_400_000,
   });
 
   return {

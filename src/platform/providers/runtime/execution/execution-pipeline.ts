@@ -31,6 +31,10 @@ import type { IStreamingRuntime } from "../interfaces/streaming-runtime";
 import type { ITimeoutEngine } from "../interfaces/timeout-engine";
 import type { ProviderExecutionSession } from "../sessions/provider-execution-session";
 import { getUsageAccountingService } from "../../../accounting/usage/usage-accounting-service";
+import { classifyExecutionFailure } from "../../routing/performance/failover/failure-classification";
+import type { CircuitBreaker } from "../circuit-breaker/circuit-breaker";
+import { extractProviderErrorDiagnostics } from "../diagnostics/provider-error-extraction";
+import type { CircuitOutcomeContext } from "../diagnostics/circuit-transition-log";
 
 type Settled<T> =
   | { readonly tag: "value"; readonly value: T }
@@ -48,6 +52,72 @@ export interface ExecutionPipelineDependencies {
   readonly sleep: (ms: number) => Promise<void>;
 }
 
+function correlationFromSession(session: ProviderExecutionSession): {
+  executionId?: string;
+  correlationId?: string;
+  requestId: string;
+  model?: string;
+  capability?: string;
+} {
+  const ctx = session.request.context;
+  const meta = session.request.metadata ?? {};
+  return {
+    executionId: ctx?.executionId ? String(ctx.executionId) : undefined,
+    correlationId:
+      (ctx?.correlationId ? String(ctx.correlationId) : undefined) ??
+      (typeof meta.correlationId === "string" ? meta.correlationId : undefined),
+    requestId: session.requestId,
+    model: session.request.modelId ? String(session.request.modelId) : undefined,
+    capability: session.request.capabilityId
+      ? String(session.request.capabilityId)
+      : undefined,
+  };
+}
+
+function toExecutionError(
+  error: unknown,
+  extras?: Partial<ProviderExecutionError>
+): ProviderExecutionError {
+  const extracted = extractProviderErrorDiagnostics(error);
+  const code =
+    extras?.code ??
+    (error && typeof error === "object" && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "PROVIDER_ERROR");
+  const message =
+    extras?.message ??
+    extracted.sanitizedMessage ??
+    (error instanceof Error ? error.message : "provider execution failed");
+  const providerErrorCode =
+    extras?.providerErrorCode ?? extracted.providerErrorCode;
+  const failureCategory =
+    extras?.failureCategory ??
+    (extracted.failureCategoryHint === "network"
+      ? "network"
+      : classifyExecutionFailure({
+          error: {
+            code,
+            message,
+            httpStatus: extracted.httpStatus,
+            ...(providerErrorCode ? { providerErrorCode } : {}),
+          },
+          httpStatus: extracted.httpStatus,
+          message:
+            extracted.failureCategoryHint === "network"
+              ? "network failure"
+              : message,
+        }));
+  return {
+    code,
+    message,
+    httpStatus: extras?.httpStatus ?? extracted.httpStatus,
+    providerErrorCode,
+    providerErrorMessage: extras?.providerErrorMessage ?? extracted.sanitizedMessage,
+    failureCategory,
+    retryAfterMs: extras?.retryAfterMs,
+  };
+}
+
 export class ExecutionPipeline {
   constructor(private readonly deps: ExecutionPipelineDependencies) {}
 
@@ -58,6 +128,7 @@ export class ExecutionPipeline {
     const { request } = session;
     const monitor = session.monitor;
     const providerId = request.providerId;
+    const ids = correlationFromSession(session);
 
     monitor.markDequeued();
 
@@ -70,7 +141,7 @@ export class ExecutionPipeline {
       monitor.snapshot().queueWaitMs > queueTimeoutMs
     ) {
       return this.terminate(session, "timed_out", {
-        error: { code: "TIMEOUT_ERROR", message: "queue timed out" },
+        error: { code: "TIMEOUT_ERROR", message: "queue timed out", failureCategory: "timeout" },
       });
     }
 
@@ -87,12 +158,28 @@ export class ExecutionPipeline {
     await this.publish(ProviderExecutionEventTypes.SESSION_RESERVED, session);
 
     const breaker = this.deps.circuitBreakers.forProvider(providerId);
-    if (!breaker.canDispatch()) {
+    const circuitCtxBase: CircuitOutcomeContext = {
+      model: ids.model,
+      capability: ids.capability,
+      executionId: ids.executionId,
+      correlationId: ids.correlationId,
+      requestId: ids.requestId,
+    };
+    if (!breaker.canDispatch(circuitCtxBase)) {
+      const snap = breaker.snapshot();
+      const retryAfterMs =
+        snap.state === "open" && snap.openedAtMs !== undefined && snap.resetTimeoutMs
+          ? Math.max(0, snap.resetTimeoutMs - (Date.now() - snap.openedAtMs))
+          : snap.resetTimeoutMs ?? 30_000;
+      const circuitError: ProviderExecutionError = {
+        code: "CIRCUIT_OPEN",
+        message: "circuit breaker is open",
+        failureCategory: "circuit_open",
+        retryAfterMs,
+      };
+      this.recordFailedAttempt(session, Math.max(1, session.metadata.attempts), circuitError);
       return this.terminate(session, "failed", {
-        error: {
-          code: "PROVIDER_ERROR",
-          message: "circuit breaker is open",
-        },
+        error: circuitError,
       });
     }
 
@@ -126,43 +213,125 @@ export class ExecutionPipeline {
 
       if (outcome.tag === "timeout") {
         monitor.recordTimeout();
-        breaker.recordFailure();
+        breaker.recordFailure({
+          ...circuitCtxBase,
+          failureCategory: "timeout",
+          reason: "execution_timeout",
+          circuitCounted: true,
+        });
+        this.recordFailedAttempt(session, attempt, {
+          code: "TIMEOUT_ERROR",
+          message: "execution timed out",
+          failureCategory: "timeout",
+        });
         if (this.deps.retry.shouldRetry(request.retryPolicy, attempt)) {
           await this.retryDelay(session, attempt);
           continue;
         }
         return this.terminate(session, "timed_out", {
-          error: { code: "TIMEOUT_ERROR", message: "execution timed out" },
+          error: { code: "TIMEOUT_ERROR", message: "execution timed out", failureCategory: "timeout" },
         });
       }
 
       const dispatchResult = outcome.value;
       if (!dispatchResult.ok) {
+        const execError = toExecutionError(dispatchResult.error);
+        const failureCategory = classifyExecutionFailure({
+          error: execError,
+          httpStatus: execError.httpStatus,
+        });
+        const enriched: ProviderExecutionError = {
+          ...execError,
+          failureCategory,
+        };
+
         // Don't trip the circuit on permanent model/config mistakes (e.g. Anthropic 404
         // for a retired model id) — those won't recover by waiting.
         const msg = String(dispatchResult.error.message ?? "").toLowerCase();
+        const providerCode = String(execError.providerErrorCode ?? "").toLowerCase();
         const permanentMisconfig =
           msg.includes("not registered") ||
           msg.includes("not available") ||
           msg.includes("not_found") ||
           /\bmodel:/.test(msg) ||
           msg.includes("http 404");
-        if (!permanentMisconfig) {
-          breaker.recordFailure();
+        // Transient per-model rate limits — do not open the provider-wide breaker.
+        // Credit/billing exhaustion is typed `quota` (even on HTTP 429) and is
+        // handled separately so it is never logged as http_429_non_tripping.
+        const isTransientRateLimit =
+          failureCategory === "rate_limit" &&
+          !(
+            providerCode === "credit_balance_exhausted" ||
+            providerCode.includes("credit_balance") ||
+            providerCode.includes("insufficient_quota")
+          );
+        const isQuotaExhaustion = failureCategory === "quota";
+        // Structured-contract mismatches never reach here as HTTP failures
+        // (HTTP succeeded → recordSuccess). Keep that invariant.
+        const outcomeCtx: CircuitOutcomeContext = {
+          ...circuitCtxBase,
+          failureCategory,
+          httpStatus: enriched.httpStatus,
+          providerErrorCode: enriched.providerErrorCode,
+        };
+
+        if (isTransientRateLimit) {
+          // Preserve 429 policy: log with category, do NOT trip breaker.
+          const concrete = breaker as CircuitBreaker;
+          if (typeof concrete.observeNonTrippingFailure === "function") {
+            concrete.observeNonTrippingFailure({
+              ...outcomeCtx,
+              failureCategory: "rate_limit",
+              httpStatus: enriched.httpStatus ?? 429,
+              reason: "http_429_non_tripping",
+              circuitCounted: false,
+            });
+          }
+        } else if (isQuotaExhaustion) {
+          // Credit/billing exhaustion — observe without tripping (caller skips
+          // this provider for the rest of the failover chain via category=quota).
+          const concrete = breaker as CircuitBreaker;
+          if (typeof concrete.observeNonTrippingFailure === "function") {
+            concrete.observeNonTrippingFailure({
+              ...outcomeCtx,
+              failureCategory: "quota",
+              reason: "credit_quota_exhausted_non_tripping",
+              circuitCounted: false,
+            });
+          }
+        } else if (!permanentMisconfig) {
+          breaker.recordFailure({
+            ...outcomeCtx,
+            reason: "provider_dispatch_failure",
+            circuitCounted: true,
+          });
+        } else {
+          const concrete = breaker as CircuitBreaker;
+          if (typeof concrete.observeNonTrippingFailure === "function") {
+            concrete.observeNonTrippingFailure({
+              ...outcomeCtx,
+              reason: "permanent_misconfig_non_tripping",
+              circuitCounted: false,
+            });
+          }
         }
+
+        this.recordFailedAttempt(session, attempt, enriched);
+
         if (this.deps.retry.shouldRetry(request.retryPolicy, attempt)) {
           await this.retryDelay(session, attempt);
           continue;
         }
         return this.terminate(session, "failed", {
-          error: {
-            code: dispatchResult.error.code,
-            message: dispatchResult.error.message,
-          },
+          error: enriched,
         });
       }
 
-      breaker.recordSuccess();
+      breaker.recordSuccess({
+        ...circuitCtxBase,
+        reason: "provider_dispatch_success",
+        circuitCounted: true,
+      });
       return this.terminate(session, "completed", {
         response: dispatchResult.value,
       });
@@ -396,6 +565,41 @@ export class ExecutionPipeline {
       })
       .catch((error) => {
         void error;
+      });
+  }
+
+  /**
+   * Persist a lightweight durable failure record via the existing usage ledger.
+   * Stores classification + HTTP status — never secrets or prompts.
+   */
+  private recordFailedAttempt(
+    session: ProviderExecutionSession,
+    pipelineAttempt: number,
+    error: ProviderExecutionError
+  ): void {
+    const accounting = getUsageAccountingService();
+    const stats = session.monitor.snapshot();
+    const breaker = this.deps.circuitBreakers.forProvider(session.request.providerId);
+    const snap = breaker.snapshot();
+    void accounting
+      .recordProviderInvocation({
+        request: session.request,
+        success: false,
+        completedAt: this.deps.nowIso(),
+        latencyMs: stats.totalMs,
+        pipelineAttempt,
+        sessionId: session.sessionId,
+        retryCount: Math.max(0, pipelineAttempt - 1),
+        failureDiagnostics: {
+          httpStatus: error.httpStatus,
+          providerErrorCode: error.providerErrorCode,
+          failureCategory: error.failureCategory,
+          circuitState: snap.state,
+          sanitizedMessage: error.providerErrorMessage ?? error.message,
+        },
+      })
+      .catch((err) => {
+        void err;
       });
   }
 }

@@ -3,8 +3,8 @@
  * POST /v1/images/generations (OpenAI-compatible shape)
  * Auth: Bearer
  *
- * Reference images: style_reference_urls (data URLs / https) so attached logos
- * and prompt references are applied on the wire — not prompt-only.
+ * Reference semantics via capability registry — style_reference_urls only
+ * supports style transfer; identity roles are prompt-only.
  */
 
 import type {
@@ -13,10 +13,12 @@ import type {
   VendorImageWirePlan,
 } from "../common/vendor-image-protocol";
 import {
+  applyProviderReferenceAdaptations,
   extractPrompt,
   extractReferenceImages,
   referenceImageToDataUrl,
 } from "../common/vendor-image-protocol";
+import { buildProviderReferenceRoleObservability } from "../../../ai/multimodal-context/reference-role";
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import {
@@ -42,17 +44,23 @@ export class RecraftImageProtocol implements IVendorImageProtocol {
     wireModelId: string;
   }): VendorImageWirePlan {
     const basePrompt = extractPrompt(input.request.payload);
-    const refs = extractReferenceImages(input.request.payload ?? {});
-    const styleUrls = refs
-      .map((ref) => referenceImageToDataUrl(ref))
-      .filter((url): url is string => Boolean(url))
-      .slice(0, 10);
-
-    const prompt =
-      styleUrls.length > 0 &&
-      !/\breference\b|\battached\b|\blogo\b|\bbrand\s*mark\b/i.test(basePrompt)
-        ? `${basePrompt}\nUse the attached style/reference image(s) faithfully — keep the mark recognizable.`
-        : basePrompt;
+    const refs = extractReferenceImages(
+      input.request.payload ?? {},
+      input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+    );
+    const { prompt, adaptations } = applyProviderReferenceAdaptations({
+      basePrompt,
+      references: refs,
+      vendor: this.vendor,
+    });
+    const primary = adaptations[0];
+    const styleUrls =
+      primary?.deliverBytes && primary.useStyleReferenceChannel
+        ? refs
+            .map((ref) => referenceImageToDataUrl(ref))
+            .filter((url): url is string => Boolean(url))
+            .slice(0, 10)
+        : [];
 
     const body: Record<string, unknown> = {
       prompt,
@@ -70,6 +78,19 @@ export class RecraftImageProtocol implements IVendorImageProtocol {
         headers: { "Content-Type": "application/json" },
         body,
       },
+      ...(adaptations.length ? { referenceAdaptation: adaptations } : {}),
+      referenceRoleObservability: buildProviderReferenceRoleObservability({
+        canonicalRole: primary?.canonicalRole ?? refs[0]?.semanticReferenceRole,
+        resolutionSource:
+          typeof (refs[0] as { referenceRoleResolutionSource?: string })
+            ?.referenceRoleResolutionSource === "string"
+            ? (refs[0] as { referenceRoleResolutionSource: string })
+                .referenceRoleResolutionSource
+            : undefined,
+        transportFieldName:
+          styleUrls.length > 0 ? "style_reference_urls" : undefined,
+        adaptations,
+      }),
     };
   }
 

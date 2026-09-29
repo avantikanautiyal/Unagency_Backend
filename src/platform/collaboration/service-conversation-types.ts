@@ -71,6 +71,22 @@ export type ServiceAiMessageRecord = {
   failed?: boolean;
   intentChip?: string;
   mediaUri?: string;
+  /**
+   * Phase 9 — chat / message attachments (from CollabMessage.metadata).
+   * ProductAsset shares also surface assetId here when present.
+   */
+  attachments?: Array<{
+    mimeType?: string;
+    filename?: string;
+    fileName?: string;
+    url?: string;
+    assetId?: string;
+    attachmentId?: string;
+    sizeBytes?: number;
+    size?: number;
+    extractedText?: string;
+    kind?: string;
+  }>;
 };
 
 /** Deterministic execution input derived from conversation — not raw chat dump. */

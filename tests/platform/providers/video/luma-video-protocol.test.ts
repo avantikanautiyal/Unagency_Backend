@@ -45,6 +45,42 @@ describe("luma-video-protocol", () => {
     });
   });
 
+  it("anchors storyboard I2V on 10s via keyframes (start_frame unsupported)", () => {
+    const plan = protocol.buildSubmit(
+      {
+        capabilityId: "video.generate",
+        providerId: "provider.luma",
+        modelId: "luma/luma-ray-2",
+        payload: {
+          prompt: "Animate the approved storyboard into motion graphics",
+          aspectRatio: "16:9",
+          duration: 10,
+          resolution: "720p",
+        },
+        context: {
+          organizationId: "org_test",
+          executionId: "exec_test",
+          correlationId: "corr_test",
+        },
+      } as never,
+      "ray-3.2",
+      ["https://cdn.example.com/storyboard.png"],
+      "idem-10s"
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.value.body).toMatchObject({
+      video: {
+        duration: "10s",
+        keyframes: [{ url: "https://cdn.example.com/storyboard.png" }],
+        keyframe_indexes: [0],
+      },
+    });
+    expect(
+      (plan.value.body as { video?: Record<string, unknown> }).video?.start_frame,
+    ).toBeUndefined();
+  });
+
   it("parses Agents API completed output", () => {
     const parsed = protocol.parsePoll({
       state: "completed",

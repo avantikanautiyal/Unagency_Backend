@@ -2,6 +2,10 @@
  * Ideogram image generation — verified wire contract.
  * POST /v1/ideogram-v3/generate
  * Auth: Api-Key
+ *
+ * Reference semantics are resolved via the provider capability registry:
+ *   identity_mark → character_reference_images (identity preservation)
+ *   style_reference → style_reference_images (style transfer)
  */
 
 import type {
@@ -9,7 +13,13 @@ import type {
   VendorImageNormalizedResult,
   VendorImageWirePlan,
 } from "../common/vendor-image-protocol";
-import { extractPrompt, extractReferenceImage } from "../common/vendor-image-protocol";
+import {
+  applyProviderReferenceAdaptations,
+  extractPrompt,
+  extractReferenceImages,
+} from "../common/vendor-image-protocol";
+import { buildProviderReferenceRoleObservability } from "../../../ai/multimodal-context/reference-role";
+import { adaptCanonicalReferenceForProvider } from "../common/adapt-provider-reference";
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import {
@@ -42,11 +52,27 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
     request: ProviderExecutionRequest;
     wireModelId: string;
   }): VendorImageWirePlan {
-    const prompt = extractPrompt(input.request.payload);
-    const reference = extractReferenceImage(input.request.payload);
+    const basePrompt = extractPrompt(input.request.payload);
+    const references = extractReferenceImages(
+      input.request.payload,
+      input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+    );
+    const { prompt, adaptations } = applyProviderReferenceAdaptations({
+      basePrompt,
+      references,
+      vendor: this.vendor,
+    });
+    const reference = references[0];
     const base64 = reference?.base64?.trim();
-    if (base64) {
+    const role = reference?.semanticReferenceRole;
+    const wire =
+      role != null
+        ? adaptCanonicalReferenceForProvider({ vendor: this.vendor, role })
+        : undefined;
+
+    if (base64 && wire?.deliverBytes && wire.providerTransport) {
       const mimeType = reference?.mimeType || "image/png";
+      const transport = wire.providerTransport.fieldName;
       return {
         request: {
           method: "POST",
@@ -58,16 +84,30 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
             },
             files: [
               {
-                fieldName: "style_reference_images",
-                filename: `brand-logo.${extensionForMime(mimeType)}`,
+                fieldName: transport,
+                filename: `${adaptations[0]?.canonicalRole ?? "reference"}.${extensionForMime(mimeType)}`,
                 mimeType,
                 base64,
               },
             ],
           },
         },
+        referenceAdaptation: adaptations,
+        referenceRoleObservability: buildProviderReferenceRoleObservability({
+          canonicalRole:
+            adaptations[0]?.canonicalRole ?? reference?.semanticReferenceRole,
+          resolutionSource:
+            typeof (reference as { referenceRoleResolutionSource?: string })
+              ?.referenceRoleResolutionSource === "string"
+              ? (reference as { referenceRoleResolutionSource: string })
+                  .referenceRoleResolutionSource
+              : undefined,
+          transportFieldName: transport,
+          adaptations,
+        }),
       };
     }
+
     return {
       request: {
         method: "POST",
@@ -78,6 +118,11 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
           rendering_speed: "DEFAULT",
         },
       },
+      ...(adaptations.length ? { referenceAdaptation: adaptations } : {}),
+      referenceRoleObservability: buildProviderReferenceRoleObservability({
+        canonicalRole: adaptations[0]?.canonicalRole,
+        adaptations,
+      }),
     };
   }
 

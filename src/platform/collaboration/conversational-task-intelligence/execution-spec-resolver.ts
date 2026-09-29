@@ -388,6 +388,7 @@ export function resolveExecutionSpecification(
       vaultLogoChoice: input.vaultLogoChoice,
       generateNewRequested: generateNewLogoRequested,
       prior: priorLogo,
+      brief: input.message,
     });
 
   const logoClarification =

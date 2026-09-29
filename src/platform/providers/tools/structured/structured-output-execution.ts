@@ -51,6 +51,7 @@ import {
   orderEmailProviderPrompt,
 } from "../../../os/delivery/email-generation";
 import { ensureProviderPromptHasProductionSpec } from "../../../config/format-production-spec";
+import { shouldSkipLegacySemanticPromptMutation } from "../../../ai/context-orchestrator";
 import {
   isConceptsOnlyPresentationPayload,
   isExportablePresentationPayload,
@@ -74,15 +75,20 @@ import {
   PRESENTATION_ROUTES_STRUCTURED_SCHEMA,
 } from "../../../os/delivery/presentation-schemas";
 import { isPresentationDirectCreate } from "../../../direct/presentation-direct-metadata";
+import { isCanonicalStructuredPhaseMetadata } from "../../../cdf/structured-output-contract";
+import {
+  buildCanonicalStructuredContractEnvelope,
+  captureRawProviderOutputContent,
+  isRegisteredCanonicalStructuredContractName,
+} from "./canonical-structured-contract-envelope";
 
 export function withStructuredOutputRequest(
   request: ProviderExecutionRequest,
   structured: StructuredOutputRequest
 ): ProviderExecutionRequest {
-  const schemaName = structured.name ?? "response";
-  const schema = normalizeSchemaForOpenAiStrict(
-    structured.schema as Record<string, unknown>,
-  );
+  const envelope = buildCanonicalStructuredContractEnvelope(structured);
+  const schemaName = envelope.name;
+  const schema = envelope.canonicalSchema;
   const isPresentationRoutes = schemaName === "PresentationRoutes";
   const isPresentationConcepts = schemaName === "PresentationRouteConcepts";
   const isPresentationFlow = isPresentationRoutes || isPresentationConcepts;
@@ -97,6 +103,21 @@ export function withStructuredOutputRequest(
     schemaName === "WebsitePage" ||
     schemaName === "WebProject" ||
     schemaName === "WebsiteRoutes";
+  // CDF text_choice / creative-direction contracts — object with required routes[].
+  // Must NOT fall through to LaunchPlan "steps" instructions, and must still
+  // receive prompt schema guidance under directPassthrough (Gemini ignores
+  // response_format.json_schema alone → missing `routes`).
+  const isCdfCreativeDirectionRoutes =
+    schemaName === "CdfCreativeDirections" ||
+    schemaName === "CdfSocialMediaRoutes" ||
+    schemaName === "CdfPackagingRoutes";
+  // CDF website planning contracts — object root with required fields.
+  // Gemini often emits a bare array; DeepSeek omits required keys without
+  // prompt schema guidance under directPassthrough.
+  const isCdfWebsitePlanningContract =
+    schemaName === "CdfWebsiteSitemap" ||
+    schemaName === "CdfWebsitePageStructure" ||
+    schemaName === "CdfWebsiteWireframe";
   // WebProject / WebsiteRoutes are always JSON (files + stack). Raw HTML is recovered after the fact.
 
   const priorPrompt =
@@ -109,18 +130,24 @@ export function withStructuredOutputRequest(
     request.metadata?.directPassthrough === true ||
     request.metadata?.productAction === "direct_passthrough";
 
-  const needsBriefLockInstructions =
+  const isRegisteredCanonicalContract =
+    envelope.isRegisteredCanonicalContract ||
+    isRegisteredCanonicalStructuredContractName(schemaName);
+  const needsSchemaPromptInstructions =
     isWebsitePage ||
     isPresentationFlow ||
     isPresentationPlan ||
     isDocumentPlan ||
     isEmailPlan ||
-    isLaunchPlan;
+    isLaunchPlan ||
+    isCdfCreativeDirectionRoutes ||
+    isCdfWebsitePlanningContract ||
+    isRegisteredCanonicalContract;
 
   // Passthrough testing: keep the user prompt verbatim for generic flows.
   // Structured product schemas MUST still receive schema instructions —
   // otherwise models return prose and text creative routes come back empty.
-  if (directPassthrough && !needsBriefLockInstructions) {
+  if (directPassthrough && !needsSchemaPromptInstructions) {
     const priorFeatures = Array.isArray(
       (request.options as Record<string, unknown> | undefined)?.features
     )
@@ -131,6 +158,14 @@ export function withStructuredOutputRequest(
     const features = [...new Set([...priorFeatures, "json_mode", "response_format"])];
     return {
       ...request,
+      metadata: {
+        ...(request.metadata ?? {}),
+        canonicalStructuredContractEnvelope: {
+          name: schemaName,
+          strict: envelope.strict,
+          schema,
+        },
+      },
       payload: {
         ...request.payload,
         prompt: priorPrompt,
@@ -140,7 +175,7 @@ export function withStructuredOutputRequest(
           type: "json_schema",
           json_schema: {
             name: schemaName,
-            strict: structured.strict ?? true,
+            strict: envelope.strict,
             schema,
           },
         },
@@ -180,6 +215,31 @@ export function withStructuredOutputRequest(
         isRetry: request.metadata?.presentationRelevanceRetried === true,
       }),
       "Return exactly 3 routes in routes[].",
+    );
+  } else if (isCdfCreativeDirectionRoutes) {
+    // Exact CdfCreativeDirections / Social / Packaging contract — routes required.
+    // Do not instruct LaunchPlan steps; do not allow bare arrays.
+    instructionParts.push(
+      "Required top-level key: routes (array of exactly 3 objects).",
+      "Do NOT return a bare JSON array. Do NOT use steps, directions, concepts, or options as the top-level key.",
+      "Return exactly 3 routes in routes[].",
+      "Each route object must include at least name (string). Prefer the property names declared in the JSON schema.",
+      `Exact JSON schema:\n${JSON.stringify(schema)}`,
+    );
+  } else if (isCdfWebsitePlanningContract) {
+    // Exact CdfWebsiteSitemap / PageStructure / Wireframe — object root only.
+    // Do not accept bare arrays; do not fall through to LaunchPlan steps copy.
+    const requiredKeys = Array.isArray(schema.required)
+      ? (schema.required as string[]).filter((k) => typeof k === "string")
+      : [];
+    instructionParts.push(
+      `Return a single JSON object matching schema "${schemaName}".`,
+      "Do NOT return a bare JSON array. The root value must be a JSON object ({ ... }), never [...].",
+      requiredKeys.length
+        ? `Required top-level keys: ${requiredKeys.join(", ")}.`
+        : "Include every required top-level key declared in the JSON schema.",
+      "Do NOT omit required fields. Do NOT wrap the object in another key.",
+      `Exact JSON schema:\n${JSON.stringify(schema)}`,
     );
   } else if (isPresentationPlan) {
     if (isExpandPresentationRoute) {
@@ -248,6 +308,8 @@ export function withStructuredOutputRequest(
         : "Keys ONLY: title, summary, stack, brandName, tagline, heroBody, sections, ctaLabel, colors, html.",
       `Exact JSON schema:\n${JSON.stringify(schema)}`
     );
+  } else if (isRegisteredCanonicalContract) {
+    instructionParts.push(envelope.promptInstructionBlock);
   } else {
     instructionParts.push(
       "Required top-level keys ONLY: title (string), summary (string), steps (array of exactly 3).",
@@ -261,55 +323,63 @@ export function withStructuredOutputRequest(
 
   const instruction = instructionParts.join("\n");
   let prompt = priorPrompt ? `${priorPrompt}\n\n${instruction}` : instruction;
-  if (isPresentationFlow || isExpandPresentationRoute) {
-    const ctx = presentationContextFromMetadata(request.metadata, priorPrompt);
-    prompt = orderPresentationProviderPrompt({
-      body: prompt,
-      brandName: ctx.brandName,
-      subtype: ctx.subtype,
-      exampleDeliverable: ctx.exampleDeliverable,
-      userBrief: ctx.userBrief,
-      mustUseFacts: ctx.mustUseFacts,
-    });
-  } else if (isDocumentPlan) {
-    const ctx = documentContextFromMetadata(request.metadata, priorPrompt);
-    prompt = orderDocumentProviderPrompt({
-      body: prompt,
-      brandName: ctx.brandName,
-      exampleDeliverable: ctx.exampleDeliverable,
-      userBrief: ctx.userBrief,
-      service: ctx.service,
-      subtype: ctx.subtype,
-    });
-  } else if (isEmailPlan) {
-    const ctx = emailContextFromMetadata(request.metadata, priorPrompt);
-    prompt = orderEmailProviderPrompt({
-      body: prompt,
-      brandName: ctx.brandName,
-      exampleDeliverable: ctx.exampleDeliverable,
-      userBrief: ctx.userBrief,
-      service: ctx.service,
-      subtype: ctx.subtype,
-    });
-  } else if (isWebsitePage) {
-    const ctx = websiteContextFromMetadata(request.metadata, priorPrompt);
-    prompt = orderWebsiteProviderPrompt({
-      body: prompt,
-      brandName: ctx.brandName,
-      exampleDeliverable: ctx.exampleDeliverable,
-      userBrief: ctx.userBrief,
-      stack: ctx.stack,
-      brandColors: ctx.brandColors,
-      multiRoute: schemaName === "WebsiteRoutes",
-    });
-  }
+  const skipLegacySemantic = shouldSkipLegacySemanticPromptMutation(
+    request.metadata as Record<string, unknown> | undefined,
+  );
+  // Phase 10 — when CMR was orchestrated, do not rebuild/replace semantic context
+  // via presentation/document orderers or Spec reinjection. Schema instructions
+  // above remain (provider structured-output contract).
+  if (!skipLegacySemantic) {
+    if (isPresentationFlow || isExpandPresentationRoute) {
+      const ctx = presentationContextFromMetadata(request.metadata, priorPrompt);
+      prompt = orderPresentationProviderPrompt({
+        body: prompt,
+        brandName: ctx.brandName,
+        subtype: ctx.subtype,
+        exampleDeliverable: ctx.exampleDeliverable,
+        userBrief: ctx.userBrief,
+        mustUseFacts: ctx.mustUseFacts,
+      });
+    } else if (isDocumentPlan) {
+      const ctx = documentContextFromMetadata(request.metadata, priorPrompt);
+      prompt = orderDocumentProviderPrompt({
+        body: prompt,
+        brandName: ctx.brandName,
+        exampleDeliverable: ctx.exampleDeliverable,
+        userBrief: ctx.userBrief,
+        service: ctx.service,
+        subtype: ctx.subtype,
+      });
+    } else if (isEmailPlan) {
+      const ctx = emailContextFromMetadata(request.metadata, priorPrompt);
+      prompt = orderEmailProviderPrompt({
+        body: prompt,
+        brandName: ctx.brandName,
+        exampleDeliverable: ctx.exampleDeliverable,
+        userBrief: ctx.userBrief,
+        service: ctx.service,
+        subtype: ctx.subtype,
+      });
+    } else if (isWebsitePage) {
+      const ctx = websiteContextFromMetadata(request.metadata, priorPrompt);
+      prompt = orderWebsiteProviderPrompt({
+        body: prompt,
+        brandName: ctx.brandName,
+        exampleDeliverable: ctx.exampleDeliverable,
+        userBrief: ctx.userBrief,
+        stack: ctx.stack,
+        brandColors: ctx.brandColors,
+        multiRoute: schemaName === "WebsiteRoutes",
+      });
+    }
 
-  // Phase 1 — keep Format & Production Spec in structured modality prompts
-  // even when compilers reorder/rebuild the body.
-  prompt = ensureProviderPromptHasProductionSpec({
-    prompt,
-    metadata: request.metadata,
-  }).prompt;
+    // Phase 1 — keep Format & Production Spec in structured modality prompts
+    // even when compilers reorder/rebuild the body.
+    prompt = ensureProviderPromptHasProductionSpec({
+      prompt,
+      metadata: request.metadata,
+    }).prompt;
+  }
 
   const priorFeatures = Array.isArray(
     (request.options as Record<string, unknown> | undefined)?.features
@@ -339,6 +409,14 @@ export function withStructuredOutputRequest(
 
   return {
     ...request,
+    metadata: {
+      ...(request.metadata ?? {}),
+      canonicalStructuredContractEnvelope: {
+        name: schemaName,
+        strict: envelope.strict,
+        schema,
+      },
+    },
     payload: {
       ...request.payload,
       prompt,
@@ -348,7 +426,7 @@ export function withStructuredOutputRequest(
         type: "json_schema",
         json_schema: {
           name: schemaName,
-          strict: structured.strict ?? true,
+          strict: envelope.strict,
           schema,
         },
       },
@@ -741,6 +819,7 @@ export function attachStructuredOutput(
     });
   }
 
+  const providerRawContentBeforeValidation = captureRawProviderOutputContent(output);
   const content = extractContent(output, structured);
   const parsed = parseOrRecoverStructuredOutput(content, structured, options);
 
@@ -758,6 +837,7 @@ export function attachStructuredOutput(
         output: Object.freeze({
           ...output,
           content,
+          providerRawContentBeforeValidation,
           structuredOutputValid: false,
         }),
       },
@@ -771,6 +851,7 @@ export function attachStructuredOutput(
       output: Object.freeze({
         ...output,
         content,
+        providerRawContentBeforeValidation,
         structured: parsed.value,
         structuredOutputValid: true,
       }),
@@ -848,18 +929,25 @@ async function expandPresentationConceptsToRoutes(input: {
     mustUseFacts: input.ctx.mustUseFacts,
   });
   const expansionBody = `${input.basePrompt}\n\n${expansionAddon}\n\nRespond with ONLY valid JSON matching schema "PresentationRoutes".\nReturn exactly 3 routes in routes[].`;
-  const expansionPrompt = orderPresentationProviderPrompt({
-    body: expansionBody,
-    brandName: input.ctx.brandName,
-    subtype: input.ctx.subtype,
-    exampleDeliverable: input.ctx.exampleDeliverable,
-    userBrief: input.ctx.userBrief,
-    mustUseFacts: input.ctx.mustUseFacts,
-  });
-  const expansionPromptWithSpec = ensureProviderPromptHasProductionSpec({
-    prompt: expansionPrompt,
-    metadata: input.providerRequest.metadata,
-  }).prompt;
+  const skipLegacySemantic = shouldSkipLegacySemanticPromptMutation(
+    input.providerRequest.metadata as Record<string, unknown> | undefined,
+  );
+  const expansionPrompt = skipLegacySemantic
+    ? expansionBody
+    : orderPresentationProviderPrompt({
+        body: expansionBody,
+        brandName: input.ctx.brandName,
+        subtype: input.ctx.subtype,
+        exampleDeliverable: input.ctx.exampleDeliverable,
+        userBrief: input.ctx.userBrief,
+        mustUseFacts: input.ctx.mustUseFacts,
+      });
+  const expansionPromptWithSpec = skipLegacySemantic
+    ? expansionPrompt
+    : ensureProviderPromptHasProductionSpec({
+        prompt: expansionPrompt,
+        metadata: input.providerRequest.metadata,
+      }).prompt;
 
   const expansionMaxTokens = 16_384;
   const expansionResponseFormat = {
@@ -867,12 +955,10 @@ async function expandPresentationConceptsToRoutes(input: {
     json_schema: {
       name: "PresentationRoutes",
       strict: true,
-      schema: normalizeSchemaForOpenAiStrict(
-        PRESENTATION_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
-          string,
-          unknown
-        >
-      ),
+      schema: PRESENTATION_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
+        string,
+        unknown
+      >,
     },
   };
   const expansionRequest: ProviderExecutionRequest = {
@@ -1192,18 +1278,25 @@ async function expandSinglePresentationConcept(input: {
     subtype: input.ctx.subtype,
   });
   const expansionBody = `${input.basePrompt}\n\n${expansionAddon}\n\nRespond with ONLY valid JSON matching schema "PresentationPlan".`;
-  const expansionPrompt = orderPresentationProviderPrompt({
-    body: expansionBody,
-    brandName: input.ctx.brandName,
-    subtype: input.ctx.subtype,
-    exampleDeliverable: input.ctx.exampleDeliverable,
-    userBrief: input.ctx.userBrief,
-    mustUseFacts: input.ctx.mustUseFacts,
-  });
-  const expansionPromptWithSpec = ensureProviderPromptHasProductionSpec({
-    prompt: expansionPrompt,
-    metadata: input.providerRequest.metadata,
-  }).prompt;
+  const skipLegacySemantic = shouldSkipLegacySemanticPromptMutation(
+    input.providerRequest.metadata as Record<string, unknown> | undefined,
+  );
+  const expansionPrompt = skipLegacySemantic
+    ? expansionBody
+    : orderPresentationProviderPrompt({
+        body: expansionBody,
+        brandName: input.ctx.brandName,
+        subtype: input.ctx.subtype,
+        exampleDeliverable: input.ctx.exampleDeliverable,
+        userBrief: input.ctx.userBrief,
+        mustUseFacts: input.ctx.mustUseFacts,
+      });
+  const expansionPromptWithSpec = skipLegacySemantic
+    ? expansionPrompt
+    : ensureProviderPromptHasProductionSpec({
+        prompt: expansionPrompt,
+        metadata: input.providerRequest.metadata,
+      }).prompt;
 
   const expansionRequest: ProviderExecutionRequest = {
     ...input.providerRequest,
@@ -1224,12 +1317,10 @@ async function expandSinglePresentationConcept(input: {
         json_schema: {
           name: "PresentationPlan",
           strict: true,
-          schema: normalizeSchemaForOpenAiStrict(
-            PRESENTATION_PLAN_STRUCTURED_SCHEMA as unknown as Record<
-              string,
-              unknown
-            >
-          ),
+          schema: PRESENTATION_PLAN_STRUCTURED_SCHEMA as unknown as Record<
+            string,
+            unknown
+          >,
         },
       },
     }),
@@ -1834,6 +1925,13 @@ export async function ensurePresentationExpandedForDeliverable(input: {
   ) => Promise<Result<ProviderExecutionResult>>;
 }): Promise<Result<ProviderExecutionResult>> {
   const meta = input.providerRequest.metadata;
+  // Phase 2: canonical full-deck already has Routes schema + upstream content.
+  if (
+    meta?.cdfOmitConceptsExpansion === true ||
+    meta?.cdfCanonicalFullDeck === true
+  ) {
+    return success(input.executed);
+  }
   if (!isPresentationDirectCreate(meta) || meta?.deliverableRequired === false) {
     return success(input.executed);
   }
@@ -1876,6 +1974,18 @@ export async function attachStructuredOutputWithPresentationGate(input: {
   ) => Promise<Result<ProviderExecutionResult>>;
 }): Promise<Result<ProviderExecutionResult>> {
   const schemaName = input.structured?.name ?? "";
+  const meta = input.providerRequest.metadata;
+  // Phase 2: canonical full-deck already carries PresentationRoutes + upstream artifacts.
+  if (
+    meta?.cdfOmitConceptsExpansion === true ||
+    meta?.cdfCanonicalFullDeck === true
+  ) {
+    return attachStructuredOutput(
+      input.executed,
+      input.structured,
+      input.nowIso
+    );
+  }
   if (!input.structured) {
     return attachStructuredOutput(
       input.executed,
@@ -1900,7 +2010,9 @@ export async function attachStructuredOutputWithPresentationGate(input: {
     schemaName === "PresentationRouteConcepts" ||
     (isPresentationDirectCreate(input.providerRequest.metadata) &&
       schemaName !== "PresentationRoutes" &&
-      schemaName !== "PresentationPlan")
+      schemaName !== "PresentationPlan" &&
+      // Canonical structured CDF phases carry phase schemas — never remap to concepts.
+      !isCanonicalStructuredPhaseMetadata(input.providerRequest.metadata))
   ) {
     return runPresentationConceptsPipeline({
       executed: input.executed,

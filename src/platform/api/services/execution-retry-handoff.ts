@@ -55,6 +55,27 @@ const RETRYABLE_METADATA_KEYS = [
   "logoChoiceRequired",
   "logoChoiceCandidates",
   "producedDeliverableFormats",
+  // CDF continuity — required so async poll/reconcile can finish canonical ingest
+  // after provider success (video fanout has no distributed job.payload.metadata).
+  "cdfSessionId",
+  "cdfPhaseId",
+  "cdfArtifactKey",
+  "cdfExecutionStrategy",
+  "cdfGenerationModality",
+  "cdfLogicalOutputCount",
+  "cdfOptionIndex",
+  "cdfOptionCount",
+  "allowsModelGenerationFanout",
+  "generationFanoutGroupId",
+  "generationFanoutTargetId",
+  "generationFanoutLeaf",
+  "brandId",
+  "duration",
+  "videoTargetDurationSec",
+  "videoSegmentIndex",
+  "videoSegmentCount",
+  "aspectRatio",
+  "resolution",
 ] as const;
 
 export type ExecutionContinuationReason = "retry" | "duplicate";

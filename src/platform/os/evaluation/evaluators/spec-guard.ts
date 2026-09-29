@@ -65,6 +65,12 @@ function findingsFromValidation(
       message: `Quality gate FAIL — ${validation.provenance.find((p) => p.field === "gateReason")?.value ?? "requirements not met"}`,
       severity: "error",
     });
+  } else if (validation.status === "UNVERIFIED") {
+    findings.push({
+      code: "SPEC_QUALITY_GATE_UNVERIFIED",
+      message: `Quality gate UNVERIFIED — ${validation.provenance.find((p) => p.field === "gateReason")?.value ?? "required checks could not be verified"}`,
+      severity: "warning",
+    });
   } else if (validation.status === "NEEDS_REVISION") {
     findings.push({
       code: "SPEC_QUALITY_GATE_NEEDS_REVISION",
@@ -213,8 +219,21 @@ export class SpecGuardEvaluator implements IEvaluator {
       specScore = Math.min(specScore, 0.85);
     }
 
-    // Step 2 — execute effective Output Contract validation
-    if (input.service && input.subtype) {
+    // Step 2 — execute effective Output Contract validation.
+    // CDF structured/text phases: product ZIP/HTML/website hard requirements are
+    // N/A — structured contract was already validated at canonical ingest.
+    const modality = (input.generationModality ?? "").trim().toLowerCase();
+    const skipProductMediaContract =
+      input.skipOutputRequirements === true ||
+      modality === "structured" ||
+      modality === "text" ||
+      modality === "none" ||
+      modality === "materialize" ||
+      ((input.outputKind ?? "").trim().toLowerCase() === "text" &&
+        input.structuredData != null &&
+        (input.mediaArtifactIds?.length ?? 0) === 0);
+
+    if (input.service && input.subtype && !skipProductMediaContract) {
       validationResult = validateOutputContract({
         organizationId: input.organizationId,
         executionId: input.executionId,
@@ -255,6 +274,13 @@ export class SpecGuardEvaluator implements IEvaluator {
           specScore = Math.min(specScore, 0.1);
         }
       }
+    } else if (skipProductMediaContract && input.structuredData != null) {
+      findings.push({
+        code: "SPEC_STRUCTURED_PHASE_MEDIA_N_A",
+        message:
+          "Product media/website hard requirements not applicable — CDF structured/text phase with structured output",
+        severity: "info",
+      });
     }
 
     const errors = findings.filter(
@@ -264,7 +290,10 @@ export class SpecGuardEvaluator implements IEvaluator {
 
     let outcome: EvaluationOutcome;
     if (validationResult) {
-      outcome = gateStatusToEvaluationOutcome(validationResult.status);
+      outcome = gateStatusToEvaluationOutcome(
+        validationResult.status,
+        validationResult.completionAllowed,
+      );
       if (errors.length > 0 && outcome === "PASS") {
         outcome = "RETRY_REQUIRED";
       }

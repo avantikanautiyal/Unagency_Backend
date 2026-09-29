@@ -30,7 +30,10 @@ import {
   toDataUrl,
   type BestEffortVisualImageDeps,
 } from "../../os/delivery/best-effort-visual-image";
-import { stampWebsiteExportPreview } from "./execution-result-payload";
+import {
+  isNonWebsiteExportKind,
+  stampWebsiteExportPreview,
+} from "./execution-result-payload";
 import {
   logWebsiteMaterializationDiagnostic,
   readWebsiteMaterializationContext,
@@ -38,6 +41,7 @@ import {
   resolveWebsiteMaterializationBrand,
   websiteRelevanceDiagnosticSummary,
 } from "./website-materialization-diagnostics";
+import { CDF_STRUCTURED_PAYLOAD_MISSING } from "../../cdf/structured-execution-result";
 
 const HTML_MIME = "text/html; charset=utf-8";
 const ZIP_MIME = "application/zip";
@@ -179,16 +183,34 @@ export function resolveWebsiteExport(input: {
   const kind = (input.outputKind ?? "").toLowerCase();
   const service = (input.service ?? "").toLowerCase();
   const name = (input.structuredName ?? "").toLowerCase();
-  if (
-    kind === "deferred_website" ||
-    kind === "website" ||
+  const websiteContract =
     name === "websitepage" ||
     name === "webproject" ||
-    name === "websiteroutes"
+    name === "websiteroutes";
+
+  if (websiteContract) return true;
+
+  // Authoritative non-website kinds never export as website code artifacts —
+  // including CDF structured_approval / text phases sealed to outputKind=text
+  // even when product service maps to "website".
+  if (
+    kind === "text" ||
+    kind === "document" ||
+    kind === "email" ||
+    kind === "presentation" ||
+    kind === "image" ||
+    kind === "video"
   ) {
+    return false;
+  }
+
+  if (kind === "deferred_website" || kind === "website") {
     return true;
   }
-  if (service === "website") return true;
+
+  // Legacy: product service=website only when outputKind is unset.
+  if (service === "website" && !kind) return true;
+
   // Do not infer website export from LaunchPlan / DocumentPlan / prose that
   // merely shares title+summary keys — that corrupts text creative routes.
   if (
@@ -198,10 +220,8 @@ export function resolveWebsiteExport(input: {
     name === "presentationplan" ||
     name === "presentationroutes" ||
     name === "presentationrouteconcepts" ||
-    kind === "text" ||
-    kind === "document" ||
-    kind === "email" ||
-    kind === "presentation"
+    name === "cdfstructuredapprovaldoc" ||
+    name === "cdfwebsitesitemap"
   ) {
     return false;
   }
@@ -551,6 +571,23 @@ export async function applyWebsiteExportToExecution(input: {
     };
   }
 
+  const currentData =
+    input.currentResult?.kind === "structured" &&
+    input.currentResult.data &&
+    typeof input.currentResult.data === "object" &&
+    !Array.isArray(input.currentResult.data)
+      ? (input.currentResult.data as Record<string, unknown>)
+      : undefined;
+  if (
+    isNonWebsiteExportKind(currentData?.exportKind) ||
+    isNonWebsiteExportKind(input.jobSummary?.documentExportKind)
+  ) {
+    return {
+      result: input.currentResult ?? { kind: "structured", data: {} },
+      exported: false,
+    };
+  }
+
   if (websiteExportAlreadyMaterialized(input)) {
     const stamped =
       stampWebsiteExportPreview({
@@ -655,12 +692,40 @@ export async function applyWebsiteExportToExecution(input: {
     };
   }
 
-  const websiteRequired =
-    (typeof input.metadata?.service === "string" &&
-      input.metadata.service.toLowerCase() === "website") ||
-    (typeof input.metadata?.outputKind === "string" &&
-      /^(deferred_)?website$/i.test(input.metadata.outputKind)) ||
-    /^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(structuredName);
+  // Website export required but no structured payload reached materialization.
+  if (structuredData == null) {
+    logWebsiteMaterializationDiagnostic({
+      executionId: input.executionId,
+      phase: "failed",
+      path: input.path,
+      executionKind: input.executionKind,
+      executionSpecSupplied: diagContext.executionSpecSupplied,
+      asyncMediaPresent: Boolean(input.asyncMedia),
+      structuredDataPresent: false,
+      websiteRoutesCount: 0,
+      materializationAttempted: false,
+      exported: false,
+      errorCode: CDF_STRUCTURED_PAYLOAD_MISSING,
+      skipReason: "structured_payload_missing",
+    });
+    return {
+      result: input.currentResult ?? { kind: "structured", data: {} },
+      exported: false,
+      errorCode: CDF_STRUCTURED_PAYLOAD_MISSING,
+    };
+  }
+
+  const websiteRequired = resolveWebsiteExport({
+    outputKind:
+      typeof input.metadata?.outputKind === "string"
+        ? input.metadata.outputKind
+        : undefined,
+    service:
+      typeof input.metadata?.service === "string"
+        ? input.metadata.service
+        : undefined,
+    structuredName,
+  });
 
   if (!input.asyncMedia) {
     const errorCode = websiteRequired

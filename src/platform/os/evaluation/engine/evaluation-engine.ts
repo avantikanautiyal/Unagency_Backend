@@ -145,6 +145,8 @@ export class OsEvaluationEngine implements IOsEvaluationEngine {
     readonly buildSucceeded?: boolean;
     readonly buildOutput?: string;
     readonly runtimeErrors?: readonly string[];
+    readonly skipOutputRequirements?: boolean;
+    readonly generationModality?: string;
     readonly nowIso?: () => string;
     readonly createId?: (prefix: string) => string;
   }): AggregateEvaluation {
@@ -194,6 +196,8 @@ export class OsEvaluationEngine implements IOsEvaluationEngine {
       buildSucceeded: input.buildSucceeded,
       buildOutput: input.buildOutput,
       runtimeErrors: input.runtimeErrors,
+      skipOutputRequirements: input.skipOutputRequirements,
+      generationModality: input.generationModality,
       nowIso: input.nowIso,
       createId: input.createId,
     });

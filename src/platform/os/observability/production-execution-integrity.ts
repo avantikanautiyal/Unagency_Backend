@@ -9,6 +9,8 @@ import {
 } from "../../config/service-output-map";
 import type { ExecutionTraceStage, ExecutionTraceState } from "./execution-trace";
 import { sanitizeOsLogFields } from "./execution-log";
+import { isCdfCanonicalArtifactId } from "../../cdf/artifacts/ids";
+import { isStructuralCompletionBlocked } from "../../cdf/generation-validation/structural-completion-authority";
 
 export const EXECUTION_INTEGRITY_PREFIX = "[UNAGENCY-EXECUTION-INTEGRITY]" as const;
 
@@ -17,6 +19,9 @@ export type ProductionIntegrityFailureCategory =
   | "OUTPUT_KIND_MISMATCH"
   | "CAPABILITY_MISMATCH"
   | "PROVIDER_IDENTITY_MISMATCH"
+  | "PROVIDER_EXECUTION_FAILURE"
+  | "STRUCTURAL_COMPLIANCE_FAILURE"
+  | "CANONICAL_COMPLETION_BLOCKED"
   | "STRUCTURED_OUTPUT_FAILURE"
   | "MATERIALIZATION_FAILURE"
   | "ARTIFACT_PERSISTENCE_FAILURE"
@@ -53,7 +58,7 @@ export type ProductionExecutionIntegrityResult = {
   readonly step2Status: StageOutcomeStatus;
   readonly qualityGateStatus: StageOutcomeStatus;
   readonly performanceRecordStatus: StageOutcomeStatus;
-  readonly integrityStatus: "PASS" | "FAIL";
+  readonly integrityStatus: "PASS" | "FAIL" | "INCOMPLETE";
   readonly failureCategory?: ProductionIntegrityFailureCategory;
   readonly failureReason?: string;
   readonly artifactIds: readonly string[];
@@ -85,13 +90,101 @@ export type BuildProductionIntegrityInput = {
   readonly structuredOutputRequested?: boolean;
   readonly structuredDataPresent?: boolean;
   readonly mediaArtifactIds?: readonly string[];
+  /**
+   * Independently sourced artifact ID stages for continuity checks.
+   * Do NOT pass the same array into every field — that self-validates.
+   */
+  readonly executionArtifactIds?: readonly string[];
+  readonly persistedArtifactIds?: readonly string[];
+  readonly hydratedArtifactIds?: readonly string[];
+  readonly evaluationArtifactIds?: readonly string[];
+  readonly recordArtifactIds?: readonly string[];
+  /**
+   * When true, empty mediaArtifactIds may still PASS (text-only / no-media).
+   * Default false: missing artifacts with no independent continuity → INCOMPLETE.
+   */
+  readonly allowMissingArtifacts?: boolean;
   readonly performanceRecordId?: string;
   readonly evidenceRecorded?: boolean;
   readonly validationExecuted?: boolean;
   readonly evaluationPlaneExecuted?: boolean;
   readonly artifactHydrated?: boolean;
   readonly artifactEvaluated?: boolean;
+  /**
+   * When false, missing structured output / artifacts are INCOMPLETE (observational),
+   * never FAIL — provider has not finished. Default true for backward-compat callers
+   * that only invoke integrity after terminal completion.
+   */
+  readonly providerLifecycleComplete?: boolean;
+  /**
+   * When false, terminal provider/runtime failure (e.g. HTTP 429). Distinct from
+   * in-flight incomplete and from successful-but-ingest-pending.
+   * Default undefined/true — omit when provider outcome is not known.
+   */
+  readonly providerSuccess?: boolean;
+  /** Optional create metadata for CDF authority-aware integrity checks. */
+  readonly metadata?: Readonly<Record<string, unknown>>;
 };
+
+/**
+ * Generic continuity evidence for canonical CDF phases.
+ * Exact ArtifactVersion X@V + generatedArtifacts bind — not art_* media IDs.
+ */
+export type CanonicalCdfContinuityEvidence = {
+  readonly artifactId: string;
+  readonly artifactVersion: number;
+  readonly generatedArtifactsBound: boolean;
+  readonly artifactKey?: string;
+  readonly sessionId?: string;
+  readonly phaseId?: string;
+};
+
+export function resolveCanonicalCdfContinuityEvidence(
+  metadata?: Readonly<Record<string, unknown>>,
+): CanonicalCdfContinuityEvidence | undefined {
+  if (!metadata) return undefined;
+  const artifactId =
+    typeof metadata.cdfArtifactId === "string"
+      ? metadata.cdfArtifactId.trim()
+      : "";
+  if (!artifactId || !isCdfCanonicalArtifactId(artifactId)) return undefined;
+  const versionRaw = metadata.cdfArtifactVersion;
+  const artifactVersion =
+    typeof versionRaw === "number"
+      ? versionRaw
+      : typeof versionRaw === "string" && /^\d+$/.test(versionRaw.trim())
+        ? Number(versionRaw.trim())
+        : NaN;
+  if (!Number.isInteger(artifactVersion) || artifactVersion < 1) return undefined;
+
+  const generatedArtifactsBound =
+    metadata.cdfGeneratedArtifactsBound === true ||
+    metadata.cdfCanonicalCompletionEstablished === true;
+
+  return Object.freeze({
+    artifactId,
+    artifactVersion,
+    generatedArtifactsBound,
+    artifactKey:
+      typeof metadata.cdfArtifactKey === "string"
+        ? metadata.cdfArtifactKey
+        : undefined,
+    sessionId:
+      typeof metadata.cdfSessionId === "string"
+        ? metadata.cdfSessionId
+        : undefined,
+    phaseId:
+      typeof metadata.cdfPhaseId === "string" ? metadata.cdfPhaseId : undefined,
+  });
+}
+
+/** True when canonical CDF completion continuity is established (ingest + bind). */
+export function hasCanonicalCdfContinuityEvidence(
+  metadata?: Readonly<Record<string, unknown>>,
+): boolean {
+  const evidence = resolveCanonicalCdfContinuityEvidence(metadata);
+  return evidence?.generatedArtifactsBound === true;
+}
 
 function stageOutcome(
   stages: readonly { readonly stage: ExecutionTraceStage; readonly status: string }[],
@@ -101,6 +194,8 @@ function stageOutcome(
   if (!hit) return "NOT_TRACED";
   if (hit.status === "COMPLETED") return "COMPLETED";
   if (hit.status === "FAILED") return "FAILED";
+  // NOT_APPLICABLE is observational success for non-media modalities.
+  if (hit.status === "NOT_APPLICABLE") return "SKIPPED";
   return "SKIPPED";
 }
 
@@ -147,18 +242,32 @@ export function verifyOutputKindConsistency(input: {
   readonly subtype: string;
   readonly declaredOutputKind?: string;
   readonly capabilityId?: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
 }): ProductionIntegrityFailureCategory | undefined {
   const spec = resolveServiceOutputSpec({
     service: input.service,
     subtype: input.subtype,
   });
+  // CDF sealed authority wins over product catalog (observability must not
+  // reclassify a successful CDF execution against the pre-CDF subtype map).
+  const cdfSealed = input.metadata?.cdfExecutionAuthorityApplied === true;
+  const stampedKind =
+    typeof input.metadata?.cdfAuthorityOutputKind === "string"
+      ? input.metadata.cdfAuthorityOutputKind.trim()
+      : "";
+  const authoritative = cdfSealed && stampedKind ? stampedKind : undefined;
+  const expected = authoritative || spec.kind;
   const declared = input.declaredOutputKind?.trim();
-  if (declared && spec.kind !== "dynamic" && declared !== spec.kind) {
+  if (declared && expected !== "dynamic" && declared !== expected) {
+    // Sealed CDF executions: catalog disagreement is diagnostic only — never FAIL.
+    if (cdfSealed) {
+      return undefined;
+    }
     return "OUTPUT_KIND_MISMATCH";
   }
   const capability = input.capabilityId ?? "";
   if (
-    spec.kind === "image" &&
+    expected === "image" &&
     capability &&
     !capability.includes("image") &&
     !capability.includes("text")
@@ -166,7 +275,7 @@ export function verifyOutputKindConsistency(input: {
     return "CAPABILITY_MISMATCH";
   }
   if (
-    (spec.kind === "video" || spec.kind === "animation") &&
+    (expected === "video" || expected === "animation") &&
     capability &&
     !capability.includes("video")
   ) {
@@ -199,21 +308,27 @@ export function verifyArtifactIdentityContinuity(input: {
   readonly recordArtifactIds?: readonly string[];
 }): ProductionIntegrityFailureCategory | undefined {
   const executionIds = input.executionArtifactIds ?? [];
-  const persistedIds = input.persistedArtifactIds ?? executionIds;
-  if (executionIds.length > 0 && persistedIds.length === 0) {
+  // Never default persisted/hydrated/record to executionIds — that self-validates.
+  const persistedIds = input.persistedArtifactIds;
+  if (executionIds.length > 0 && persistedIds && persistedIds.length === 0) {
     return "ARTIFACT_PERSISTENCE_FAILURE";
   }
-  if (executionIds.length > 0 && persistedIds.length > 0) {
+  if (executionIds.length > 0 && persistedIds && persistedIds.length > 0) {
     const persistedSet = new Set(persistedIds);
     for (const id of executionIds) {
       if (!persistedSet.has(id)) return "ARTIFACT_PERSISTENCE_FAILURE";
     }
   }
   const hydratedIds = input.hydratedArtifactIds;
-  if (hydratedIds && persistedIds.length > 0 && hydratedIds.length === 0) {
+  if (
+    hydratedIds &&
+    persistedIds &&
+    persistedIds.length > 0 &&
+    hydratedIds.length === 0
+  ) {
     return "ARTIFACT_HYDRATION_FAILURE";
   }
-  if (hydratedIds && hydratedIds.length > 0) {
+  if (hydratedIds && hydratedIds.length > 0 && persistedIds) {
     const persistedSet = new Set(persistedIds);
     for (const id of hydratedIds) {
       if (!persistedSet.has(id)) return "ARTIFACT_HYDRATION_FAILURE";
@@ -285,11 +400,18 @@ export function buildProductionExecutionIntegrity(
   input: BuildProductionIntegrityInput,
 ): ProductionExecutionIntegrityResult {
   const stages = input.trace?.stages ?? [];
-  const structuredOutputStatus = input.structuredOutputRequested
+  const providerComplete = input.providerLifecycleComplete !== false;
+  const structuredOutputStatus = !providerComplete
     ? input.structuredDataPresent
-      ? stageOutcome(stages, "structured_output")
-      : "FAILED"
-    : stageOutcome(stages, "structured_output");
+      ? "COMPLETED"
+      : input.structuredOutputRequested
+        ? "SKIPPED"
+        : stageOutcome(stages, "structured_output")
+    : input.structuredOutputRequested
+      ? input.structuredDataPresent
+        ? stageOutcome(stages, "structured_output")
+        : "FAILED"
+      : stageOutcome(stages, "structured_output");
   const materializationStatus = stageOutcome(stages, "os_materialization");
   const evaluationPlaneStatus = stageOutcome(stages, "evaluation_plane");
   const step2Status = input.validationExecuted
@@ -325,17 +447,25 @@ export function buildProductionExecutionIntegrity(
     subtype: input.subtype,
     declaredOutputKind: input.outputKind,
     capabilityId: input.capabilityId,
+    metadata: input.metadata,
   });
   if (outputKindFailure) integrityFailures.push(outputKindFailure);
 
   const providerFailure = verifyProviderIdentityConsistency(input.providerIdentity);
   if (providerFailure) integrityFailures.push(providerFailure);
 
+  // Continuity checks only when independently sourced stage ID lists are provided.
+  // Never copy mediaArtifactIds into every stage (self-validating).
+  const executionArtifactIds =
+    input.executionArtifactIds ?? artifactIds;
+  const persistedArtifactIds = input.persistedArtifactIds;
+  const hydratedArtifactIds = input.hydratedArtifactIds;
+  const recordArtifactIds = input.recordArtifactIds;
   const artifactFailure = verifyArtifactIdentityContinuity({
-    executionArtifactIds: artifactIds,
-    persistedArtifactIds: artifactIds,
-    hydratedArtifactIds: artifactHydrated ? artifactIds : [],
-    recordArtifactIds: artifactIds,
+    executionArtifactIds,
+    ...(persistedArtifactIds ? { persistedArtifactIds } : {}),
+    ...(hydratedArtifactIds ? { hydratedArtifactIds } : {}),
+    ...(recordArtifactIds ? { recordArtifactIds } : {}),
   });
   if (artifactFailure) integrityFailures.push(artifactFailure);
 
@@ -356,11 +486,91 @@ export function buildProductionExecutionIntegrity(
   }
 
   const uniqueFailures = Object.freeze([...new Set(integrityFailures)]);
-  const integrityStatus = uniqueFailures.length === 0 ? "PASS" : "FAIL";
-  const failureCategory = uniqueFailures[0];
-  const failureReason = failureCategory
-    ? describeIntegrityFailure(failureCategory, input)
-    : undefined;
+  const hasIndependentContinuity =
+    input.persistedArtifactIds !== undefined ||
+    input.hydratedArtifactIds !== undefined ||
+    input.recordArtifactIds !== undefined ||
+    input.evaluationArtifactIds !== undefined;
+  const cdfContinuity = resolveCanonicalCdfContinuityEvidence(input.metadata);
+  const cdfCanonicalCompletion =
+    cdfContinuity?.generatedArtifactsBound === true;
+  // Structural plane fails integrity only when it actually withheld canonical
+  // completion — a warning on an established cdfart_*@V is not a failure.
+  const structuralComplianceBlocked = isStructuralCompletionBlocked(
+    input.metadata,
+  );
+  const canonicalCompletionBlocked =
+    !structuralComplianceBlocked &&
+    input.trace?.canonicalCompletionBlocked === true;
+  const completionBlocked =
+    structuralComplianceBlocked || canonicalCompletionBlocked;
+  // Provider plane: completion-gate rejection does not mean provider dispatch failed.
+  const providerFailed =
+    input.providerSuccess === false && !completionBlocked;
+  let integrityStatus: "PASS" | "FAIL" | "INCOMPLETE";
+  // Observational: never FAIL before provider lifecycle completes.
+  if (!providerComplete) {
+    integrityStatus = "INCOMPLETE";
+  } else if (completionBlocked) {
+    integrityStatus = "FAIL";
+  } else if (providerFailed) {
+    integrityStatus = "FAIL";
+  } else if (uniqueFailures.length > 0) {
+    integrityStatus = "FAIL";
+  } else if (cdfCanonicalCompletion) {
+    // Canonical CDF: ingest accepted + exact cdfart_* X@V bound is continuity.
+    // Do not require legacy independent media-ID arrays.
+    integrityStatus = "PASS";
+  } else if (
+    !input.allowMissingArtifacts &&
+    artifactIds.length === 0 &&
+    !hasIndependentContinuity
+  ) {
+    // Observed false-PASS: artifact=MISSING, hydrated/evaluated SKIPPED, status=PASS.
+    // Includes: successful provider + no canonical artifact (ingest pending).
+    // Includes: cdfart present in metadata but not session-bound.
+    integrityStatus = "INCOMPLETE";
+  } else if (
+    artifactIds.length > 0 &&
+    !hasIndependentContinuity &&
+    !input.allowMissingArtifacts
+  ) {
+    // Claimed media IDs without independently sourced persistence/hydration evidence.
+    // art_* alone is never canonical CDF continuity.
+    integrityStatus = "INCOMPLETE";
+  } else {
+    integrityStatus = "PASS";
+  }
+  const failureCategory =
+    !providerComplete ||
+    (uniqueFailures.length === 0 &&
+      !providerFailed &&
+      !completionBlocked)
+      ? undefined
+      : structuralComplianceBlocked
+        ? "STRUCTURAL_COMPLIANCE_FAILURE"
+        : canonicalCompletionBlocked
+          ? "CANONICAL_COMPLETION_BLOCKED"
+          : providerFailed
+            ? "PROVIDER_EXECUTION_FAILURE"
+            : uniqueFailures[0];
+  const failureReason = !providerComplete
+    ? "Provider lifecycle incomplete — integrity observational only"
+    : structuralComplianceBlocked
+      ? "Provider generated media but structural composition compliance blocked canonical completion"
+      : canonicalCompletionBlocked
+      ? `Provider succeeded but canonical ingest blocked completion (${input.trace?.canonicalCompletionBlockReason ?? "unknown"})`
+      : providerFailed
+      ? "Provider/runtime execution failed"
+      : failureCategory
+      ? describeIntegrityFailure(failureCategory, input)
+      : integrityStatus === "INCOMPLETE"
+        ? cdfContinuity && !cdfCanonicalCompletion
+          ? "Canonical ArtifactVersion present without generatedArtifacts session bind"
+          : artifactIds.length === 0
+          ? "Artifact continuity incomplete: no artifact IDs and no independent stage evidence"
+          : "Artifact continuity incomplete: media IDs present without independent persistence/hydration evidence"
+        : undefined;
 
   return Object.freeze({
     executionId: input.executionId,
@@ -391,7 +601,27 @@ export function buildProductionExecutionIntegrity(
     failureCategory,
     failureReason,
     artifactIds: Object.freeze([...artifactIds]),
-    integrityFailures: uniqueFailures,
+    // Do not surface terminal failure categories before provider completion.
+    integrityFailures: Object.freeze(
+      !providerComplete
+        ? ([] as ProductionIntegrityFailureCategory[])
+        : structuralComplianceBlocked
+          ? ([
+              "STRUCTURAL_COMPLIANCE_FAILURE",
+              ...uniqueFailures,
+            ] as ProductionIntegrityFailureCategory[])
+          : canonicalCompletionBlocked
+          ? ([
+              "CANONICAL_COMPLETION_BLOCKED",
+              ...uniqueFailures,
+            ] as ProductionIntegrityFailureCategory[])
+          : providerFailed
+            ? ([
+                "PROVIDER_EXECUTION_FAILURE",
+                ...uniqueFailures,
+              ] as ProductionIntegrityFailureCategory[])
+            : [...uniqueFailures],
+    ),
   });
 }
 
@@ -404,6 +634,12 @@ function describeIntegrityFailure(
       return `declared outputKind=${input.outputKind} disagrees with service/subtype catalog`;
     case "PROVIDER_IDENTITY_MISMATCH":
       return `actual provider ${input.providerIdentity.actualProviderId} differs from selected ${input.providerIdentity.selectedProviderId} without fallbackUsed`;
+    case "PROVIDER_EXECUTION_FAILURE":
+      return "Provider/runtime execution failed";
+    case "STRUCTURAL_COMPLIANCE_FAILURE":
+      return "Provider generated media but structural composition compliance blocked canonical completion";
+    case "CANONICAL_COMPLETION_BLOCKED":
+      return `Provider succeeded but canonical ingest blocked completion (${input.trace?.canonicalCompletionBlockReason ?? "unknown"})`;
     case "TRACE_INCONSISTENCY":
       return "execution trace stages disagree with recorded lifecycle facts";
     case "STRUCTURED_OUTPUT_FAILURE":
@@ -432,11 +668,30 @@ export function logProductionExecutionIntegrity(
       fallbackReason: result.fallbackReason,
       structuredOutput: result.structuredOutputStatus,
       materialization: result.materializationStatus,
-      artifact: result.artifactIds.length > 0 ? "CREATED" : "MISSING",
+      artifact: (() => {
+        if (result.artifactIds.length > 0) return "CREATED";
+        // Structured/text PASS with zero media IDs is N/A — not MISSING.
+        if (
+          result.integrityStatus === "PASS" &&
+          (result.structuredOutputStatus === "COMPLETED" ||
+            result.structuredOutputStatus === "SKIPPED")
+        ) {
+          return "NOT_APPLICABLE";
+        }
+        return "MISSING";
+      })(),
       artifactIds: result.artifactIds.join(",") || "none",
       persisted: result.artifactPersisted,
-      hydrated: result.artifactHydrated ? "COMPLETED" : "SKIPPED",
-      evaluated: result.artifactEvaluated ? "COMPLETED" : "SKIPPED",
+      hydrated: result.artifactHydrated
+        ? "COMPLETED"
+        : result.integrityStatus === "PASS" && result.artifactIds.length === 0
+          ? "NOT_APPLICABLE"
+          : "SKIPPED",
+      evaluated: result.artifactEvaluated
+        ? "COMPLETED"
+        : result.integrityStatus === "PASS" && result.artifactIds.length === 0
+          ? "NOT_APPLICABLE"
+          : "SKIPPED",
       evaluation: result.evaluationPlaneStatus,
       step2: result.step2Status,
       qualityGate: result.qualityGateStatus,

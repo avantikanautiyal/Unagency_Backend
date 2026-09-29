@@ -217,11 +217,40 @@ export class MinimaxVideoProtocol implements IVendorVideoProtocol {
       });
     }
     if (status === "Fail") {
+      const baseResp =
+        body.base_resp && typeof body.base_resp === "object"
+          ? (body.base_resp as Record<string, unknown>)
+          : undefined;
+      const statusMsg =
+        typeof baseResp?.status_msg === "string"
+          ? baseResp.status_msg.trim()
+          : "";
+      const statusCode =
+        typeof baseResp?.status_code === "number"
+          ? baseResp.status_code
+          : undefined;
+      const errorMessage =
+        typeof body.error_message === "string" && body.error_message.trim()
+          ? body.error_message.trim()
+          : statusMsg
+            ? statusCode != null
+              ? `MiniMax generation failed (${statusCode}): ${statusMsg}`
+              : `MiniMax generation failed: ${statusMsg}`
+            : "MiniMax generation failed";
       return success({
         status: "failed",
-        errorCode: "provider_failed",
-        errorMessage:
-          typeof body.error_message === "string" ? body.error_message : "MiniMax generation failed",
+        errorCode:
+          statusCode === 1026 ||
+          statusCode === 1027 ||
+          /sensitive|moderat|nsfw|safety/i.test(errorMessage)
+            ? "provider_content_filtered"
+            : "provider_failed",
+        errorMessage,
+        safeMetadata: {
+          vendorStatus: status,
+          ...(statusCode != null ? { vendorStatusCode: statusCode } : {}),
+          ...(statusMsg ? { vendorStatusMsg: statusMsg } : {}),
+        },
       });
     }
     return success({ status: "pending", nextPollAfterMs: 10_000 });

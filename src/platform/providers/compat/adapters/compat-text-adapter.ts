@@ -23,6 +23,7 @@ import type { TextProviderConfig } from "../contracts/text-provider-config";
 import { isEmbeddingCapability, isVisionCapability } from "../../common/resolve-execution-modality";
 import { mapToOpenAIVisionContentParts } from "../../common/vision-content";
 import { extractEmbeddingInputText } from "../../common/embedding-output";
+import { buildStructuredSchemaDowngradeDiagnostic } from "../../tools/structured/canonical-structured-contract-envelope";
 
 /** Wire models supporting vision.analyze per compat vendor (from inventory seed). */
 const COMPAT_VISION_MODELS: Partial<Record<TextProviderConfig["vendor"], readonly string[]>> = {
@@ -110,15 +111,38 @@ export class CompatTextAdapter extends AbstractTextProviderAdapter {
 
     const wire = mapCanonicalToOpenAIRequest(request, wireModelId);
     const body = { ...(wire.body as Record<string, unknown>) };
+    const warnings: Array<{
+      code: string;
+      message: string;
+      severity: "warning";
+      source?: string;
+      data?: Record<string, unknown>;
+    }> = [];
+    const droppedFields: string[] = [];
     // Groq/Mistral/xAI often reject OpenAI json_schema; keep json_object and
-    // rely on server-side schema validation in Integration OS.
+    // rely on prompt guidance + canonical validation in Integration OS.
     const rf = body.response_format;
     if (
       rf &&
       typeof rf === "object" &&
       (rf as { type?: string }).type === "json_schema"
     ) {
+      const schemaName =
+        typeof (rf as { json_schema?: { name?: unknown } }).json_schema?.name ===
+        "string"
+          ? String((rf as { json_schema: { name: string } }).json_schema.name)
+          : undefined;
       body.response_format = { type: "json_object" };
+      warnings.push(
+        buildStructuredSchemaDowngradeDiagnostic({
+          vendor: this.config.vendor,
+          schemaName,
+          from: "json_schema",
+          to: "json_object",
+          nativeEnforcement: "prompt_and_validation_only",
+        }),
+      );
+      droppedFields.push("response_format.json_schema");
     }
     return success({
       value: {
@@ -126,8 +150,8 @@ export class CompatTextAdapter extends AbstractTextProviderAdapter {
         body: Object.freeze(body),
         resolvedModelId: wireModelId,
       },
-      warnings: [],
-      droppedFields: [],
+      warnings,
+      droppedFields,
     });
   }
 

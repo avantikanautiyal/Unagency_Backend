@@ -1,0 +1,105 @@
+{
+  "phase": "14.8",
+  "generatedAt": "2026-09-29T19:37:44.067Z",
+  "note": "Investigation only — no production changes.",
+  "cases": [
+    {
+      "id": "real_01_phase8_sunflower_hello_sunshine",
+      "evidenceRoot": null,
+      "expectedPrimary": "Hello! We're Sunflower – a fresh approach to education for students in Classes 1-12",
+      "compositionContract": "UNKNOWN",
+      "compiledComposition": "UNKNOWN",
+      "cmr": "UNKNOWN",
+      "flattenedRequest": "UNKNOWN",
+      "providerAdapter": "UNKNOWN",
+      "finalProviderRequest": "UNKNOWN",
+      "generatedPixels": "ABSENT_PIXELS",
+      "firstLoss": "UNKNOWN — evidence unavailable",
+      "rootCauseClass": "UNKNOWN",
+      "contradictions": [],
+      "semanticRoleNotes": "identity_mark / logo lockup described as signature; composition still requires primary_message_surface. Pixels show wordmark-only — model treated brand mark as the communication.",
+      "quotes": {},
+      "evidenceAvailable": false
+    },
+    {
+      "id": "real_02_phase8_bloomsip_refreshment",
+      "evidenceRoot": null,
+      "expectedPrimary": "Transform your everyday refresh with real botanicals and sparkling sophistication—meet BloomSip.",
+      "compositionContract": "UNKNOWN",
+      "compiledComposition": "UNKNOWN",
+      "cmr": "UNKNOWN",
+      "flattenedRequest": "UNKNOWN",
+      "providerAdapter": "UNKNOWN",
+      "finalProviderRequest": "UNKNOWN",
+      "generatedPixels": "ABSENT_PIXELS",
+      "firstLoss": "UNKNOWN — evidence unavailable",
+      "rootCauseClass": "UNKNOWN",
+      "contradictions": [],
+      "semanticRoleNotes": "Pixels show Instagram UI mock / garbled caption — neither primary message nor product communication. Possible model collapse into 'instagram post' template.",
+      "quotes": {},
+      "evidenceAvailable": false
+    },
+    {
+      "id": "real_03_exec42_sunflower_metaphor",
+      "evidenceRoot": null,
+      "expectedPrimary": "Sunflower nurtures every aspect of a child's development—helping them build strong foundations, grow confidently, and flourish in all areas of life.",
+      "compositionContract": "PRESERVED",
+      "compiledComposition": "DROPPED",
+      "cmr": "DROPPED",
+      "flattenedRequest": "UNKNOWN",
+      "providerAdapter": "UNKNOWN",
+      "finalProviderRequest": "UNKNOWN",
+      "generatedPixels": "ABSENT_PIXELS",
+      "firstLoss": "FRAMEWORK loss at CMR compile — deliverable_composition part never entered CMR",
+      "rootCauseClass": "MIXED",
+      "contradictions": [],
+      "semanticRoleNotes": "Without deliverable_composition, required on-asset text exists only as SSD prose. Pixels show unrelated 'FORMAT'. Soft anti-on-image-text guidance present in wire.",
+      "quotes": {},
+      "evidenceAvailable": false
+    }
+  ],
+  "lossMatrix": [
+    {
+      "case": "real_01_phase8_sunflower_hello_sunshine",
+      "compositionContract": "UNKNOWN",
+      "compiledComposition": "UNKNOWN",
+      "cmr": "UNKNOWN",
+      "flattenedRequest": "UNKNOWN",
+      "providerAdapter": "UNKNOWN",
+      "finalProviderRequest": "UNKNOWN",
+      "generatedPixels": "ABSENT_PIXELS",
+      "firstLoss": "UNKNOWN — evidence unavailable",
+      "rootCauseClass": "UNKNOWN"
+    },
+    {
+      "case": "real_02_phase8_bloomsip_refreshment",
+      "compositionContract": "UNKNOWN",
+      "compiledComposition": "UNKNOWN",
+      "cmr": "UNKNOWN",
+      "flattenedRequest": "UNKNOWN",
+      "providerAdapter": "UNKNOWN",
+      "finalProviderRequest": "UNKNOWN",
+      "generatedPixels": "ABSENT_PIXELS",
+      "firstLoss": "UNKNOWN — evidence unavailable",
+      "rootCauseClass": "UNKNOWN"
+    },
+    {
+      "case": "real_03_exec42_sunflower_metaphor",
+      "compositionContract": "PRESERVED",
+      "compiledComposition": "DROPPED",
+      "cmr": "DROPPED",
+      "flattenedRequest": "UNKNOWN",
+      "providerAdapter": "UNKNOWN",
+      "finalProviderRequest": "UNKNOWN",
+      "generatedPixels": "ABSENT_PIXELS",
+      "firstLoss": "FRAMEWORK loss at CMR compile — deliverable_composition part never entered CMR",
+      "rootCauseClass": "MIXED"
+    }
+  ],
+  "recommendedFixDirection": {
+    "doNotImplementYet": true,
+    "forCasesWithNoRequestLoss": "Treat as provider/model adherence + optional soft-authority dilution audit; do not invent a flatten bug where evidence shows PRESERVED required text.",
+    "forExec42CmrGap": "Investigate why deliverable_composition was absent from CMR for that execution vintage; ensure image phases always compile composition when required.",
+    "genericNotServiceSpecific": true
+  }
+}

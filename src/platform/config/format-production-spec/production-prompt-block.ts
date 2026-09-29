@@ -1,5 +1,5 @@
 /**
- * Build a deterministic [UNAGENCY Production Spec] prompt block from a rule.
+ * Build a deterministic [Format Production Spec] prompt block from a rule.
  *
  * Phase 1: Injected via apply-production-spec-instruct into execution
  * instructions, metadata binding, and provider-facing prompts.
@@ -42,8 +42,21 @@ function aspectRatioLabel(width: number, height: number): string {
 /** Prompt-block schema version — bump when section order/semantics change. */
 export const PRODUCTION_PROMPT_BLOCK_VERSION = "1.1.0" as const;
 
+/**
+ * Provider-facing Spec header.
+ * MUST remain machine-style (lowercase / underscored) so image models do not
+ * treat the label as a brand wordmark to render. Prior Title-Case headers
+ * ("UNAGENCY …", "Format …") were misread as identity.
+ */
 export const PRODUCTION_PROMPT_BLOCK_HEADER =
+  "[production_constraints]" as const;
+
+/** Legacy headers retained for idempotent detect on in-flight prompts. */
+export const PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY =
   "[UNAGENCY Production Spec]" as const;
+
+export const PRODUCTION_PROMPT_BLOCK_HEADER_LEGACY_FORMAT =
+  "[Format Production Spec]" as const;
 
 export type ProductionPromptBlockSectionId =
   | "header"
@@ -89,6 +102,9 @@ export type ProductionPromptBlock = {
   readonly contentHash: string;
 };
 
+/** Provider-facing blocks exclude creative VFG; audit retains full stack. */
+export type ProductionPromptProjection = "provider_technical" | "audit_full";
+
 export type BuildProductionPromptBlockInput = {
   readonly rule: ProductionRule;
   /** Override display placement label when product path differs from rule.placement. */
@@ -100,6 +116,11 @@ export type BuildProductionPromptBlockInput = {
    * Phase 6 — every provider create path should leave this on.
    */
   readonly includeVisualFieldGuide?: boolean;
+  /**
+   * provider_technical — dimensions/placement/export/gates only (no creative VFG).
+   * audit_full — complete spec for QC/admin review paths.
+   */
+  readonly projection?: ProductionPromptProjection;
   /** Override service slug used to resolve the Field Guide recipe. */
   readonly visualFieldGuideService?: string;
   /**
@@ -238,7 +259,10 @@ export function buildProductionPromptBlock(
 ): ProductionPromptBlock {
   const { rule } = input;
   const includeUniversal = input.includeUniversalGates !== false;
-  const includeVfg = input.includeVisualFieldGuide !== false;
+  const projection = input.projection ?? "audit_full";
+  const providerTechnical = projection === "provider_technical";
+  const includeVfg =
+    input.includeVisualFieldGuide !== false && !providerTechnical;
   const structured = splitHygieneChecks(
     rule.hygieneChecks ?? [],
     input.maxWeightedLines,
@@ -251,7 +275,11 @@ export function buildProductionPromptBlock(
   // as soft targets so Phase 1 can still inject useful guidance.
   const beforeCreate = [...(rule.beforeCreateChecks ?? [])];
   const howToCreate = [...(rule.howToCreate ?? [])];
-  if (structured.gates.length === 0 && structured.weighted.length === 0) {
+  if (
+    !providerTechnical &&
+    structured.gates.length === 0 &&
+    structured.weighted.length === 0
+  ) {
     for (const line of [...beforeCreate, ...howToCreate]) {
       if (line.trim()) softLines.push(line.trim());
     }
@@ -299,19 +327,21 @@ export function buildProductionPromptBlock(
   if (authority) sections.push(authority);
 
   if (vfg) {
-    const identity = freezeSection(
-      "identity_system",
-      "Visual Field Guide — Identity",
-      vfg.identity.lines,
-    );
-    if (identity) sections.push(identity);
+    if (!providerTechnical) {
+      const identity = freezeSection(
+        "identity_system",
+        "Visual Field Guide — Identity",
+        vfg.identity.lines,
+      );
+      if (identity) sections.push(identity);
 
-    const layout = freezeSection(
-      "layout_hygiene",
-      "Visual Field Guide — Layout",
-      vfg.layout.lines,
-    );
-    if (layout) sections.push(layout);
+      const layout = freezeSection(
+        "layout_hygiene",
+        "Visual Field Guide — Layout",
+        vfg.layout.lines,
+      );
+      if (layout) sections.push(layout);
+    }
 
     const placementH = freezeSection(
       "placement_hygiene",
@@ -327,7 +357,7 @@ export function buildProductionPromptBlock(
     );
     if (formatLogic) sections.push(formatLogic);
 
-    if (vfg.recipe) {
+    if (vfg.recipe && !providerTechnical) {
       const recipeLines = [
         `SERVICE ${vfg.recipe.serviceNumber} — ${vfg.recipe.title}`,
         vfg.recipe.mantra,
@@ -343,30 +373,34 @@ export function buildProductionPromptBlock(
       if (recipe) sections.push(recipe);
     }
 
-    let practiceLines = vfg.goodPractice.map((g) => g.promptLine);
-    if (
-      typeof input.maxGoodPracticeLines === "number" &&
-      Number.isFinite(input.maxGoodPracticeLines) &&
-      input.maxGoodPracticeLines >= 0
-    ) {
-      practiceLines = practiceLines.slice(
-        0,
-        Math.floor(input.maxGoodPracticeLines),
+    if (!providerTechnical) {
+      let practiceLines = vfg.goodPractice.map((g) => g.promptLine);
+      if (
+        typeof input.maxGoodPracticeLines === "number" &&
+        Number.isFinite(input.maxGoodPracticeLines) &&
+        input.maxGoodPracticeLines >= 0
+      ) {
+        practiceLines = practiceLines.slice(
+          0,
+          Math.floor(input.maxGoodPracticeLines),
+        );
+      }
+      const practice = freezeSection(
+        "good_practice",
+        "Visual Field Guide — Good practice",
+        practiceLines,
       );
+      if (practice) sections.push(practice);
     }
-    const practice = freezeSection(
-      "good_practice",
-      "Visual Field Guide — Good practice",
-      practiceLines,
-    );
-    if (practice) sections.push(practice);
 
-    const finalH = freezeSection(
-      "final_hygiene",
-      "Visual Field Guide — Final hygiene",
-      visualFinalHygienePromptLines(),
-    );
-    if (finalH) sections.push(finalH);
+    if (!providerTechnical) {
+      const finalH = freezeSection(
+        "final_hygiene",
+        "Visual Field Guide — Final hygiene",
+        visualFinalHygienePromptLines(),
+      );
+      if (finalH) sections.push(finalH);
+    }
   }
 
   const hardGates = freezeSection(
@@ -378,18 +412,22 @@ export function buildProductionPromptBlock(
   );
   if (hardGates) sections.push(hardGates);
 
-  const weighted = freezeSection(
-    "weighted_targets",
-    "Weighted house targets",
-    structured.weighted.map((c) => `[${c.id}] ${c.promptLine}`),
-  );
-  if (weighted) sections.push(weighted);
+  if (!providerTechnical) {
+    const weighted = freezeSection(
+      "weighted_targets",
+      "Weighted house targets",
+      structured.weighted.map((c) => `[${c.id}] ${c.promptLine}`),
+    );
+    if (weighted) sections.push(weighted);
+  }
 
-  // Always expose checklist strings when present (Admin/QC parity).
-  const before = freezeSection("before_create", "Before create", beforeCreate);
-  if (before) sections.push(before);
-  const howTo = freezeSection("how_to_create", "How to create", howToCreate);
-  if (howTo) sections.push(howTo);
+  // Checklist strings for Admin/QC parity — omitted from provider_technical projection.
+  if (!providerTechnical) {
+    const before = freezeSection("before_create", "Before create", beforeCreate);
+    if (before) sections.push(before);
+    const howTo = freezeSection("how_to_create", "How to create", howToCreate);
+    if (howTo) sections.push(howTo);
+  }
 
   const exportSection = freezeSection(
     "export",

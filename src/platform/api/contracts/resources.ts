@@ -3,6 +3,7 @@
  */
 
 import type { RateLimitDimension } from "./enums";
+import type { RateLimitAccountingClass } from "../../execution-reliability/execution-outcome";
 
 export interface RateLimitPolicy {
   readonly dimension: RateLimitDimension;
@@ -16,6 +17,9 @@ export interface RateLimitDecision {
   readonly resetAt: string;
   readonly dimension: RateLimitDimension;
   readonly key: string;
+  readonly limit?: number;
+  readonly windowMs?: number;
+  readonly accountingClass?: RateLimitAccountingClass;
 }
 
 export interface BrandProfileResource {

@@ -1,0 +1,308 @@
+{
+  "_id": "6aa81dcece0535b89af9bfe6",
+  "recordKind": "production_execution_observability",
+  "executionId": "exec_43_1789402538385",
+  "correlationId": "corr_44_1789402538385",
+  "organizationId": "6a89ff83ae22a3d696a169e6",
+  "service": "social",
+  "subtype": "content-design",
+  "outputKind": "image",
+  "capabilityId": "image.generate",
+  "selectedProviderId": "provider.openai",
+  "selectedModelId": "gpt-image-2",
+  "actualProviderId": "provider.ideogram",
+  "actualModelId": "ideogram-3",
+  "fallbackUsed": true,
+  "fallbackReason": "rate_limit",
+  "classificationStatus": "COMPLETED",
+  "routingMode": "static",
+  "adaptiveRoutingEnabled": false,
+  "routingDecision": "USE_EXISTING",
+  "structuredOutputStatus": "SKIPPED",
+  "materializationStatus": "COMPLETED",
+  "artifactPersistenceStatus": "COMPLETED",
+  "artifactHydrationStatus": "COMPLETED",
+  "artifactRenderStatus": "COMPLETED",
+  "runtimeEvaluationStatus": "SKIPPED",
+  "evaluationPlaneStatus": "COMPLETED",
+  "evaluationPlaneVersion": "p4.2.1",
+  "step2Status": "COMPLETED",
+  "qualityGateStatus": "COMPLETED",
+  "evidenceStatus": "RECORDED",
+  "performanceRecordStatus": "COMPLETED",
+  "artifactIds": [
+    "art_syncimg_53_1789402565789_0"
+  ],
+  "artifactType": "image",
+  "performanceRecordId": "perfrec_65_1789402574556",
+  "evidenceSource": "production",
+  "evidenceMode": "observational",
+  "executionStatus": "SUCCESS",
+  "finalOutcome": "MODEL_QUALITY_FAILURE",
+  "contractValidationStatus": "FAIL",
+  "qualityScore": 24,
+  "integrityStatus": "PASS",
+  "integrityFailures": [],
+  "stages": [
+    {
+      "stage": "request_intake",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:38.414Z"
+    },
+    {
+      "stage": "classification",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:38.414Z",
+      "details": {
+        "service": "social",
+        "subtype": "content-design",
+        "outputKind": "image",
+        "capabilityId": "image.generate"
+      }
+    },
+    {
+      "stage": "output_authority",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:38.414Z",
+      "details": {
+        "authoritySource": "cdf_execution_contract",
+        "authoritativeOutputKind": "image",
+        "catalogOutputKind": "image",
+        "actualOutputKind": "image"
+      }
+    },
+    {
+      "stage": "static_routing",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:38.414Z",
+      "details": {
+        "selectedProviderId": "provider.openai",
+        "selectedModelId": "gpt-image-2"
+      }
+    },
+    {
+      "stage": "adaptive_routing",
+      "status": "SKIPPED",
+      "skipReason": "ADAPTIVE_ROUTING_DISABLED",
+      "at": "2026-09-14T16:15:38.414Z",
+      "details": {
+        "routingMode": "static",
+        "adaptiveSelected": false
+      }
+    },
+    {
+      "stage": "provider_selection",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:38.622Z",
+      "details": {
+        "selectedProviderId": "provider.openai",
+        "selectedModelId": "gpt-image-2",
+        "fallbackUsed": false
+      }
+    },
+    {
+      "stage": "provider_dispatch",
+      "status": "SKIPPED",
+      "skipReason": "provider_not_terminal",
+      "at": "2026-09-14T16:15:38.622Z"
+    },
+    {
+      "stage": "structured_output",
+      "status": "SKIPPED",
+      "skipReason": "no_structured_output_requested",
+      "at": "2026-09-14T16:15:38.622Z"
+    },
+    {
+      "stage": "cdf_provider_boundary",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:39.088Z",
+      "details": {
+        "generationContextHash": "463ba92e",
+        "canonicalContextApplied": true,
+        "promptLength": 27543,
+        "sectionsPresent": {
+          "currentTask": true,
+          "currentUserInstruction": true,
+          "resolvedReferences": true,
+          "workingMemory": true,
+          "multimodalContext": true,
+          "requirements": true,
+          "constraints": true,
+          "exclusions": false,
+          "selections": true,
+          "selectedSemanticDirections": true,
+          "brandContext": true,
+          "productGrounding": true,
+          "approvedDecisions": true,
+          "activeBrief": true,
+          "cdfPhase": true,
+          "upstreamArtifacts": true,
+          "productionSpec": true,
+          "outputContract": true,
+          "outputRequirements": true,
+          "authority": true
+        },
+        "provider": "provider.openai",
+        "model": "gpt-image-2",
+        "upstreamCount": 1
+      }
+    },
+    {
+      "stage": "cdf_provider_boundary",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:39.582Z",
+      "details": {
+        "generationContextHash": "463ba92e",
+        "canonicalContextApplied": true,
+        "promptLength": 27543,
+        "sectionsPresent": {
+          "currentTask": true,
+          "currentUserInstruction": true,
+          "resolvedReferences": true,
+          "workingMemory": true,
+          "multimodalContext": true,
+          "requirements": true,
+          "constraints": true,
+          "exclusions": false,
+          "selections": true,
+          "selectedSemanticDirections": true,
+          "brandContext": true,
+          "productGrounding": true,
+          "approvedDecisions": true,
+          "activeBrief": true,
+          "cdfPhase": true,
+          "upstreamArtifacts": true,
+          "productionSpec": true,
+          "outputContract": true,
+          "outputRequirements": true,
+          "authority": true
+        },
+        "provider": "provider.google",
+        "model": "gemini-3-pro-image",
+        "upstreamCount": 1
+      }
+    },
+    {
+      "stage": "cdf_provider_boundary",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:15:40.318Z",
+      "details": {
+        "generationContextHash": "463ba92e",
+        "canonicalContextApplied": true,
+        "promptLength": 27543,
+        "sectionsPresent": {
+          "currentTask": true,
+          "currentUserInstruction": true,
+          "resolvedReferences": true,
+          "workingMemory": true,
+          "multimodalContext": true,
+          "requirements": true,
+          "constraints": true,
+          "exclusions": false,
+          "selections": true,
+          "selectedSemanticDirections": true,
+          "brandContext": true,
+          "productGrounding": true,
+          "approvedDecisions": true,
+          "activeBrief": true,
+          "cdfPhase": true,
+          "upstreamArtifacts": true,
+          "productionSpec": true,
+          "outputContract": true,
+          "outputRequirements": true,
+          "authority": true
+        },
+        "provider": "provider.ideogram",
+        "model": "ideogram-3",
+        "upstreamCount": 1
+      }
+    },
+    {
+      "stage": "provider_selection",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:09.561Z",
+      "details": {
+        "selectedProviderId": "provider.openai",
+        "selectedModelId": "gpt-image-2",
+        "fallbackUsed": true
+      }
+    },
+    {
+      "stage": "provider_dispatch",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:09.561Z"
+    },
+    {
+      "stage": "structured_output",
+      "status": "SKIPPED",
+      "skipReason": "no_structured_output_requested",
+      "at": "2026-09-14T16:16:09.561Z"
+    },
+    {
+      "stage": "os_materialization",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:09.562Z"
+    },
+    {
+      "stage": "artifact_persistence",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:09.562Z"
+    },
+    {
+      "stage": "artifact_hydration",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.557Z",
+      "details": {
+        "hydratedArtifactCount": 1
+      }
+    },
+    {
+      "stage": "artifact_render",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.557Z"
+    },
+    {
+      "stage": "runtime_evaluation",
+      "status": "SKIPPED",
+      "skipReason": "runtime_not_applicable_to_modality",
+      "at": "2026-09-14T16:16:14.557Z"
+    },
+    {
+      "stage": "evaluation_plane",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.557Z"
+    },
+    {
+      "stage": "production_evidence",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.557Z"
+    },
+    {
+      "stage": "step2_validation",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.557Z",
+      "details": {
+        "contractValidationStatus": "FAIL"
+      }
+    },
+    {
+      "stage": "quality_gate",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.558Z",
+      "details": {
+        "qualityScore": 24
+      }
+    },
+    {
+      "stage": "model_performance_record",
+      "status": "COMPLETED",
+      "at": "2026-09-14T16:16:14.558Z"
+    }
+  ],
+  "startedAt": "2026-09-14T16:15:38.414Z",
+  "finalizedAt": "2026-09-14T16:16:14.558Z",
+  "durationMs": 36144,
+  "latencyMs": 26706,
+  "persistedAt": "2026-09-14T16:16:14.558Z",
+  "__v": 0
+}

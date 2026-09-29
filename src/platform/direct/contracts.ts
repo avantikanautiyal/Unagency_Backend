@@ -3,12 +3,18 @@
  */
 
 import type { OrganizationId, WorkspaceId } from "../core/identifiers";
+import type { CanonicalModelRequest } from "../ai/canonical-model-request";
 
 export type DirectExecutionMode = "full" | "planning_through_routing";
 
 export interface DirectExecutionRequest {
   readonly requestId: string;
   readonly rawPrompt: string;
+  /**
+   * Phase 4 — optional provider-neutral semantic request.
+   * When set, provider compatibility flattens at the Direct→Provider boundary.
+   */
+  readonly canonicalModelRequest?: CanonicalModelRequest;
   readonly organizationId?: OrganizationId;
   readonly workspaceId?: WorkspaceId;
   readonly scenarioHint?: string;

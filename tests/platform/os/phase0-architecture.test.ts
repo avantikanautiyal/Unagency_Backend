@@ -167,7 +167,7 @@ describe("Phase 0 — governance honesty", () => {
     );
   });
 
-  it("blocks delivery when creative score is below 80", () => {
+  it("blocks delivery when creative score is below the release gate", () => {
     const decision = defaultGovernanceEngine.decide({
       evaluationScore: 0.65,
       creativeScoreTotal: 65,

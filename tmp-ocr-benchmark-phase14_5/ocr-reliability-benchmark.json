@@ -1,0 +1,262 @@
+{
+  "phase": "14.5",
+  "generatedAt": "2026-09-29T19:37:47.016Z",
+  "capabilityClaimUnchanged": "undeclared",
+  "note": "Sample size is small; do not treat rates as production reliability.",
+  "summary": {
+    "sampleSizeContent": 11,
+    "sampleSizeAll": 13,
+    "truePositive": 5,
+    "trueNegative": 3,
+    "falsePositive": 0,
+    "falseNegative": 3,
+    "producerErrors": 2,
+    "presenceAccuracy": 0.9090909090909091,
+    "messageMatchAccuracy": 0.7272727272727273,
+    "falsePositiveRate": 0,
+    "falseNegativeRate": 0.2727272727272727,
+    "producerErrorRate": 0.15384615384615385,
+    "latencyMs": {
+      "avg": 836,
+      "max": 2126,
+      "min": 0
+    }
+  },
+  "rows": [
+    {
+      "fixture": "A_clear_hello_world",
+      "purpose": "Clear high-contrast expected text",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": "HELLO WORLD",
+      "extracted": "HELLO WORLD",
+      "match": true,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.71,
+      "durationMs": 1496,
+      "classification": "TRUE_POSITIVE",
+      "error": null,
+      "typographyNotes": "large scale, white bg, black text, high contrast",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "B_multi_block",
+      "purpose": "Headline + secondary text blocks",
+      "expected": [
+        "PRIMARY HEADLINE",
+        "SECONDARY LINE"
+      ],
+      "renderedGroundTruth": "PRIMARY HEADLINE\nSECONDARY LINE",
+      "extracted": "FEIMARY HEROLIME SECOMDAREY LIME",
+      "match": false,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.56,
+      "durationMs": 2126,
+      "classification": "FALSE_NEGATIVE",
+      "error": null,
+      "typographyNotes": "two lines, high contrast",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "C_text_over_photo",
+      "purpose": "Text over photographic/noisy background",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": "HELLO WORLD",
+      "extracted": "",
+      "match": false,
+      "presence": false,
+      "outcome": "ok",
+      "confidence": 0,
+      "durationMs": 2047,
+      "classification": "FALSE_NEGATIVE",
+      "error": null,
+      "typographyNotes": "noise gradient background, black text",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "D_small_text",
+      "purpose": "Small on-canvas text",
+      "expected": [
+        "HELLO"
+      ],
+      "renderedGroundTruth": "HELLO",
+      "extracted": "HELLO",
+      "match": true,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.85,
+      "durationMs": 334,
+      "classification": "TRUE_POSITIVE",
+      "error": null,
+      "typographyNotes": "scale=2 (very small glyphs)",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "E_stylized_tracking",
+      "purpose": "Stylized wide tracking / mild shear",
+      "expected": [
+        "STYLED"
+      ],
+      "renderedGroundTruth": "STYLED",
+      "extracted": "STYLED",
+      "match": true,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.81,
+      "durationMs": 1092,
+      "classification": "TRUE_POSITIVE",
+      "error": null,
+      "typographyNotes": "tracking=4 with shear, large scale",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "F_wrong_text",
+      "purpose": "Wrong rendered text vs expected",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": "GOODBYE WORLD",
+      "extracted": "GOODBYE WORLD",
+      "match": false,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.33,
+      "durationMs": 1192,
+      "classification": "TRUE_NEGATIVE",
+      "error": null,
+      "typographyNotes": "clear wrong message, high contrast",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "G_no_text",
+      "purpose": "Blank image — affirmative absence",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": null,
+      "extracted": "",
+      "match": false,
+      "presence": false,
+      "outcome": "ok",
+      "confidence": 0,
+      "durationMs": 281,
+      "classification": "TRUE_NEGATIVE",
+      "error": null,
+      "typographyNotes": "blank white, no glyphs",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "H_metadata_only_pixels_blank",
+      "purpose": "Metadata claims text; pixels blank",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": null,
+      "extracted": "",
+      "match": false,
+      "presence": false,
+      "outcome": "ok",
+      "confidence": 0,
+      "durationMs": 276,
+      "classification": "TRUE_NEGATIVE",
+      "error": null,
+      "typographyNotes": "blank pixels; metadataClaim separate",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "I_large_headline",
+      "purpose": "Large headline",
+      "expected": [
+        "LAUNCH"
+      ],
+      "renderedGroundTruth": "LAUNCH",
+      "extracted": "LALMCH",
+      "match": false,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.53,
+      "durationMs": 783,
+      "classification": "FALSE_NEGATIVE",
+      "error": null,
+      "typographyNotes": "scale=14 headline",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "J_low_contrast",
+      "purpose": "Low-contrast text on gray field",
+      "expected": [
+        "HELLO"
+      ],
+      "renderedGroundTruth": "HELLO",
+      "extracted": "HELLO",
+      "match": true,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0,
+      "durationMs": 515,
+      "classification": "TRUE_POSITIVE",
+      "error": null,
+      "typographyNotes": "textRgb≈(190,190,190) on gray~210–230",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "K_producer_malformed",
+      "purpose": "Malformed image bytes → producer error",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": null,
+      "extracted": "",
+      "match": false,
+      "presence": false,
+      "outcome": "error",
+      "confidence": null,
+      "durationMs": 0,
+      "classification": "PRODUCER_ERROR",
+      "error": "unrecognized_image_bytes",
+      "typographyNotes": "non-image bytes",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "L_producer_missing_asset",
+      "purpose": "Missing vault bytes → artifact_unavailable",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": null,
+      "extracted": "",
+      "match": false,
+      "presence": false,
+      "outcome": "artifact_unavailable",
+      "confidence": null,
+      "durationMs": 0,
+      "classification": "PRODUCER_ERROR",
+      "error": "vault_bytes_missing",
+      "typographyNotes": "resolveBytes returns undefined",
+      "pathLabel": "byte_inject"
+    },
+    {
+      "fixture": "A_clear_hello_world",
+      "purpose": "Clear high-contrast expected text",
+      "expected": [
+        "HELLO WORLD"
+      ],
+      "renderedGroundTruth": "HELLO WORLD",
+      "extracted": "HELLO WORLD",
+      "match": true,
+      "presence": true,
+      "outcome": "ok",
+      "confidence": 0.71,
+      "durationMs": 724,
+      "classification": "TRUE_POSITIVE",
+      "error": null,
+      "typographyNotes": "large scale, white bg, black text, high contrast",
+      "pathLabel": "memory_vault_resolver"
+    }
+  ]
+}

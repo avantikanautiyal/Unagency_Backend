@@ -78,6 +78,14 @@ async function resolveCategoryId(input: {
   return category._id as mongoose.Types.ObjectId;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sameTitleFilter(title: string) {
+  return { $regex: `^${escapeRegExp(title)}$`, $options: "i" };
+}
+
 function defaultDeadline(from = new Date()): Date {
   const d = new Date(from);
   d.setDate(d.getDate() + 14);
@@ -98,6 +106,8 @@ export type CreativeProjectInput = {
   categoryId?: string;
   categoryTitle?: string;
   executionId?: string;
+  /** CDF session id. Phases of one session update the same project. */
+  sessionId?: string;
   /** Prior execution in the same creative session (e.g. refine). Upsert updates that project. */
   refineFromExecutionId?: string;
   projectId?: string;
@@ -204,6 +214,7 @@ export class CreativeProjectService {
     });
 
     const executionId = input.executionId?.trim() || undefined;
+    const sessionId = input.sessionId?.trim() || undefined;
     const refineFromExecutionId =
       input.refineFromExecutionId?.trim() || undefined;
     const projectId = input.projectId?.trim() || undefined;
@@ -223,7 +234,27 @@ export class CreativeProjectService {
         : null) ||
       (projectId && mongoose.isValidObjectId(projectId)
         ? await Projects.findOne({ _id: projectId, userId: userOid })
-        : null);
+        : null) ||
+      (sessionId
+        ? await Projects.findOne({ userId: userOid, sessionId }).sort({
+            updatedAt: -1,
+          })
+        : null) ||
+      (await Projects.findOne({
+        userId: userOid,
+        origin: "ai_creative",
+        title: sameTitleFilter(title),
+        ...(sessionId
+          ? {
+              $or: [
+                { sessionId },
+                { sessionId: { $exists: false } },
+                { sessionId: null },
+                { sessionId: "" },
+              ],
+            }
+          : {}),
+      }).sort({ updatedAt: -1 }));
 
     if (existing) {
       // Drop orphans created when refine previously inserted a second project.
@@ -242,6 +273,7 @@ export class CreativeProjectService {
       existing.status = status;
       existing.origin = "ai_creative";
       if (executionId) existing.executionId = executionId;
+      if (sessionId) existing.sessionId = sessionId;
       applyProductFields(existing, input);
       if (!existing.creationMode && input.creationMode) {
         applyProductFields(existing, { creationMode: input.creationMode });
@@ -268,6 +300,7 @@ export class CreativeProjectService {
       origin: "ai_creative",
       creationMode,
       executionId,
+      sessionId,
       sourceRouteId: input.sourceRouteId?.trim() || undefined,
       artifactId: input.artifactId?.trim() || undefined,
       productPath: input.productPath?.trim() || undefined,
@@ -347,43 +380,73 @@ export class CreativeProjectService {
     });
     if (!doc) throw new ApiError("Project not found", 404);
 
-    const fileIds = Array.isArray(doc.files)
-      ? doc.files.map((id) => String(id)).filter(Boolean)
-      : [];
-    const executionIds = doc.executionId?.trim()
-      ? [doc.executionId.trim()]
+    const title = doc.title.trim();
+    const sessionId = doc.sessionId?.trim();
+    const duplicates = title
+      ? await Projects.find({
+          userId: userOid,
+          _id: { $ne: projectOid },
+          title: sameTitleFilter(title),
+          ...(sessionId
+            ? {
+                $or: [
+                  { sessionId },
+                  { sessionId: { $exists: false } },
+                  { sessionId: null },
+                  { sessionId: "" },
+                ],
+              }
+            : {
+                $or: [
+                  { sessionId: { $exists: false } },
+                  { sessionId: null },
+                  { sessionId: "" },
+                ],
+              }),
+        })
       : [];
 
-    // Cascade: hard-delete vault assets tied to this project (not the parent chat).
-    try {
-      const { productAssetService } = await import("./product-asset-service");
-      await productAssetService.hardDeleteMatching({
-        userId: input.userId,
-        projectId: String(doc._id),
-        executionIds,
-        assetIds: fileIds,
+    for (const target of [doc, ...duplicates]) {
+      const fileIds = Array.isArray(target.files)
+        ? target.files.map((id) => String(id)).filter(Boolean)
+        : [];
+      const executionIds = target.executionId?.trim()
+        ? [target.executionId.trim()]
+        : [];
+
+      // Cascade: hard-delete vault assets tied to this project (not the parent chat).
+      try {
+        const { productAssetService } = await import("./product-asset-service");
+        await productAssetService.hardDeleteMatching({
+          userId: input.userId,
+          projectId: String(target._id),
+          executionIds,
+          assetIds: fileIds,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // No org ⇒ no vault uploads possible; still allow project row delete.
+        if (!/no organisation/i.test(message)) {
+          console.warn(
+            "[creative-project-service] vault cascade failed:",
+            message
+          );
+          throw new ApiError(
+            "Could not delete project vault assets. Try again in a moment.",
+            503
+          );
+        }
+      }
+
+      const deleted = await Projects.findOneAndDelete({
+        _id: target._id,
+        userId: userOid,
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // No org ⇒ no vault uploads possible; still allow project row delete.
-      if (!/no organisation/i.test(message)) {
-        console.warn(
-          "[creative-project-service] vault cascade failed:",
-          message
-        );
-        throw new ApiError(
-          "Could not delete project vault assets. Try again in a moment.",
-          503
-        );
+      if (!deleted && String(target._id) === String(doc._id)) {
+        throw new ApiError("Project not found", 404);
       }
     }
-
-    const deleted = await Projects.findOneAndDelete({
-      _id: projectOid,
-      userId: userOid,
-    });
-    if (!deleted) throw new ApiError("Project not found", 404);
-    return { id: String(deleted._id) };
+    return { id: String(doc._id) };
   }
 }
 

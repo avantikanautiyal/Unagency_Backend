@@ -9,7 +9,11 @@ import type {
   VendorImageNormalizedResult,
   VendorImageWirePlan,
 } from "../common/vendor-image-protocol";
-import { extractPrompt, extractReferenceImage } from "../common/vendor-image-protocol";
+import {
+  applyReferenceRolePromptGuidance,
+  extractPrompt,
+  extractReferenceImages,
+} from "../common/vendor-image-protocol";
 import {
   bflAspectRatioForProduct,
   resolvePayloadAspectRatio,
@@ -45,11 +49,19 @@ export class BflImageProtocol implements IVendorImageProtocol {
     request: ProviderExecutionRequest;
     wireModelId: string;
   }): VendorImageWirePlan {
-    const prompt = extractPrompt(input.request.payload);
+    const basePrompt = extractPrompt(input.request.payload);
     const aspectRatio = bflAspectRatioForProduct(
       resolvePayloadAspectRatio(input.request.payload)
     );
-    const reference = extractReferenceImage(input.request.payload);
+    const references = extractReferenceImages(
+      input.request.payload,
+      input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+    );
+    const { prompt, adaptations } = applyReferenceRolePromptGuidance({
+      basePrompt,
+      references,
+    });
+    const reference = references[0];
     const endpoint =
       ENDPOINT_BY_MODEL[input.wireModelId] ??
       ENDPOINT_BY_MODEL[input.spec.wireModelId] ??
@@ -65,14 +77,13 @@ export class BflImageProtocol implements IVendorImageProtocol {
         path: `/v1/${endpoint}`,
         headers: { "Content-Type": "application/json" },
         body: {
-          prompt: inputImage
-            ? `${prompt}\nUse the provided input image as the brand logo/reference — keep it recognizable.`
-            : prompt,
+          prompt,
           ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
           ...(inputImage ? { input_image: inputImage } : {}),
         },
       },
       pollPathTemplate: "/v1/get_result?id={id}",
+      ...(adaptations.length ? { referenceAdaptation: adaptations } : {}),
     };
   }
 

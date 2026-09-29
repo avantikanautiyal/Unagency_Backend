@@ -242,6 +242,7 @@ export interface IRateLimitService {
     apiKeyId?: string;
     capabilityId?: string;
     providerId?: string;
+    accountingClass?: import("../../execution-reliability/execution-outcome").RateLimitAccountingClass;
   }): Promise<Result<RateLimitDecision>>;
   /** True when shared Redis-backed limiter is available (durable mode). */
   isAvailable?(): boolean;

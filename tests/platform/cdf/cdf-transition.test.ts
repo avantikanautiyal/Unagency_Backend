@@ -5,6 +5,8 @@
 import {
   applyCdfTransition,
   resetCdfSessionsForTests,
+  resetCdfRequirementEngineForTests,
+  resetCdfArtifactEngineForTests,
   resolveCdfServiceConfig,
   listCdfServiceIds,
 } from "../../../src/platform/cdf";
@@ -17,6 +19,7 @@ import {
   bootstrapEnterpriseApiRuntime,
   resetEnterpriseApiRuntimeForTests,
 } from "../../../src/platform/api/runtime";
+import { approveWithCanonicalCompletion, bindMinimalGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 
 describe("CDF registry", () => {
   it("lists all 15 service flows", () => {
@@ -39,6 +42,8 @@ describe("CDF registry", () => {
 describe("CDF transition service", () => {
   beforeEach(() => {
     resetCdfSessionsForTests();
+    resetCdfRequirementEngineForTests();
+    resetCdfArtifactEngineForTests();
   });
 
   it("runs Social Media brief → route → approve creative → final", () => {
@@ -103,17 +108,20 @@ describe("CDF transition service", () => {
     // Refine stays on the same phase
     expect(refined.value.session.phaseId).toBe("output");
 
+    const bound = bindMinimalGeneratedForApprove(sessionId)!;
     const approved = applyCdfTransition({
       sessionId,
       action: "approve",
-      artifactId: "art_social_1",
+      artifactId: bound.artifactId,
+      artifactVersion: bound.artifactVersion,
+      artifactKey: bound.artifactKey,
       executionId: "exec_social_1",
       note: "Hero post: crunch close-up with bold CTA",
     });
     expect(approved.ok).toBe(true);
     if (!approved.ok) return;
     expect(approved.value.session.phaseId).toBe("final");
-    expect(approved.value.session.masters.masterArtifactId).toBe("art_social_1");
+    expect(approved.value.session.masters.masterArtifactId).toBe(bound.artifactId);
     expect(
       approved.value.session.approved.find((a) => a.phaseId === "output")?.note
     ).toBe("Hero post: crunch close-up with bold CTA");
@@ -148,13 +156,9 @@ describe("CDF transition service", () => {
       brief: "Hybrid social brief",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 }); // platform
-    applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 }); // size-reference
+    applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0, routeInput: "1080 × 1350 px" }); // size-reference
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 }); // routes
-    const approved = applyCdfTransition({
-      sessionId,
-      action: "approve",
-      artifactId: "art_1",
-    });
+    const approved = approveWithCanonicalCompletion(sessionId);
     expect(approved.ok).toBe(true);
     if (!approved.ok) return;
     expect(approved.value.ui.showSendToStudio).toBe(true);
@@ -205,6 +209,8 @@ describe("CDF transition service", () => {
 describe("CDF Wave 2 services", () => {
   beforeEach(() => {
     resetCdfSessionsForTests();
+    resetCdfRequirementEngineForTests();
+    resetCdfArtifactEngineForTests();
   });
 
   it("resolves web-tech / strategy / ads aliases", () => {
@@ -237,12 +243,12 @@ describe("CDF Wave 2 services", () => {
       generator: "structured",
     });
 
-    const sitemap = applyCdfTransition({ sessionId, action: "approve" });
+    const sitemap = approveWithCanonicalCompletion(sessionId);
     expect(sitemap.ok).toBe(true);
     if (!sitemap.ok) return;
     expect(sitemap.value.session.phaseId).toBe("page-structure");
 
-    const structure = applyCdfTransition({ sessionId, action: "approve" });
+    const structure = approveWithCanonicalCompletion(sessionId);
     expect(structure.ok).toBe(true);
     if (!structure.ok) return;
     expect(structure.value.session.phaseId).toBe("wireframe");
@@ -263,7 +269,7 @@ describe("CDF Wave 2 services", () => {
       brief: "Strategy for CrunchO snacks",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
-    const platform = applyCdfTransition({ sessionId, action: "approve" });
+    const platform = approveWithCanonicalCompletion(sessionId);
     expect(platform.ok).toBe(true);
     if (!platform.ok) return;
     expect(platform.value.session.phaseId).toBe("tone-of-voice");
@@ -284,9 +290,21 @@ describe("CDF Wave 2 services", () => {
       action: "submit_brief",
       brief: "Launch campaign urban 18-30",
     });
-    applyCdfTransition({ sessionId, action: "approve" }); // campaign-strategy
-    applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
-    const concept = applyCdfTransition({ sessionId, action: "approve" });
+    approveWithCanonicalCompletion(sessionId); // campaign-strategy
+    // Canonical session requires exact X@V on select_route for big-ideas.
+    const ideas = bindMinimalGeneratedForApprove(sessionId)!;
+    const selectedIdea = applyCdfTransition({
+      sessionId,
+      action: "select_route",
+      routeIndex: 0,
+      artifactId: ideas.artifactId,
+      artifactVersion: ideas.artifactVersion,
+      artifactKey: ideas.artifactKey,
+      expectedVersion: ideas.session.sessionVersion,
+    });
+    expect(selectedIdea.ok).toBe(true);
+    if (!selectedIdea.ok) return;
+    const concept = approveWithCanonicalCompletion(sessionId);
     expect(concept.ok).toBe(true);
     if (!concept.ok) return;
     expect(concept.value.session.phaseId).toBe("master-kv");
@@ -301,6 +319,8 @@ describe("CDF Wave 2 services", () => {
 describe("CDF Wave 3 services", () => {
   beforeEach(() => {
     resetCdfSessionsForTests();
+    resetCdfRequirementEngineForTests();
+    resetCdfArtifactEngineForTests();
   });
 
   it("resolves logo / print / video / merch / event aliases", () => {
@@ -357,7 +377,7 @@ describe("CDF Wave 3 services", () => {
     expect(afterTerritory.ok).toBe(true);
     if (!afterTerritory.ok) return;
     expect(afterTerritory.value.session.phaseId).toBe("logo-options");
-    const options = applyCdfTransition({ sessionId, action: "approve" });
+    const options = approveWithCanonicalCompletion(sessionId);
     expect(options.ok).toBe(true);
     if (!options.ok) return;
     expect(options.value.session.phaseId).toBe("logo-system");
@@ -383,9 +403,9 @@ describe("CDF Wave 3 services", () => {
     // design routes
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
     // 3d-direction → front-pack
-    applyCdfTransition({ sessionId, action: "approve" });
+    approveWithCanonicalCompletion(sessionId);
     // front-pack → complete-pack
-    const complete = applyCdfTransition({ sessionId, action: "approve" });
+    const complete = approveWithCanonicalCompletion(sessionId);
     expect(complete.ok).toBe(true);
     if (!complete.ok) return;
     expect(complete.value.session.phaseId).toBe("complete-pack");
@@ -414,7 +434,7 @@ describe("CDF Wave 3 services", () => {
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
     // Script routes
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
-    const script = applyCdfTransition({ sessionId, action: "approve" });
+    const script = approveWithCanonicalCompletion(sessionId);
     expect(script.ok).toBe(true);
     if (!script.ok) return;
     expect(script.value.session.phaseId).toBe("storyboard");
@@ -440,7 +460,7 @@ describe("CDF Wave 3 services", () => {
       brief: "Festive market scene illustration",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
-    const composition = applyCdfTransition({ sessionId, action: "approve" });
+    const composition = approveWithCanonicalCompletion(sessionId);
     expect(composition.ok).toBe(true);
     if (!composition.ok) return;
     expect(composition.value.session.phaseId).toBe("final-illustration");
@@ -460,8 +480,8 @@ describe("CDF Wave 3 services", () => {
       action: "submit_brief",
       brief: "Adapt master to 15 digital sizes",
     });
-    applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 }); // master-select
-    const adaptations = applyCdfTransition({ sessionId, action: "approve" });
+    applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0, routeInput: "master.png" }); // master-select
+    const adaptations = approveWithCanonicalCompletion(sessionId);
     expect(adaptations.ok).toBe(true);
     if (!adaptations.ok) return;
     expect(adaptations.value.session.phaseId).toBe("adaptations");
@@ -487,7 +507,7 @@ describe("CDF Wave 3 services", () => {
       brief: "Annual client summit branding",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
-    const identity = applyCdfTransition({ sessionId, action: "approve" });
+    const identity = approveWithCanonicalCompletion(sessionId);
     expect(identity.ok).toBe(true);
     if (!identity.ok) return;
     expect(identity.value.session.phaseId).toBe("select-touchpoints");
@@ -499,6 +519,7 @@ describe("CDF gateway routes", () => {
   afterEach(() => {
     resetEnterpriseApiRuntimeForTests();
     resetCdfSessionsForTests();
+    resetCdfRequirementEngineForTests();
   });
 
   it("POST /v1/cdf/sessions and /v1/cdf/transition via gateway", async () => {

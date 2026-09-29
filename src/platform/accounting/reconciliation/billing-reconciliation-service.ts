@@ -27,7 +27,9 @@ export interface ProviderBillingLineItem {
   readonly amount: string;
   readonly currency: string;
   readonly modelId?: string | null;
+  /** Provider cost bucket start (ISO, normalized via Date#toISOString). */
   readonly completedAt?: string | null;
+  readonly bucketEnd?: string | null;
 }
 
 export class BillingReconciliationService {

@@ -449,6 +449,51 @@ export const updateCustomerRequirement = asyncHandler(
   }
 );
 
+/** CS updates the editable client brief text (shared to resources separately). */
+export const updateRequirementDescription = asyncHandler(
+  async (req: RequestUser) => {
+    const userId: string = req.params.userId;
+    const reqId: string = req.params.reqId;
+    const description = String(req.body?.description ?? "").trim();
+    if (!description) {
+      return new ApiResponse(400, null, "description is required");
+    }
+
+    const staffId =
+      req.user?.staff &&
+      typeof req.user.staff === "object" &&
+      "_id" in req.user.staff
+        ? req.user.staff._id
+        : req.user?.staff;
+
+    const checkMyCustomer = await servicingCanAccessCustomer({
+      staffId,
+      customerId: userId,
+      role: req.user?.role,
+    });
+
+    if (!checkMyCustomer) {
+      return new ApiResponse(
+        401,
+        null,
+        "Customer is not associated with your ID"
+      );
+    }
+
+    const update = await Requirement.findOneAndUpdate(
+      { _id: new mongoose.Types.ObjectId(reqId), userId: userId },
+      { $set: { description } },
+      { new: true, runValidators: true }
+    );
+
+    if (!update) {
+      return new ApiResponse(404, null, "Requirement not found");
+    }
+
+    return new ApiResponse(200, update, "Brief updated successfully");
+  }
+);
+
 export const getRequirmentById = asyncHandler(async (req: RequestUser) => {
   const id: string = req.params.id;
   const requirment = await Requirement.findById(id)

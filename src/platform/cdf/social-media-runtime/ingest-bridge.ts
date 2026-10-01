@@ -244,7 +244,11 @@ export function tryIngestSocialMediaCdfCompletion(input: {
       expectedSessionVersion: session.sessionVersion,
       socialMediaRefs,
       vaultAssetIds: input.vaultAssetIds,
-      upstreamArtifactRefs: collectContractUpstreamRefs({ sessionId, serviceId, phaseId }),
+      upstreamArtifactRefs: collectContractUpstreamRefs({
+        sessionId,
+        serviceId: "social-media",
+        phaseId,
+      }),
       sourceArtifacts: sourceArtifacts.length ? sourceArtifacts : undefined,
       requestId: input.executionId
         ? `m9b_ingest_${input.executionId}_${phaseId}`

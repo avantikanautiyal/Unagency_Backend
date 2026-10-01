@@ -4,12 +4,15 @@
 
 import mongoose from "mongoose";
 import UserPreferences, {
+  ACCOUNT_TYPES,
+  type AccountType,
   type IUserPreferences,
 } from "../models/userPreferences.model";
 import { ApiError } from "../utils/apiError";
 
 export type UserPreferencesDto = {
   userId: string;
+  accountType?: AccountType;
   theme: "system" | "light" | "dark";
   language: string;
   timezone: string;
@@ -28,6 +31,7 @@ export type UserPreferencesDto = {
 function toDto(doc: IUserPreferences): UserPreferencesDto {
   return {
     userId: doc.userId.toString(),
+    accountType: doc.accountType,
     theme: doc.theme,
     language: doc.language,
     timezone: doc.timezone,
@@ -75,6 +79,7 @@ export class UserPreferencesService {
   async update(
     userId: string,
     patch: Partial<{
+      accountType: AccountType;
       theme: UserPreferencesDto["theme"];
       language: string;
       timezone: string;
@@ -89,6 +94,15 @@ export class UserPreferencesService {
       }>;
     }>
   ): Promise<UserPreferencesDto> {
+    if (
+      patch.accountType != null &&
+      !ACCOUNT_TYPES.includes(patch.accountType)
+    ) {
+      throw new ApiError(
+        `accountType must be one of: ${ACCOUNT_TYPES.join(", ")}`,
+        400
+      );
+    }
     const doc = await UserPreferences.findOne({ userId });
     const current =
       doc ??
@@ -96,6 +110,7 @@ export class UserPreferencesService {
         userId: new mongoose.Types.ObjectId(userId),
       }));
 
+    if (patch.accountType) current.accountType = patch.accountType;
     if (patch.theme) current.theme = patch.theme;
     if (patch.language != null) current.language = String(patch.language);
     if (patch.timezone != null) current.timezone = String(patch.timezone);

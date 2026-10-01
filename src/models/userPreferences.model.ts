@@ -4,8 +4,19 @@ import mongoose, { Schema, Document } from "mongoose";
  * User preferences + privacy (M10.12) — single durable document per user.
  */
 
+export const ACCOUNT_TYPES = [
+  "business",
+  "marketing",
+  "agency",
+  "creator",
+  "exploring",
+] as const;
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
+
 export interface IUserPreferences extends Document {
   userId: mongoose.Types.ObjectId;
+  /** Onboarding "What best describes you?" selection */
+  accountType?: AccountType;
   theme: "system" | "light" | "dark";
   language: string;
   timezone: string;
@@ -41,6 +52,7 @@ const UserPreferencesSchema = new Schema<IUserPreferences>(
       unique: true,
       index: true,
     },
+    accountType: { type: String, enum: ACCOUNT_TYPES },
     theme: {
       type: String,
       enum: ["system", "light", "dark"],

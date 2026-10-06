@@ -4,7 +4,7 @@ metadata:
   name: unagency-ingress
   namespace: unagency
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"

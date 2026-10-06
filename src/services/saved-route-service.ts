@@ -198,13 +198,13 @@ export class SavedRouteService {
   async remove(input: {
     userId: string;
     routeId: string;
-  }): Promise<{ deleted: true; id: string }> {
+  }): Promise<{ deleted: true; id: string; title: string }> {
     const doc = await SavedRoutes.findOneAndDelete({
       _id: input.routeId,
       userId: input.userId,
     });
     if (!doc) throw new ApiError("Saved route not found", 404);
-    return { deleted: true, id: doc._id.toString() };
+    return { deleted: true, id: doc._id.toString(), title: doc.title };
   }
 }
 

@@ -149,6 +149,19 @@ async function audit(input: {
   }
 }
 
+/** A client-authored human message in their own service room (AI-mode sync excluded). */
+function isClientServiceChatTurn(
+  conversation: IConversation,
+  input: { userId: string; messageType?: string; metadata?: Record<string, unknown> }
+): boolean {
+  if (conversation.entityKind !== "service") return false;
+  if (!conversation.createdByUserId || String(conversation.createdByUserId) !== input.userId) {
+    return false;
+  }
+  if (input.messageType === "ai_response") return false;
+  return typeof input.metadata?.aiKind !== "string";
+}
+
 export class CollaborationOsService {
   async provision(input: {
     entityKind: ConversationEntityKind;
@@ -299,6 +312,72 @@ export class CollaborationOsService {
       brandId: input.brandId,
       briefId: input.briefId,
     });
+  }
+
+  /**
+   * Client's first message in a Human/Hybrid service room: surface the request,
+   * assign a CS and give them write access to the room.
+   */
+  private async activateServiceRoomOnClientMessage(
+    conversation: IConversation
+  ): Promise<void> {
+    if (!conversation.brandId || !conversation.productPath || !conversation.createdByUserId) {
+      return;
+    }
+    const { activateServiceRequirementOnClientMessage } = await import(
+      "../../services/cs-assignment-service"
+    );
+    const activated = await activateServiceRequirementOnClientMessage({
+      customerUserId: String(conversation.createdByUserId),
+      brandId: String(conversation.brandId),
+      productPath: conversation.productPath,
+    });
+    if (!activated) return;
+
+    if (activated.csUserId && mongoose.isValidObjectId(activated.csUserId)) {
+      const csUserId = new mongoose.Types.ObjectId(activated.csUserId);
+      await ConversationMember.findOneAndUpdate(
+        { conversationId: conversation._id, userId: csUserId },
+        {
+          $set: { role: "manager" as MemberRole },
+          $setOnInsert: {
+            conversationId: conversation._id,
+            userId: csUserId,
+            organizationId: conversation.organizationId,
+            unreadCount: 1,
+            joinedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+    }
+
+    if (activated.assignedNow) {
+      const { notifyAssignedCs } = await import(
+        "../../controllers/requirement.controller"
+      );
+      await notifyAssignedCs({
+        requirementId: activated.requirementId,
+        staffId: activated.staffId,
+        title: activated.title,
+        description: `${activated.title} — human/hybrid servicing request`,
+      });
+    }
+  }
+
+  /** Upgrade a CS member from read-only viewer to manager in a service room. */
+  async grantServicingWriteAccess(userId: string, channelId: string): Promise<void> {
+    if (!mongoose.isValidObjectId(userId)) return;
+    const convo = await this.resolveConversation(channelId);
+    if (!convo || convo.entityKind !== "service") return;
+    await ConversationMember.updateOne(
+      {
+        conversationId: convo._id,
+        userId: new mongoose.Types.ObjectId(userId),
+        role: "viewer",
+      },
+      { $set: { role: "manager" as MemberRole } }
+    );
   }
 
   async syncServiceChannelOversight(
@@ -609,7 +688,17 @@ export class CollaborationOsService {
       title: conversation.name,
       body: input.text.slice(0, 120),
       messageId: doc._id.toString(),
+      notificationKind: input.metadata?.notificationKind,
     });
+
+    if (isClientServiceChatTurn(conversation, input)) {
+      void this.activateServiceRoomOnClientMessage(conversation).catch((err) =>
+        console.warn(
+          "[collaboration] service request activation failed (non-fatal):",
+          err instanceof Error ? err.message : err
+        )
+      );
+    }
 
     await audit({
       conversationId: conversation._id.toString(),
@@ -780,13 +869,74 @@ export class CollaborationOsService {
     title: string;
     body: string;
     messageId: string;
+    /** Set by CS tools in message metadata to send a specific client notification. */
+    notificationKind?: unknown;
   }): Promise<void> {
     try {
       const members = await ConversationMember.find({
         conversationId: input.conversation._id,
         userId: { $ne: new mongoose.Types.ObjectId(input.excludeUserId) },
       }).limit(50);
+      const sender = await Users.findById(input.excludeUserId)
+        .select("name role")
+        .lean();
+      const senderIsTeam = ["servicing", "admin", "superadmin"].includes(
+        String(sender?.role ?? "")
+      );
+      const clientIds = new Set<string>();
+      if (senderIsTeam) {
+        const clients = await Users.find({
+          _id: { $in: members.map((m) => m.userId) },
+          role: "customer",
+        })
+          .select("_id")
+          .lean();
+        for (const c of clients) clientIds.add(String(c._id));
+      }
+      let isHybrid = false;
+      if (clientIds.size && input.conversation.projectId) {
+        const Projects = (await import("../../models/projects.model")).default;
+        const project = await Projects.findById(input.conversation.projectId)
+          .select("creationMode")
+          .lean();
+        isHybrid = project?.creationMode === "hybrid";
+      }
+      const kindEvents = {
+        clarification: isHybrid
+          ? "STUDIO_CLARIFICATION_REQUESTED"
+          : "CLARIFICATION_REQUESTED_BY_CS",
+        call_request: "CALL_REQUESTED_BY_CS",
+        progress_update: "CS_PROGRESS_UPDATE",
+        qc_issue: "QC_ISSUE",
+      } as const;
+      const kindEvent =
+        kindEvents[String(input.notificationKind) as keyof typeof kindEvents];
+      const clientEvent =
+        kindEvent ?? (isHybrid ? "STUDIO_MESSAGE_RECEIVED" : "CS_MESSAGE_RECEIVED");
+      const hourBucket = Math.floor(Date.now() / 3_600_000);
       for (const m of members) {
+        if (clientIds.has(String(m.userId))) {
+          const { dispatchClientNotification } = await import(
+            "../../notifications/client-notification-service"
+          );
+          await dispatchClientNotification({
+            eventKey: clientEvent,
+            userId: m.userId,
+            variables: {
+              "CS Name": sender?.name || "Your team",
+              "Project Name": input.conversation.name,
+            },
+            primaryAction: { action: "message.open" },
+            entityType: "conversation",
+            entityId: input.conversation.roomKey,
+            metadata: { messageId: input.messageId },
+            dedupeKey: kindEvent
+              ? input.messageId
+              : `${input.conversation.roomKey}:${hourBucket}`,
+            channels: ["in_app", "push"],
+          });
+          continue;
+        }
         await Notifications.create({
           userId: m.userId,
           title: input.title,

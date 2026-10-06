@@ -28,11 +28,31 @@ import { EnterpriseExecutionExtras } from "../mongo/models/enterprise-execution-
 
 export class MongoExecutionRepository implements IExecutionRepository {
   async save(execution: ExecutionResource): Promise<void> {
-    await EnterpriseExecution.updateOne(
+    const previous = await EnterpriseExecution.findOneAndUpdate(
       { executionId: execution.executionId },
       { $set: execution },
-      { upsert: true }
-    );
+      {
+        upsert: true,
+        new: false,
+        projection: {
+          status: 1,
+          userId: 1,
+          productAction: 1,
+          parentExecutionId: 1,
+          conversationId: 1,
+        },
+      }
+    ).lean();
+    if (execution.status === "succeeded" && previous?.status !== "succeeded") {
+      void import("../../../../notifications/client-execution-notifications")
+        .then((m) =>
+          m.notifyClientExecutionSucceeded(
+            (previous ?? null) as Partial<ExecutionResource> | null,
+            execution
+          )
+        )
+        .catch(() => undefined);
+    }
   }
 
   async get(executionId: string): Promise<ExecutionResource | undefined> {

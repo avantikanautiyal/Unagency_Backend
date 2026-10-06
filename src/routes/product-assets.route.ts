@@ -9,6 +9,7 @@ import {
   getMultipartPartUrl,
   getProductAsset,
   getProductAssetMedia,
+  importProductAsset,
   initiateMultipartUpload,
   listProductAssets,
   productAssetUpload,
@@ -27,6 +28,7 @@ router.post(
   productAssetUpload.single("file"),
   uploadProductAsset
 );
+router.post("/import", VerifyRole(["customer"]), importProductAsset);
 
 /** M10.18 — multipart / resumable large uploads */
 router.post(

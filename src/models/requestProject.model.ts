@@ -15,6 +15,11 @@ export interface IRequirement {
   productPath?: string;
   /** CS staff assigned to this Human/Hybrid request (per-request routing). */
   assignedCs?: mongoose.Types.ObjectId;
+  /**
+   * Human/Hybrid service request opened but the client has not written yet.
+   * Hidden from CS/admin and left unassigned until the first client message.
+   */
+  awaitingClientMessage?: boolean;
 }
 
 const RequirementSchema = new Schema<IRequirement>(
@@ -35,6 +40,7 @@ const RequirementSchema = new Schema<IRequirement>(
     brandId: { type: Schema.Types.ObjectId, ref: "Brands" },
     productPath: { type: String },
     assignedCs: { type: Schema.Types.ObjectId, ref: "Staff" },
+    awaitingClientMessage: { type: Boolean },
   },
   { collection: "requirements", timestamps: true }
 );

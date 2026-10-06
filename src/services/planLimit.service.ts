@@ -151,6 +151,18 @@ export const checkPlanLimit = async (
           max,
           planLimits.tag
         );
+        const { dispatchClientNotification } = await import(
+          "../notifications/client-notification-service"
+        );
+        await dispatchClientNotification({
+          eventKey: "TEAM_LIMIT_REACHED",
+          userId,
+          primaryAction: { action: "/subscription" },
+          secondaryAction: { action: "/manage-team" },
+          entityType: "organization",
+          entityId: resolvedOrgId,
+          dedupeKey: new Date().toISOString().slice(0, 10),
+        });
         throwLimitError(
           limitType,
           max,

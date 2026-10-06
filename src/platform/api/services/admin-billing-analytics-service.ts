@@ -1457,6 +1457,7 @@ async function loadVolumeRequirements(
 ): Promise<VolumeRequirementRow[]> {
   const query: Record<string, unknown> = {
     createdAt: { $gte: range.start, $lte: range.end },
+    awaitingClientMessage: { $ne: true },
   };
   if (!filter.crossTenant && filter.organizationId) {
     const { customerUserIds } = await resolveOrgFilter(filter.organizationId);

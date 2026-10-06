@@ -12,6 +12,7 @@ import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { Notification } from "../background/utils/notification";
 import { parseNotificationContent } from "../utils/notificationUtils";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
@@ -67,27 +68,23 @@ const RemoveMemberInOrganization = asyncHandler(
               subject: NOTIFICATION_CONFIG.REMOVED_FROM_WORKSPACE.email_subject,
             });
 
-            const notificationDataRemoved = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_REMOVED.email_body, { Name: req.user?.name || "User", "Member Name": removedUser.name });
-            EmailQueue.add("MEMBER_REMOVED", {
-              action: "COMMON",
-              data: commonTemplate({
-                name: req.user?.name!,
-                content: notificationDataRemoved.text,
-                title: NOTIFICATION_CONFIG.MEMBER_REMOVED.email_subject,
-                buttonText: notificationDataRemoved.cta,
-                buttonLink: `${FRONTEND_URL}/settings/team`,
-              }),
-              email: req.user?.email!,
-              userId: req.user?.userId.toString(),
-              notification: new Notification({
-                title: NOTIFICATION_CONFIG.MEMBER_REMOVED.in_app_title,
-                description: NOTIFICATION_CONFIG.MEMBER_REMOVED.in_app_body.replace("[Member Name]", removedUser.name),
-                type: "COMMON",
-                action: "/organization",
-                actionText: "manage team",
-                symbol: "👋",
-              }),
-              subject: NOTIFICATION_CONFIG.MEMBER_REMOVED.email_subject,
+            const organisation = await Organizations.findById(organization);
+            await dispatchClientNotification({
+              eventKey: "TEAM_MEMBER_REMOVED",
+              userId: req.user!.userId,
+              variables: {
+                Name: removedUser.name || "Team member",
+                Organisation: organisation?.companyName || "your workspace",
+              },
+              primaryAction: {
+                action: "/manage-team",
+                text: "View Team",
+              },
+              entityType: "organisation",
+              entityId: organization,
+              dedupeKey: `${organization}:${removedUser._id}:removed`,
+              channels: ["in_app", "email"],
+              symbol: "👋",
             });
           }
         }
@@ -233,27 +230,22 @@ export const inviteAction = asyncHandler(async (req: RequestUser, res) => {
 
       // console.log(owner && memberUser, "owner", owner, "member teams", memberUser);
       if (owner && memberUser) {
-        const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_JOINED.email_body, { Name: owner.name, "Member Name": memberUser.name });
-        EmailQueue.add("MEMBER_JOINED", {
-          action: "COMMON",
-          data: commonTemplate({
-            name: owner.name,
-            content: notificationData.text,
-            title: NOTIFICATION_CONFIG.MEMBER_JOINED.email_subject,
-            buttonText: notificationData.cta,
-            buttonLink: `${FRONTEND_URL}/settings/team`,
-          }),
-          email: owner.email,
-          userId: owner._id.toString(),
-          notification: new Notification({
-            title: NOTIFICATION_CONFIG.MEMBER_JOINED.in_app_title,
-            description: NOTIFICATION_CONFIG.MEMBER_JOINED.in_app_body.replace("[Member Name]", memberUser.name),
-            type: "COMMON",
-            action: "/organization",
-            actionText: "view team",
-            symbol: "👋",
-          }),
-          subject: NOTIFICATION_CONFIG.MEMBER_JOINED.email_subject,
+        await dispatchClientNotification({
+          eventKey: "INVITE_ACCEPTED",
+          userId: owner._id,
+          variables: {
+            Name: memberUser.name || "Team member",
+            Organisation: organization.companyName || "your workspace",
+          },
+          primaryAction: {
+            action: "/manage-team",
+            text: "View Team",
+          },
+          entityType: "organisation",
+          entityId: organization._id,
+          dedupeKey: `${teamId}:accepted`,
+          channels: ["in_app", "email"],
+          symbol: "👋",
         });
       }
     }

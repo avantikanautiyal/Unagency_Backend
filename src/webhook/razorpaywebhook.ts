@@ -17,11 +17,46 @@ import {
 } from "./razorpay-webhook-security";
 import { mongoWebhookIdempotencyStore } from "../models/webhook-event.model";
 import { syncLocalSubscriptionFromRazorpay } from "../billing/subscription-sync";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
+import { planDisplayName } from "../notifications/plan-display-name";
 
 const webhookSecret =
   process.env.RAZORPAY_WEBHOOK_SECRET?.trim() ||
   process.env.RAZORPAY_SECRET?.trim() ||
   "";
+
+async function userIdForPayment(payment: {
+  id?: string;
+  email?: string;
+}): Promise<string | null> {
+  if (payment.id) {
+    const record = await PaymentModel.findOne({
+      razorpay_payment_id: payment.id,
+    })
+      .select("userId")
+      .lean();
+    if (record?.userId) return String(record.userId);
+  }
+  if (payment.email) {
+    const user = await Users.findOne({ email: String(payment.email).toLowerCase() })
+      .select("_id")
+      .lean();
+    if (user?._id) return String(user._id);
+  }
+  return null;
+}
+
+function paymentFailureEvent(payment: {
+  error_reason?: string;
+  error_description?: string;
+}): "PAYMENT_CANCELLED" | "PAYMENT_TIMED_OUT" | "CARD_EXPIRED" | "PAYMENT_DECLINED" {
+  const reason = String(payment.error_reason ?? "").toLowerCase();
+  const description = String(payment.error_description ?? "").toLowerCase();
+  if (reason.includes("cancel")) return "PAYMENT_CANCELLED";
+  if (reason.includes("timed_out") || reason.includes("timeout")) return "PAYMENT_TIMED_OUT";
+  if (description.includes("expired")) return "CARD_EXPIRED";
+  return "PAYMENT_DECLINED";
+}
 
 async function claimWebhookEvent(
   eventId: string,
@@ -102,7 +137,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           { status: event.payload?.payment?.entity?.status }
         );
         break;
-      case "payment.failed":
+      case "payment.failed": {
         console.log(
           "Subscription Payment Captured:",
           event.payload?.payment?.entity?.id
@@ -111,7 +146,48 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
           { razorpay_payment_id: event.payload?.payment?.entity?.id },
           { status: event.payload?.payment?.entity?.status }
         );
+        const failedPayment = event.payload?.payment?.entity ?? {};
+        const failedUserId = await userIdForPayment(failedPayment);
+        if (failedUserId) {
+          await dispatchClientNotification({
+            eventKey: paymentFailureEvent(failedPayment),
+            userId: failedUserId,
+            primaryAction: { action: "/subscription-billing" },
+            secondaryAction: { action: "/subscription-billing" },
+            entityType: "payment",
+            entityId: String(failedPayment.id ?? ""),
+            dedupeKey: eventId,
+          });
+        }
         break;
+      }
+
+      case "refund.created":
+      case "refund.processed":
+      case "refund.failed": {
+        const refund = event.payload?.refund?.entity ?? {};
+        const refundUserId = await userIdForPayment({
+          id: refund.payment_id,
+          email: event.payload?.payment?.entity?.email,
+        });
+        if (refundUserId) {
+          await dispatchClientNotification({
+            eventKey:
+              event.event === "refund.created"
+                ? "REFUND_INITIATED"
+                : event.event === "refund.processed"
+                  ? "REFUND_COMPLETED"
+                  : "REFUND_FAILED",
+            userId: refundUserId,
+            primaryAction: { action: "/subscription-billing" },
+            entityType: "refund",
+            entityId: String(refund.id ?? ""),
+            dedupeKey: eventId,
+            channels: ["in_app", "email"],
+          });
+        }
+        break;
+      }
 
       case "subscription.activated":
         console.log(
@@ -140,6 +216,30 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         );
 
         console.log("customer activated ", customer);
+
+        if (customer) {
+          await dispatchClientNotification({
+            eventKey: "PAYMENT_SUCCESSFUL",
+            userId: customer._id,
+            variables: {
+              Name: customer.name || "User",
+              "Plan Name": planDisplayName(subs?.planId),
+            },
+            primaryAction: {
+              action: "/home",
+              text: "Explore Benefits",
+            },
+            secondaryAction: {
+              action: "/choose-mode",
+              text: "Start Creating",
+            },
+            entityType: "subscription",
+            entityId: subs?._id,
+            dedupeKey: eventId,
+            channels: ["in_app", "email"],
+            symbol: "✓",
+          });
+        }
 
         if (customer?.relationship_manager) {
           const staff = await Staff.findById(customer.relationship_manager).populate("userId");
@@ -171,27 +271,21 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         }
 
         if (customer) {
-          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.INVOICE_GENERATED.email_body, { Name: customer.name || "User" });
-          EmailQueue.add("invoice generated", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
-              content: notificationData.text,
-              name: customer.name,
-              buttonText: "Download Invoice",
-              buttonLink: `${FRONTEND_URL}/profile-settings`,
-            }),
-            email: customer.email,
-            userId: customer._id.toString(),
-            notification: new Notification({
-              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_title,
-              description: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_body,
-              type: "SUBSCRIPTION",
-              action: `/profile-settings`,
-              actionText: "Download Invoice",
-              symbol: "📄",
-            }),
-            subject: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
+          await dispatchClientNotification({
+            eventKey: "INVOICE_READY",
+            userId: customer._id,
+            variables: {
+              "Plan Name": planDisplayName(subs?.planId),
+            },
+            primaryAction: {
+              action: "/subscription-billing",
+              text: "View Invoice",
+            },
+            entityType: "subscription",
+            entityId: subs?._id,
+            dedupeKey: `${eventId}:invoice`,
+            channels: ["in_app", "email"],
+            symbol: "📄",
           });
         }
 
@@ -211,7 +305,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         });
         var subs = await Subscriptions.findOne({
           subscriptionId: event.payload?.subscription?.entity?.id,
-        });
+        }).populate({ path: "planId", foreignField: "plan_id" });
         // Update the user's subscription id and status
         var customer_charged = await Users.findOneAndUpdate(
           { _id: subs?.userId },
@@ -224,53 +318,37 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         );
 
         if (customer_charged) {
-          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.email_body, { Name: customer_charged.name || "User" });
-          EmailQueue.add("payment success", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-              title: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.email_subject,
-              content: notificationData.text,
-              name: customer_charged.name,
-              buttonText: notificationData.cta,
-              buttonLink: `${FRONTEND_URL}`,
-            }),
-            email: customer_charged.email,
-            userId: customer_charged._id.toString(),
-            notification: new Notification({
-              title: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.in_app_title,
-              description: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.in_app_body,
-              type: "SUBSCRIPTION",
-              action: `${FRONTEND_URL}/membership`,
-              actionText: "view subscription",
-              symbol: "💰",
-            }),
-            subject: NOTIFICATION_CONFIG.PAYMENT_SUCCESSFUL.email_subject,
+          await dispatchClientNotification({
+            eventKey: "RENEWAL_SUCCESSFUL",
+            userId: customer_charged._id,
+            variables: {
+              "Plan Name": planDisplayName(subs?.planId),
+            },
+            primaryAction: { action: "/home", text: "Continue" },
+            entityType: "subscription",
+            entityId: subs?._id,
+            dedupeKey: eventId,
+            channels: ["in_app", "email"],
+            symbol: "✓",
           });
         }
 
-        // Notify CS about payment success
         if (customer_charged) {
-          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.INVOICE_GENERATED.email_body, { Name: customer_charged.name || "User" });
-          EmailQueue.add("invoice generated", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
-              content: notificationData.text,
-              name: customer_charged.name,
-              buttonText: "Download Invoice",
-              buttonLink: `${FRONTEND_URL}/profile-settings`,
-            }),
-            email: customer_charged.email,
-            userId: customer_charged._id.toString(),
-            notification: new Notification({
-              title: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_title,
-              description: NOTIFICATION_CONFIG.INVOICE_GENERATED.in_app_body,
-              type: "SUBSCRIPTION",
-              action: `/profile-settings`,
-              actionText: "Download Invoice",
-              symbol: "📄",
-            }),
-            subject: NOTIFICATION_CONFIG.INVOICE_GENERATED.email_subject,
+          await dispatchClientNotification({
+            eventKey: "INVOICE_READY",
+            userId: customer_charged._id,
+            variables: {
+              "Plan Name": planDisplayName(subs?.planId),
+            },
+            primaryAction: {
+              action: "/subscription-billing",
+              text: "View Invoice",
+            },
+            entityType: "subscription",
+            entityId: subs?._id,
+            dedupeKey: `${eventId}:invoice`,
+            channels: ["in_app", "email"],
+            symbol: "📄",
           });
         }
 
@@ -319,7 +397,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         );
         var subs = await Subscriptions.findOne({
           subscriptionId: event.payload?.subscription?.entity?.id,
-        });
+        }).populate({ path: "planId", foreignField: "plan_id" });
         // Update the user's subscription id and status
         await Users.findOneAndUpdate(
           { _id: subs?.userId },
@@ -330,6 +408,21 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
           }
         );
+        if (subs?.userId) {
+          await dispatchClientNotification({
+            eventKey: "RENEWAL_FAILED",
+            userId: subs.userId,
+            variables: {
+              "Plan Name": planDisplayName(subs.planId),
+            },
+            primaryAction: { action: "/subscription-billing" },
+            secondaryAction: { action: "/subscription-billing" },
+            entityType: "subscription",
+            entityId: String(event.payload?.subscription?.entity?.id ?? ""),
+            dedupeKey: eventId,
+            channels: ["in_app", "push", "email"],
+          });
+        }
         break;
 
       case "subscription.halted":
@@ -353,27 +446,22 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         var customer = await Users.findOne({ _id: subs?.userId });
 
         if (customer) {
-          const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PAYMENT_FAILED.email_body, { Name: customer.name || "User" });
-          EmailQueue.add("payment failed", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-              title: NOTIFICATION_CONFIG.PAYMENT_FAILED.email_subject,
-              content: notificationData.text,
-              name: customer?.name!,
-              buttonText: notificationData.cta,
-              buttonLink: `${FRONTEND_URL}/subscription`,
-            }),
-            email: customer?.email!,
-            userId: customer?._id.toString(),
-            notification: new Notification({
-              title: NOTIFICATION_CONFIG.PAYMENT_FAILED.in_app_title,
-              description: NOTIFICATION_CONFIG.PAYMENT_FAILED.in_app_body,
-              type: "SUBSCRIPTION",
-              action: `${FRONTEND_URL}/membership`,
-              actionText: "view subscription",
-              symbol: "💳",
-            }),
-            subject: NOTIFICATION_CONFIG.PAYMENT_FAILED.email_subject,
+          await dispatchClientNotification({
+            eventKey: "PAYMENT_FAILED",
+            userId: customer._id,
+            primaryAction: {
+              action: "/subscription-billing",
+              text: "Retry Payment",
+            },
+            secondaryAction: {
+              action: "/subscription-billing",
+              text: "Change Method",
+            },
+            entityType: "subscription",
+            entityId: subs?._id,
+            dedupeKey: eventId,
+            channels: ["in_app", "email"],
+            symbol: "!",
           });
 
           // Notify CS about payment failure
@@ -438,28 +526,24 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
         console.log("subscription cancelled customer : ", customer);
         // todo
         // todo
-        const notificationDataCancelled = parseNotificationContent(NOTIFICATION_CONFIG.PLAN_EXPIRED.email_body, { Name: customer?.name || "User" });
-        EmailQueue.add("subscription cancelled", {
-          action: "SUBSCRIPTION",
-          data: commonTemplate({
-            title: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
-            content: notificationDataCancelled.text,
-            name: customer?.name!,
-            buttonText: notificationDataCancelled.cta,
-            buttonLink: `${FRONTEND_URL}/subscription`,
-          }),
-          email: customer?.email!,
-          userId: customer?._id.toString(),
-          notification: new Notification({
-            title: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_title,
-            description: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_body,
-            type: "SUBSCRIPTION",
-            action: `${FRONTEND_URL}/membership`,
-            actionText: "view subscription",
-            symbol: "⏰",
-          }),
-          subject: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
-        });
+        if (customer) {
+          await dispatchClientNotification({
+            eventKey: "CANCELLATION_CONFIRMED",
+            userId: customer._id,
+            primaryAction: {
+              action: "/subscription-billing",
+              text: "View Billing",
+            },
+            secondaryAction: {
+              action: "/subscription",
+              text: "Reactivate Later",
+            },
+            entityType: "subscription",
+            entityId: subs?._id,
+            dedupeKey: eventId,
+            channels: ["in_app", "email"],
+          });
+        }
 
         // Mark as cancelled in DB
         break;

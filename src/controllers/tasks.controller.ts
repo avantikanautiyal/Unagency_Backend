@@ -7,6 +7,7 @@ import Tasks, { ITasks } from "../models/tasks.model";
 import Staff from "../models/staff.model";
 import MediaFile from "../models/mediaFile.model";
 import Projects from "../models/projects.model";
+import { notifyProjectOwner } from "../notifications/client-project-notifications";
 import Requirement from "../models/requestProject.model";
 import mongoose from "mongoose";
 import { projectNotification } from "../background/queue/projectNotification.queue";
@@ -178,6 +179,13 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
       symbol: "👨🏽‍💻",
     }),
     subject: NOTIFICATION_CONFIG.RESOURCE_TASK_ASSIGNED.email_subject,
+  });
+
+  await notifyProjectOwner({
+    projectId: project,
+    events: { human: "RESOURCE_ASSIGNED", hybrid: null },
+    variables: { "Resource Name": (staff?.userId as any)?.name || "Your creative team" },
+    dedupeKey: create._id.toString(),
   });
 
   // Notify CS about task creation (in-app only, no email)
@@ -469,7 +477,26 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     })
     .populate("files");
 
-
+  const clientRequestedChanges = /\[requested_by:client\]/i.test(
+    String(updatedTask?.description ?? "")
+  );
+  if (updatedTask && updates.status === "client_review") {
+    await notifyProjectOwner({
+      projectId: updatedTask.project,
+      events: clientRequestedChanges
+        ? { human: "REVISED_DRAFT_SENT", hybrid: "HYBRID_REVISED_DRAFT_READY" }
+        : { human: "DRAFT_SENT_TO_CLIENT", hybrid: "EXPERT_DRAFT_READY" },
+      dedupeKey: `${taskId}:client_review:${Date.now()}`,
+      withSecondaryAction: clientRequestedChanges,
+      channels: ["in_app", "push"],
+    });
+  } else if (updatedTask && updates.status === "revision" && clientRequestedChanges) {
+    await notifyProjectOwner({
+      projectId: updatedTask.project,
+      events: { human: "CS_ACKNOWLEDGED_FEEDBACK", hybrid: null },
+      dedupeKey: `${taskId}:revision:${Date.now()}`,
+    });
+  }
 
   // Check for priority change
   if (updates.priority && updatedTask && updates.priority !== updatedTask.priority) {
@@ -885,6 +912,15 @@ const ClientReviewTask = asyncHandler(async (req: RequestUser) => {
   }
 
   await task.save();
+
+  await notifyProjectOwner({
+    projectId: project?._id,
+    events:
+      decision === "APPROVED"
+        ? { human: "CLIENT_APPROVED", hybrid: "HYBRID_APPROVED" }
+        : { human: "CLIENT_REQUESTED_REVISION", hybrid: "HYBRID_FEEDBACK_SUBMITTED" },
+    dedupeKey: `${taskId}:${decision}:${Date.now()}`,
+  });
 
   try {
     const { collaborationChannelService } = await import(

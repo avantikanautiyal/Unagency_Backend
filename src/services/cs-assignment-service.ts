@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Requirement from "../models/requestProject.model";
 import Staff from "../models/staff.model";
 import Users from "../models/users.model";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 
 /** Max concurrent non-delivered Human/Hybrid requests per CS agent. */
 export const CS_MAX_TASK_CAPACITY = 8;
@@ -119,11 +120,96 @@ export async function assignCsToRequirement(
   const picked = await pickLeastBusyCsAgent();
   if (!picked) return null;
 
-  await Requirement.findByIdAndUpdate(requirementId, {
-    $set: { assignedCs: picked.staffId },
-  });
+  const requirement = await Requirement.findByIdAndUpdate(
+    requirementId,
+    { $set: { assignedCs: picked.staffId } },
+    { new: true }
+  )
+    .select("userId title creationMode")
+    .lean();
+
+  if (requirement?.userId) {
+    const hybrid = requirement.creationMode === "hybrid";
+    await dispatchClientNotification({
+      eventKey: hybrid ? "EXPERT_TEAM_ASSIGNED" : "CS_ASSIGNED",
+      userId: requirement.userId,
+      variables: { "CS Name": picked.name, "Project Name": requirement.title },
+      primaryAction: { action: hybrid ? "/progress" : "message.open" },
+      entityType: "requirement",
+      entityId: String(requirementId),
+      dedupeKey: String(requirementId),
+    });
+  }
 
   return picked;
+}
+
+export type ActivatedServiceRequirement = {
+  requirementId: string;
+  title: string;
+  staffId: string;
+  csUserId: string;
+  assignedNow: boolean;
+};
+
+/**
+ * Human/Hybrid: the client's first message in a service room surfaces the
+ * request to CS/admin and assigns a CS if none is assigned yet.
+ * Returns null when there is nothing to activate (already live and assigned).
+ */
+export async function activateServiceRequirementOnClientMessage(input: {
+  customerUserId: string;
+  brandId: string;
+  productPath: string;
+}): Promise<ActivatedServiceRequirement | null> {
+  const productPath = input.productPath.trim();
+  if (
+    !productPath ||
+    !mongoose.isValidObjectId(input.customerUserId) ||
+    !mongoose.isValidObjectId(input.brandId)
+  ) {
+    return null;
+  }
+
+  const requirement = await Requirement.findOneAndUpdate(
+    {
+      userId: new mongoose.Types.ObjectId(input.customerUserId),
+      brandId: new mongoose.Types.ObjectId(input.brandId),
+      productPath,
+      creationMode: { $in: ["human", "hybrid"] },
+      status: { $nin: ["closed", "cancelled", "rejected"] },
+      $or: [
+        { awaitingClientMessage: true },
+        { assignedCs: { $exists: false } },
+        { assignedCs: null },
+      ],
+    },
+    { $set: { awaitingClientMessage: false } },
+    { new: true, sort: { updatedAt: -1 } }
+  )
+    .select("_id title assignedCs")
+    .lean();
+  if (!requirement) return null;
+
+  let staffId = requirement.assignedCs ? String(requirement.assignedCs) : "";
+  let assignedNow = false;
+  if (!staffId) {
+    const picked = await assignCsToRequirement(requirement._id);
+    if (picked) {
+      staffId = String(picked.staffId);
+      assignedNow = true;
+    }
+  }
+  if (!staffId) return null;
+
+  const staff = await Staff.findById(staffId).select("userId").lean();
+  return {
+    requirementId: String(requirement._id),
+    title: requirement.title,
+    staffId,
+    csUserId: staff?.userId ? String(staff.userId) : "",
+    assignedNow,
+  };
 }
 
 /**

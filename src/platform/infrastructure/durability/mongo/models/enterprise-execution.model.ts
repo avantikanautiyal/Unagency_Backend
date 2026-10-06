@@ -29,6 +29,8 @@ export interface EnterpriseExecutionDoc extends Document {
   /** Service AI conversation this execution belongs to. */
   conversationId?: string;
   channelId?: string;
+  productAction?: string;
+  parentExecutionId?: string;
 }
 
 const enterpriseExecutionSchema = new Schema<EnterpriseExecutionDoc>(
@@ -59,6 +61,8 @@ const enterpriseExecutionSchema = new Schema<EnterpriseExecutionDoc>(
     providerId: String,
     conversationId: { type: String, index: true },
     channelId: String,
+    productAction: String,
+    parentExecutionId: String,
   },
   { collection: "enterprise_executions" }
 );

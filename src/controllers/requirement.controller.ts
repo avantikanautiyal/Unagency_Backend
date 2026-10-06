@@ -12,6 +12,7 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { parseNotificationContent } from "../utils/notificationUtils";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 import { checkPlanLimit } from "../services/planLimit.service";
@@ -21,7 +22,7 @@ import {
   servicingCanAccessCustomer,
 } from "../services/cs-assignment-service";
 
-async function notifyAssignedCs(input: {
+export async function notifyAssignedCs(input: {
   requirementId: string;
   staffId: mongoose.Types.ObjectId | string;
   title: string;
@@ -189,29 +190,24 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
     }
   }
 
-  // sending email to customer
-  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_body, { Name: req.user?.name || "User" });
-  EmailQueue.add(`NEW_RQUIREMENT_${req.user?.email}`, {
-    action: "REQUIRMENT",
-    data: commonTemplate({
-      title: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_subject,
-      content: notificationData.text,
-      name: req.user?.name!,
-      buttonText: notificationData.cta,
-      buttonLink: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
-    }),
-    email: req.user?.email!,
-    userId: req.user?.userId.toString()!,
-    notification: new Notification({
-      title: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.in_app_title,
-      description: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.in_app_body,
-      type: "REQUIRMENT",
-      _id: newRequirement._id.toString(),
-      symbol: "🫡",
-      action: `${FRONTEND_URL}/requirement-logs/${newRequirement._id}`,
-      actionText: "view requirment",
-    }),
-    subject: NOTIFICATION_CONFIG.BRIEF_SUBMITTED.email_subject,
+  const clientBriefEvent =
+    creationMode === "hybrid"
+      ? "HYBRID_BRIEF_SUBMITTED"
+      : creationMode === "ai"
+        ? "AI_BRIEF_SUBMITTED"
+        : "HUMAN_BRIEF_SUBMITTED";
+  await dispatchClientNotification({
+    eventKey: clientBriefEvent,
+    userId: req.user!.userId,
+    primaryAction: {
+      action: "/progress",
+      text: "View Progress",
+    },
+    entityType: "requirement",
+    entityId: newRequirement._id,
+    dedupeKey: newRequirement._id.toString(),
+    channels: ["in_app", "email"],
+    symbol: "✓",
   });
 
   // M10.19 — auto-provision brief collaboration channel (non-blocking)
@@ -315,6 +311,9 @@ export const getCustomerRequirement = asyncHandler(
     if (req.user?.role === "servicing") {
       requirementQuery.creationMode = { $in: ["human", "hybrid"] };
     }
+    if (req.user?.role !== "customer") {
+      requirementQuery.awaitingClientMessage = { $ne: true };
+    }
 
     const requirement = await Requirement.find(requirementQuery).populate(
       "category"
@@ -350,6 +349,7 @@ export const getCsInboxRequirements = asyncHandler(
     const requirements = await Requirement.find({
       $and: [
         { creationMode: { $in: ["human", "hybrid"] } },
+        { awaitingClientMessage: { $ne: true } },
         {
           $or: [
             { assignedCs: staffObjectId },
@@ -572,16 +572,10 @@ export const openServiceRequirement = asyncHandler(
         await existing.save();
       }
 
-      let assignedStaffId = existing.assignedCs
+      // CS is assigned on the client's first chat message, not on open.
+      const assignedStaffId = existing.assignedCs
         ? String(existing.assignedCs)
         : "";
-      if (!assignedStaffId) {
-        const assigned = await assignCsToRequirement(existing._id);
-        if (assigned) {
-          assignedStaffId = String(assigned.staffId);
-          existing.assignedCs = assigned.staffId;
-        }
-      }
 
       void ensureServiceChannel({
         userId,
@@ -646,26 +640,15 @@ export const openServiceRequirement = asyncHandler(
       creationMode,
       brandId: new mongoose.Types.ObjectId(brandId),
       productPath,
+      // Surfaced to CS/admin and assigned on the client's first chat message.
+      awaitingClientMessage: true,
     });
-
-    const assigned = await assignCsToRequirement(created._id);
-    const assignedStaffId = assigned ? String(assigned.staffId) : "";
-
-    if (assigned) {
-      void notifyAssignedCs({
-        requirementId: created._id.toString(),
-        staffId: assigned.staffId,
-        title,
-        description: `${title} — human/hybrid servicing request`,
-      });
-    }
 
     void ensureServiceChannel({
       userId,
       brandId,
       productPath,
       serviceLabel: label,
-      assignedCsStaffId: assignedStaffId || undefined,
     }).catch((err) => {
       console.warn(
         "[requirement] open-service channel ensure failed (non-fatal):",

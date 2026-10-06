@@ -35,6 +35,21 @@ function conversationFieldsFromMetadata(
   };
 }
 
+export function notificationFieldsFromRequest(
+  userId: string | undefined,
+  metadata?: Readonly<Record<string, unknown>>
+): Pick<ExecutionResource, "userId" | "productAction" | "parentExecutionId"> {
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+  const productAction = text(metadata?.productAction);
+  const parentExecutionId = text(metadata?.parentExecutionId);
+  return {
+    ...(userId ? { userId } : {}),
+    ...(productAction ? { productAction } : {}),
+    ...(parentExecutionId ? { parentExecutionId } : {}),
+  };
+}
+
 /** Backfill video wire params from product format when client metadata omits them. */
 function resolveAsyncVideoPayloadFromMetadata(
   metadata?: Readonly<Record<string, unknown>>
@@ -302,6 +317,7 @@ export async function runCreateDispatch(
       promptPreview: promptPreviewForClient(req.prompt),
       ...(executionBrandId ? { brandId: executionBrandId } : {}),
       ...conversationFieldsFromMetadata(req.metadata),
+      ...notificationFieldsFromRequest(principal.userId, req.metadata),
       result: { kind: "pending" },
     };
 
@@ -475,6 +491,7 @@ export async function runCreateDispatch(
       promptPreview: promptPreviewForClient(req.prompt),
       ...(executionBrandId ? { brandId: executionBrandId } : {}),
       ...conversationFieldsFromMetadata(req.metadata),
+      ...notificationFieldsFromRequest(principal.userId, req.metadata),
       result: { kind: "pending" },
     };
     if (host.deps.persistence) {
@@ -2259,6 +2276,7 @@ export async function runCreateDispatch(
     artifactIds: mediaArtifactIds,
     ...(executionBrandId ? { brandId: executionBrandId } : {}),
     ...conversationFieldsFromMetadata(req.metadata),
+    ...notificationFieldsFromRequest(principal.userId, req.metadata),
     result:
       status === "awaiting_approval"
         ? {

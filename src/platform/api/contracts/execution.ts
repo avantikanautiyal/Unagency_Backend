@@ -95,6 +95,10 @@ export interface ExecutionResource {
   /** Service AI conversation linkage (persistent service chat). */
   readonly conversationId?: string;
   readonly channelId?: string;
+  /** Requesting user and product step, used for client notifications. */
+  readonly userId?: string;
+  readonly productAction?: string;
+  readonly parentExecutionId?: string;
   /** Denormalized deliverable formats from execution spec (e.g. PDF, PNG). */
   readonly executionSpecDeliverables?: readonly string[];
 }

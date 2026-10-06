@@ -877,6 +877,32 @@ export async function dispatchController(
           );
         }
       }
+      void import("../../../notifications/client-cdf-notifications").then(
+        ({ notifyCdfTransition }) =>
+          notifyCdfTransition({
+            userId: principal?.userId ?? principal?.principalId,
+            ok: transitioned.ok,
+            errorMessage: transitioned.ok ? undefined : transitioned.error?.message,
+            action: body.action ? String(body.action) : undefined,
+            finalAction: body.finalAction ? String(body.finalAction) : undefined,
+            finalActionId: body.finalActionId ? String(body.finalActionId) : undefined,
+            refineScope: body.refineScope ? String(body.refineScope) : undefined,
+            artifactId: body.artifactId ? String(body.artifactId) : undefined,
+            artifactVersion:
+              body.artifactVersion != null && Number.isFinite(Number(body.artifactVersion))
+                ? Number(body.artifactVersion)
+                : undefined,
+            executionId: body.executionId ? String(body.executionId) : undefined,
+            projectId: body.projectId
+              ? String(body.projectId)
+              : transitioned.ok
+                ? transitioned.value.session.projectId
+                : undefined,
+            sessionId,
+            requestId: body.requestId ? String(body.requestId) : undefined,
+          }),
+        () => undefined,
+      );
       return transitioned;
     }
 

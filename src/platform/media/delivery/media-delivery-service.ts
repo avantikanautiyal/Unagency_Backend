@@ -274,6 +274,24 @@ export class MediaDeliveryService {
     });
   }
 
+  /** Tenant-checked bytes (with optional format conversion) for server-side copies, e.g. Brand Vault. */
+  async resolveArtifactBinaryForTenant(
+    artifactId: string,
+    tenantOrganizationId: string,
+    options?: { format?: string }
+  ): Promise<Result<ArtifactBinaryContent>> {
+    const minted = await this.resolveArtifactMediaUrl(artifactId, tenantOrganizationId, {
+      ...(options?.format ? { format: options.format } : {}),
+      preferSameOrigin: true,
+    });
+    if (!minted.ok) return minted;
+    const token = new URL(minted.value.signedUrl, "http://internal").searchParams.get("token");
+    if (!token) {
+      return failure(new ValidationError("Media token unavailable"));
+    }
+    return this.resolveArtifactBinaryByToken(artifactId, token, options);
+  }
+
   async resolveArtifactBinaryByToken(
     artifactId: string,
     token: string,

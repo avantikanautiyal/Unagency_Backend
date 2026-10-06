@@ -8,6 +8,8 @@ import { asyncHandler } from "../utils/asyncHandler";
 import razorpayInstance from "../utils/razorpayInstance";
 import Users from "../models/users.model";
 import crypto from "crypto";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
+import { planDisplayName } from "../notifications/plan-display-name";
 import Payments from "../models/payment.model";
 import puppeteer from "puppeteer";
 import { InvoiceHTMLTemplate } from "../utils/invoiceTemplate";
@@ -296,6 +298,17 @@ export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
     { new: true }
   );
 
+  await dispatchClientNotification({
+    eventKey: "CANCELLATION_REQUESTED",
+    userId: req.user!.userId!,
+    primaryAction: { action: "/subscription-billing" },
+    secondaryAction: { action: "/subscription-billing" },
+    entityType: "subscription",
+    entityId: subscription_id,
+    dedupeKey: subscription_id,
+    channels: ["in_app", "email"],
+  });
+
   return new ApiResponse(200, subs, "subscription Canceled");
 
 });
@@ -344,6 +357,25 @@ export const updateSubscription = asyncHandler(async (req: RequestUser) => {
     { subscriptionId: user.subscription.id },
     { $set: { planId: razorpayPlanId, planCode } }
   );
+
+  const [previousPlan, nextPlan] = await Promise.all([
+    PlansModel.findOne({ plan_id: currentSubscription.plan_id }).lean(),
+    PlansModel.findOne({ plan_id: razorpayPlanId }).lean(),
+  ]);
+  const amountOf = (plan: unknown) =>
+    Number((plan as any)?.razorpayPlanItem?.item?.amount ?? 0);
+  await dispatchClientNotification({
+    eventKey:
+      amountOf(nextPlan) >= amountOf(previousPlan) ? "PLAN_UPGRADED" : "PLAN_DOWNGRADED",
+    userId: user._id,
+    variables: { "New Plan": planDisplayName(nextPlan ?? { planCode }) },
+    primaryAction: { action: "/subscription-billing" },
+    secondaryAction: { action: "/choose-mode" },
+    entityType: "subscription",
+    entityId: user.subscription.id,
+    dedupeKey: `${user.subscription.id}:${razorpayPlanId}:${Date.now()}`,
+    channels: ["in_app", "email"],
+  });
 
   return new ApiResponse(
     200,

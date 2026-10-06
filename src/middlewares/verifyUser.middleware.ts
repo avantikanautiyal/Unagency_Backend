@@ -52,6 +52,18 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
         organization: organization as IOrganization,
         staff: staff,
       };
+      if (getUser.role === "customer" && verification.authTime) {
+        void import("../notifications/client-login-notifications")
+          .then(({ recordClientLogin }) =>
+            recordClientLogin({
+              user: getUser.toObject(),
+              authTime: verification.authTime,
+              signInProvider: verification.signInProvider,
+              userAgent: req.headers["user-agent"],
+            })
+          )
+          .catch(() => undefined);
+      }
       next();
     }
   } catch (err) {

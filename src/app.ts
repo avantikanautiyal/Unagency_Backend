@@ -287,6 +287,13 @@ app.get("/intelligence/health", (_req, res) => {
       await import("./background/queue/notificationCron.queue");
     }
 
+    if (process.env.CLIENT_REMINDERS_ENABLED !== "false") {
+      const { startClientReminderScheduler } = await import(
+        "./notifications/client-reminder-scheduler"
+      );
+      startClientReminderScheduler();
+    }
+
     // M10.18 — media processing worker (claimable Mongo jobs; not BullMQ)
     let mediaProcessingWorker: { shutdown(): Promise<void> } | undefined;
     try {

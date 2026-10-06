@@ -12,6 +12,10 @@ export interface VerifiedFirebaseIdentity {
   readonly name?: string;
   readonly phoneNumber?: string;
   readonly expiresAt?: string;
+  /** Unix seconds of the actual sign-in; unchanged across token refreshes. */
+  readonly authTime?: number;
+  /** e.g. password, google.com, apple.com, phone, emailLink */
+  readonly signInProvider?: string;
 }
 
 export function toVerifiedFirebaseIdentity(
@@ -27,6 +31,11 @@ export function toVerifiedFirebaseIdentity(
     expiresAt: decoded.exp
       ? new Date(decoded.exp * 1000).toISOString()
       : undefined,
+    authTime: typeof decoded.auth_time === "number" ? decoded.auth_time : undefined,
+    signInProvider:
+      typeof decoded.firebase?.sign_in_provider === "string"
+        ? decoded.firebase.sign_in_provider
+        : undefined,
   };
 }
 

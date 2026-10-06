@@ -6,6 +6,7 @@ import { userPreferencesService } from "../services/user-preferences-service";
 import { helpService } from "../services/help-service";
 import { savedRouteService } from "../services/saved-route-service";
 import { productSearchService } from "../services/product-search-service";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 
 function orgIdFromUser(req: RequestUser): string | undefined {
   const org = req.user?.organization as { _id?: { toString(): string } } | null;
@@ -87,6 +88,15 @@ export const createSavedRoute = asyncHandler(async (req: RequestUser) => {
     favorite: req.body?.favorite,
     brandId: req.body?.brandId,
   });
+  await dispatchClientNotification({
+    eventKey: "ROUTE_SAVED",
+    userId: req.user!.userId!,
+    variables: { "Route Name": data.title },
+    primaryAction: { action: "/saved-routes" },
+    entityType: "saved_route",
+    entityId: data.id,
+    dedupeKey: data.id,
+  });
   return new ApiResponse(201, data, "Saved route created");
 });
 
@@ -103,6 +113,15 @@ export const deleteSavedRoute = asyncHandler(async (req: RequestUser) => {
   const data = await savedRouteService.remove({
     userId: req.user!.userId!,
     routeId: req.params.routeId,
+  });
+  await dispatchClientNotification({
+    eventKey: "ROUTE_DELETED",
+    userId: req.user!.userId!,
+    variables: { "Route Name": data.title },
+    primaryAction: { action: "/saved-routes" },
+    entityType: "saved_route",
+    entityId: data.id,
+    dedupeKey: data.id,
   });
   return new ApiResponse(200, data, "Saved route deleted");
 });

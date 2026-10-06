@@ -19,6 +19,7 @@ import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { parseNotificationContent } from "../utils/notificationUtils";
 import MediaFile from "../models/mediaFile.model";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 import { checkPlanLimit } from "../services/planLimit.service";
@@ -106,29 +107,29 @@ const createProject = asyncHandler(async (req: RequestUser, res) => {
   )
   const create = await Projects.create({ ...body, files: mediaFileIds });
 
-  const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.PROJECT_CREATED.email_body, { Name: customer?.name || "User" });
-  EmailQueue.add("PROJECT_CREATED", {
-    action: "PROJECT",
-    data: commonTemplate({
-      name: customer?.name!,
-      content: notificationData.text,
-      title: NOTIFICATION_CONFIG.PROJECT_CREATED.email_subject,
-      buttonText: notificationData.cta,
-      buttonLink: `${FRONTEND_URL}/project-logs/${create?._id.toString()}`,
-    }),
-    email: teamsEmail.join(","),
-    userId: customer?._id.toString(),
-    notification: new Notification({
-      title: NOTIFICATION_CONFIG.PROJECT_CREATED.in_app_title,
-      description: NOTIFICATION_CONFIG.PROJECT_CREATED.in_app_body,
-      type: "PROJECT",
-      action: `${FRONTEND_URL}/project-logs/${create._id}`,
-      actionText: notificationData.cta || "view projects",
-      _id: create._id.toString(),
-      symbol: "🍾",
-    }),
-    subject: NOTIFICATION_CONFIG.PROJECT_CREATED.email_subject,
-  });
+  if (customer) {
+    await dispatchClientNotification({
+      eventKey:
+        String(req.user?.userId ?? "") === String(customer._id)
+          ? "PROJECT_CREATED"
+          : "PROJECT_CREATED_BY_CS",
+      userId: customer._id,
+      variables: {
+        "Project Name": create.title,
+        "Brand Name": (body as any).brandName || "your selected brand",
+      },
+      primaryAction: {
+        action: `/progress?projectId=${create._id}`,
+        text: "Open Project",
+      },
+      entityType: "project",
+      entityId: create._id,
+      dedupeKey: create._id.toString(),
+      channels: ["in_app", "email"],
+      symbol: "✓",
+      emailSubject: NOTIFICATION_CONFIG.PROJECT_CREATED.email_subject,
+    });
+  }
 
 
   // Notify CS about project creation
@@ -635,37 +636,49 @@ const createProjectLogs = asyncHandler(async (req: RequestUser, res) => {
     const customer = await Users.findById(update?.userId);
     teamsEmail.push(customer?.email);
 
-    let notificationConfig: typeof NOTIFICATION_CONFIG[keyof typeof NOTIFICATION_CONFIG] = NOTIFICATION_CONFIG.PROJECT_STARTED; // Default fallback
-    if (stage === "initiated") notificationConfig = NOTIFICATION_CONFIG.PROJECT_STARTED;
-    if (stage === "delivered") notificationConfig = NOTIFICATION_CONFIG.PROJECT_MOVED_TO_REVIEW;
-    if (stage === "revision") notificationConfig = NOTIFICATION_CONFIG.PROJECT_MOVED_TO_REVISIONS;
-    if (stage === "approved") notificationConfig = NOTIFICATION_CONFIG.FINAL_DELIVERY_READY; // Or PROJECT_COMPLETED? No, approved means final files ready.
-    if (stage === "closed") notificationConfig = NOTIFICATION_CONFIG.PROJECT_COMPLETED;
+    const clientEventByStage = {
+      initiated: "PRODUCTION_STARTED",
+      delivered: "DRAFT_SENT_TO_CLIENT",
+      revision: "REVISION_STARTED",
+      approved: "FINAL_FILES_READY",
+      closed: "PROJECT_COMPLETED",
+    } as const;
+    const clientEvent =
+      clientEventByStage[stage as keyof typeof clientEventByStage];
 
-    const notificationData = parseNotificationContent(notificationConfig.email_body, { Name: customer?.name || "User" });
-
-    EmailQueue.add(`PROJECT_${stage.toUpperCase()}`, {
-      action: "PROJECT",
-      data: commonTemplate({
-        name: customer?.name!,
-        content: notificationData.text,
-        title: notificationConfig.email_subject,
-        buttonText: notificationData.cta,
-        buttonLink: `${FRONTEND_URL}/project-logs/${update?._id.toString()}`,
-      }),
-      userId: customer?._id.toString(),
-      email: teamsEmail.join(","),
-      notification: new Notification({
-        title: notificationConfig.in_app_title,
-        description: notificationConfig.in_app_body,
-        type: "PROJECT",
-        action: `${FRONTEND_URL}/project-logs/${update?._id}`,
-        _id: update?._id.toString(),
-        actionText: notificationData.cta || "view projects",
-        symbol: "🍾",
-      }),
-      subject: notificationConfig.email_subject,
-    });
+    if (customer && update && clientEvent) {
+      await dispatchClientNotification({
+        eventKey: clientEvent,
+        userId: customer._id,
+        variables: { "Project Name": update.title },
+        primaryAction:
+          stage === "closed"
+            ? { action: "/choose-mode", text: "Start New Project" }
+            : {
+                action: `/progress?projectId=${update._id}`,
+                text:
+                  stage === "approved"
+                    ? "Download Files"
+                    : stage === "delivered"
+                      ? "See Creative"
+                      : "Track Progress",
+              },
+        secondaryAction:
+          stage === "closed"
+            ? {
+                action: `/progress?projectId=${update._id}`,
+                text: "View Project",
+              }
+            : undefined,
+        entityType: "project",
+        entityId: update._id,
+        dedupeKey: `${update._id}:${stage}`,
+        channels:
+          stage === "approved" || stage === "closed"
+            ? ["in_app", "push", "email"]
+            : ["in_app", "email"],
+      });
+    }
 
 
     // Notify CS about project status updates

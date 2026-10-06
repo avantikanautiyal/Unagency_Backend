@@ -5,6 +5,7 @@ import { RequestUser } from "../types/user";
 import { brandService } from "../services/brand-service";
 import { learnBrandKnowledgeFromBrief } from "../services/brand-learn-from-brief";
 import { getEnterpriseApiRuntime } from "../platform/api/runtime/bootstrap-enterprise-api";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 
 function orgIdFromUser(req: RequestUser): string | undefined {
   const org = req.user?.organization as { _id?: { toString(): string } } | null;
@@ -38,6 +39,15 @@ export const createBrand = asyncHandler(async (req: RequestUser) => {
     website: req.body?.website,
     logoAssetId: req.body?.logoAssetId,
     guidelinesProfile: req.body?.guidelinesProfile,
+  });
+  await dispatchClientNotification({
+    eventKey: "BRAND_CREATED",
+    userId: req.user!.userId!,
+    variables: { "Brand Name": data.name },
+    primaryAction: { action: "/choose-mode" },
+    entityType: "brand",
+    entityId: data.id,
+    dedupeKey: data.id,
   });
   return new ApiResponse(201, data, "Brand created");
 });

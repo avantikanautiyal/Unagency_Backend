@@ -24,6 +24,8 @@ export interface IUser {
   isfirstMessageSent?: boolean;
   tourCompleted?: "incomplete" | "complete" | "skipped";
   subscriptionReminderSentAt?: Date;
+  lastLoginAt?: Date;
+  knownDevices?: string[];
 }
 
 const UsersSchema = new Schema<IUser>(
@@ -57,6 +59,8 @@ const UsersSchema = new Schema<IUser>(
       default: "incomplete"
     },
     subscriptionReminderSentAt: { type: Date },
+    lastLoginAt: { type: Date },
+    knownDevices: { type: [String], default: undefined },
   },
   { collection: "users", timestamps: true }
 );

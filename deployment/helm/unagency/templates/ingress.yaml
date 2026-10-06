@@ -4,6 +4,7 @@ kind: Ingress
 metadata:
   name: {{ .Release.Name }}-ingress
   annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
 spec:

@@ -137,7 +137,9 @@ export async function buildAdminOrganizationsList(input: {
     Users.find({ _id: { $in: ownerIds } })
       .select("_id name email relationship_manager createdAt")
       .lean(),
-    Requirement.find({ userId: { $in: ownerIds } }).select("userId status title").lean(),
+    Requirement.find({ userId: { $in: ownerIds }, awaitingClientMessage: { $ne: true } })
+      .select("userId status title")
+      .lean(),
     Projects.find({
       $or: [{ userId: { $in: ownerIds } }, { orgId: { $in: orgIds } }],
     })
@@ -524,7 +526,7 @@ export async function buildAdminOrganizationDetail(input: {
         )
         .sort({ createdAt: -1 })
         .lean(),
-      Requirement.find({ userId: customerUserId })
+      Requirement.find({ userId: customerUserId, awaitingClientMessage: { $ne: true } })
         .select(
           "_id title description status creationMode brandId productPath assignedCs category createdAt updatedAt"
         )

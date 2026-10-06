@@ -1,10 +1,16 @@
 import multer from "multer";
+import mongoose from "mongoose";
+import Brands from "../models/brand.model";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 import { Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/apiResponse";
 import { RequestUser } from "../types/user";
 import { ApiError } from "../utils/apiError";
-import { productAssetService } from "../services/product-asset-service";
+import {
+  productAssetService,
+  resolveCustomerOrganizationId,
+} from "../services/product-asset-service";
 import {
   DEFAULT_MEDIA_SIZE_LIMITS,
 } from "../platform/media/ingestion/media-size-limits";
@@ -80,7 +86,127 @@ export const uploadProductAsset = asyncHandler(
       parentAssetId: req.body?.parentAssetId as string | undefined,
       executionId: req.body?.executionId as string | undefined,
     });
+    if (dto.brandId && mongoose.isValidObjectId(dto.brandId)) {
+      const brand = await Brands.findById(dto.brandId).select("name").lean();
+      await dispatchClientNotification({
+        eventKey: "BRAND_FILE_UPLOADED",
+        userId: String(req.user!.userId),
+        variables: { "File Name": dto.name, "Brand Name": brand?.name || "your brand" },
+        primaryAction: { action: "/manage-brands" },
+        entityType: "asset",
+        entityId: dto.id,
+        dedupeKey: dto.id,
+      });
+    } else if (dto.projectId || dto.briefId) {
+      await dispatchClientNotification({
+        eventKey: "FILE_UPLOADED",
+        userId: String(req.user!.userId),
+        variables: { "File Name": dto.name },
+        primaryAction: {
+          action: dto.projectId ? `/progress?projectId=${dto.projectId}` : "/progress",
+        },
+        entityType: "asset",
+        entityId: dto.id,
+        dedupeKey: dto.id,
+      });
+    } else if (parseTagsBody(req.body?.tags ?? req.body?.tagsJson)?.includes("onboarding-upload")) {
+      await dispatchClientNotification({
+        eventKey: "ORGANISATION_FILE_UPLOADED",
+        userId: String(req.user!.userId),
+        variables: { "File Name": dto.name },
+        primaryAction: { action: "/vault" },
+        entityType: "asset",
+        entityId: dto.id,
+        dedupeKey: dto.id,
+      });
+    }
     return new ApiResponse(200, dto, "Asset uploaded");
+  }
+);
+
+/**
+ * Copy a generated file (CDF rendered file or durable artifact) into Brand Vault
+ * server-side. The client sends only ids, so file size is not bounded by proxy
+ * request-body limits.
+ */
+export const importProductAsset = asyncHandler(
+  async (req: RequestUser, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    const renderedFileId = str(body.renderedFileId);
+    const artifactId = str(body.artifactId);
+    if (!renderedFileId && !artifactId) {
+      throw new ApiError("renderedFileId or artifactId is required", 400);
+    }
+    const userId = String(req.user!.userId);
+    const organizationId = await resolveCustomerOrganizationId(
+      userId,
+      str(body.organizationId) || orgIdFromUser(req)
+    );
+    if (!organizationId) throw new ApiError("Organization not found", 404);
+
+    let bytes: Buffer;
+    let mimeType: string;
+    if (renderedFileId) {
+      const { httpGetRenderedFileBytes } = await import("../platform/cdf/rendering");
+      try {
+        const got = await httpGetRenderedFileBytes({ fileId: renderedFileId, organizationId });
+        bytes = Buffer.from(got.bytes);
+        mimeType = got.file.mimeType;
+      } catch (err) {
+        throw new ApiError(err instanceof Error ? err.message : "Rendered file not found", 404);
+      }
+    } else {
+      const { getEnterpriseApiRuntime } = await import(
+        "../platform/api/runtime/bootstrap-enterprise-api"
+      );
+      const delivery =
+        getEnterpriseApiRuntime()?.platform.durableStores?.asyncMedia?.mediaDelivery;
+      if (!delivery) throw new ApiError("Media delivery unavailable", 503);
+      const got = await delivery.resolveArtifactBinaryForTenant(artifactId!, organizationId, {
+        ...(str(body.format) ? { format: str(body.format) } : {}),
+      });
+      if (!got.ok) throw new ApiError(got.error.message || "Artifact not found", 404);
+      bytes = got.value.bytes;
+      mimeType = got.value.contentType;
+    }
+
+    const ext = (mimeType.split("/")[1] || "bin").split(/[+;]/)[0];
+    const dto = await productAssetService.upload({
+      userId,
+      organizationId,
+      filename: str(body.filename) || `${(str(body.name) || "creative").replace(/[^a-zA-Z0-9-_]+/g, "-")}.${ext}`,
+      mimeType,
+      bytes,
+      brandId: str(body.brandId),
+      folder: str(body.folder),
+      tags: parseTagsBody(body.tags),
+      tag: "product_asset",
+      trustedSource: true,
+    });
+    await dispatchClientNotification({
+      eventKey: "SAVED_TO_VAULT",
+      userId,
+      variables: { "Asset Name": str(body.name) || dto.name },
+      primaryAction: { action: "/vault" },
+      entityType: "asset",
+      entityId: dto.id,
+      dedupeKey: dto.id,
+    });
+    const name = str(body.name);
+    if (name) {
+      try {
+        const renamed = await productAssetService.updateMeta({
+          userId,
+          assetId: dto.id,
+          patch: { name },
+        });
+        return new ApiResponse(200, renamed, "Asset imported");
+      } catch {
+        // name is cosmetic — keep the imported asset
+      }
+    }
+    return new ApiResponse(200, dto, "Asset imported");
   }
 );
 

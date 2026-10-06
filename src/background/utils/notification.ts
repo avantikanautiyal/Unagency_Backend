@@ -1,11 +1,6 @@
 
 export type NotificationType = "COMMON" | "PROJECT" | "REQUIRMENT" | "TASK" | "SUBSCRIPTION"
 
-// interface Notofication {
-//     type: NotificationType;
-//     title: string;
-//     description: string;
-// }
 export interface NotificationProps {
     symbol: string;
     title: string;
@@ -13,10 +8,20 @@ export interface NotificationProps {
     type: string;
     action: string;
     actionText: string;
+    eventKey?: string;
+    notificationType?: string;
+    userState?: string;
+    tone?: string;
+    conversionOpportunity?: string;
+    secondaryAction?: { text: string; action: string };
+    category?: string;
+    entityType?: string;
+    entityId?: string;
+    metadata?: Record<string, unknown>;
+    dedupeKey?: string;
+    channels?: string[];
     _id?: string;
     id?: string;
-
-
 }
 export class Notification {
     symbol: string;
@@ -25,6 +30,18 @@ export class Notification {
     type: string;
     action: string;
     actionText: string;
+    eventKey?: string;
+    notificationType?: string;
+    userState?: string;
+    tone?: string;
+    conversionOpportunity?: string;
+    secondaryAction?: { text: string; action: string };
+    category?: string;
+    entityType?: string;
+    entityId?: string;
+    metadata?: Record<string, unknown>;
+    dedupeKey?: string;
+    channels?: string[];
     _id?: string;
     id?: string;
 
@@ -35,11 +52,19 @@ export class Notification {
         this.type = props.type;
         this.action = props.action;
         this.actionText = props.actionText;
+        this.eventKey = props.eventKey;
+        this.notificationType = props.notificationType;
+        this.userState = props.userState;
+        this.tone = props.tone;
+        this.conversionOpportunity = props.conversionOpportunity;
+        this.secondaryAction = props.secondaryAction;
+        this.category = props.category;
+        this.entityType = props.entityType;
+        this.entityId = props.entityId;
+        this.metadata = props.metadata;
+        this.dedupeKey = props.dedupeKey;
+        this.channels = props.channels;
         this.id = props._id;
     }
 }
-
-// export class Notification {
-//     constructor(public title: string, public description: string, public type: NotificationType) { }
-// }
 

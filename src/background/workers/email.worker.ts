@@ -17,12 +17,25 @@ export default async function emailBackgroundService(job: any) {
   }
   if (userId) {
     const user = await Users.findById(userId);
-    if (user) {
+    const channels = Array.isArray(notification?.channels)
+      ? notification.channels
+      : undefined;
+    if (user && (!channels || channels.includes("push"))) {
       await sendNotificationFCM({
         notification: notification,
         user: user as any
       });
     }
-    await Notifications.create({ ...notification, userId: userId });
+    if (!channels || channels.includes("in_app")) {
+      if (notification?.dedupeKey) {
+        await Notifications.findOneAndUpdate(
+          { dedupeKey: notification.dedupeKey },
+          { $setOnInsert: { ...notification, userId } },
+          { upsert: true }
+        );
+      } else {
+        await Notifications.create({ ...notification, userId });
+      }
+    }
   }
 }

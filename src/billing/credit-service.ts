@@ -80,6 +80,12 @@ export async function allocateCreditsForSubscriptionPeriod(input: {
       metadata: { planCode: input.planCode },
     });
 
+    await notifyCredits(
+      input.userId,
+      "CREDITS_ADDED",
+      { "Credits Added": allocated },
+      input.allocationKey
+    );
     return { allocated: true };
   } catch (err: unknown) {
     // Unique index race → treat as idempotent success
@@ -126,63 +132,110 @@ export async function consumeCredits(input: {
   }
 
   const session = await mongoose.startSession();
+  let allocated = 0;
+  let balanceId = "";
   try {
     let remaining = 0;
-    await session.withTransaction(async () => {
-      const now = new Date();
-      const balance = await CreditBalanceModel.findOne({
-        userId: input.userId,
-        periodStart: { $lte: now },
-        periodEnd: { $gte: now },
-        remaining: { $gte: input.amount },
-      })
-        .sort({ periodStart: -1 })
-        .session(session);
+    try {
+      await session.withTransaction(async () => {
+        const now = new Date();
+        const balance = await CreditBalanceModel.findOne({
+          userId: input.userId,
+          periodStart: { $lte: now },
+          periodEnd: { $gte: now },
+          remaining: { $gte: input.amount },
+        })
+          .sort({ periodStart: -1 })
+          .session(session);
 
-      if (!balance) {
-        throw new ApiError(
-          JSON.stringify({
-            code: "INSUFFICIENT_CREDITS",
-            required: input.amount,
-          }),
-          403
-        );
-      }
-
-      balance.used += input.amount;
-      balance.remaining -= input.amount;
-      await balance.save({ session });
-      remaining = balance.remaining;
-
-      try {
-        await CreditLedgerModel.create(
-          [
-            {
-              userId: input.userId,
-              subscriptionId: balance.subscriptionId,
-              creditBalanceId: balance._id,
-              delta: -input.amount,
-              reason: input.reason,
-              idempotencyKey: input.idempotencyKey,
-              metadata: input.metadata,
-            },
-          ],
-          { session }
-        );
-      } catch (err: unknown) {
-        if (
-          err &&
-          typeof err === "object" &&
-          "code" in err &&
-          (err as { code?: number }).code === 11000
-        ) {
-          return;
+        if (!balance) {
+          throw new ApiError(
+            JSON.stringify({
+              code: "INSUFFICIENT_CREDITS",
+              required: input.amount,
+            }),
+            403
+          );
         }
-        throw err;
+
+        balance.used += input.amount;
+        balance.remaining -= input.amount;
+        await balance.save({ session });
+        remaining = balance.remaining;
+        allocated = balance.allocated;
+        balanceId = String(balance._id);
+
+        try {
+          await CreditLedgerModel.create(
+            [
+              {
+                userId: input.userId,
+                subscriptionId: balance.subscriptionId,
+                creditBalanceId: balance._id,
+                delta: -input.amount,
+                reason: input.reason,
+                idempotencyKey: input.idempotencyKey,
+                metadata: input.metadata,
+              },
+            ],
+            { session }
+          );
+        } catch (err: unknown) {
+          if (
+            err &&
+            typeof err === "object" &&
+            "code" in err &&
+            (err as { code?: number }).code === 11000
+          ) {
+            return;
+          }
+          throw err;
+        }
+      });
+    } catch (err) {
+      if (err instanceof ApiError && /INSUFFICIENT_CREDITS/.test(err.message)) {
+        await notifyCredits(input.userId, "CREDITS_EXHAUSTED", {}, new Date().toISOString().slice(0, 10));
       }
-    });
+      throw err;
+    }
+    if (balanceId && allocated > 0 && remaining <= allocated * LOW_CREDIT_RATIO) {
+      await notifyCredits(
+        input.userId,
+        "CREDITS_LOW",
+        { "Credits Remaining": remaining },
+        `${balanceId}:low`
+      );
+    }
     return { remaining };
   } finally {
     await session.endSession();
+  }
+}
+
+const LOW_CREDIT_RATIO = 0.2;
+
+async function notifyCredits(
+  userId: string,
+  eventKey: "CREDITS_ADDED" | "CREDITS_LOW" | "CREDITS_EXHAUSTED",
+  variables: Record<string, string | number>,
+  dedupeKey: string
+): Promise<void> {
+  try {
+    const { dispatchClientNotification } = await import(
+      "../notifications/client-notification-service"
+    );
+    await dispatchClientNotification({
+      eventKey,
+      userId,
+      variables,
+      primaryAction: { action: eventKey === "CREDITS_ADDED" ? "/choose-mode" : "/subscription" },
+      ...(eventKey === "CREDITS_ADDED"
+        ? {}
+        : { secondaryAction: { action: "/subscription" } }),
+      entityType: "credits",
+      dedupeKey,
+    });
+  } catch (error) {
+    console.error("[notifyCredits] failed", error);
   }
 }

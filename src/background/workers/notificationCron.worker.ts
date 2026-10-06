@@ -7,6 +7,7 @@ import { NOTIFICATION_CONFIG } from "../../utils/constant/emailConstants";
 import { Notification } from "../utils/notification";
 import { commonTemplate } from "../../emailTemplates/unagency/commonTemplate";
 import { parseNotificationContent } from "../../utils/notificationUtils";
+import { dispatchClientNotification } from "../../notifications/client-notification-service";
 
 const FRONTEND_URL: string = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -303,37 +304,24 @@ async function checkRenewalUpcoming(now: Date) {
         status: "active",
         current_end: { $gte: fiveDaysFromNow, $lte: sevenDaysFromNow },
         renewalReminderSentAt: { $exists: false }
-    });
+    }).populate("planId");
 
     for (const subscription of upcomingRenewals) {
         const customer = await Users.findById(subscription.userId);
         if (!customer?.email) continue;
 
-        const notificationData = parseNotificationContent(
-            NOTIFICATION_CONFIG.RENEWAL_UPCOMING.email_body,
-            { Name: customer.name || "User" }
-        );
-
-        await EmailQueue.add("renewal upcoming", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-                title: NOTIFICATION_CONFIG.RENEWAL_UPCOMING.email_subject,
-                content: notificationData.text,
-                name: customer.name,
-                buttonText: "Manage Plan",
-                buttonLink: `${FRONTEND_URL}/profile`
-            }),
-            email: customer.email,
-            userId: customer._id.toString(),
-            notification: new Notification({
-                title: NOTIFICATION_CONFIG.RENEWAL_UPCOMING.in_app_title,
-                description: NOTIFICATION_CONFIG.RENEWAL_UPCOMING.in_app_body,
-                type: "SUBSCRIPTION",
-                action: `${FRONTEND_URL}/profile`,
-                actionText: "manage plan",
-                symbol: "📅"
-            }),
-            subject: NOTIFICATION_CONFIG.RENEWAL_UPCOMING.email_subject
+        await dispatchClientNotification({
+            eventKey: "RENEWAL_UPCOMING",
+            userId: customer._id,
+            primaryAction: {
+                action: "/subscription-billing",
+                text: "Manage Plan",
+            },
+            entityType: "subscription",
+            entityId: subscription._id,
+            dedupeKey: `${subscription._id}:${subscription.current_end}`,
+            channels: ["in_app", "email"],
+            symbol: "📅",
         });
 
         await Subscriptions.findByIdAndUpdate(subscription._id, { renewalReminderSentAt: now });
@@ -351,37 +339,24 @@ async function checkPlanExpired(now: Date) {
         status: "active",
         current_end: { $lt: now },
         expiredNotificationSent: { $ne: true }
-    });
+    }).populate("planId");
 
     for (const subscription of expiredSubscriptions) {
         const customer = await Users.findById(subscription.userId);
         if (!customer?.email) continue;
 
-        const notificationData = parseNotificationContent(
-            NOTIFICATION_CONFIG.PLAN_EXPIRED.email_body,
-            { Name: customer.name || "User" }
-        );
-
-        await EmailQueue.add("plan expired", {
-            action: "SUBSCRIPTION",
-            data: commonTemplate({
-                title: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject,
-                content: notificationData.text,
-                name: customer.name,
-                buttonText: "Renew Plan",
-                buttonLink: `${FRONTEND_URL}/membership`
-            }),
-            email: customer.email,
-            userId: customer._id.toString(),
-            notification: new Notification({
-                title: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_title,
-                description: NOTIFICATION_CONFIG.PLAN_EXPIRED.in_app_body,
-                type: "SUBSCRIPTION",
-                action: `${FRONTEND_URL}/membership`,
-                actionText: "renew plan",
-                symbol: "⏰"
-            }),
-            subject: NOTIFICATION_CONFIG.PLAN_EXPIRED.email_subject
+        await dispatchClientNotification({
+            eventKey: "PLAN_EXPIRED",
+            userId: customer._id,
+            primaryAction: {
+                action: "/subscription",
+                text: "Renew Plan",
+            },
+            entityType: "subscription",
+            entityId: subscription._id,
+            dedupeKey: `${subscription._id}:${subscription.current_end}`,
+            channels: ["in_app", "email"],
+            symbol: "⏰",
         });
 
         // Also update the user's subscription status

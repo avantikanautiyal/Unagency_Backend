@@ -143,23 +143,21 @@ export async function getSupportLevel(userId: string): Promise<string | null> {
   return entitlements?.support ?? null;
 }
 
+const DEFAULT_BRAND_LIMIT = 10;
+const PRE_CHECKOUT_STORAGE_GB = 1;
+
 export async function assertBrandLimit(
   userId: string,
   organizationId: string,
   currentActiveBrandCount: number
 ): Promise<void> {
   await ensureSubscriptionEntitlementsSynced(userId);
-  const limit = await getBrandLimit(userId);
-  if (limit == null) {
-    // Onboarding creates a brand before checkout — allow one seed brand.
-    if (currentActiveBrandCount < 1) return;
-    throw new ApiError(
-      "An active subscription is required to create more brands",
-      403
-    );
-  }
+  // Onboarding offers "Add More Brands" before checkout, so users without a
+  // resolvable plan get the same allowance as paid plans.
+  const limit = (await getBrandLimit(userId)) ?? DEFAULT_BRAND_LIMIT;
   if (limit === "unlimited") return;
   if (currentActiveBrandCount >= limit) {
+    await notifyLimit(userId, "BRAND_LIMIT_REACHED", "/manage-brands", dayKey());
     throw new ApiError(
       `Brand limit reached (${currentActiveBrandCount}/${limit}). Upgrade your plan to add more brands.`,
       403
@@ -172,15 +170,13 @@ export async function assertStorageWithinLimit(
   usedBytes: number,
   incomingBytes: number
 ): Promise<void> {
-  const limitGb = await getStorageLimitGb(userId);
-  if (limitGb == null) {
-    throw new ApiError(
-      "An active subscription is required to upload assets",
-      403
-    );
-  }
+  await ensureSubscriptionEntitlementsSynced(userId);
+  // Onboarding collects logos and brand files before checkout, so users
+  // without a resolvable plan get a small pre-checkout allowance.
+  const limitGb = (await getStorageLimitGb(userId)) ?? PRE_CHECKOUT_STORAGE_GB;
   const limitBytes = limitGb * 1024 * 1024 * 1024;
   if (usedBytes + incomingBytes > limitBytes) {
+    await notifyLimit(userId, "STORAGE_FULL", "/vault", dayKey());
     throw new ApiError(
       JSON.stringify({
         code: "STORAGE_LIMIT_EXCEEDED",
@@ -190,6 +186,41 @@ export async function assertStorageWithinLimit(
       }),
       403
     );
+  }
+  if (usedBytes + incomingBytes >= limitBytes * STORAGE_WARNING_RATIO) {
+    await notifyLimit(
+      userId,
+      "STORAGE_NEARING_LIMIT",
+      "/vault",
+      new Date().toISOString().slice(0, 7)
+    );
+  }
+}
+
+const STORAGE_WARNING_RATIO = 0.8;
+
+const dayKey = () => new Date().toISOString().slice(0, 10);
+
+async function notifyLimit(
+  userId: string,
+  eventKey: "BRAND_LIMIT_REACHED" | "STORAGE_FULL" | "STORAGE_NEARING_LIMIT",
+  manageAction: string,
+  period: string
+): Promise<void> {
+  try {
+    const { dispatchClientNotification } = await import(
+      "../notifications/client-notification-service"
+    );
+    await dispatchClientNotification({
+      eventKey,
+      userId,
+      primaryAction: { action: eventKey === "BRAND_LIMIT_REACHED" ? "/subscription" : manageAction },
+      secondaryAction: { action: eventKey === "BRAND_LIMIT_REACHED" ? manageAction : "/subscription" },
+      entityType: "limit",
+      dedupeKey: period,
+    });
+  } catch (error) {
+    console.error("[notifyLimit] failed", error);
   }
 }
 

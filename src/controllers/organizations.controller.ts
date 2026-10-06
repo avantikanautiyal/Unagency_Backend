@@ -13,6 +13,7 @@ import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { Notification } from "../background/utils/notification";
 import { parseNotificationContent } from "../utils/notificationUtils";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 //TESTED OK
@@ -58,29 +59,23 @@ const createOrganization = asyncHandler(
         userId: req?.user?.userId,
       });
 
-      // Send Organization Created Email
-      // Send Organization Created Email
-      const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_body, { Name: req.user?.name || "User" });
-      EmailQueue.add("ORG_CREATED", {
-        action: "COMMON",
-        data: commonTemplate({
-          name: req.user?.name!,
-          content: notificationData.text,
-          title: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_subject,
-          buttonText: notificationData.cta,
-          buttonLink: `${FRONTEND_URL}`,
-        }),
-        email: req.user?.email!,
-        userId: req.user?.userId.toString(),
-        notification: new Notification({
-          title: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.in_app_title,
-          description: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.in_app_body,
-          type: "COMMON",
-          action: `${FRONTEND_URL}/organization`,
-          actionText: "view dashboard",
-          symbol: "🚀",
-        }),
-        subject: NOTIFICATION_CONFIG.ORGANIZATION_CREATED.email_subject,
+      await dispatchClientNotification({
+        eventKey: "ORGANISATION_CREATED",
+        userId: req.user!.userId,
+        variables: { Organisation: organization.companyName },
+        primaryAction: {
+          action: "/setup-brand",
+          text: "Set Up Brand",
+        },
+        secondaryAction: {
+          action: "/choose-mode",
+          text: "Start Creating",
+        },
+        entityType: "organisation",
+        entityId: organization._id,
+        dedupeKey: organization._id.toString(),
+        channels: ["in_app", "email"],
+        symbol: "✓",
       });
 
       // Notify CS about organization creation
@@ -243,6 +238,22 @@ const UpdateUserOrganization = asyncHandler(
       },
       { new: true, runValidators: true } // Ensure that validators run during update
     );
+
+    if (updatedOrganization && req.user?.userId) {
+      await dispatchClientNotification({
+        eventKey: "ORGANISATION_DETAILS_UPDATED",
+        userId: req.user.userId,
+        primaryAction: {
+          action: "/business-summary",
+          text: "View Organisation",
+        },
+        entityType: "organisation",
+        entityId: updatedOrganization._id,
+        dedupeKey: `${updatedOrganization._id}:${(updatedOrganization as any).updatedAt?.getTime?.() ?? Date.now()}`,
+        channels: ["in_app"],
+        symbol: "✓",
+      });
+    }
 
     // Notify CS about organization update (in-app only, no email)
     const customer = await Users.findById(req.user?.userId);

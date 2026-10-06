@@ -33,7 +33,7 @@ router.get("/:userId", VerifyRole(["servicing", "resource", "admin", "superadmin
 router.put(
   "/update/:taskId",
   VerifyRole(["servicing", "resource", "admin", "superadmin"]),
-  fileUpload.array("files", 10),
+  fileUpload.array("files", 50),
   UpdateTask
 );
 

@@ -27,6 +27,7 @@ import {
   type LiveSseExecutionPayload,
 } from "./execution-streaming-service";
 import type { ExecutionCreateHost } from "./execution-create-host";
+import { notificationFieldsFromRequest } from "./execution-create-dispatch";
 
 export async function executeCanonicalStream(
   host: ExecutionCreateHost,
@@ -125,13 +126,20 @@ export async function executeCanonicalStream(
         saveExecution: async (resource) => {
           host.executionStore.set(resource.executionId, resource);
           if (host.deps.persistence) {
+            const persisted: ExecutionResource = {
+              ...resource,
+              ...notificationFieldsFromRequest(
+                handoff.principal.userId,
+                req.metadata
+              ),
+            };
             const existing = await host.deps.persistence.executions.get(
               resource.executionId
             );
             if (existing) {
-              await host.deps.persistence.executions.update(resource);
+              await host.deps.persistence.executions.update(persisted);
             } else {
-              await host.deps.persistence.executions.save(resource);
+              await host.deps.persistence.executions.save(persisted);
             }
           }
           if (

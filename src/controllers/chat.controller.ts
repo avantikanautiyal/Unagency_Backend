@@ -145,6 +145,10 @@ export const ensureServiceChannel = asyncHandler(async (req: RequestUser) => {
     // CS/servicing may join the Client ↔ CS room.
     extraViewerUserIds: isServicingRole ? [callerUserId] : undefined,
   });
+  if (isServicingRole && requestedClientId && channel.channelId) {
+    // CS passed the access check above — they must be able to reply.
+    await collaborationOsService.grantServicingWriteAccess(callerUserId, channel.channelId);
+  }
   return new ApiResponse(200, channel, "service channel ready");
 });
 

@@ -8,14 +8,14 @@ export async function sendNotificationFCM({
   user,
 }: {
   notification: Notification;
-  user: UserType;
+  user: UserType & { _id?: unknown };
 }) {
   const fcmTokens = user.fcmTokens || [];
   // Deduplicate tokens
   const uniqueTokens = [...new Set(fcmTokens)];
 
   if (!uniqueTokens.length) {
-    console.log("No unique FCM tokens found for user:", user.userId);
+    console.log("No unique FCM tokens found for user:", user._id ?? user.userId);
     return { sent: 0, removed: 0, failed: 0 };
   }
 
@@ -50,7 +50,7 @@ export async function sendNotificationFCM({
         console.log("Removing invalid/uninstalled token:", token);
 
         await Users.updateOne(
-          { userId: user.userId },
+          { _id: user._id ?? user.userId },
           { $pull: { fcmTokens: token } }
         );
 

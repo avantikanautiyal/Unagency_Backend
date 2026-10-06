@@ -14,6 +14,7 @@ import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 import { NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { parseNotificationContent } from "../utils/notificationUtils";
+import { dispatchClientNotification } from "../notifications/client-notification-service";
 const TECH_SUPPORT_EMAIL = process.env.TECH_SUPPORT_EMAIL;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const BACKEND_URL = process.env.BACKEND_URL || "https://api.unagency.app";
@@ -73,31 +74,20 @@ const Register = asyncHandler(async (req, res) => {
             userRole: registration.role,
           } as any); // Registring Get Stream IO User
 
-          if (!relationshipManager) {
-            const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.FIRST_LOGIN.email_body, { Name: verification.name || "User" });
-            EmailQueue.add("user register", {
-              action: "COMMON",
-              data: commonTemplate({
-                name: verification.name,
-                content: notificationData.text,
-                title: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject,
-                buttonText: notificationData.cta,
-                buttonLink: `${FRONTEND_URL}`, // As per "Start Tour" or Dashboard
-                showFeatures: true
-              })
+          await dispatchClientNotification({
+            eventKey: "FIRST_LOGIN",
+            userId: registration._id,
+            variables: { Name: registration.name || "User" },
+            primaryAction: {
+              action: "/setup-business",
+              text: "Set Up Business",
+            },
+            dedupeKey: "first-login",
+            channels: ["in_app", "email"],
+            symbol: "✨",
+          });
 
-              ,
-              email: verification?.email!,
-              notification: new Notification({
-                title: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_title.replace("[Name]", verification.name || "User"),
-                description: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_body,
-                type: "COMMON",
-                actionText: "view plans",
-                action: "/membership",
-                symbol: "✨",
-              }),
-              subject: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", verification.name || "User"),
-            });
+          if (!relationshipManager) {
             EmailQueue.add("user not assigned", {
               action: "COMMON",
               data: commonTemplate({
@@ -207,29 +197,17 @@ const NewRegister = asyncHandler(async (req) => {
       userRole: create.role,
     });
 
-    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.FIRST_LOGIN.email_body, { Name: create.name || "User" });
-    EmailQueue.add("user register", {
-      action: "COMMON",
-      data: commonTemplate({
-        name: create.name,
-        content: notificationData.text,
-        title: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", create.name || "User"),
-        buttonText: notificationData.cta,
-        buttonLink: `${FRONTEND_URL}`,
-        showFeatures: true
-      })
-
-      ,
-      email: create?.email!,
-      notification: new Notification({
-        title: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_title.replace("[Name]", create.name || "User"),
-        description: NOTIFICATION_CONFIG.FIRST_LOGIN.in_app_body,
-        type: "COMMON",
-        actionText: "view plans",
-        action: "/membership",
-        symbol: "✨",
-      }),
-      subject: NOTIFICATION_CONFIG.FIRST_LOGIN.email_subject.replace("[Name]", create.name || "User"),
+    await dispatchClientNotification({
+      eventKey: "FIRST_LOGIN",
+      userId: create._id,
+      variables: { Name: create.name || "User" },
+      primaryAction: {
+        action: "/setup-business",
+        text: "Set Up Business",
+      },
+      dedupeKey: "first-login",
+      channels: ["in_app", "email"],
+      symbol: "✨",
     });
 
     if (!relationshipManager) {
@@ -381,6 +359,14 @@ const forgetPassword = asyncHandler(async (req: RequestUser) => {
       symbol: "✨",
     }),
     subject: NOTIFICATION_CONFIG.PASSWORD_RESET_REQUESTED.email_subject.replace("[Name]", user?.name || "User"), // Though subject in config doesn't have [Name] but safeguard
+  });
+  await dispatchClientNotification({
+    eventKey: "PASSWORD_RESET_REQUESTED",
+    userId: user._id,
+    primaryAction: { action: "/forgot-password" },
+    entityType: "account",
+    dedupeKey: `password-reset:${Date.now()}`,
+    channels: ["in_app", "push"],
   });
 
   return new ApiResponse(200, { message: "password reset mail sent successfully" }, "Password reset link sent successfully.");

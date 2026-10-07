@@ -50,8 +50,14 @@ export async function discoverAuthoritativeLogoInputs(
     profileLogoAssetId: profileContext.logoAssetId,
     brief: input.brief,
   });
-  const vaultDefault =
-    vault.needsChoice || (vault.defaulted && attachmentLogoAssetIds.length > 0)
+  const officialLogo = profileContext.logoAssetId?.trim();
+  const officialLogoWins =
+    !!officialLogo &&
+    attachmentLogoAssetIds.length === 0 &&
+    vault.candidates.some((c) => c.assetId === officialLogo);
+  const vaultDefault = officialLogoWins
+    ? officialLogo
+    : vault.needsChoice || (vault.defaulted && attachmentLogoAssetIds.length > 0)
       ? undefined
       : vault.selectedAssetId;
 

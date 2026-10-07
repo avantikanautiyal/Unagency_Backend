@@ -126,6 +126,45 @@ describe("ensure-brand-logo-execution-metadata", () => {
     expect(meta.brandLogoAssetId).toBe(attachedId);
   });
 
+  it("binds the brand's official logo without asking when several vault logos exist", async () => {
+    const officialId = new mongoose.Types.ObjectId();
+    const vaultLogo = (id: mongoose.Types.ObjectId, name: string, day: string) => ({
+      _id: id,
+      fileName: name,
+      folder: "logos",
+      kind: "image",
+      mimeType: "image/png",
+      approvalStatus: "approved",
+      updatedAt: new Date(`2026-08-${day}T00:00:00.000Z`),
+    });
+    (MediaFile.find as jest.Mock).mockImplementation(() => ({
+      select: () => ({
+        lean: async () => [
+          vaultLogo(new mongoose.Types.ObjectId(), "Logo variant A", "10"),
+          vaultLogo(new mongoose.Types.ObjectId(), "Logo variant B", "11"),
+          vaultLogo(officialId, "Uploaded mark", "01"),
+        ],
+      }),
+    }));
+    (resolveBrandProfileContext as jest.Mock).mockResolvedValue({
+      logoAssetId: officialId.toString(),
+      brandName: "Acme",
+      colors: [],
+    });
+
+    const meta = await ensureBrandLogoInExecutionMetadata({
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      brandId: new mongoose.Types.ObjectId().toString(),
+      brief: "Instagram post for launch",
+      capabilityId: "image.generate",
+      metadata: { service: "social", productAction: "route_visual" },
+    });
+
+    expect(meta.logoChoiceRequired).toBeUndefined();
+    expect(meta.brandLogoAssetId).toBe(officialId.toString());
+    expect(meta.brandLogoProvenance).toBe("Brand profile logo");
+  });
+
   it("honors vaultLogoChoice without re-asking", async () => {
     const chosen = new mongoose.Types.ObjectId().toString();
     const meta = await ensureBrandLogoInExecutionMetadata({

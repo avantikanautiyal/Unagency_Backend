@@ -5,9 +5,9 @@
  *
  * Selection rules mirror CTI `resolveAuthoritativeLogo` (P4.9.7.1):
  * - explicit vaultLogoChoice → use it
+ * - brand's official logo (profile logoAssetId) with no prompt-attached logo → bind it
  * - 1 vault/attachment candidate → bind
  * - 2+ candidates (vault and/or attachment) → logoChoiceRequired
- * - brandLogoAssetId alone does not skip multi-logo ask
  */
 
 import {
@@ -213,6 +213,24 @@ export async function ensureBrandLogoInExecutionMetadata(input: {
     profileLogoAssetId: profileContext.logoAssetId,
     brief: input.brief,
   });
+
+  // The logo uploaded as the brand's official logo is authoritative unless the
+  // user attached a logo to this prompt. Membership in vault candidates also
+  // confirms the asset still exists.
+  const officialLogo = profileContext.logoAssetId?.trim();
+  if (
+    officialLogo &&
+    attachmentLogoIds.length === 0 &&
+    vault.candidates.some((c) => c.assetId === officialLogo)
+  ) {
+    return bindLogoToMetadata({
+      metadata: input.metadata,
+      existingIds,
+      logoAssetId: officialLogo,
+      provenance: "Brand profile logo",
+      brandId,
+    });
+  }
 
   const vaultCandidates: AuthoritativeLogoCandidate[] = vault.candidates.map(
     (candidate) =>

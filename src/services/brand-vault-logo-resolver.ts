@@ -10,6 +10,8 @@ import type { BrandContextAssetRef } from "../platform/os/creative/brand-context
 import { selectDefaultLogoCandidate } from "./default-logo-selection";
 
 const LOGO_FOLDERS = new Set(["logos", "logo-versions"]);
+/** Tag set by the onboarding uploader on non-logo files (visuals, creatives, guidelines, documents). */
+export const BRAND_DOCUMENT_TAG = "brand-document";
 
 export type VaultLogoCandidate = {
   readonly assetId: string;
@@ -44,8 +46,10 @@ function isLogoLikeAsset(doc: {
   kind?: string | null;
   mimeType?: string | null;
 }): boolean {
-  if (doc.folder && LOGO_FOLDERS.has(String(doc.folder))) return true;
   const tags = (doc.tags ?? []).map((t) => String(t).toLowerCase());
+  // Uploaded via the "documents" area of the brand/business form — never a logo.
+  if (tags.includes(BRAND_DOCUMENT_TAG)) return false;
+  if (doc.folder && LOGO_FOLDERS.has(String(doc.folder))) return true;
   if (
     tags.some(
       (t) =>

@@ -15,6 +15,11 @@ import {
   UpdateTourCompletion,
   DeleteInternalUser,
 } from "../controllers/users.controller";
+import {
+  deleteMyAccount,
+  getMyProfile,
+  updateMyProfile,
+} from "../controllers/account.controller";
 import { fileUpload } from "../middlewares/multers3.middleware";
 import { VerifyRole } from "../middlewares/verifyUser.middleware";
 
@@ -89,6 +94,11 @@ router.delete(
   VerifyRole(["superadmin"]),
   DeleteInternalUser
 );
+//Desc: Self-service profile + account deletion (Edit Profile). Must stay above "/:id".
+const ALL_ROLES = ["admin", "superadmin", "customer", "resource", "servicing"];
+router.get("/me/profile", VerifyRole(ALL_ROLES), getMyProfile);
+router.patch("/me/profile", VerifyRole(ALL_ROLES), updateMyProfile);
+router.delete("/me", VerifyRole(["customer"]), deleteMyAccount);
 //Desc: It is used in Chat Module of Messaging for User role. NOTE: TAPI
 router.get("/:id", FetchUserById);
 //Desc: It allows users to update their tour completion status

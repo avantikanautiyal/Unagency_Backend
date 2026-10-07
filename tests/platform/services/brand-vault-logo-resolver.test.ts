@@ -92,6 +92,42 @@ describe("brand-vault-logo-resolver", () => {
     expect(vault.selectedAssetId).toBe(logoId.toString());
   });
 
+  it("never treats files uploaded as brand documents as logo candidates", async () => {
+    const logoId = new mongoose.Types.ObjectId();
+    (MediaFile.find as jest.Mock).mockImplementation(() => ({
+      select: () => ({
+        lean: async () => [
+          {
+            _id: logoId,
+            fileName: "logo.png",
+            folder: "logos",
+            tags: ["logo", "onboarding-upload"],
+            kind: "image",
+            mimeType: "image/png",
+            approvalStatus: "approved",
+            updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+          },
+          {
+            _id: new mongoose.Types.ObjectId(),
+            fileName: "old-logo-guidelines.pdf",
+            folder: "guidelines",
+            tags: ["brand-document", "onboarding-upload"],
+            kind: "document",
+            mimeType: "application/pdf",
+            approvalStatus: "approved",
+            updatedAt: new Date("2026-08-05T00:00:00.000Z"),
+          },
+        ],
+      }),
+    }));
+    const vault = await resolveBrandVaultLogos({
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      brandId: new mongoose.Types.ObjectId().toString(),
+    });
+    expect(vault.candidates.map((c) => c.assetId)).toEqual([logoId.toString()]);
+    expect(vault.needsChoice).toBe(false);
+  });
+
   it("defaults to the primary logo PNG when multiple vault logos exist", async () => {
     const systemId = new mongoose.Types.ObjectId();
     const primaryId = new mongoose.Types.ObjectId();

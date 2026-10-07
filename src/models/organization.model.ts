@@ -18,6 +18,8 @@ export interface IOrganization {
   about?: string;
   businessAge?: string;
   businessSize?: string;
+  /** Business logo (MediaFile in this organisation). Display only. */
+  logoAssetId?: mongoose.Types.ObjectId;
 }
 
 const OrganizationSchema = new Schema<IOrganization>(
@@ -39,6 +41,7 @@ const OrganizationSchema = new Schema<IOrganization>(
     about: { type: String, default: "" },
     businessAge: { type: String, default: "" },
     businessSize: { type: String, default: "" },
+    logoAssetId: { type: Schema.Types.ObjectId, ref: "MediaFile" },
   },
   { collection: "organizations", timestamps: true }
 );

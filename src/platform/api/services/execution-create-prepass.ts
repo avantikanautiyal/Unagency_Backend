@@ -298,6 +298,18 @@ export async function runCreatePrepass(
   let workingMetadata = applyDirectPassthroughMetadata(
     req.metadata ? { ...req.metadata } : undefined
   );
+  // Enhanced prompts are shown to the user — keep provider-only production
+  // specs, gates and output contracts out; they are applied at generation time.
+  if (productActionFromMetadata(workingMetadata)?.toLowerCase() === "enhance_prompt") {
+    workingMetadata = {
+      ...workingMetadata,
+      skipProductionSpecInstruct: true,
+      skipOutputRequirements: true,
+      cdfSkipEffectiveInstructionReplace: true,
+    };
+    delete workingMetadata.productionPromptBlockText;
+    delete workingMetadata.conversationalEffectiveInstruction;
+  }
 
   // Service conversation context — derive follow-up intent + continuity from persisted chat.
   let conversationExecutionSpec: import("../../collaboration/conversational-task-intelligence").CanonicalExecutionSpecification | undefined;

@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/apiResponse";
 import Organizations, { Organization } from "../models/organization.model";
 import Teams from "../models/team.model";
 import Users from "../models/users.model";
+import MediaFile from "../models/mediaFile.model";
 import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
@@ -231,11 +232,30 @@ const UpdateUserOrganization = asyncHandler(
       return new ApiResponse(400, null, "Something went wrong");
     }
 
+    const { logoAssetId, ...fields } = req.body ?? {};
+    const update: Record<string, unknown> = { $set: fields };
+    if (logoAssetId === null || logoAssetId === "") {
+      update.$unset = { logoAssetId: "" };
+    } else if (logoAssetId !== undefined) {
+      if (!mongoose.isValidObjectId(logoAssetId)) {
+        return new ApiResponse(400, null, "Invalid logoAssetId");
+      }
+      const logo = await MediaFile.exists({
+        _id: logoAssetId,
+        organizationId: existingOrganization._id,
+        status: { $ne: "deleted" },
+      });
+      if (!logo) {
+        return new ApiResponse(404, null, "Logo file not found in organisation");
+      }
+      (fields as Record<string, unknown>).logoAssetId = new mongoose.Types.ObjectId(
+        String(logoAssetId)
+      );
+    }
+
     const updatedOrganization = await Organizations.findOneAndUpdate(
       { _id: organizationId, owner: req?.user?.userId },
-      {
-        $set: req.body,
-      },
+      update,
       { new: true, runValidators: true } // Ensure that validators run during update
     );
 

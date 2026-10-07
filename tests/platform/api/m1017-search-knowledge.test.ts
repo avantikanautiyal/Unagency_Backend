@@ -45,6 +45,11 @@ jest.mock("../../../src/models/team.model", () => ({
   default: { exists: jest.fn(async () => false), findOne: jest.fn() },
 }));
 
+jest.mock("../../../src/billing/entitlement-service", () => ({
+  ...jest.requireActual("../../../src/billing/entitlement-service"),
+  assertBrandLimit: jest.fn(async () => undefined),
+}));
+
 jest.mock("../../../src/models/brand.model", () => {
   const mongooseLib = require("mongoose");
   const store = new Map<string, any>();
@@ -70,6 +75,20 @@ jest.mock("../../../src/models/brand.model", () => {
       find: jest.fn(() => ({
         sort: () => ({ limit: async () => [...store.values()] }),
       })),
+      countDocuments: jest.fn(async () => 0),
+      exists: jest.fn(async (filter: any) => {
+        const matches = (value: unknown, cond: any) => {
+          const v = value == null ? "" : String(value);
+          if (cond instanceof RegExp) return cond.test(v);
+          if (cond?.$not instanceof RegExp) return !cond.$not.test(v);
+          if (cond?.$ne != null) return v !== String(cond.$ne);
+          return v === String(cond);
+        };
+        const hit = [...store.values()].find((doc) =>
+          Object.entries(filter).every(([key, cond]) => matches(doc[key], cond))
+        );
+        return hit ? { _id: hit._id } : null;
+      }),
       __store: store,
     },
   };
@@ -282,6 +301,45 @@ describe("M10.17 — BrandService guidelinesProfile create + update (mocked Mong
     expect(updated.guidelinesProfile.mission).toBe("Empower local makers");
     expect(updated.guidelinesProfile.tone).toBe("Bold");
     expect(updated.guidelinesProfile.brandStory).toBe("Started in a garage");
+  });
+
+  it("rejects a duplicate name + industry in the same organisation (case/space-insensitive)", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+    const organizationId = new mongoose.Types.ObjectId().toString();
+    await brandService.create({ userId, organizationId, name: "Tata", industry: "Retail & E-commerce" });
+
+    await expect(
+      brandService.create({ userId, organizationId, name: "  tata ", industry: "retail & e-commerce" })
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const other = await brandService.create({ userId, organizationId, name: "Tata", industry: "Technology" });
+    expect(other.industry).toBe("Technology");
+
+    const elsewhere = await brandService.create({
+      userId,
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      name: "Tata",
+      industry: "Retail & E-commerce",
+    });
+    expect(elsewhere.name).toBe("Tata");
+  });
+
+  it("rejects an edit that would duplicate another brand, but allows re-saving the same brand", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+    const organizationId = new mongoose.Types.ObjectId().toString();
+    await brandService.create({ userId, organizationId, name: "Tata", industry: "Retail & E-commerce" });
+    const second = await brandService.create({ userId, organizationId, name: "Tata", industry: "Technology" });
+
+    await expect(
+      brandService.update({ userId, brandId: second.id, patch: { industry: "Retail & E-commerce" } })
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const resaved = await brandService.update({
+      userId,
+      brandId: second.id,
+      patch: { name: "Tata", industry: "Technology" },
+    });
+    expect(resaved.industry).toBe("Technology");
   });
 });
 

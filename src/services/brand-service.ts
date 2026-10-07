@@ -130,6 +130,44 @@ async function resolveOrg(
   return resolveCustomerOrganizationId(userId, organizationId);
 }
 
+/** Case-insensitive, whitespace-tolerant exact match (e.g. " tata  group" ≡ "Tata Group"). */
+function normalizedMatch(value: string): RegExp {
+  const tokens = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^\\s*${tokens.join("\\s+")}\\s*$`, "i");
+}
+
+async function assertUniqueBrandNameIndustry(input: {
+  organizationId: string;
+  name: string;
+  industry: string;
+  excludeBrandId?: string;
+}): Promise<void> {
+  const industry = input.industry.trim();
+  const filter: Record<string, unknown> = {
+    organizationId: new mongoose.Types.ObjectId(input.organizationId),
+    status: "active",
+    name: normalizedMatch(input.name),
+    industry: industry
+      ? normalizedMatch(industry)
+      : { $not: /\S/ },
+  };
+  if (input.excludeBrandId) {
+    filter._id = { $ne: new mongoose.Types.ObjectId(input.excludeBrandId) };
+  }
+  if (await Brands.exists(filter)) {
+    throw new ApiError(
+      industry
+        ? `A brand named "${input.name.trim()}" in ${industry} already exists.`
+        : `A brand named "${input.name.trim()}" already exists.`,
+      409
+    );
+  }
+}
+
 export class BrandService {
   async create(input: {
     userId: string;
@@ -151,6 +189,12 @@ export class BrandService {
     );
     const name = String(input.name ?? "").trim();
     if (!name) throw new ApiError("name is required", 400);
+
+    await assertUniqueBrandNameIndustry({
+      organizationId,
+      name,
+      industry: input.industry ?? "",
+    });
 
     if (input.logoAssetId) {
       await this.assertAssetInOrg(input.logoAssetId, organizationId);
@@ -275,11 +319,19 @@ export class BrandService {
       if (!name) throw new ApiError("name cannot be empty", 400);
       doc.name = name;
     }
+    if (p.industry != null) doc.industry = String(p.industry);
+    if ((p.name != null || p.industry != null) && doc.status === "active") {
+      await assertUniqueBrandNameIndustry({
+        organizationId: doc.organizationId.toString(),
+        name: doc.name,
+        industry: doc.industry ?? "",
+        excludeBrandId: String(doc._id),
+      });
+    }
     if (p.colors != null) doc.colors = p.colors.map(String);
     if (p.voice != null) doc.voice = String(p.voice);
     if (p.positioning != null) doc.positioning = String(p.positioning);
     if (p.guidelines != null) doc.guidelines = String(p.guidelines);
-    if (p.industry != null) doc.industry = String(p.industry);
     if (p.targetAudience != null) doc.targetAudience = String(p.targetAudience);
     if (p.website != null) doc.website = String(p.website);
     if (p.guidelinesProfile != null) {
@@ -324,6 +376,12 @@ export class BrandService {
     brandId: string;
   }): Promise<BrandDto> {
     const doc = await this.loadOwned(input.userId, input.brandId, true);
+    await assertUniqueBrandNameIndustry({
+      organizationId: doc.organizationId.toString(),
+      name: doc.name,
+      industry: doc.industry ?? "",
+      excludeBrandId: String(doc._id),
+    });
     doc.status = "active";
     doc.archivedAt = undefined;
     await doc.save();

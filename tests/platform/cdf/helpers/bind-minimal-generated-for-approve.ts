@@ -91,6 +91,10 @@ function fixtureData(
     const { fixturePresentationStoryline } = require("../../../../src/platform/cdf/artifacts/presentation/fixtures");
     return fixturePresentationStoryline() as Record<string, unknown>;
   }
+  if (artifactKey === "presentation.slide-content") {
+    const { fixturePresentationSlideContent } = require("../../../../src/platform/cdf/artifacts/presentation/fixtures");
+    return fixturePresentationSlideContent() as Record<string, unknown>;
+  }
 
   if (artifactType === "text_choice" || artifactType === "config_choice") {
     return { choices: [{ id: "choice_1", title: "Choice 1" }] };
@@ -267,6 +271,36 @@ export function bindMinimalGeneratedForApprove(
     artifactVersion: pin.version,
     artifactKey: contract.artifactKey,
   };
+}
+
+/**
+ * Pin an already-created ArtifactVersion as the current phase's generated
+ * output (what ingest does in production). Returns the new session version.
+ */
+export function pinGeneratedForApprove(input: {
+  sessionId: string;
+  artifactId: string;
+  version: number;
+  phaseId?: string;
+  artifactKey?: string;
+}): number {
+  const session = getCdfSession(input.sessionId)!;
+  const phaseId = input.phaseId ?? session.phaseId ?? "";
+  const artifactKey =
+    input.artifactKey ??
+    resolveCdfPhaseExecutionContract({ serviceId: session.serviceId, phaseId })
+      ?.artifactKey ??
+    `${session.serviceId}.${phaseId}`;
+  saveCdfSession(
+    upsertSessionArtifactRef(session, {
+      artifactId: input.artifactId,
+      version: input.version,
+      phaseId,
+      artifactKey,
+      role: "generated",
+    }),
+  );
+  return getCdfSession(input.sessionId)!.sessionVersion;
 }
 
 /** Approve current phase with bound exact identity when canonical. */

@@ -245,6 +245,11 @@ export type CdfTransitionAction =
    * to that routes phase so a (different) route can be selected.
    */
   | "reopen_route_selection"
+  /**
+   * From the final step, step back to the last approved refinable phase so the
+   * user can refine it (re-approval then walks forward again).
+   */
+  | "reopen_for_refine"
   | "approve"
   | "refine"
   | "final_action"

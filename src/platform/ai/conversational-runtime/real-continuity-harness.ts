@@ -17,7 +17,8 @@
  */
 
 import { createVersion, getArtifactVersion } from "../../cdf/artifacts/repository";
-import { getCdfSession } from "../../cdf/session-store";
+import { getCdfSession, saveCdfSession } from "../../cdf/session-store";
+import { upsertSessionArtifactRef } from "../../cdf/artifacts/session-adapter";
 import { applyCdfTransition } from "../../cdf/transition-service";
 import { tryIngestPresentationCdfCompletion } from "../../cdf/presentation-runtime";
 import {
@@ -25,6 +26,26 @@ import {
   GOLDEN_LEGACY_STORYLINE,
 } from "../../cdf/generation-artifact/fixtures";
 import { PRESENTATION_ARTIFACT_KEYS } from "../../cdf/artifacts/presentation/keys";
+
+function pinGeneratedVersion(
+  sessionId: string,
+  phaseId: string,
+  artifactId: string,
+  version: number,
+  artifactKey: string,
+): void {
+  const current = getCdfSession(sessionId);
+  if (!current) return;
+  saveCdfSession(
+    upsertSessionArtifactRef(current, {
+      artifactId,
+      version,
+      phaseId,
+      artifactKey,
+      role: "generated",
+    }),
+  );
+}
 import { prepareCanonicalModelRuntime } from "../model-runtime";
 import { flattenCanonicalModelRequestToLabeledPrompt } from "../canonical-model-request";
 import {
@@ -243,6 +264,13 @@ export async function runRealConversationalContinuityE2E(input: {
     });
   }
 
+  pinGeneratedVersion(
+    session.sessionId,
+    "storyline",
+    artifactId,
+    artifactVersion,
+    PRESENTATION_ARTIFACT_KEYS.storyline,
+  );
   // Production approval transition — pins exact ArtifactVersion into CDF session.
   session = getCdfSession(session.sessionId) ?? session;
   const approved = applyCdfTransition({
@@ -427,6 +455,13 @@ export async function runRealConversationalContinuityE2E(input: {
         data: scData,
       });
     }
+    pinGeneratedVersion(
+      session.sessionId,
+      "slide-content",
+      scId,
+      scPinned,
+      PRESENTATION_ARTIFACT_KEYS.slideContent,
+    );
     const scApprove = applyCdfTransition({
       action: "approve",
       sessionId: session.sessionId,

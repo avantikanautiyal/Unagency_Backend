@@ -16,6 +16,8 @@ export type ExecutionTraceStage =
   | "provider_selection"
   | "provider_dispatch"
   | "structured_output"
+  /** Authoritative output contract vs catalog classification. */
+  | "output_authority"
   | "os_materialization"
   | "artifact_persistence"
   | "artifact_hydration"

@@ -345,15 +345,15 @@ describe("Phase 13A Real Conversational Continuity", () => {
       note: APPROVAL_NOTE,
       expectedVersion: selected.value.session.sessionVersion,
     });
-    if (!ap.ok) throw new Error(ap.error.message);
-    expect(ap.value.session.phaseId).toBe("slide-content");
-    expect(ap.value.session.approvedArtifacts ?? []).toHaveLength(0);
+    expect(ap.ok).toBe(false);
+    if (ap.ok) return;
+    expect(ap.error.message).toMatch(/no canonical ArtifactVersion/);
 
     const turn = await runConversationalGenerationTurn({
       currentUserInstruction: TURN2,
       prompt: "Generate slide content",
       metadata: {
-        cdfSessionId: ap.value.session.sessionId,
+        cdfSessionId: selected.value.session.sessionId,
         cdfPhaseId: "slide-content",
         cdfServiceId: "presentation",
         conversationId: CONV_A,

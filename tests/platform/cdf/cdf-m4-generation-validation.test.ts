@@ -152,6 +152,7 @@ describe("CDF M4 Generation Validation", () => {
     const ok = makeDeck(session.sessionId, 3, { headline: "Future of AI" });
     const pass = validateCanonicalArtifact({
       artifactId: ok.artifact.artifactId,
+      artifactVersion: ok.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -168,6 +169,7 @@ describe("CDF M4 Generation Validation", () => {
     const bad = makeDeck(session.sessionId, 3, { headline: "The Future of AI" });
     const fail = validateCanonicalArtifact({
       artifactId: bad.artifact.artifactId,
+      artifactVersion: bad.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -189,6 +191,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck12.artifact.artifactId,
+        artifactVersion: deck12.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -206,6 +209,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck11.artifact.artifactId,
+        artifactVersion: deck11.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -223,6 +227,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck13.artifact.artifactId,
+        artifactVersion: deck13.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -239,6 +244,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck13.artifact.artifactId,
+        artifactVersion: deck13.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -263,6 +269,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: ok.artifact.artifactId,
+        artifactVersion: ok.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -284,6 +291,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: bad.artifact.artifactId,
+        artifactVersion: bad.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -313,6 +321,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: story.artifact.artifactId,
+        artifactVersion: story.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -329,6 +338,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: story.artifact.artifactId,
+        artifactVersion: story.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -348,6 +358,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck.artifact.artifactId,
+        artifactVersion: deck.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -377,6 +388,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: ds.artifact.artifactId,
+        artifactVersion: ds.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -397,6 +409,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: ds.artifact.artifactId,
+        artifactVersion: ds.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [
@@ -416,6 +429,7 @@ describe("CDF M4 Generation Validation", () => {
     const deck = makeDeck(session.sessionId, 3, { headline: "Green Path" });
     const result = validateCanonicalArtifact({
       artifactId: deck.artifact.artifactId,
+      artifactVersion: deck.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -466,6 +480,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck.artifact.artifactId,
+        artifactVersion: deck.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [],
@@ -479,6 +494,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(
       validateCanonicalArtifact({
         artifactId: deck.artifact.artifactId,
+        artifactVersion: deck.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion,
         requirements: [],
@@ -496,6 +512,7 @@ describe("CDF M4 Generation Validation", () => {
     expect(() =>
       validateCanonicalArtifact({
         artifactId: deck.artifact.artifactId,
+        artifactVersion: deck.version.version,
         sessionId: session.sessionId,
         expectedSessionVersion: session.sessionVersion - 1,
         requirements: [],
@@ -508,6 +525,7 @@ describe("CDF M4 Generation Validation", () => {
     const deck = makeDeck(session.sessionId, 3);
     const result = validateCanonicalArtifact({
       artifactId: deck.artifact.artifactId,
+      artifactVersion: deck.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -529,6 +547,7 @@ describe("CDF M4 Generation Validation", () => {
     const deck = makeDeck(session.sessionId, 3);
     const result = validateCanonicalArtifact({
       artifactId: deck.artifact.artifactId,
+      artifactVersion: deck.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       contextId: "ctx_k",
@@ -549,6 +568,7 @@ describe("CDF M4 Generation Validation", () => {
     const deck = makeDeck(session.sessionId, 11, { headline: "Future of AI" });
     const result = validateCanonicalArtifact({
       artifactId: deck.artifact.artifactId,
+      artifactVersion: deck.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -581,6 +601,7 @@ describe("CDF M4 Generation Validation", () => {
     );
     const pass = validateCanonicalArtifact({
       artifactId: deck.artifact.artifactId,
+      artifactVersion: deck.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -600,6 +621,7 @@ describe("CDF M4 Generation Validation", () => {
     const bad = makeDeck(session.sessionId, 5);
     validateCanonicalArtifact({
       artifactId: bad.artifact.artifactId,
+      artifactVersion: bad.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [
@@ -657,6 +679,7 @@ describe("CDF M4 Generation Validation", () => {
     const deck = makeDeck(session.sessionId, 11);
     const result = validateCanonicalArtifact({
       artifactId: deck.artifact.artifactId,
+      artifactVersion: deck.version.version,
       sessionId: session.sessionId,
       expectedSessionVersion: session.sessionVersion,
       requirements: [

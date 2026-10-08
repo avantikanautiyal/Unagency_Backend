@@ -23,7 +23,10 @@ import {
   type WebStack,
   type WebsiteRelevanceResult,
 } from "../../os/delivery/website-generation";
-import { stampHeroImageOntoWebProject } from "../../os/delivery/website-project-templates";
+import {
+  stampHeroImageOntoWebProject,
+  stampLogoOntoWebProject,
+} from "../../os/delivery/website-project-templates";
 import {
   extractReferenceLogoFromMetadata,
   generateBestEffortVisualImage,
@@ -51,7 +54,7 @@ export const WEBSITE_MATERIALIZATION_FAILURE_ERROR =
   "WEBSITE_MATERIALIZATION_FAILURE";
 
 function websiteMaterializationErrorCode(error: ValidationError): string {
-  const details = error.details as { websiteRelevance?: unknown } | undefined;
+  const details = error.metadata as { websiteRelevance?: unknown } | undefined;
   if (details?.websiteRelevance) return WEBSITE_BRIEF_RELEVANCE_ERROR;
   const msg = (error.message ?? "").toLowerCase();
   if (msg.includes("not grounded") || msg.includes("relevance")) {
@@ -138,6 +141,22 @@ function pickStructuredData(
     }
   }
   return undefined;
+}
+
+function hasRawStructuredPayload(
+  runtimeOutput: Readonly<Record<string, unknown>> | undefined,
+  jobSummary: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  const nonEmptyText = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+  return (
+    jobSummary?.structuredData != null ||
+    runtimeOutput?.structured != null ||
+    runtimeOutput?.structuredOutput != null ||
+    runtimeOutput?.data != null ||
+    nonEmptyText(jobSummary?.resultText) ||
+    nonEmptyText(runtimeOutput?.content) ||
+    nonEmptyText(runtimeOutput?.text)
+  );
 }
 
 function materializationAlreadySettled(input: {
@@ -418,11 +437,17 @@ export async function materializeWebsiteExport(input: {
         }
       : undefined;
 
+  const referenceLogo = extractReferenceLogoFromMetadata(input.metadata);
   const artifactIds: string[] = [];
   const materialized: MaterializedRoute[] = [];
   let outputOffset = 0;
   for (const project of routes.slice(0, 3)) {
-    let enriched: WebsiteRoutePlan = project;
+    let enriched: WebsiteRoutePlan = referenceLogo
+      ? {
+          ...stampLogoOntoWebProject(project, toDataUrl(referenceLogo), brandName),
+          ...(project.description ? { description: project.description } : {}),
+        }
+      : project;
     try {
       const heroPrompt = [
         `Website hero visual for ${project.title || brandName || "brand"}`,
@@ -434,12 +459,12 @@ export async function materializeWebsiteExport(input: {
       const hero = await generateBestEffortVisualImage({
         prompt: heroPrompt,
         brandColors: opts.brandColors,
-        referenceLogo: extractReferenceLogoFromMetadata(input.metadata),
+        referenceLogo,
         deps: visualDeps,
       });
       if (hero) {
         enriched = {
-          ...stampHeroImageOntoWebProject(project, toDataUrl(hero)),
+          ...stampHeroImageOntoWebProject(enriched, toDataUrl(hero)),
           ...(project.description ? { description: project.description } : {}),
         };
       }
@@ -693,8 +718,13 @@ export async function applyWebsiteExportToExecution(input: {
     };
   }
 
-  // Website export required but no structured payload reached materialization.
+  // Website export required but no usable structured payload reached
+  // materialization: absent → payload missing; present but not a website →
+  // materialization failure.
   if (structuredData == null) {
+    const errorCode = hasRawStructuredPayload(input.runtimeOutput, input.jobSummary)
+      ? WEBSITE_MATERIALIZATION_FAILURE_ERROR
+      : CDF_STRUCTURED_PAYLOAD_MISSING;
     logWebsiteMaterializationDiagnostic({
       executionId: input.executionId,
       phase: "failed",
@@ -706,13 +736,16 @@ export async function applyWebsiteExportToExecution(input: {
       websiteRoutesCount: 0,
       materializationAttempted: false,
       exported: false,
-      errorCode: CDF_STRUCTURED_PAYLOAD_MISSING,
-      skipReason: "structured_payload_missing",
+      errorCode,
+      skipReason:
+        errorCode === CDF_STRUCTURED_PAYLOAD_MISSING
+          ? "structured_payload_missing"
+          : "structured_payload_invalid",
     });
     return {
       result: input.currentResult ?? { kind: "structured", data: {} },
       exported: false,
-      errorCode: CDF_STRUCTURED_PAYLOAD_MISSING,
+      errorCode,
     };
   }
 
@@ -797,7 +830,7 @@ export async function applyWebsiteExportToExecution(input: {
         ? websiteMaterializationErrorCode(exported.error)
         : WEBSITE_MATERIALIZATION_FAILURE_ERROR;
     const details = exported.error instanceof ValidationError
-      ? (exported.error.details as {
+      ? (exported.error.metadata as {
           websiteRelevance?: WebsiteRelevanceResult;
           briefObjectiveSource?: string;
           brandNameSource?: string;

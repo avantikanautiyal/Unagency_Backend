@@ -192,6 +192,7 @@ function mapLegacyActionToCanonical(
   // Continuity selection is a select-class action (≠ approve / ≠ canonical).
   if (action === "select_generation_for_continuation") return "select";
   if (action === "reopen_route_selection") return "select";
+  if (action === "reopen_for_refine") return "refine";
   return action;
 }
 
@@ -750,7 +751,8 @@ export function prepareTransition(
   if (
     existing.status === "completed" &&
     req.action !== "final_action" &&
-    req.action !== "handoff_studio"
+    req.action !== "handoff_studio" &&
+    req.action !== "reopen_for_refine"
   ) {
     return failure(
       cdfError("SESSION_ALREADY_COMPLETE", "Session already completed", {
@@ -948,6 +950,80 @@ export function prepareTransition(
       next,
       config,
       nextWork: resolveAuthoritativeNextWork(config, next),
+      meta: metaBase,
+    });
+  }
+
+  if (req.action === "reopen_for_refine") {
+    const onFinal = currentPhase(config, existing)?.type === "final";
+    const refinable = (p: CdfFlowPhase) =>
+      (p.type === "output" ||
+        p.type === "mockup" ||
+        p.type === "multi-output" ||
+        p.type === "text-approval") &&
+      isApproved(existing, p.id) &&
+      canonicalPhaseFor(existing.serviceId, p.id)?.refinement.enabled !== false;
+    const candidates = config.phases
+      .map((p, index) => ({ p, index }))
+      .filter(({ p, index }) => index < existing.phaseIndex && refinable(p));
+    const requested = req.phaseId?.trim();
+    const target = requested
+      ? candidates.find(({ p }) => p.id === requested)
+      : ([...candidates].reverse().find(({ p }) => p.type !== "text-approval") ??
+        candidates[candidates.length - 1]);
+    if (!onFinal || !target) {
+      return failure(
+        cdfError(
+          "ACTION_NOT_ALLOWED",
+          "reopen_for_refine is only valid on the final step with an approved refinable phase",
+          { phaseId: existing.phaseId },
+        ),
+      );
+    }
+    const laterIds = new Set(
+      config.phases.slice(target.index + 1).map((p) => p.id),
+    );
+    const reopenedIds = new Set([target.p.id, ...laterIds]);
+    const next = bumpSessionVersion(existing, {
+      approved: existing.approved.filter((a) => !reopenedIds.has(a.phaseId)),
+      selected: existing.selected.filter((s) => !laterIds.has(s.phaseId)),
+      ...(existing.approvedArtifacts
+        ? {
+            approvedArtifacts: existing.approvedArtifacts.filter(
+              (r) => !reopenedIds.has(r.phaseId),
+            ),
+          }
+        : {}),
+      ...(existing.selectedArtifacts
+        ? {
+            selectedArtifacts: existing.selectedArtifacts.filter(
+              (r) => !laterIds.has(r.phaseId),
+            ),
+          }
+        : {}),
+      ...(existing.generatedArtifacts
+        ? {
+            generatedArtifacts: existing.generatedArtifacts.filter(
+              (r) => !laterIds.has(r.phaseId),
+            ),
+          }
+        : {}),
+      ...(existing.generationContinuations
+        ? {
+            generationContinuations: existing.generationContinuations.filter(
+              (c) => !laterIds.has(c.sourcePhaseId),
+            ),
+          }
+        : {}),
+      ...advanceToPhase(existing, config, target.index),
+      lastRequestKey: fingerprint,
+    });
+    return success({
+      kind: "mutate",
+      expectedVersion,
+      next,
+      config,
+      nextWork: { kind: "none" },
       meta: metaBase,
     });
   }

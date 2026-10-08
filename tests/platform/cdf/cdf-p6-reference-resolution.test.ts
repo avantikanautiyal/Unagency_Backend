@@ -2,6 +2,7 @@
  * Phase 6 — Deterministic generation reference resolution.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   CDF_CANONICAL_GENERATION_CONTEXT_ENV,
@@ -146,7 +147,7 @@ function approveArtifact(input: {
     note: "note",
     artifactId,
     artifactVersion: targetVersion,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: targetVersion }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!approved.ok) throw new Error(approved.error.message);
   session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {
@@ -257,7 +258,7 @@ describe("Phase 6 Reference Resolution", () => {
       sessionId: session.sessionId,
       artifactId,
       artifactVersion: 4,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: 4 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {

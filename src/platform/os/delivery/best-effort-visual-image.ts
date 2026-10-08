@@ -70,9 +70,26 @@ export function extractReferenceLogoFromMetadata(
   metadata?: Readonly<Record<string, unknown>>
 ): VisualImageBytes | undefined {
   if (!metadata) return undefined;
-  const candidates: unknown[] = [];
+  const assets = Array.isArray(metadata.assets) ? metadata.assets : [];
+  const logoAssetIds = [metadata.logoAssetId, metadata.brandLogoAssetId]
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .map((v) => v.trim());
+  const assetRecord = (a: unknown): Record<string, unknown> | undefined =>
+    a && typeof a === "object" ? (a as Record<string, unknown>) : undefined;
+  // The resolved vault/attachment logo outranks any other image on the request.
+  const authoritative = assets.filter((a) => {
+    const id = assetRecord(a)?.assetId;
+    return typeof id === "string" && logoAssetIds.includes(id.trim());
+  });
+  const roleTagged = assets.filter((a) => {
+    const rec = assetRecord(a);
+    if (!rec || authoritative.includes(a)) return false;
+    return [rec.brandAssetRole, rec.role, rec.referenceRole, rec.semanticReferenceRole]
+      .some((r) => typeof r === "string" && /logo|brand_mark/i.test(r));
+  });
+  const candidates: unknown[] = [...authoritative, ...roleTagged];
   if (metadata.image) candidates.push(metadata.image);
-  if (Array.isArray(metadata.assets)) candidates.push(...metadata.assets);
+  candidates.push(...assets.filter((a) => !candidates.includes(a)));
 
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;

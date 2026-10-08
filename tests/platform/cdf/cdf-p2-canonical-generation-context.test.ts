@@ -3,6 +3,7 @@
  * Proves exact ArtifactVersion rehydration through provider-visible request.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   bindCanonicalGenerationRequestToPrompt,
@@ -194,7 +195,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       note: "OLD_TRUNCATED_NOTE",
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!approved.ok) throw new Error(approved.error.message);
     session = approved.value.session;
@@ -316,7 +317,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       note: "storyline ok",
       artifactId,
       artifactVersion: 3,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: 3 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(ap.value.session, {
@@ -396,7 +397,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       note: "ok",
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(ap.value.session, {
@@ -441,9 +442,10 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       note: "FAKE_NOTE_ONLY_NO_ARTIFACT",
       expectedVersion: session.sessionVersion,
     });
-    if (!ap.ok) throw new Error(ap.error.message);
-    session = ap.value.session;
-    expect(session.phaseId).toBe("slide-content");
+    expect(ap.ok).toBe(false);
+    if (ap.ok) return;
+    expect(ap.error.message).toMatch(/no canonical ArtifactVersion/);
+    session = getCdfSession(session.sessionId)!;
     expect(session.approvedArtifacts ?? []).toHaveLength(0);
 
     const result = tryApplyCanonicalGenerationContext({
@@ -491,7 +493,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       sessionId: session.sessionId,
       artifactId: story.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: story.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {
@@ -540,7 +542,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       sessionId: session.sessionId,
       artifactId: slides.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: slides.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {
@@ -693,7 +695,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       sessionId: session.sessionId,
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(ap.value.session, {
@@ -754,7 +756,7 @@ describe("Phase 2 Canonical Generation Context Bridge", () => {
       sessionId: session.sessionId,
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(ap.value.session, {

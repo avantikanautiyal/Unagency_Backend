@@ -3,6 +3,7 @@
  * Exact ArtifactVersion → complete structured data → CMR upstream_artifacts.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import * as artifactRepo from "../../../src/platform/cdf/artifacts/repository";
 import {
   applyCdfTransition,
@@ -133,7 +134,7 @@ function approveStorylineAtVersion(input: {
     note: "OLD_TRUNCATED_NOTE_SHOULD_NOT_REPLACE_DATA",
     artifactId: input.artifactId,
     artifactVersion: input.version,
-    expectedVersion: input.session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: input.session.sessionId, artifactId: input.artifactId, version: input.version }), getCdfSession(input.session.sessionId)!.sessionVersion),
   });
   if (!ap.ok) throw new Error(ap.error.message);
   let session = upsertSessionArtifactRef(ap.value.session, {
@@ -477,7 +478,7 @@ describe("Phase 8 Artifact Context Rehydration", () => {
       sessionId: session.sessionId,
       artifactId: story.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: story.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {
@@ -511,7 +512,7 @@ describe("Phase 8 Artifact Context Rehydration", () => {
       sessionId: session.sessionId,
       artifactId: slides.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: slides.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {
@@ -844,7 +845,7 @@ describe("Phase 8 Artifact Context Rehydration", () => {
       sessionId: session.sessionId,
       artifactId: story.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: story.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {
@@ -924,7 +925,7 @@ describe("Phase 8 Artifact Context Rehydration", () => {
       sessionId: session.sessionId,
       artifactId: slides.artifact.artifactId,
       artifactVersion: 5,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: slides.artifact.artifactId, version: 5 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {

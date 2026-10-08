@@ -1,6 +1,6 @@
 {
   "phase": "14.6",
-  "generatedAt": "2026-10-08T08:43:18.315Z",
+  "generatedAt": "2026-10-08T21:03:01.658Z",
   "summary": {
     "totalArtifacts": 5,
     "usableForPresence": 3,
@@ -27,7 +27,7 @@
       "extracted": "y \\ Sunfls=wer",
       "outcome": "ok",
       "confidence": 0.35,
-      "latencyMs": 1623,
+      "latencyMs": 666,
       "presenceDetected": true,
       "messageMatch": false,
       "presenceCorrect": true,
@@ -61,7 +61,7 @@
       "extracted": "ER 03.27 we - ©® Instagam ~~ @ V : p i} _ QQ \\ y y CCOUANTOVetare - 3 ” ya Qv [A] Colayvloukay C633 aaad2 ituave an imstagatiec creative sbout my brand inssthectred pressb ecouttii mage. insoed coilol imeattteatvedtoaticcatioy onde cocottiiia tiny foreatve coinge- Frecurionen@iisscraatines aobretliive canepot. ® Q [V] n",
       "outcome": "ok",
       "confidence": 0.46,
-      "latencyMs": 4264,
+      "latencyMs": 2081,
       "presenceDetected": true,
       "messageMatch": false,
       "presenceCorrect": true,
@@ -94,7 +94,7 @@
       "extracted": "FORMAT",
       "outcome": "ok",
       "confidence": 0.96,
-      "latencyMs": 1817,
+      "latencyMs": 869,
       "presenceDetected": true,
       "messageMatch": false,
       "presenceCorrect": true,
@@ -124,7 +124,7 @@
       "extracted": "Unagency",
       "outcome": "ok",
       "confidence": 0.89,
-      "latencyMs": 1342,
+      "latencyMs": 746,
       "presenceDetected": true,
       "messageMatch": null,
       "presenceCorrect": true,
@@ -154,7 +154,7 @@
       "extracted": "W f 8: on",
       "outcome": "ok",
       "confidence": 0.28,
-      "latencyMs": 1331,
+      "latencyMs": 714,
       "presenceDetected": true,
       "messageMatch": null,
       "presenceCorrect": null,
@@ -183,7 +183,7 @@
       "extracted": "y \\ Sunfls=wer",
       "messageMatch": false,
       "presenceDetected": true,
-      "latencyMs": 1542
+      "latencyMs": 839
     },
     {
       "artifact": "real_01_phase8_sunflower_hello_sunshine",
@@ -191,7 +191,7 @@
       "extracted": "E-3 bh) (%",
       "messageMatch": false,
       "presenceDetected": true,
-      "latencyMs": 569
+      "latencyMs": 338
     },
     {
       "artifact": "real_01_phase8_sunflower_hello_sunshine",
@@ -199,7 +199,7 @@
       "extracted": "AH r b a",
       "messageMatch": false,
       "presenceDetected": true,
-      "latencyMs": 628
+      "latencyMs": 361
     },
     {
       "artifact": "real_01_phase8_sunflower_hello_sunshine",
@@ -207,7 +207,7 @@
       "extracted": "Sunfliswer NS ) ¢",
       "messageMatch": false,
       "presenceDetected": true,
-      "latencyMs": 982
+      "latencyMs": 784
     },
     {
       "artifact": "real_01_phase8_sunflower_hello_sunshine",
@@ -215,7 +215,7 @@
       "extracted": "Sunfls wer",
       "messageMatch": false,
       "presenceDetected": true,
-      "latencyMs": 401
+      "latencyMs": 386
     }
   ]
 }

@@ -4,6 +4,7 @@
  * Cross-service: presentation (text/structured) + packaging (visual) + social-media.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   CDF_CANONICAL_GENERATION_CONTEXT_ENV,
@@ -99,7 +100,7 @@ function pinStoryline(session: ReturnType<typeof selectScratch>, marker: string)
     sessionId: session.sessionId,
     artifactId: created.artifact.artifactId,
     artifactVersion: 1,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!approved.ok) throw new Error(approved.error.message);
   let s = upsertSessionArtifactRef(approved.value.session, {

@@ -3,6 +3,7 @@
  * Proves no post-CMR application appends on the canonical path.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   assembleCanonicalModelRequest,
@@ -120,7 +121,7 @@ function approveStoryline(
     note: "OLD_NOTE",
     artifactId: created.artifact.artifactId,
     artifactVersion: created.version.version,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: created.version.version }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!approved.ok) throw new Error(approved.error.message);
   session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {
@@ -346,7 +347,7 @@ describe("Phase 5 Canonical Context Compiler / Complete CMR", () => {
       sessionId: session.sessionId,
       artifactId,
       artifactVersion: 3,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: 3 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(ap.value.session, {
@@ -430,7 +431,7 @@ describe("Phase 5 Canonical Context Compiler / Complete CMR", () => {
       sessionId: session.sessionId,
       artifactId: story.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: story.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(cur.value.session, {
@@ -479,7 +480,7 @@ describe("Phase 5 Canonical Context Compiler / Complete CMR", () => {
       sessionId: session.sessionId,
       artifactId: slides.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: slides.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {

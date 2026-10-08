@@ -2,6 +2,7 @@
  * CDF M7 hardening — acceptance gate, design-system on select, exact deps, e2e.
  */
 
+import { approveWithCanonicalCompletion } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   applyTargetedRefinement,
@@ -81,11 +82,7 @@ describe("CDF M7 hardening — Presentation canonical runtime", () => {
     expect(cur.phaseId).toBe("storyline");
 
     for (const _ of ["storyline", "slide-content"] as const) {
-      const r = applyCdfTransition({
-        action: "approve",
-        sessionId: cur.sessionId,
-        expectedVersion: cur.sessionVersion,
-      });
+      const r = approveWithCanonicalCompletion(cur.sessionId);
       if (!r.ok) throw new Error(r.error.message);
       cur = r.value.session;
     }

@@ -2,6 +2,7 @@
  * Phase 7 — Conversation Working Memory (bounded, deterministic).
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   CDF_CANONICAL_GENERATION_CONTEXT_ENV,
@@ -108,7 +109,7 @@ function approveStoryline(
     note: "OLD_APPROVAL_NOTE_ONLY",
     artifactId: created.artifact.artifactId,
     artifactVersion: created.version.version,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: created.version.version }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!approved.ok) throw new Error(approved.error.message);
   session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {
@@ -412,7 +413,7 @@ describe("Phase 7 Conversation Working Memory", () => {
       note: "short note — NOT the artifact",
       artifactId,
       artifactVersion: 5,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: 5 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!ap.ok) throw new Error(ap.error.message);
     session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {
@@ -576,7 +577,7 @@ describe("Phase 7 Conversation Working Memory", () => {
       sessionId: session.sessionId,
       artifactId: slides.artifact.artifactId,
       artifactVersion: 1,
-      expectedVersion: session.sessionVersion,
+      expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: slides.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
     });
     if (!cur.ok) throw new Error(cur.error.message);
     session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {

@@ -785,3 +785,68 @@ a.cta:hover{transform:translateY(-2px);filter:brightness(1.05)}
 
   return { ...project, files };
 }
+
+const BRAND_LOGO_CSS =
+  ".brand-logo{height:40px;width:auto;max-width:180px;object-fit:contain;display:inline-block;vertical-align:middle;margin-right:.75rem}";
+
+/**
+ * Best-effort place the brand's resolved logo in the site header (or nav / body
+ * start when no header exists). Never fails the export.
+ */
+export function stampLogoOntoWebProject(
+  project: WebProjectPlan,
+  logoDataUrl: string,
+  brandName?: string
+): WebProjectPlan {
+  const url = logoDataUrl.trim();
+  if (!url) return project;
+  const safeUrl = url.replace(/"/g, "&quot;");
+  const alt = (brandName ?? "").replace(/[<>"&]/g, "").trim() || "Logo";
+  const insertAfterOpening = (content: string, img: string): string | undefined => {
+    for (const tag of ["header", "nav", "body"]) {
+      const re = new RegExp(`<${tag}\\b[^>]*>`, "i");
+      const match = content.match(re);
+      if (match && match.index != null) {
+        const at = match.index + match[0].length;
+        return `${content.slice(0, at)}${img}${content.slice(at)}`;
+      }
+    }
+    return undefined;
+  };
+
+  const files = project.files.map((f) => {
+    const path = f.path.replace(/\\/g, "/");
+    let content = f.content;
+
+    if (/(^|\/)index\.css$/i.test(path)) {
+      if (!content.includes(".brand-logo")) content += `\n${BRAND_LOGO_CSS}\n`;
+      return { ...f, content };
+    }
+
+    if (/\.html?$/i.test(path)) {
+      if (/class="brand-logo"/i.test(content)) return f;
+      const next = insertAfterOpening(
+        content,
+        `<img class="brand-logo" src="${safeUrl}" alt="${alt}"/>`
+      );
+      if (!next) return f;
+      content = /<\/head>/i.test(next)
+        ? next.replace(/<\/head>/i, `<style>${BRAND_LOGO_CSS}</style></head>`)
+        : next;
+      return { ...f, content };
+    }
+
+    if (/(^|\/)App\.(tsx|jsx)$/i.test(path)) {
+      if (/className="brand-logo"/i.test(content)) return f;
+      const tagMatch = content.match(/<(header|nav)\b[^>]*>/i);
+      if (!tagMatch || tagMatch.index == null) return f;
+      const at = tagMatch.index + tagMatch[0].length;
+      content = `${content.slice(0, at)}<img className="brand-logo" src="${safeUrl}" alt="${alt}" />${content.slice(at)}`;
+      return { ...f, content };
+    }
+
+    return f;
+  });
+
+  return { ...project, files };
+}

@@ -3,6 +3,7 @@
  * Provider vision input must come from CMR.multimodal_context, not metadata.assets.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import * as artifactRepo from "../../../src/platform/cdf/artifacts/repository";
 import {
   applyCdfTransition,
@@ -106,7 +107,7 @@ function approveStoryline(sessionIn: ReturnType<typeof startBrief>) {
     sessionId: session.sessionId,
     artifactId: created.artifact.artifactId,
     artifactVersion: 1,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 1 }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!ap.ok) throw new Error(ap.error.message);
   session = upsertSessionArtifactRef(ap.value.session, {

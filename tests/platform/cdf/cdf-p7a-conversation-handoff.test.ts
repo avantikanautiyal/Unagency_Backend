@@ -3,6 +3,7 @@
  * Proves conversationId alone can identify the store handle; channelId not required.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import {
   applyCdfTransition,
   CDF_CANONICAL_GENERATION_CONTEXT_ENV,
@@ -121,7 +122,7 @@ function approveStorylineAtVersion(
     note: "approval note only",
     artifactId,
     artifactVersion: targetVersion,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: targetVersion }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!ap.ok) throw new Error(ap.error.message);
   session = upsertSessionArtifactRef(getCdfSession(session.sessionId)!, {

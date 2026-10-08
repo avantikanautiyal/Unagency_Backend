@@ -3,6 +3,7 @@
  * Single thin assembly boundary composing Phases 2–9A into one CMR.
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import * as artifactRepo from "../../../src/platform/cdf/artifacts/repository";
 import { createVersion } from "../../../src/platform/cdf/artifacts/repository";
 import {
@@ -116,13 +117,20 @@ function approveStorylineAtVersion(input: {
     organizationId: ORG,
     projectId: PROJ,
   });
+  const pinnedVersion = pinGeneratedForApprove({
+    sessionId: input.session.sessionId,
+    artifactId: input.artifactId,
+    version: input.version,
+    phaseId: "storyline",
+    artifactKey: "presentation.storyline",
+  });
   const ap = applyCdfTransition({
     action: "approve",
     sessionId: input.session.sessionId,
     note: "OLD_TRUNCATED_NOTE_SHOULD_NOT_REPLACE_DATA",
     artifactId: input.artifactId,
     artifactVersion: input.version,
-    expectedVersion: input.session.sessionVersion,
+    expectedVersion: pinnedVersion,
   });
   if (!ap.ok) throw new Error(ap.error.message);
   let session = upsertSessionArtifactRef(ap.value.session, {
@@ -156,13 +164,20 @@ function approveStorylineV1(sessionIn: ReturnType<typeof startBrief>, marker = "
     organizationId: ORG,
     projectId: PROJ,
   });
+  const pinnedVersion = pinGeneratedForApprove({
+    sessionId: session.sessionId,
+    artifactId: created.artifact.artifactId,
+    version: 1,
+    phaseId: "storyline",
+    artifactKey: "presentation.storyline",
+  });
   const ap = applyCdfTransition({
     action: "approve",
     sessionId: session.sessionId,
     note: "approve storyline",
     artifactId: created.artifact.artifactId,
     artifactVersion: 1,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: pinnedVersion,
   });
   if (!ap.ok) throw new Error(ap.error.message);
   session = upsertSessionArtifactRef(ap.value.session, {

@@ -64,12 +64,7 @@ export function resolveParentExecutionIdFromMetadata(
 /** Load client handoff or parent execution spec snapshot (no stamping). */
 export async function readInheritedExecutionSpec(input: {
   readonly host: {
-    loadExecution(executionId: string): Promise<
-      | {
-          metadata?: Readonly<Record<string, unknown>>;
-        }
-      | undefined
-    >;
+    loadExecution(executionId: string): Promise<object | undefined>;
     loadExecutionCreateMetadata?(
       executionId: string,
     ): Promise<Readonly<Record<string, unknown>> | undefined>;
@@ -88,7 +83,7 @@ export async function readInheritedExecutionSpec(input: {
     }
     const parent = await input.host.loadExecution(parentId);
     return readExecutionSpecSnapshot(
-      parent?.metadata as Record<string, unknown> | undefined,
+      (parent as { metadata?: Record<string, unknown> } | undefined)?.metadata,
     )?.spec;
   } catch {
     return undefined;
@@ -97,12 +92,7 @@ export async function readInheritedExecutionSpec(input: {
 
 export async function applyExecutionSpecHandoff(input: {
   readonly host: {
-    loadExecution(executionId: string): Promise<
-      | {
-          metadata?: Readonly<Record<string, unknown>>;
-        }
-      | undefined
-    >;
+    loadExecution(executionId: string): Promise<object | undefined>;
     loadExecutionCreateMetadata?(
       executionId: string,
     ): Promise<Readonly<Record<string, unknown>> | undefined>;
@@ -146,12 +136,7 @@ export async function applyExecutionSpecHandoff(input: {
 
 async function inheritSpecFromParentExecution(
   host: {
-    loadExecution(executionId: string): Promise<
-      | {
-          metadata?: Readonly<Record<string, unknown>>;
-        }
-      | undefined
-    >;
+    loadExecution(executionId: string): Promise<object | undefined>;
     loadExecutionCreateMetadata?(
       executionId: string,
     ): Promise<Readonly<Record<string, unknown>> | undefined>;
@@ -168,7 +153,7 @@ async function inheritSpecFromParentExecution(
     }
     const parent = await host.loadExecution(parentId);
     return readExecutionSpecSnapshot(
-      parent?.metadata as Record<string, unknown> | undefined,
+      (parent as { metadata?: Record<string, unknown> } | undefined)?.metadata,
     )?.spec;
   } catch {
     return undefined;

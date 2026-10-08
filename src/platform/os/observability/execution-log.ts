@@ -4,6 +4,7 @@
 
 export interface OsExecutionLogFields {
   readonly requestId: string;
+  readonly correlationId?: string;
   readonly executionId: string;
   readonly organizationId: string;
   readonly capabilityId?: string;

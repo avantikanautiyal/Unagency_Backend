@@ -360,37 +360,33 @@ export async function runCreatePrepass(
         ),
       );
     }
-    const parentTarget =
-      typeof workingMetadata?.parentExecutionId === "string"
-        ? workingMetadata.parentExecutionId.trim()
-        : typeof workingMetadata?.targetExecutionId === "string"
-          ? workingMetadata.targetExecutionId.trim()
-          : "";
-    const refineFrom =
-      typeof workingMetadata?.refineFromExecutionId === "string"
-        ? workingMetadata.refineFromExecutionId.trim()
-        : "";
-    const conversationalRef =
-      typeof workingMetadata?.conversationalReferencedExecutionId === "string"
-        ? workingMetadata.conversationalReferencedExecutionId.trim()
-        : "";
-    if (
-      requiresCanonical &&
-      (parentTarget.startsWith("direct_routes_") ||
-        refineFrom.startsWith("direct_routes_") ||
-        conversationalRef.startsWith("direct_routes_"))
-    ) {
-      return failure(
-        new ValidationError(
-          "direct_routes_* is not a valid execution target for a canonical CDF phase",
-          {
-            reason: "CDF_CANONICAL_DIRECT_ROUTES_FORBIDDEN",
+    // Synthetic direct_routes_* ids leak in from earlier chat history (stale
+    // refine/parent pointers). They never own artifacts, so drop them rather
+    // than failing the canonical phase run.
+    if (requiresCanonical && workingMetadata) {
+      const syntheticRefKeys = [
+        "parentExecutionId",
+        "targetExecutionId",
+        "refineFromExecutionId",
+        "conversationalReferencedExecutionId",
+      ] as const;
+      const stripped = syntheticRefKeys.filter((key) => {
+        const value = workingMetadata?.[key];
+        return typeof value === "string" && value.trim().startsWith("direct_routes_");
+      });
+      if (stripped.length > 0) {
+        workingMetadata = { ...workingMetadata };
+        for (const key of stripped) delete workingMetadata[key];
+        console.warn(
+          JSON.stringify({
+            scope: "cdf.canonical.prepass",
+            event: "stripped_synthetic_direct_routes_refs",
             cdfServiceId,
             cdfPhaseId,
-            artifactKey: contract?.artifactKey,
-          },
-        ),
-      );
+            keys: stripped,
+          }),
+        );
+      }
     }
   }
   try {
@@ -2320,6 +2316,8 @@ export async function runCreatePrepass(
       }),
     });
     logOsExecutionEvent("execution.spec.provenance", {
+      requestId: correlationId,
+      organizationId: trustedOrganizationId,
       executionId,
       correlationId,
       ...executionSpecProvenanceObservability({
@@ -2342,6 +2340,8 @@ export async function runCreatePrepass(
       resolveParentExecutionIdFromMetadata(workingMetadata),
     );
     logOsExecutionEvent("execution.spec.provenance", {
+      requestId: correlationId,
+      organizationId: trustedOrganizationId,
       executionId,
       correlationId,
       ...executionSpecProvenanceObservability({

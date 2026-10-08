@@ -93,7 +93,7 @@ describe("Social Media CDF output path guards", () => {
     expect(String(result.error.message)).toMatch(/route_visual|canonical/i);
   });
 
-  it("prepass rejects direct_routes_* parent for Social Media CDF output", async () => {
+  it("prepass strips direct_routes_* parent for Social Media CDF output", async () => {
     const result = await runCreatePrepass(
       stubHost(),
       {
@@ -109,9 +109,11 @@ describe("Social Media CDF output path guards", () => {
       },
       principal,
     );
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected fail");
-    expect(String(result.error.message)).toMatch(/direct_routes_/i);
+    if (!result.ok) {
+      expect(String(result.error.message)).not.toMatch(/direct_routes_/i);
+      return;
+    }
+    expect(JSON.stringify(result)).not.toMatch(/direct_routes_111/);
   });
 
   it("rejects approve targeting direct_routes_* on Social Media output", () => {

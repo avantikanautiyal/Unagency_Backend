@@ -2,6 +2,7 @@
  * Phase 9 — Multimodal Context (canonical generation).
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import * as artifactRepo from "../../../src/platform/cdf/artifacts/repository";
 import {
   applyCdfTransition,
@@ -129,7 +130,7 @@ function approveStoryline(
     note: "note_not_artifact",
     artifactId,
     artifactVersion: latest,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: artifactId, version: latest }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!ap.ok) throw new Error(ap.error.message);
   session = upsertSessionArtifactRef(ap.value.session, {

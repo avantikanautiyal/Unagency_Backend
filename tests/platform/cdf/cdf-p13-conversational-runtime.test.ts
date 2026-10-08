@@ -4,6 +4,7 @@
  * with exact ArtifactVersion continuity (ControllableDispatcher only).
  */
 
+import { pinGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 import { createVersion } from "../../../src/platform/cdf/artifacts/repository";
 import {
   applyCdfTransition,
@@ -130,7 +131,7 @@ function approveStorylineAtVersion(input: {
     note: "OLD_TRUNCATED_NOTE_SHOULD_NOT_REPLACE_DATA",
     artifactId: input.artifactId,
     artifactVersion: input.version,
-    expectedVersion: input.session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: input.session.sessionId, artifactId: input.artifactId, version: input.version }), getCdfSession(input.session.sessionId)!.sessionVersion),
   });
   if (!ap.ok) throw new Error(ap.error.message);
   let session = upsertSessionArtifactRef(ap.value.session, {
@@ -273,7 +274,7 @@ function pinSlideContent(session: ReturnType<typeof startBrief>, marker: string)
     note: "slide note",
     artifactId: created.artifact.artifactId,
     artifactVersion: 5,
-    expectedVersion: session.sessionVersion,
+    expectedVersion: (pinGeneratedForApprove({ sessionId: session.sessionId, artifactId: created.artifact.artifactId, version: 5 }), getCdfSession(session.sessionId)!.sessionVersion),
   });
   if (!ap.ok) throw new Error(ap.error.message);
   const next = upsertSessionArtifactRef(ap.value.session, {

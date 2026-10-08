@@ -273,8 +273,36 @@ export const buySubscription = asyncHandler(async (req: RequestUser) => {
 export const cancelSubscription = asyncHandler(async (req: RequestUser) => {
 
   const subscription_id = req.user?.subscription?.id;
-  if (!subscription_id) throw new ApiError("subscription id is missing", 400);
-  const razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, true);
+  if (!subscription_id) throw new ApiError("You don't have an active subscription to cancel.", 400);
+
+  const existing = await Subscriptions.findOne({ subscriptionId: subscription_id });
+  if (existing?.razorpayCancelRequested) {
+    throw new ApiError("Your subscription is already set to cancel.", 400);
+  }
+
+  let razrerSubscription: any;
+  if (isDemoSeedEnabled() && isDemoSubscriptionId(subscription_id)) {
+    razrerSubscription = { status: "cancelled", current_end: null };
+  } else {
+    let current: any;
+    try {
+      current = await razorpayInstance.subscriptions.fetch(subscription_id);
+    } catch (error) {
+      console.error("[cancelSubscription] fetch failed", subscription_id, error);
+      throw new ApiError("We couldn't cancel your subscription right now. Please try again.", 502);
+    }
+    if (["cancelled", "completed", "expired"].includes(String(current?.status))) {
+      throw new ApiError("Your subscription is already cancelled.", 400);
+    }
+    // Razorpay only allows cycle-end cancellation for active subscriptions; others end now.
+    const cancelAtCycleEnd = current?.status === "active";
+    try {
+      razrerSubscription = await razorpayInstance.subscriptions.cancel(subscription_id, cancelAtCycleEnd);
+    } catch (error) {
+      console.error("[cancelSubscription] cancel failed", subscription_id, error);
+      throw new ApiError("We couldn't cancel your subscription right now. Please try again.", 502);
+    }
+  }
 
   await Users.findOneAndUpdate(
     { _id: req.user?.userId },
@@ -474,6 +502,7 @@ export const getUserCurrentSubscription = asyncHandler(
 
     const curSubsc = {
       ...(subscription?.toObject()), status: razerpSubscription.status,
+      current_end: razerpSubscription?.current_end ?? subscription?.current_end,
 
       email: razerpSubscription?.customer_email!,
       contact: razerpSubscription?.customer_contact!,
@@ -532,6 +561,7 @@ export const getCustomerCurrentSubscription = asyncHandler(
 
     const curSubsc = {
       ...(subscription?.toObject()), status: razerpSubscription.status,
+      current_end: razerpSubscription?.current_end ?? subscription?.current_end,
 
       email: razerpSubscription?.customer_email!,
       contact: razerpSubscription?.customer_contact!,

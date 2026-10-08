@@ -781,9 +781,11 @@ function applyEnabled(
     };
   })();
   const userSelectedGenerationReference =
-    generationContinuations.length > 0
-      ? generationContinuations[generationContinuations.length - 1]
-      : metaContinuation;
+    metadata.cdfRefineSource === true && metaContinuation
+      ? metaContinuation
+      : generationContinuations.length > 0
+        ? generationContinuations[generationContinuations.length - 1]
+        : metaContinuation;
 
   // Visual continuity fail-closed: semantic direction alone is insufficient when
   // the user authorized an exact upstream visual for a visual emission phase.

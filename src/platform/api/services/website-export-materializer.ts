@@ -221,7 +221,8 @@ export function resolveWebsiteExport(input: {
     name === "presentationroutes" ||
     name === "presentationrouteconcepts" ||
     name === "cdfstructuredapprovaldoc" ||
-    name === "cdfwebsitesitemap"
+    name === "cdfwebsitesitemap" ||
+    name === "cdfwebsitepagestructure"
   ) {
     return false;
   }

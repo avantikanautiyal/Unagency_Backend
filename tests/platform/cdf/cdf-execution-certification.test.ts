@@ -42,7 +42,7 @@ describe("CDF execution certification harness", () => {
     const registry = countCdfCanonicalPhases();
     const rows = buildFullExecutionCertificationMatrix();
     assert.equal(rows.length, registry);
-    assert.equal(registry, 89);
+    assert.equal(registry, 85);
   });
 
   it("runFullExecutionCertification produces summary with counts", () => {

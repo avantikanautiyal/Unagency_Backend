@@ -69,7 +69,7 @@ describe("CDF phase-scoped create stamps (contract-driven)", () => {
     expect(
       shouldOmitCdfStructuredStamp({
         cdfServiceId: "web-tech",
-        cdfPhaseId: "sitemap",
+        cdfPhaseId: "page-structure",
       })
     ).toBe(true);
     expect(

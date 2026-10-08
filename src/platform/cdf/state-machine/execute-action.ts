@@ -147,6 +147,19 @@ function canonicalPhaseFor(
   return svc?.phases.find((p) => p.phaseId === phaseId);
 }
 
+/** Selection-only phases (approval not_applicable) complete on select. */
+function isStudioHandoffPhaseComplete(
+  session: CdfSessionState,
+  handoffId: string,
+): boolean {
+  if (isApproved(session, handoffId)) return true;
+  return (
+    canonicalPhaseFor(session.serviceId, handoffId)?.approval.mode ===
+      "not_applicable" &&
+    (session.selected ?? []).some((s) => s.phaseId === handoffId)
+  );
+}
+
 function assertActiveCanonicalPhase(
   serviceId: string,
   phaseId: string,
@@ -178,6 +191,7 @@ function mapLegacyActionToCanonical(
   if (action === "select_route") return "select";
   // Continuity selection is a select-class action (≠ approve / ≠ canonical).
   if (action === "select_generation_for_continuation") return "select";
+  if (action === "reopen_route_selection") return "select";
   return action;
 }
 
@@ -273,7 +287,7 @@ export function buildAuthoritativeUi(
   const showSendToStudio =
     session.productMode === "hybrid" &&
     Boolean(handoffId) &&
-    isApproved(session, handoffId!) &&
+    isStudioHandoffPhaseComplete(session, handoffId!) &&
     session.modeOwnership === "ai";
 
   if (showSendToStudio && !allowedActions.includes("handoff_studio")) {
@@ -872,6 +886,60 @@ export function prepareTransition(
       ...(activeBriefId ? { activeBriefId } : {}),
       ...(activeBriefVersion != null ? { activeBriefVersion } : {}),
       ...advanceToPhase(existing, config, start.phaseIndex),
+      lastRequestKey: fingerprint,
+    });
+    return success({
+      kind: "mutate",
+      expectedVersion,
+      next,
+      config,
+      nextWork: resolveAuthoritativeNextWork(config, next),
+      meta: metaBase,
+    });
+  }
+
+  if (req.action === "reopen_route_selection") {
+    const stopped = currentPhase(config, existing);
+    const routesIndex = existing.phaseIndex - 1;
+    const routesPhase = routesIndex >= 0 ? config.phases[routesIndex] : undefined;
+    const routesSelected = routesPhase
+      ? existing.selected.some((s) => s.phaseId === routesPhase.id)
+      : false;
+    if (
+      !stopped ||
+      !routesPhase ||
+      routesPhase.type !== "routes" ||
+      !routesSelected ||
+      (req.phaseId?.trim() && req.phaseId.trim() !== routesPhase.id) ||
+      config.phases
+        .slice(existing.phaseIndex)
+        .some((p) => isApproved(existing, p.id))
+    ) {
+      return failure(
+        cdfError(
+          "ACTION_NOT_ALLOWED",
+          "reopen_route_selection is only valid right after a route selection whose next step is not approved",
+          { phaseId: existing.phaseId },
+        ),
+      );
+    }
+    const next = bumpSessionVersion(existing, {
+      selected: existing.selected.filter((s) => s.phaseId !== routesPhase.id),
+      ...(existing.selectedArtifacts
+        ? {
+            selectedArtifacts: existing.selectedArtifacts.filter(
+              (r) => r.phaseId !== routesPhase.id,
+            ),
+          }
+        : {}),
+      ...(existing.generatedArtifacts
+        ? {
+            generatedArtifacts: existing.generatedArtifacts.filter(
+              (r) => r.phaseId !== stopped.id,
+            ),
+          }
+        : {}),
+      ...advanceToPhase(existing, config, routesIndex),
       lastRequestKey: fingerprint,
     });
     return success({
@@ -2298,7 +2366,7 @@ export function prepareTransition(
 
   if (req.action === "handoff_studio") {
     const handoffId = config.studioHandoffAfterPhaseId;
-    if (!handoffId || !isApproved(existing, handoffId)) {
+    if (!handoffId || !isStudioHandoffPhaseComplete(existing, handoffId)) {
       return failure(
         cdfError(
           "ACTION_NOT_ALLOWED",

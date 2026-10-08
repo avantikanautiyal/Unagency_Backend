@@ -246,7 +246,7 @@ describe("CDF canonical structured schema invariant (framework)", () => {
     assert.ok(withSchema.some((p) => p.serviceId === "presentation"));
     assert.ok(withSchema.some((p) => p.artifactKey === "presentation.storyline"));
     assert.ok(withSchema.some((p) => p.artifactKey === "presentation.slide-content"));
-    assert.ok(withSchema.some((p) => p.artifactKey === "web-tech.sitemap"));
+    assert.ok(withSchema.some((p) => p.artifactKey === "web-tech.page-structure"));
     assert.ok(withSchema.some((p) => p.artifactKey === "brand-strategy.brand-platform"));
     // Non-emission structured phases (structuredEmission: none) stay without stamps.
     assert.ok(
@@ -315,29 +315,6 @@ describe("CDF canonical structured schema invariant (framework)", () => {
     assert.equal(run.schemaPresentAtDispatch, true);
     // Dispatcher only runs after engine gate — schema was on the request at dispatch.
     assert.ok(run.dispatcher.captured.length >= 1);
-  });
-
-  it("H — sitemap stamps declared CdfWebsiteSitemap (not generic ApprovalDoc)", async () => {
-    const stamped = stampCanonicalStructuredOutputMetadata({
-      cdfServiceId: "web-tech",
-      cdfPhaseId: "sitemap",
-    });
-    assert.equal(hasUsableStructuredOutputSchema(stamped), true);
-    assert.equal(
-      (stamped.structuredOutput as { name?: string }).name,
-      "CdfWebsiteSitemap",
-    );
-    assert.notEqual(
-      (stamped.structuredOutput as { name?: string }).name,
-      "CdfStructuredApprovalDoc",
-    );
-    const gate = assertCanonicalStructuredSchemaBeforeProvider(stamped);
-    assert.equal(gate.ok, true);
-
-    const run = await runEngine({ metadata: stamped });
-    assert.equal(run.ok, true);
-    assert.equal(run.providerInvoked, true);
-    assert.equal(run.schemaPresentAtDispatch, true);
   });
 
   it("H3 — page-structure stamps declared CdfWebsitePageStructure (not ApprovalDoc)", async () => {

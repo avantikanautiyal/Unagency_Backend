@@ -22,6 +22,7 @@
     "seed:categories": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/seed-categories.ts",
     "seed:demo:reset": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/seed-demo-reset.ts",
     "wipe:all": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/wipe-all-for-testing.ts",
+    "brands:purge-archived": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/purge-archived-brands.ts",
     "benchmark:smoke": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/benchmark-smoke-test.ts",
     "benchmark:smoke:execute": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/benchmark-smoke-test.ts --execute",
     "benchmark:calibrate": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/benchmark-calibration-test.ts",

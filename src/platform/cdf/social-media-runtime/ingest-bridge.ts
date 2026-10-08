@@ -25,6 +25,7 @@ import type {
   IngestGenerationResult,
 } from "../generation-artifact/types";
 import { isM4AcceptanceStatus } from "../generation-validation";
+import { qualityAttemptFromMetadata } from "../generation-validation/leniency";
 import {
   findSocialMediaExactRef,
 } from "./session-bind";
@@ -238,6 +239,7 @@ export function tryIngestSocialMediaCdfCompletion(input: {
       executionId: input.executionId,
       rawOutput: input.rawOutput,
       contextId: metaString(metadata, "cdfContextId"),
+      qualityAttempt: qualityAttemptFromMetadata(metadata),
       contextHash: metaString(metadata, "cdfContextHash"),
       activeBriefId: session.activeBriefId,
       activeBriefVersion: session.activeBriefVersion,

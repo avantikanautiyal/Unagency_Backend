@@ -7,7 +7,6 @@ import {
 } from "../../../src/platform/cdf/structured-output-contract";
 import { resolveCdfPhaseExecutionContract } from "../../../src/platform/cdf/canonical";
 import { CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME } from "../../../src/platform/os/delivery/cdf-structured-approval-schemas";
-import { CDF_WEBSITE_SITEMAP_CONTRACT_NAME } from "../../../src/platform/os/delivery/cdf-website-sitemap-schemas";
 import { CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME } from "../../../src/platform/os/delivery/cdf-website-page-structure-schemas";
 
 const REPRESENTATIVE_STRUCTURED_APPROVAL: ReadonlyArray<{
@@ -16,12 +15,6 @@ const REPRESENTATIVE_STRUCTURED_APPROVAL: ReadonlyArray<{
   artifactKey: string;
   contractName: string;
 }> = [
-  {
-    serviceId: "web-tech",
-    phaseId: "sitemap",
-    artifactKey: "web-tech.sitemap",
-    contractName: CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
-  },
   {
     serviceId: "web-tech",
     phaseId: "page-structure",
@@ -87,23 +80,23 @@ describe("CDF structured-approval emission (generic)", () => {
   it("never invents WebsiteRoutes / DocumentPlan for early structured-approval", () => {
     const meta = stampCanonicalStructuredOutputMetadata({
       cdfServiceId: "web-tech",
-      cdfPhaseId: "sitemap",
+      cdfPhaseId: "page-structure",
       cdfOmitStructuredOutput: true,
       service: "web-tech",
       outputKind: "text",
     });
     const name = (meta.structuredOutput as { name?: string }).name;
-    assert.equal(name, CDF_WEBSITE_SITEMAP_CONTRACT_NAME);
+    assert.equal(name, CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME);
     assert.notEqual(name, "WebsiteRoutes");
     assert.notEqual(name, "DocumentPlan");
     assert.notEqual(name, "EmailPlan");
     assert.notEqual(name, CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME);
   });
 
-  it("declared sitemap contract wins over generic CdfStructuredApprovalDoc stamp", () => {
+  it("declared page-structure contract wins over generic CdfStructuredApprovalDoc stamp", () => {
     const meta = stampCanonicalStructuredOutputMetadata({
       cdfServiceId: "web-tech",
-      cdfPhaseId: "sitemap",
+      cdfPhaseId: "page-structure",
       structuredOutput: {
         name: CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
         schema: { type: "object" },
@@ -112,7 +105,7 @@ describe("CDF structured-approval emission (generic)", () => {
     });
     assert.equal(
       (meta.structuredOutput as { name?: string }).name,
-      CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
+      CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME,
     );
   });
 });

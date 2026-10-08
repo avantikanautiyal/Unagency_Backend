@@ -1,31 +1,21 @@
 /**
- * Wireframe typed structured-output contract — generic registry resolution.
- * Same declarative pattern as CdfWebsitePageStructure (no phase-ID runtime branches).
+ * Wireframe typed structured-output contract — catalog-level schema behaviour.
+ * The web-tech pipeline no longer declares a wireframe phase.
  */
 
 import assert from "node:assert/strict";
 import { asProviderId } from "../../../src/platform/core/identifiers";
 import { resolveCdfPhaseExecutionContract } from "../../../src/platform/cdf/canonical";
-import {
-  resolveCdfStructuredOutputStamp,
-  resolveStructuredOutputSchemaByContractName,
-  stampCanonicalStructuredOutputMetadata,
-  assertCanonicalStructuredSchemaBeforeProvider,
-  hasUsableStructuredOutputSchema,
-} from "../../../src/platform/cdf/structured-output-contract";
+import { resolveStructuredOutputSchemaByContractName } from "../../../src/platform/cdf/structured-output-contract";
 import {
   CDF_WEBSITE_WIREFRAME_CONTRACT_NAME,
   CDF_WEBSITE_WIREFRAME_SCHEMA,
   CDF_WEBSITE_WIREFRAME_SCHEMA_ID,
 } from "../../../src/platform/os/delivery/cdf-website-wireframe-schemas";
-import {
-  CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
-  CDF_STRUCTURED_APPROVAL_DOC_SCHEMA,
-} from "../../../src/platform/os/delivery/cdf-structured-approval-schemas";
+import { CDF_STRUCTURED_APPROVAL_DOC_SCHEMA } from "../../../src/platform/os/delivery/cdf-structured-approval-schemas";
 import { validateAgainstJsonSchema } from "../../../src/platform/providers/tools/schema/json-schema-validator";
 import { coerceValueTowardJsonSchema } from "../../../src/platform/providers/tools/structured/structured-output-coerce";
 import { withStructuredOutputRequest } from "../../../src/platform/providers/tools/structured/structured-output-execution";
-import { cdfExecutionRequiresMediaArtifact } from "../../../src/platform/cdf/execution-authority";
 import type { ProviderExecutionRequest } from "../../../src/platform/providers/runtime/contracts/provider-execution-request";
 
 const VALID_WIREFRAME = Object.freeze({
@@ -73,22 +63,14 @@ const LIVE_EXEC53_LIKE = Object.freeze({
 });
 
 describe("CdfWebsiteWireframe contract (generic)", () => {
-  it("1. wireframe resolves declared CdfWebsiteWireframe — not ApprovalDoc", () => {
-    const contract = resolveCdfPhaseExecutionContract({
-      serviceId: "web-tech",
-      phaseId: "wireframe",
-    });
-    assert.ok(contract);
+  it("1. wireframe is no longer a web-tech phase", () => {
     assert.equal(
-      contract!.structuredOutputContract?.name,
-      CDF_WEBSITE_WIREFRAME_CONTRACT_NAME,
+      resolveCdfPhaseExecutionContract({
+        serviceId: "web-tech",
+        phaseId: "wireframe",
+      }),
+      undefined,
     );
-    assert.notEqual(
-      contract!.structuredOutputContract?.name,
-      CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
-    );
-    assert.equal(contract!.artifactKey, "web-tech.wireframe");
-    assert.equal(contract!.generationModality, "structured");
   });
 
   it("2. catalog resolves schema by contract name", () => {
@@ -103,27 +85,6 @@ describe("CdfWebsiteWireframe contract (generic)", () => {
     );
     assert.equal(
       (stamp!.schema as { required?: string[] }).required?.includes("schemaId"),
-      true,
-    );
-  });
-
-  it("3. stampCanonicalStructuredOutputMetadata stamps wireframe schema", () => {
-    const stamped = stampCanonicalStructuredOutputMetadata({
-      cdfServiceId: "web-tech",
-      cdfPhaseId: "wireframe",
-      cdfOmitStructuredOutput: true,
-    });
-    assert.equal(hasUsableStructuredOutputSchema(stamped), true);
-    assert.equal(
-      (stamped.structuredOutput as { name?: string }).name,
-      CDF_WEBSITE_WIREFRAME_CONTRACT_NAME,
-    );
-    assert.notEqual(
-      (stamped.structuredOutput as { name?: string }).name,
-      CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
-    );
-    assert.equal(
-      assertCanonicalStructuredSchemaBeforeProvider(stamped).ok,
       true,
     );
   });
@@ -199,10 +160,9 @@ describe("CdfWebsiteWireframe contract (generic)", () => {
   });
 
   it("8. directPassthrough still receives schema prompt guidance for wireframe", () => {
-    const stamp = resolveCdfStructuredOutputStamp({
-      serviceId: "web-tech",
-      phaseId: "wireframe",
-    });
+    const stamp = resolveStructuredOutputSchemaByContractName(
+      CDF_WEBSITE_WIREFRAME_CONTRACT_NAME,
+    );
     assert.ok(stamp);
     const base: ProviderExecutionRequest = {
       requestId: "req_wf_instr",
@@ -240,24 +200,5 @@ describe("CdfWebsiteWireframe contract (generic)", () => {
       !prompt.includes("steps (array of exactly 3)"),
       prompt.slice(0, 400),
     );
-  });
-
-  it("9. resolveCdfStructuredOutputStamp matches registry declaration", () => {
-    const stamp = resolveCdfStructuredOutputStamp({
-      serviceId: "web-tech",
-      phaseId: "wireframe",
-    });
-    assert.ok(stamp);
-    assert.equal(stamp!.name, CDF_WEBSITE_WIREFRAME_CONTRACT_NAME);
-    assert.equal(stamp!.strict, true);
-  });
-
-  it("10. wireframe structured phase does not require media artifact", () => {
-    const contract = resolveCdfPhaseExecutionContract({
-      serviceId: "web-tech",
-      phaseId: "wireframe",
-    });
-    assert.ok(contract);
-    assert.equal(cdfExecutionRequiresMediaArtifact(contract!), false);
   });
 });

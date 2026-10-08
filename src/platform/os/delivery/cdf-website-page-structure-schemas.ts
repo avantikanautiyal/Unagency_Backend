@@ -5,9 +5,9 @@
  * phase via structuredOutputContract — not selected by serviceId/phaseId
  * runtime branches.
  *
- * Consumes approved sitemap semantics (page ids / hierarchy) as upstream
- * context; emits its own canonical page → section → block structure for
- * downstream wireframe / UI phases.
+ * First Web Tech phase: owns the site map (pages, hierarchy, global
+ * navigation) and the canonical page → section → block structure consumed by
+ * the UI routes and complete-website phases.
  */
 
 export const CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME =
@@ -49,10 +49,12 @@ const STRUCTURED_PAGE = {
   additionalProperties: false,
   required: ["id", "label", "sections"],
   properties: {
-    /** Stable page id — should correlate with upstream sitemap page id when present. */
+    /** Stable page id — referenced by parentId and downstream page designs. */
     id: { type: "string" },
     label: { type: "string" },
     path: { type: "string" },
+    /** Parent page id for nested pages; omit for top-level pages. */
+    parentId: { type: "string" },
     purpose: { type: "string" },
     sections: {
       type: "array",
@@ -63,8 +65,9 @@ const STRUCTURED_PAGE = {
 } as const;
 
 /**
- * Page structure deliverable: each sitemap page expanded into ordered sections
- * (and optional content blocks) with stable identifiers for wireframe handoff.
+ * Page structure deliverable: every site page (with hierarchy and global
+ * navigation) expanded into ordered sections and optional content blocks,
+ * with stable identifiers for the complete-website handoff.
  */
 export const CDF_WEBSITE_PAGE_STRUCTURE_SCHEMA = {
   type: "object",
@@ -85,8 +88,21 @@ export const CDF_WEBSITE_PAGE_STRUCTURE_SCHEMA = {
       items: STRUCTURED_PAGE,
     },
     pageCount: { type: "integer" },
+    globalNavigation: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label"],
+        properties: {
+          label: { type: "string" },
+          path: { type: "string" },
+        },
+      },
+    },
     globalElements: { type: "string" },
     navigationNotes: { type: "string" },
+    responsiveRules: { type: "string" },
     openItemsForApproval: {
       type: "array",
       items: { type: "string" },

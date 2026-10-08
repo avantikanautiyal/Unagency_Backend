@@ -147,6 +147,7 @@ export function buildIntegrationJobSummary(input: {
       !outputKindEarly &&
       !websiteContractName &&
       structuredName !== "cdfwebsitesitemap" &&
+      structuredName !== "cdfwebsitepagestructure" &&
       structuredName !== "cdfstructuredapprovaldoc");
   // Contract/modality/capability over product subtype — print+leaflet must never
   // classify CDF master-artwork (image.generate) or text_choice routes as DocumentPlan.

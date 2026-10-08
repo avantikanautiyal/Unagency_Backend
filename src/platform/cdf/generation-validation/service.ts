@@ -16,6 +16,7 @@ import {
 } from "../requirements";
 import type { CdfRequirement } from "../requirements/types";
 import { runDependencyChecks, runRequirementCheck } from "./checks";
+import { applyRequirementCheckLeniency } from "./leniency";
 import { observePresentationArtifact } from "./observe";
 import {
   isPackagingValidationKey,
@@ -164,13 +165,20 @@ export function validateCanonicalArtifact(
     ? observePackagingArtifact(artifactKey, data)
     : observePresentationArtifact(artifactKey, data);
 
+  const requirementChecks = requirements.map((req) =>
+    runRequirementCheck(req, obs, {
+      expectedDesignSystemRef: input.expectedDesignSystemRef,
+      expectedDesignRouteRef: input.expectedDesignRouteRef,
+    }),
+  );
   const checks = [
-    ...requirements.map((req) =>
-      runRequirementCheck(req, obs, {
-        expectedDesignSystemRef: input.expectedDesignSystemRef,
-        expectedDesignRouteRef: input.expectedDesignRouteRef,
-      }),
-    ),
+    // Leniency only gates fresh generation candidates; persisted revalidation stays strict.
+    ...(isCandidateGate
+      ? applyRequirementCheckLeniency(requirementChecks, {
+          artifactKey,
+          qualityAttempt: input.qualityAttempt,
+        })
+      : requirementChecks),
     ...(isPackagingValidationKey(artifactKey)
       ? [
           ...runPackagingStructuralChecks(obs),

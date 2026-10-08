@@ -10,11 +10,61 @@ import Brands, {
   type BrandStatus,
 } from "../models/brand.model";
 import MediaFile from "../models/mediaFile.model";
+import Projects from "../models/projects.model";
+import Requirement from "../models/requestProject.model";
+import ChatRoom from "../models/chatRoom.model";
+import KnowledgeChunk from "../models/knowledgeChunk.model";
+import SavedRoutes from "../models/savedRoute.model";
+import SearchAudit from "../models/searchAudit.model";
+import { MultipartUploadSession } from "../models/multipart-upload-session.model";
+import {
+  CollabMessage,
+  Conversation,
+  ConversationMember,
+  ConversationSettings,
+  Mention,
+  MessageAttachment,
+  PinnedMessage,
+  Reaction,
+  ReadReceipt,
+  Thread,
+} from "../platform/collaboration/models";
+import { EnterpriseExecution } from "../platform/infrastructure/durability/mongo/models/enterprise-execution.model";
+import { EnterpriseExecutionExtras } from "../platform/infrastructure/durability/mongo/models/enterprise-execution-extras.model";
+import { EnterpriseExecutionObservability } from "../platform/infrastructure/durability/mongo/models/enterprise-execution-observability.model";
+import { EnterpriseArtifact } from "../platform/infrastructure/durability/mongo/models/enterprise-artifact.model";
+import { EnterpriseBlobMetadata } from "../platform/infrastructure/durability/mongo/models/enterprise-blob-metadata.model";
 import { ApiError } from "../utils/apiError";
 import {
   assertUserBelongsToOrganization,
+  productAssetService,
   resolveCustomerOrganizationId,
 } from "./product-asset-service";
+
+/** CDF collections are registered lazily, so delete through the raw collections. */
+async function deleteCdfSessions(sessionIds: string[]): Promise<void> {
+  const db = mongoose.connection.db;
+  if (!db) return;
+  const bySession = { sessionId: { $in: sessionIds } };
+  const artifactIds = (await db
+    .collection("cdf_canonical_artifacts")
+    .distinct("artifactId", bySession)) as string[];
+  await Promise.all([
+    db.collection("cdf_sessions").deleteMany(bySession),
+    db.collection("cdf_requirement_bags").deleteMany(bySession),
+    db.collection("cdf_canonical_artifacts").deleteMany(bySession),
+    artifactIds.length
+      ? db
+          .collection("cdf_canonical_artifact_versions")
+          .deleteMany({ artifactId: { $in: artifactIds } })
+      : Promise.resolve(),
+    artifactIds.length
+      ? db
+          .collection("cdf_canonical_artifact_idempotency")
+          .deleteMany({ artifactId: { $in: artifactIds } })
+      : Promise.resolve(),
+  ]);
+}
 
 export type { IBrandGuidelinesProfile } from "../models/brand.model";
 
@@ -388,18 +438,124 @@ export class BrandService {
     return toBrandDto(doc);
   }
 
+  /**
+   * Permanent delete: removes the brand and everything created under it
+   * (projects, briefs, service chats, executions, generated creatives, vault files).
+   * Brand row is deleted last so a failed cascade can be retried.
+   */
   async remove(input: {
     userId: string;
     brandId: string;
-  }): Promise<{ deleted: true; id: string }> {
+  }): Promise<{ deleted: true; id: string; deletedProjects: number }> {
     const doc = await this.loadOwned(input.userId, input.brandId, true);
     const id = doc._id.toString();
-    await MediaFile.updateMany(
-      { brandId: doc._id },
-      { $unset: { brandId: 1 } }
-    );
-    await Brands.deleteOne({ _id: doc._id });
-    return { deleted: true, id };
+    const brandOid = doc._id;
+    const organizationId = doc.organizationId.toString();
+
+    const [projects, requirements, conversations, executions] = await Promise.all([
+      Projects.find({ brandId: brandOid })
+        .select("_id files executionId sessionId")
+        .lean(),
+      Requirement.find({ brandId: brandOid }).select("_id").lean(),
+      Conversation.find({ brandId: brandOid }).select("_id executionId").lean(),
+      EnterpriseExecution.find({ organizationId, brandId: id })
+        .select("executionId")
+        .lean(),
+    ]);
+    const conversationIds = conversations.map((c) => c._id);
+    const messageExecutionIds = conversationIds.length
+      ? ((await CollabMessage.distinct("executionId", {
+          conversationId: { $in: conversationIds },
+        })) as unknown[])
+      : [];
+    const executionIds = [
+      ...new Set(
+        [
+          ...projects.map((p) => p.executionId),
+          ...conversations.map((c) => c.executionId as string | undefined),
+          ...executions.map((e) => e.executionId),
+          ...messageExecutionIds,
+        ]
+          .map((v) => String(v ?? "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    const sessionIds = [
+      ...new Set(projects.map((p) => p.sessionId?.trim()).filter(Boolean)),
+    ] as string[];
+
+    try {
+      await productAssetService.hardDeleteMatching({
+        userId: input.userId,
+        organizationId,
+        brandId: id,
+        projectIds: projects.map((p) => String(p._id)),
+        briefIds: requirements.map((r) => String(r._id)),
+        executionIds,
+        assetIds: projects.flatMap((p) =>
+          Array.isArray(p.files) ? p.files.map(String) : []
+        ),
+      });
+    } catch (err) {
+      console.warn(
+        "[brand-service] vault cascade failed:",
+        err instanceof Error ? err.message : String(err)
+      );
+      throw new ApiError(
+        "Could not delete this brand's files. Try again in a moment.",
+        503
+      );
+    }
+
+    if (conversationIds.length) {
+      const byConversation = { conversationId: { $in: conversationIds } };
+      await Promise.all([
+        CollabMessage.deleteMany(byConversation),
+        MessageAttachment.deleteMany(byConversation),
+        Thread.deleteMany(byConversation),
+        Reaction.deleteMany(byConversation),
+        ReadReceipt.deleteMany(byConversation),
+        PinnedMessage.deleteMany(byConversation),
+        Mention.deleteMany(byConversation),
+        ConversationSettings.deleteMany(byConversation),
+        ConversationMember.deleteMany(byConversation),
+      ]);
+      await Conversation.deleteMany({ _id: { $in: conversationIds } });
+    }
+
+    if (executionIds.length) {
+      const byExecution = { executionId: { $in: executionIds } };
+      const artifactIds = (await EnterpriseArtifact.distinct(
+        "artifactId",
+        byExecution
+      )) as string[];
+      await Promise.all([
+        EnterpriseExecution.deleteMany(byExecution),
+        EnterpriseExecutionExtras.deleteMany(byExecution),
+        EnterpriseExecutionObservability.deleteMany(byExecution),
+        EnterpriseArtifact.deleteMany(byExecution),
+        EnterpriseBlobMetadata.deleteMany({
+          $or: [byExecution, { artifactId: { $in: artifactIds } }],
+        }),
+        SavedRoutes.deleteMany({ organizationId: doc.organizationId, ...byExecution }),
+      ]);
+    }
+
+    if (sessionIds.length) {
+      await deleteCdfSessions(sessionIds);
+    }
+
+    await Promise.all([
+      Projects.deleteMany({ _id: { $in: projects.map((p) => p._id) } }),
+      Requirement.deleteMany({ brandId: brandOid }),
+      ChatRoom.deleteMany({ brandId: brandOid }),
+      KnowledgeChunk.deleteMany({ brandId: brandOid }),
+      MultipartUploadSession.deleteMany({ brandId: brandOid }),
+      SearchAudit.deleteMany({ brandId: id }),
+    ]);
+
+    await Brands.deleteOne({ _id: brandOid });
+    return { deleted: true, id, deletedProjects: projects.length };
   }
 
   private async loadOwned(

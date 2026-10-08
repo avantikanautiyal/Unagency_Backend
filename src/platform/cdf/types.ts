@@ -240,6 +240,11 @@ export type CdfTransitionAction =
   | "submit_brief"
   | "select_route"
   | "select_generation_for_continuation"
+  /**
+   * After the user stops a generation that a route selection started, step back
+   * to that routes phase so a (different) route can be selected.
+   */
+  | "reopen_route_selection"
   | "approve"
   | "refine"
   | "final_action"

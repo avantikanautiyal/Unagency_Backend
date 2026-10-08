@@ -220,15 +220,21 @@ describe("CDF Wave 2 services", () => {
     expect(resolveCdfServiceConfig("ads")?.serviceId).toBe("ad-campaigns");
   });
 
-  it("runs Web Tech sitemap → structure → wireframe path", () => {
+  it("runs Web Tech page structure → UI routes → complete website with hybrid handoff after UI routes", () => {
     const started = applyCdfTransition({
       action: "start",
       serviceId: "web-tech",
-      productMode: "ai",
+      productMode: "hybrid",
     });
     expect(started.ok).toBe(true);
     if (!started.ok) return;
     const sessionId = started.value.session.sessionId;
+    expect(started.value.config.phases.map((p) => p.id)).toEqual([
+      "page-structure",
+      "ui-routes",
+      "complete-website",
+      "final",
+    ]);
 
     const briefed = applyCdfTransition({
       sessionId,
@@ -237,21 +243,39 @@ describe("CDF Wave 2 services", () => {
     });
     expect(briefed.ok).toBe(true);
     if (!briefed.ok) return;
-    expect(briefed.value.session.phaseId).toBe("sitemap");
+    expect(briefed.value.session.phaseId).toBe("page-structure");
     expect(briefed.value.nextWork).toMatchObject({
       kind: "generate",
       generator: "structured",
     });
 
-    const sitemap = approveWithCanonicalCompletion(sessionId);
-    expect(sitemap.ok).toBe(true);
-    if (!sitemap.ok) return;
-    expect(sitemap.value.session.phaseId).toBe("page-structure");
-
     const structure = approveWithCanonicalCompletion(sessionId);
     expect(structure.ok).toBe(true);
     if (!structure.ok) return;
-    expect(structure.value.session.phaseId).toBe("wireframe");
+    expect(structure.value.session.phaseId).toBe("ui-routes");
+    expect(structure.value.ui.showSendToStudio).toBe(false);
+
+    // Canonical session requires exact X@V on select_route for ui-routes.
+    const uiRoutes = bindMinimalGeneratedForApprove(sessionId)!;
+    const routes = applyCdfTransition({
+      sessionId,
+      action: "select_route",
+      routeIndex: 0,
+      artifactId: uiRoutes.artifactId,
+      artifactVersion: uiRoutes.artifactVersion,
+      artifactKey: uiRoutes.artifactKey,
+      expectedVersion: uiRoutes.session.sessionVersion,
+    });
+    expect(routes.ok).toBe(true);
+    if (!routes.ok) return;
+    expect(routes.value.session.phaseId).toBe("complete-website");
+    expect(routes.value.ui.showSendToStudio).toBe(true);
+    expect(routes.value.ui.allowedActions).toContain("handoff_studio");
+
+    const handoff = applyCdfTransition({ sessionId, action: "handoff_studio" });
+    expect(handoff.ok).toBe(true);
+    if (!handoff.ok) return;
+    expect(handoff.value.session.modeOwnership).toBe("studio");
   });
 
   it("runs Brand Strategy territory → platform with hybrid handoff gate", () => {

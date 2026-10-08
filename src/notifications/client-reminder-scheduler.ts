@@ -1,7 +1,9 @@
 import cron from "node-cron";
+import mongoose from "mongoose";
 import Brands from "../models/brand.model";
 import { CreditBalanceModel } from "../models/credit-balance.model";
 import Organizations from "../models/organization.model";
+import { PlansModel } from "../models/plan.model";
 import Projects from "../models/projects.model";
 import Subscriptions from "../models/subscription.model";
 import Tasks from "../models/tasks.model";
@@ -132,14 +134,31 @@ async function reviewPending(): Promise<void> {
   }
 }
 
+/** Subscription.planId holds either a Plans ObjectId or a Razorpay plan_id. */
+async function plansByReference(refs: string[]): Promise<Map<string, unknown>> {
+  const unique = [...new Set(refs.filter(Boolean))];
+  const objectIds = unique.filter((r) => mongoose.isValidObjectId(r));
+  const plans = unique.length
+    ? await PlansModel.find({
+        $or: [{ _id: { $in: objectIds } }, { plan_id: { $in: unique } }],
+      }).lean()
+    : [];
+  const byRef = new Map<string, unknown>();
+  for (const plan of plans) {
+    byRef.set(String(plan._id), plan);
+    if (plan.plan_id) byRef.set(plan.plan_id, plan);
+  }
+  return byRef;
+}
+
 async function checkoutNotCompleted(): Promise<void> {
   const pending = await Subscriptions.find({
     status: "created",
     createdAt: { $lte: ago(HOUR), $gte: ago(2 * DAY) },
   })
-    .populate("planId")
     .limit(BATCH)
     .lean();
+  const plans = await plansByReference(pending.map((s) => String(s.planId ?? "")));
   for (const sub of pending) {
     const active = await Subscriptions.exists({
       userId: sub.userId,
@@ -149,7 +168,7 @@ async function checkoutNotCompleted(): Promise<void> {
     await dispatchClientNotification({
       eventKey: "PAYMENT_STARTED_NOT_COMPLETED",
       userId: sub.userId,
-      variables: { "Plan Name": planDisplayName(sub.planId) },
+      variables: { "Plan Name": planDisplayName(plans.get(String(sub.planId))) },
       primaryAction: { action: "/subscription" },
       secondaryAction: { action: "/subscription-billing" },
       dedupeKey: `checkout:${sub._id}`,

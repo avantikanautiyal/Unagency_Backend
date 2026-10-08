@@ -423,6 +423,7 @@ export function ingestGenerationCompletion(
       expectedDesignRouteRef: input.designRouteRef,
       expectedPackagingRefs: input.packagingRefs,
       ...(input.requirements ? { requirements: input.requirements } : {}),
+      ...(input.qualityAttempt ? { qualityAttempt: input.qualityAttempt } : {}),
     });
     validationStatus = gate.validation.status;
     validationId = gate.validation.validationId;
@@ -435,13 +436,26 @@ export function ingestGenerationCompletion(
         validationId: gate.validation.validationId,
         normalizationStatus: "ok",
       });
+      const issues = gate.validation.checks
+        .filter(
+          (c) =>
+            c.severity === "blocking" &&
+            (c.status === "fail" ||
+              c.status === "unable_to_verify" ||
+              c.status === "not_applicable"),
+        )
+        .map((c) => c.evidence)
+        .slice(0, 5);
       throw generationArtifactError(
         "ARTIFACT_VALIDATION_FAILED",
-        `M4 rejected candidate before persist: ${gate.validation.status}`,
+        `M4 rejected candidate before persist: ${gate.validation.status}${
+          issues.length ? ` — ${issues.join("; ")}` : ""
+        }`,
         {
           validationStatus: gate.validation.status,
           validationId: gate.validation.validationId,
           acceptanceStatus: gate.status,
+          blockingIssues: issues,
         },
       );
     }

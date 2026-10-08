@@ -517,22 +517,22 @@ describe("CDF generic approval precondition / phase completion sync", () => {
 
   it("8b — wrong artifactId@version is rejected (CDF_CANONICAL_ARTIFACT_MISMATCH)", () => {
     let session = startService("web-tech");
-    session = forcePhase(session.sessionId, "sitemap");
+    session = forcePhase(session.sessionId, "page-structure");
     const bound = createBoundGenerated({
       sessionId: session.sessionId,
       serviceId: "web-tech",
-      phaseId: "sitemap",
-      artifactKey: "web-tech.sitemap",
+      phaseId: "page-structure",
+      artifactKey: "web-tech.page-structure",
       artifactType: "text_doc",
       version: 1,
     });
     const wrong = resolvePhaseCompletionForApproval({
       session: bound.session,
-      phaseId: "sitemap",
+      phaseId: "page-structure",
       serviceId: "web-tech",
-      requestArtifactId: "cdfart_stale_9_web-tech-sitemap",
+      requestArtifactId: "cdfart_stale_9_web-tech-page-structure",
       requestArtifactVersion: 1,
-      requestArtifactKey: "web-tech.sitemap",
+      requestArtifactKey: "web-tech.page-structure",
     });
     assert.equal(wrong.transitionAllowed, false);
     assert.equal(wrong.completionStatus, "identity_mismatch");
@@ -542,11 +542,11 @@ describe("CDF generic approval precondition / phase completion sync", () => {
 
     const ok = resolvePhaseCompletionForApproval({
       session: bound.session,
-      phaseId: "sitemap",
+      phaseId: "page-structure",
       serviceId: "web-tech",
       requestArtifactId: bound.artifactId,
       requestArtifactVersion: bound.version,
-      requestArtifactKey: "web-tech.sitemap",
+      requestArtifactKey: "web-tech.page-structure",
     });
     assert.equal(ok.transitionAllowed, true);
     assert.equal(ok.completionStatus, "complete");
@@ -892,17 +892,17 @@ describe("CDF generic approval precondition / phase completion sync", () => {
     assert.equal(resolution.transitionAllowed, true);
   });
 
-  it("21 — allowNonVisualReady homepage accepts art_webexport without cdfart pin", () => {
+  it("21 — allowNonVisualReady complete-website accepts art_webexport without cdfart pin", () => {
     let session = startService("web-tech");
-    session = forcePhase(session.sessionId, "homepage");
+    session = forcePhase(session.sessionId, "complete-website");
     const artId = "art_webexport0_147_1790458053533_0";
     const resolution = resolvePhaseCompletionForApproval({
       session,
-      phaseId: "homepage",
+      phaseId: "complete-website",
       serviceId: "web-tech",
       requestArtifactId: artId,
       requestArtifactVersion: 0,
-      requestArtifactKey: "web-tech.homepage",
+      requestArtifactKey: "web-tech.complete-website",
       requestPresentationEligibility: "AVAILABLE",
     });
     assert.equal(resolution.transitionAllowed, true);
@@ -910,9 +910,9 @@ describe("CDF generic approval precondition / phase completion sync", () => {
     assert.equal(resolution.requiredArtifactId, artId);
   });
 
-  it("22 — art_webexport homepage approval satisfies remaining-pages dependency", () => {
+  it("22 — art_webexport complete-website approval satisfies final dependency", () => {
     let session = startService("web-tech");
-    session = forcePhase(session.sessionId, "remaining-pages", {
+    session = forcePhase(session.sessionId, "final", {
       // Upstream canonical pin so the session is in canonical-ref mode.
       generatedArtifacts: [
         {
@@ -925,7 +925,7 @@ describe("CDF generic approval precondition / phase completion sync", () => {
       ],
       approved: [
         {
-          phaseId: "homepage",
+          phaseId: "complete-website",
           approvedAt: new Date().toISOString(),
           artifactId: "art_webexport0_137_1790460232705_0",
           artifactVersion: 0,
@@ -933,18 +933,18 @@ describe("CDF generic approval precondition / phase completion sync", () => {
         },
       ],
     });
-    const sat = cdfDependencySatisfied(session, "homepage", {
+    const sat = cdfDependencySatisfied(session, "complete-website", {
       serviceId: "web-tech",
-      dependingPhaseId: "remaining-pages",
+      dependingPhaseId: "final",
     });
     assert.equal(sat.ok, true);
 
-    const missing = forcePhase(session.sessionId, "remaining-pages", {
+    const missing = forcePhase(session.sessionId, "final", {
       approved: [],
     });
-    const blocked = cdfDependencySatisfied(missing, "homepage", {
+    const blocked = cdfDependencySatisfied(missing, "complete-website", {
       serviceId: "web-tech",
-      dependingPhaseId: "remaining-pages",
+      dependingPhaseId: "final",
     });
     assert.equal(blocked.ok, false);
   });

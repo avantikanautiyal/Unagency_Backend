@@ -117,6 +117,8 @@ export type IngestGenerationInput = {
    * Set false only for normalize-only unit tests that intentionally skip M4.
    */
   requireAcceptanceGate?: boolean;
+  /** 1-based automatic quality attempt forwarded to the M4 gate. */
+  qualityAttempt?: number;
   /** Exact upstream pins stamped onto deck sourceRefs. */
   upstreamArtifactRefs?: Array<{
     artifactId: string;

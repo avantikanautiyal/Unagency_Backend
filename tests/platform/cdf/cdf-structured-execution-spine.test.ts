@@ -20,7 +20,7 @@ import {
   hashStructuredPayload,
 } from "../../../src/platform/cdf/structured-execution-result";
 import { CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME } from "../../../src/platform/os/delivery/cdf-structured-approval-schemas";
-import { CDF_WEBSITE_SITEMAP_CONTRACT_NAME } from "../../../src/platform/os/delivery/cdf-website-sitemap-schemas";
+import { CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME } from "../../../src/platform/os/delivery/cdf-website-page-structure-schemas";
 import { buildIntegrationJobSummary } from "../../../src/platform/infrastructure/execution/workers/integration-job-summary";
 import {
   detectStructuredPayloadLoss,
@@ -32,28 +32,33 @@ import { providerResultSatisfiesStructuredContract } from "../../../src/platform
 import { getCdfCanonicalRegistry } from "../../../src/platform/cdf/canonical";
 import type { DirectExecutionReport } from "../../../src/platform/direct/contracts";
 
-const SITEMAP_PAYLOAD = {
-  type: "sitemap",
-  deliverable: "corporate-website-sitemap",
-  identityMark: "Wordmark in header",
+const PAGE_STRUCTURE_PAYLOAD = {
+  type: "website_page_structure",
+  deliverable: "website-page-structure",
   globalNavigation: [
     { label: "Home", path: "/" },
     { label: "About", path: "/about" },
     { label: "Services", path: "/services" },
   ],
-  siteHierarchy: [
+  pages: [
     {
       id: "home",
       label: "Home",
       path: "/",
-      children: [{ id: "about", label: "About", path: "/about" }],
+      sections: [{ id: "hero", heading: "Hero" }],
+    },
+    {
+      id: "about",
+      label: "About",
+      path: "/about",
+      parentId: "home",
+      sections: [{ id: "story", heading: "Our story" }],
     },
   ],
   pageCount: 5,
   globalElements: "Header, footer, cookie banner",
-  transitionAndMotionSystem: "Subtle fades",
+  navigationNotes: "All nav links resolve",
   responsiveRules: "Mobile-first collapse",
-  linkIntegrity: "All nav links resolve",
   openItemsForApproval: ["Confirm pricing page"],
 };
 
@@ -78,12 +83,12 @@ function reportWithStructured(input: {
       requestId: "req_spine",
       metadata: {
         cdfServiceId: "web-tech",
-        cdfPhaseId: "sitemap",
+        cdfPhaseId: "page-structure",
         cdfExecutionStrategy: "canonical",
         outputKind: "text",
         service: "website",
         structuredOutput: {
-          name: CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
+          name: CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME,
           schema: { type: "object" },
           strict: true,
         },
@@ -122,7 +127,7 @@ describe("CDF structured execution spine (generic)", () => {
   it("A — declared phase contract wins over generic/default contract", () => {
     const stamped = stampCanonicalStructuredOutputMetadata({
       cdfServiceId: "web-tech",
-      cdfPhaseId: "sitemap",
+      cdfPhaseId: "page-structure",
       structuredOutput: {
         name: CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
         schema: { type: "object", required: ["schemaId"] },
@@ -131,14 +136,14 @@ describe("CDF structured execution spine (generic)", () => {
     });
     assert.equal(
       (stamped.structuredOutput as { name: string }).name,
-      CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
+      CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME,
     );
   });
 
   it("B — contract/schema mismatch fails closed", () => {
     const meta = {
       cdfServiceId: "web-tech",
-      cdfPhaseId: "sitemap",
+      cdfPhaseId: "page-structure",
       structuredOutput: {
         name: CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
         schema: { type: "object" },
@@ -157,25 +162,25 @@ describe("CDF structured execution spine (generic)", () => {
     }
   });
 
-  it("C — no CdfStructuredApprovalDoc fallback overrides declared sitemap contract", () => {
+  it("C — no CdfStructuredApprovalDoc fallback overrides declared page-structure contract", () => {
     const contract = resolveCdfPhaseExecutionContract({
       serviceId: "web-tech",
-      phaseId: "sitemap",
+      phaseId: "page-structure",
     });
     assert.ok(contract);
     assert.equal(
       contract!.structuredOutputContract?.name,
-      CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
+      CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME,
     );
     const stamp = resolveCdfStructuredOutputStamp({ contract: contract! });
-    assert.equal(stamp?.name, CDF_WEBSITE_SITEMAP_CONTRACT_NAME);
+    assert.equal(stamp?.name, CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME);
     assert.notEqual(stamp?.name, CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME);
   });
 
   it("D — provider structured JSON normalizes into job summary", () => {
     const summary = buildIntegrationJobSummary({
       report: reportWithStructured({
-        structured: SITEMAP_PAYLOAD,
+        structured: PAGE_STRUCTURE_PAYLOAD,
         structuredOutputValid: true,
       }),
       executionMode: "live",
@@ -183,31 +188,31 @@ describe("CDF structured execution spine (generic)", () => {
     });
     assert.ok(summary.structuredData);
     assert.ok(summary.structuredEmissionData);
-    assert.equal(summary.structuredContractName, CDF_WEBSITE_SITEMAP_CONTRACT_NAME);
+    assert.equal(summary.structuredContractName, CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME);
     assert.equal(
       summary.structuredPayloadHash,
-      hashStructuredPayload(SITEMAP_PAYLOAD),
+      hashStructuredPayload(PAGE_STRUCTURE_PAYLOAD),
     );
   });
 
   it("E — provider tool_use-shaped structured payload normalizes when output.structured set", () => {
     const summary = buildIntegrationJobSummary({
       report: reportWithStructured({
-        structured: SITEMAP_PAYLOAD,
+        structured: PAGE_STRUCTURE_PAYLOAD,
         structuredOutputValid: true,
       }),
       executionMode: "live",
       durationMs: 12,
     });
     assert.deepEqual(
-      (summary.structuredEmissionData as { siteHierarchy: unknown }).siteHierarchy,
-      SITEMAP_PAYLOAD.siteHierarchy,
+      (summary.structuredEmissionData as { pages: unknown }).pages,
+      PAGE_STRUCTURE_PAYLOAD.pages,
     );
   });
 
   it("F/G/H — structured payload survives summary serialization shape", () => {
     const summary = buildIntegrationJobSummary({
-      report: reportWithStructured({ structured: SITEMAP_PAYLOAD }),
+      report: reportWithStructured({ structured: PAGE_STRUCTURE_PAYLOAD }),
       executionMode: "live",
       durationMs: 12,
     });
@@ -219,13 +224,13 @@ describe("CDF structured execution spine (generic)", () => {
     assert.ok(roundTrip.structuredEmissionData);
     assert.equal(
       roundTrip.structuredPayloadHash,
-      hashStructuredPayload(SITEMAP_PAYLOAD),
+      hashStructuredPayload(PAGE_STRUCTURE_PAYLOAD),
     );
   });
 
   it("I/J — resolveStructuredCompletionCandidate returns canonical normalized data", () => {
     const summary = buildIntegrationJobSummary({
-      report: reportWithStructured({ structured: SITEMAP_PAYLOAD }),
+      report: reportWithStructured({ structured: PAGE_STRUCTURE_PAYLOAD }),
       executionMode: "live",
       durationMs: 12,
     });
@@ -233,7 +238,7 @@ describe("CDF structured execution spine (generic)", () => {
       jobSummary: summary,
       metadata: {
         cdfServiceId: "web-tech",
-        cdfPhaseId: "sitemap",
+        cdfPhaseId: "page-structure",
         cdfExecutionStrategy: "canonical",
       },
       result: { kind: "text", text: "ignore me", data: undefined },
@@ -241,20 +246,20 @@ describe("CDF structured execution spine (generic)", () => {
     assert.equal(resolved.structuredPresent, true);
     assert.equal(resolved.source, "job_summary.structuredEmissionData");
     assert.ok(
-      (resolved.candidate as { siteHierarchy?: unknown }).siteHierarchy,
+      (resolved.candidate as { pages?: unknown }).pages,
     );
   });
 
   it("K — content cannot replace valid structured data", () => {
     const resolved = resolveStructuredCompletionCandidate({
       jobSummary: {
-        structuredEmissionData: SITEMAP_PAYLOAD,
-        structuredData: SITEMAP_PAYLOAD,
+        structuredEmissionData: PAGE_STRUCTURE_PAYLOAD,
+        structuredData: PAGE_STRUCTURE_PAYLOAD,
         resultText: JSON.stringify({ title: "prose fake", summary: "x", sections: [] }),
       },
       metadata: {
         cdfServiceId: "web-tech",
-        cdfPhaseId: "sitemap",
+        cdfPhaseId: "page-structure",
       },
       result: {
         kind: "text",
@@ -268,13 +273,13 @@ describe("CDF structured execution spine (generic)", () => {
     );
   });
 
-  it("L — website materialization skips CDF sealed text/sitemap (not website code-gen)", () => {
+  it("L — website materialization skips CDF sealed text/page-structure (not website code-gen)", () => {
     assert.equal(
       resolveWebsiteExport({
         outputKind: "text",
         service: "website",
-        structuredName: CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
-        data: SITEMAP_PAYLOAD,
+        structuredName: CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME,
+        data: PAGE_STRUCTURE_PAYLOAD,
       }),
       false,
     );
@@ -283,20 +288,20 @@ describe("CDF structured execution spine (generic)", () => {
         outputKind: "text",
         service: "website",
         cdfExecutionAuthorityApplied: true,
-        structuredOutput: { name: CDF_WEBSITE_SITEMAP_CONTRACT_NAME },
+        structuredOutput: { name: CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME },
       }),
       false,
     );
   });
 
   it("M — structured payload loss produces CDF_STRUCTURED_PAYLOAD_LOST", () => {
-    const hash = hashStructuredPayload(SITEMAP_PAYLOAD);
+    const hash = hashStructuredPayload(PAGE_STRUCTURE_PAYLOAD);
     const lost = detectStructuredPayloadLoss({
       executionId: "exec_x",
       jobId: "job_x",
       metadata: {
         cdfServiceId: "web-tech",
-        cdfPhaseId: "sitemap",
+        cdfPhaseId: "page-structure",
         cdfExecutionStrategy: "canonical",
       },
       jobSummary: { structuredPayloadHash: hash },
@@ -312,7 +317,7 @@ describe("CDF structured execution spine (generic)", () => {
   it("N — missing structured payload reason is CDF_STRUCTURED_PAYLOAD_MISSING", () => {
     const summary = buildIntegrationJobSummary({
       report: reportWithStructured({
-        content: JSON.stringify(SITEMAP_PAYLOAD),
+        content: JSON.stringify(PAGE_STRUCTURE_PAYLOAD),
         structuredOutputValid: false,
         success: true,
       }),
@@ -339,13 +344,13 @@ describe("CDF structured execution spine (generic)", () => {
         },
         response: {
           output: {
-            content: JSON.stringify(SITEMAP_PAYLOAD),
+            content: JSON.stringify(PAGE_STRUCTURE_PAYLOAD),
             structuredOutputValid: false,
             toolOrchestration: { structuredOutputValid: false },
           },
         },
       } as never,
-      { name: CDF_WEBSITE_SITEMAP_CONTRACT_NAME, schema: {}, strict: true },
+      { name: CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME, schema: {}, strict: true },
     );
     assert.equal(ok, false);
   });
@@ -353,7 +358,7 @@ describe("CDF structured execution spine (generic)", () => {
   it("P — valid provider structured output results in successful summary", () => {
     const summary = buildIntegrationJobSummary({
       report: reportWithStructured({
-        structured: SITEMAP_PAYLOAD,
+        structured: PAGE_STRUCTURE_PAYLOAD,
         structuredOutputValid: true,
         success: true,
       }),
@@ -365,25 +370,23 @@ describe("CDF structured execution spine (generic)", () => {
   });
 
   it("Q — structured payload hash stable across persistence/hydration", () => {
-    const a = hashStructuredPayload(SITEMAP_PAYLOAD);
+    const a = hashStructuredPayload(PAGE_STRUCTURE_PAYLOAD);
     const b = hashStructuredPayload(
-      JSON.parse(JSON.stringify(SITEMAP_PAYLOAD)),
+      JSON.parse(JSON.stringify(PAGE_STRUCTURE_PAYLOAD)),
     );
     assert.equal(a, b);
     assert.equal(a.length, 32);
     // Order-insensitive key fingerprint
     const shuffled = {
-      pageCount: SITEMAP_PAYLOAD.pageCount,
-      siteHierarchy: SITEMAP_PAYLOAD.siteHierarchy,
-      globalNavigation: SITEMAP_PAYLOAD.globalNavigation,
-      type: SITEMAP_PAYLOAD.type,
-      deliverable: SITEMAP_PAYLOAD.deliverable,
-      identityMark: SITEMAP_PAYLOAD.identityMark,
-      globalElements: SITEMAP_PAYLOAD.globalElements,
-      transitionAndMotionSystem: SITEMAP_PAYLOAD.transitionAndMotionSystem,
-      responsiveRules: SITEMAP_PAYLOAD.responsiveRules,
-      linkIntegrity: SITEMAP_PAYLOAD.linkIntegrity,
-      openItemsForApproval: SITEMAP_PAYLOAD.openItemsForApproval,
+      pageCount: PAGE_STRUCTURE_PAYLOAD.pageCount,
+      pages: PAGE_STRUCTURE_PAYLOAD.pages,
+      globalNavigation: PAGE_STRUCTURE_PAYLOAD.globalNavigation,
+      type: PAGE_STRUCTURE_PAYLOAD.type,
+      deliverable: PAGE_STRUCTURE_PAYLOAD.deliverable,
+      globalElements: PAGE_STRUCTURE_PAYLOAD.globalElements,
+      navigationNotes: PAGE_STRUCTURE_PAYLOAD.navigationNotes,
+      responsiveRules: PAGE_STRUCTURE_PAYLOAD.responsiveRules,
+      openItemsForApproval: PAGE_STRUCTURE_PAYLOAD.openItemsForApproval,
     };
     assert.equal(hashStructuredPayload(shuffled), a);
   });
@@ -420,14 +423,14 @@ describe("CDF structured execution spine (generic)", () => {
         });
       }
     }
-    assert.ok(required.length >= 16, `expected >=16 required, got ${required.length}`);
-    const sitemap = required.find(
-      (r) => r.serviceId === "web-tech" && r.phaseId === "sitemap",
+    assert.ok(required.length >= 14, `expected >=14 required, got ${required.length}`);
+    const pageStructure = required.find(
+      (r) => r.serviceId === "web-tech" && r.phaseId === "page-structure",
     );
-    assert.equal(sitemap?.contract, CDF_WEBSITE_SITEMAP_CONTRACT_NAME);
+    assert.equal(pageStructure?.contract, CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME);
     assert.ok(
       listRegisteredCanonicalStructuredContractNames().includes(
-        CDF_WEBSITE_SITEMAP_CONTRACT_NAME,
+        CDF_WEBSITE_PAGE_STRUCTURE_CONTRACT_NAME,
       ),
     );
   });

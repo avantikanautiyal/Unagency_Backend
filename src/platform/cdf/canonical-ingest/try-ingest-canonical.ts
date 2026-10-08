@@ -19,6 +19,7 @@ import {
 } from "../generation-artifact";
 import { resolveArtifactTarget } from "../generation-artifact/target-resolution";
 import { isM4AcceptanceStatus } from "../generation-validation";
+import { qualityAttemptFromMetadata } from "../generation-validation/leniency";
 import { PRESENTATION_ARTIFACT_KEYS } from "../artifacts/presentation/keys";
 import { isPackagingArtifactKey } from "../artifacts/packaging/keys";
 import { isSocialMediaArtifactKey } from "../artifacts/social-media/keys";
@@ -206,6 +207,7 @@ export function tryIngestContractCanonicalCompletion(input: {
       executionId: input.executionId,
       rawOutput: input.rawOutput,
       contextId: metaString(input.metadata, "cdfContextId"),
+      qualityAttempt: qualityAttemptFromMetadata(input.metadata),
       contextHash: metaString(input.metadata, "cdfContextHash"),
       activeBriefId: session.activeBriefId,
       activeBriefVersion: session.activeBriefVersion,

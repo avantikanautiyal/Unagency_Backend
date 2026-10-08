@@ -90,7 +90,7 @@ describe("CDF structured modality — media N/A (generic)", () => {
   it("2. structured + canonical authority → media not required", () => {
     const contract = resolveCdfPhaseExecutionContract({
       serviceId: "web-tech",
-      phaseId: "sitemap",
+      phaseId: "page-structure",
     });
     expect(contract?.generationModality).toBe("structured");
     const applied = applyCdfExecutionAuthority({
@@ -99,7 +99,7 @@ describe("CDF structured modality — media N/A (generic)", () => {
         subtype: "landing-page",
         outputKind: "deferred_website",
         cdfServiceId: "web-tech",
-        cdfPhaseId: "sitemap",
+        cdfPhaseId: "page-structure",
         cdfSessionId: "cdfsess_test",
         cdfExecutionStrategy: "canonical",
         executionSpecDeliverables: ["EDITABLE_TEXT", "ZIP", "HTML"],

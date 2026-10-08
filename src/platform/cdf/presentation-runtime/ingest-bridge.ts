@@ -17,6 +17,7 @@ import {
 import { resolveArtifactTarget } from "../generation-artifact/target-resolution";
 import type { IngestGenerationResult } from "../generation-artifact/types";
 import { isM4AcceptanceStatus } from "../generation-validation";
+import { qualityAttemptFromMetadata } from "../generation-validation/leniency";
 
 export const CDF_PRESENTATION_RUNTIME_VERSION = "m7.presentation.runtime.v1";
 
@@ -157,6 +158,7 @@ export function tryIngestPresentationCdfCompletion(input: {
       executionId: input.executionId,
       rawOutput: input.rawOutput,
       contextId: metaString(metadata, "cdfContextId"),
+      qualityAttempt: qualityAttemptFromMetadata(metadata),
       contextHash: metaString(metadata, "cdfContextHash"),
       activeBriefId: session.activeBriefId,
       activeBriefVersion: session.activeBriefVersion,

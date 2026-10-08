@@ -842,6 +842,10 @@ export class ProductAssetService {
     userId: string;
     organizationId?: string;
     projectId?: string;
+    projectIds?: string[];
+    briefIds?: string[];
+    /** Also matches assets tagged with this brand; assets tagged with another brand are kept. */
+    brandId?: string;
     executionIds?: string[];
     assetIds?: string[];
   }): Promise<{ deletedCount: number }> {
@@ -849,9 +853,29 @@ export class ProductAssetService {
       input.userId,
       input.organizationId
     );
+    const toObjectIds = (ids: (string | undefined)[]) =>
+      [
+        ...new Set(
+          ids
+            .map((id) => String(id || "").trim())
+            .filter((id) => mongoose.isValidObjectId(id))
+        ),
+      ].map((id) => new mongoose.Types.ObjectId(id));
     const or: Record<string, unknown>[] = [];
-    if (input.projectId && mongoose.isValidObjectId(input.projectId)) {
-      or.push({ projectId: new mongoose.Types.ObjectId(input.projectId) });
+    const projectOids = toObjectIds([input.projectId, ...(input.projectIds ?? [])]);
+    if (projectOids.length > 0) {
+      or.push({ projectId: { $in: projectOids } });
+    }
+    const briefOids = toObjectIds(input.briefIds ?? []);
+    if (briefOids.length > 0) {
+      or.push({ briefId: { $in: briefOids } });
+    }
+    const brandOid =
+      input.brandId && mongoose.isValidObjectId(input.brandId)
+        ? new mongoose.Types.ObjectId(input.brandId)
+        : undefined;
+    if (brandOid) {
+      or.push({ brandId: brandOid });
     }
     const executionIds = [
       ...new Set(
@@ -884,6 +908,19 @@ export class ProductAssetService {
     const docs = await MediaFile.find({
       organizationId: new mongoose.Types.ObjectId(organizationId),
       $or: or,
+      ...(brandOid
+        ? {
+            $and: [
+              {
+                $or: [
+                  { brandId: { $exists: false } },
+                  { brandId: null },
+                  { brandId: brandOid },
+                ],
+              },
+            ],
+          }
+        : {}),
     })
       .select("_id storageKey thumbnailKey organizationId")
       .lean();

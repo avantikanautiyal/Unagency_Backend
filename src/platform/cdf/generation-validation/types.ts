@@ -124,6 +124,11 @@ export type ValidateArtifactInput = {
   projectId?: string;
   /** When true, markValidated on pass / markRejected on fail (persisted versions only). */
   applyLifecycle?: boolean;
+  /**
+   * 1-based automatic quality attempt (execution metadata `cdfQualityAttempt`).
+   * Size/format requirements stop blocking on the final attempt.
+   */
+  qualityAttempt?: number;
 };
 
 /** Observations extracted from canonical artifact data (no mutation). */

@@ -262,10 +262,9 @@ function requiresCompleteWebsiteDeliverable(
           .trim()
           .toLowerCase()
       : "";
-  if (
-    structuredName === "cdfwebsitesitemap" ||
-    structuredName === "cdfwebsitepagestructure"
-  ) {
+  // CDF contracts (page structure, UI directions, routes, approval docs) are
+  // planning output validated by their schema, never a WebProject codebase.
+  if (structuredName.startsWith("cdf")) {
     return false;
   }
   return isWebsiteDirectRequest(metadata);

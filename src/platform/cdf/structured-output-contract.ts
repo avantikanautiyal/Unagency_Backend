@@ -45,6 +45,11 @@ import {
   PRESENTATION_STORYLINE_STRUCTURED_SCHEMA,
 } from "../os/delivery/presentation-schemas";
 import {
+  resolveDeliverableCompositionContract,
+  requiredExactRenderedCommunicationElements,
+} from "../../../../Unagency-frontend/packages/api/src/domain/cdf/deliverable-composition";
+import {
+  resolveCdfCanonicalService,
   resolveCdfPhaseExecutionContract,
   type CdfPhaseExecutionContract,
 } from "./canonical";
@@ -233,12 +238,81 @@ export function resolveCdfStructuredOutputStamp(input: {
     if (fromName) {
       return {
         name: declared.name,
-        schema: fromName.schema,
+        schema: routesFeedRequiredRenderedCommunication(contract)
+          ? withRequiredRouteMessage(fromName.schema)
+          : fromName.schema,
         strict: declared.strict ?? fromName.strict,
       };
     }
   }
   return undefined;
+}
+
+/** Route fields the composition compiler accepts as the primary on-asset message. */
+export const ROUTE_MESSAGE_FIELDS = [
+  "primaryMessage",
+  "headlineAngle",
+  "communicationObjective",
+  "messaging",
+] as const;
+
+/**
+ * A selected route is the only authority for required on-asset copy
+ * (CDF_DELIVERABLE_COMPOSITION_CMR_INVARIANT), so a text_choice phase that a
+ * downstream exact-communication deliverable depends on must emit a message.
+ */
+export function routesFeedRequiredRenderedCommunication(
+  contract: Pick<CdfPhaseExecutionContract, "serviceId" | "phaseId" | "semanticRole">,
+): boolean {
+  if (contract.semanticRole !== "text_choice") return false;
+  const phases = (resolveCdfCanonicalService(contract.serviceId)?.phases ??
+    []) as unknown as readonly {
+    deliverableKind?: string;
+    dependencies?: readonly { phaseId: string }[];
+  }[];
+  return phases.some((p) => {
+    if (!p.deliverableKind) return false;
+    if (!p.dependencies?.some((d) => d.phaseId === contract.phaseId)) return false;
+    const composition = resolveDeliverableCompositionContract(
+      p.deliverableKind as never,
+    );
+    return (
+      composition != null &&
+      requiredExactRenderedCommunicationElements(composition).length > 0
+    );
+  });
+}
+
+function withRequiredRouteMessage(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const props = schema.properties as Record<string, unknown> | undefined;
+  const routes = props?.routes as Record<string, unknown> | undefined;
+  const items = routes?.items as Record<string, unknown> | undefined;
+  const itemProps = items?.properties as Record<string, unknown> | undefined;
+  if (!routes || !items || !itemProps) return schema;
+  const required = Array.isArray(items.required)
+    ? (items.required as string[])
+    : [];
+  if (required.some((f) => (ROUTE_MESSAGE_FIELDS as readonly string[]).includes(f))) {
+    return schema;
+  }
+  return {
+    ...schema,
+    properties: {
+      ...props,
+      routes: {
+        ...routes,
+        items: {
+          ...items,
+          properties: itemProps.primaryMessage
+            ? itemProps
+            : { ...itemProps, primaryMessage: { type: "string" } },
+          required: [...required, "primaryMessage"],
+        },
+      },
+    },
+  };
 }
 
 function resolveContractFromMetadata(

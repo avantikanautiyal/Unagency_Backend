@@ -152,6 +152,7 @@ async function runSitemapScript(input: {
   readonly honorFailoverChain?: readonly { providerId: string; modelId: string }[];
   readonly contractName?: string;
   readonly schema?: Record<string, unknown>;
+  readonly metadata?: Record<string, unknown>;
 }) {
   const dispatcher = new ScriptedDispatcher(input.steps);
   const runtime = createProviderRuntime({ dispatcher });
@@ -174,6 +175,7 @@ async function runSitemapScript(input: {
       capabilityId: "text.generate",
       productAction: "direct_passthrough",
       directPassthrough: true,
+      ...(input.metadata ?? {}),
       ...(input.honorFailoverChain
         ? { failoverChain: input.honorFailoverChain }
         : {}),
@@ -519,6 +521,35 @@ describe("CdfWebsiteSitemap structured contract + credit/Anthropic fixes", () =>
     assert.match(msg, /structured generation could not satisfy/i);
     assert.doesNotMatch(msg, /expected type/);
     assert.doesNotMatch(msg, /siteHierarchy/);
+  });
+
+  it("12b — website UI directions (CdfCreativeDirections) stop on the first valid routes", async () => {
+    const { report, dispatcher } = await runSitemapScript({
+      contractName: "CdfCreativeDirections",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["routes"],
+        properties: {
+          routes: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["name"],
+              properties: { name: { type: "string" } },
+            },
+          },
+        },
+      },
+      metadata: { service: "website", subtype: "corporate-website", outputKind: "text" },
+      steps: [
+        { kind: "structured", structured: { routes: [{ name: "A" }, { name: "B" }, { name: "C" }] } },
+        { kind: "structured", structured: { routes: [{ name: "should not run" }] } },
+      ],
+    });
+    assert.equal(report.success, true);
+    assert.equal(dispatcher.capturedProviders.length, 1);
   });
 
   it("13 — typed terminal UX; no UI-only raw schema dump", () => {

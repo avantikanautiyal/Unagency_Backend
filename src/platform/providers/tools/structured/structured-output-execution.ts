@@ -219,11 +219,28 @@ export function withStructuredOutputRequest(
   } else if (isCdfCreativeDirectionRoutes) {
     // Exact CdfCreativeDirections / Social / Packaging contract — routes required.
     // Do not instruct LaunchPlan steps; do not allow bare arrays.
+    const routeItems = (
+      (schema.properties as Record<string, unknown> | undefined)?.routes as
+        | { items?: { required?: unknown } }
+        | undefined
+    )?.items;
+    const requiredRouteFields = Array.isArray(routeItems?.required)
+      ? (routeItems.required as unknown[]).filter(
+          (k): k is string => typeof k === "string",
+        )
+      : [];
     instructionParts.push(
       "Required top-level key: routes (array of exactly 3 objects).",
       "Do NOT return a bare JSON array. Do NOT use steps, directions, concepts, or options as the top-level key.",
       "Return exactly 3 routes in routes[].",
-      "Each route object must include at least name (string). Prefer the property names declared in the JSON schema.",
+      `Each route object must include non-empty string values for: ${
+        requiredRouteFields.length > 0 ? requiredRouteFields.join(", ") : "name"
+      }. Prefer the property names declared in the JSON schema.`,
+      ...(requiredRouteFields.includes("primaryMessage")
+        ? [
+            "primaryMessage is the exact headline that will be rendered on the final asset — write finished, brand-appropriate copy (not a description).",
+          ]
+        : []),
       `Exact JSON schema:\n${JSON.stringify(schema)}`,
     );
   } else if (isCdfWebsitePlanningContract) {

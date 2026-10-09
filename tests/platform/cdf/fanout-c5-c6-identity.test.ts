@@ -141,8 +141,9 @@ describe("C5 — dual-OpenAI leaf identity when preferredModelId dropped", () =>
         .size,
       3,
     );
-    assert.notEqual(resolved[0]!.resolvedModel, resolved[2]!.resolvedModel);
-    assert.equal(resolved[0]!.resolvedProvider, "provider.openai");
+    assert.notEqual(resolved[0]!.resolvedModel, resolved[1]!.resolvedModel);
+    assert.equal(resolved[0]!.resolvedProvider, "provider.google");
+    assert.equal(resolved[1]!.resolvedProvider, "provider.google");
     assert.equal(resolved[2]!.resolvedProvider, "provider.openai");
   });
 });

@@ -17,7 +17,7 @@ describe("intra-leaf failover (provider/model)", () => {
       primaryProviderId: "provider.google",
       primaryModelId: "gemini-3-pro-image",
       matrixChain: [
-        { providerId: "provider.openai", modelId: "gpt-image-2.5-sunburst" },
+        { providerId: "provider.openai", modelId: "gpt-image-1" },
         { providerId: "provider.google", modelId: "gemini-3.1-flash-image" },
         { providerId: "provider.openai", modelId: "gpt-image-1.5" },
       ],
@@ -39,37 +39,36 @@ describe("intra-leaf failover (provider/model)", () => {
       groupId: "intra_leaf_group",
       executableProviderIds: new Set(GENERATION_FANOUT_PROVIDER_FAMILIES),
     });
+    const [google, googleAlt] = plan.targets.filter(
+      (t) => t.providerId === "provider.google",
+    );
     const openai = plan.targets.find((t) => t.providerId === "provider.openai")!;
-    const google = plan.targets.find((t) => t.providerId === "provider.google")!;
-    const openaiAlt = plan.targets.filter(
-      (t) => t.providerId === "provider.openai",
-    )[1]!;
 
     const metaA = buildGenerationFanoutLeafMetadata({
       plan,
-      target: openai,
+      target: google!,
       matrixFailoverChain: [
-        { providerId: google.providerId, modelId: google.modelId },
-        { providerId: openaiAlt.providerId, modelId: openaiAlt.modelId },
+        { providerId: googleAlt!.providerId, modelId: googleAlt!.modelId },
+        { providerId: openai.providerId, modelId: openai.modelId },
       ],
     });
-    const metaB = buildGenerationFanoutLeafMetadata({ plan, target: google });
+    const metaB = buildGenerationFanoutLeafMetadata({ plan, target: openai });
 
-    assert.equal(metaA.generationFanoutTargetId, openai.targetId);
-    assert.equal(metaB.generationFanoutTargetId, google.targetId);
+    assert.equal(metaA.generationFanoutTargetId, google!.targetId);
+    assert.equal(metaB.generationFanoutTargetId, openai.targetId);
     assert.notEqual(
       metaA.generationFanoutTargetId,
       metaB.generationFanoutTargetId,
     );
 
-    // Sibling Google stripped; same-provider OpenAI alt may remain.
-    assert.equal(
-      metaA.imageFailoverChain.some((s) => s.providerId === "provider.google"),
-      false,
-    );
+    // Sibling Gemini model + OpenAI stripped; only same-provider recovery remains.
+    for (const step of metaA.imageFailoverChain) {
+      assert.equal(step.providerId, "provider.google");
+      assert.notEqual(step.modelId, googleAlt!.modelId);
+    }
     assert.ok(metaB.imageFailoverChain.length >= 1);
     for (const step of metaB.imageFailoverChain) {
-      assert.equal(step.providerId, "provider.google");
+      assert.equal(step.providerId, "provider.openai");
     }
   });
 

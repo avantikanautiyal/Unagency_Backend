@@ -270,7 +270,18 @@ export class MongoJobStore implements IJobStore {
       { $set: { leaseExpiresAt, updatedAt: nowIso } },
       { new: true, maxTimeMS: 5_000 },
     ).lean();
-    if (!doc) return false;
+    if (!doc) {
+      const durable = await EnterpriseJob.findOne(
+        { jobId: String(jobId) },
+        { status: 1, reservedBy: 1, attempt: 1, leaseExpiresAt: 1 },
+      )
+        .lean()
+        .catch(() => null);
+      console.log(
+        `[Direct] lease renew miss durable | jobId=${String(jobId)} | worker=${String(workerId ?? "")} | status=${String(durable?.status ?? "missing")} | reservedBy=${String(durable?.reservedBy ?? "none")} | attempt=${String(durable?.attempt ?? "n/a")} | leaseExpiresAt=${String(durable?.leaseExpiresAt ?? "none")}`,
+      );
+      return false;
+    }
     const job = {
       ...(existing ?? (doc as unknown as ExecutionJob)),
       ...(doc as unknown as ExecutionJob),
@@ -278,6 +289,39 @@ export class MongoJobStore implements IJobStore {
       updatedAt: nowIso,
     };
     this.cache.set(String(jobId), job);
+    return true;
+  }
+
+  async reacquireUnclaimed(
+    jobId: JobId,
+    workerId: WorkerId,
+    attempt: number,
+    ttlMs: number,
+    nowIso: string
+  ): Promise<boolean> {
+    const baseMs = Date.parse(nowIso);
+    const leaseExpiresAt = new Date(
+      (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
+    ).toISOString();
+    const doc = await EnterpriseJob.findOneAndUpdate(
+      {
+        jobId: String(jobId),
+        attempt,
+        status: { $in: ["queued", "retrying"] },
+        cancelRequested: { $ne: true },
+      },
+      {
+        $set: {
+          status: "running",
+          reservedBy: String(workerId),
+          leaseExpiresAt,
+          updatedAt: nowIso,
+        },
+      },
+      { new: true, maxTimeMS: 5_000 },
+    ).lean();
+    if (!doc) return false;
+    this.cache.set(String(jobId), doc as unknown as ExecutionJob);
     return true;
   }
 }

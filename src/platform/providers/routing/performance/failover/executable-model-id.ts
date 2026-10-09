@@ -80,7 +80,7 @@ const GEMINI_SAFE_REMAP: Readonly<Record<string, string>> = {
   "gemini-1.5-pro": "gemini-pro-latest",
 };
 
-const OPENAI_IMAGE_DEFAULT = "openai/gpt-image-2.5-sunburst";
+const OPENAI_IMAGE_DEFAULT = "openai/gpt-image-1.5";
 const GOOGLE_IMAGE_DEFAULT = "google/gemini-3.1-flash-image";
 const IDEOGRAM_IMAGE_DEFAULT = "ideogram/ideogram-3";
 

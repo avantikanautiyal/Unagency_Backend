@@ -505,7 +505,9 @@ describe("structural verification diagnostic persistence", () => {
       stamps: stampsB,
     });
 
-    expect(metaA.preferredProviderId).not.toBe(metaB.preferredProviderId);
+    expect(`${metaA.preferredProviderId}::${metaA.preferredModelId}`).not.toBe(
+      `${metaB.preferredProviderId}::${metaB.preferredModelId}`,
+    );
     expect(
       (metaA.cdfStructuralCompliance as { executionId: string }).executionId,
     ).toBe("exec_leaf_a");

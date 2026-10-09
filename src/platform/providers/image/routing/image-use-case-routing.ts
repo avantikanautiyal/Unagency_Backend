@@ -2,7 +2,7 @@
  * Client model matrix → image.generate provider preference.
  * Prefer first executable match; never cross modalities.
  *
- * Declared fanout slots: OpenAI primary + Gemini + OpenAI secondary (distinct model).
+ * Declared fanout slots: Gemini primary + Gemini secondary (distinct model) + OpenAI.
  * Inventory availability must not silently collapse declared fanout cardinality.
  */
 
@@ -19,12 +19,13 @@ export type ImageProviderPreference = {
   readonly label: string;
 };
 
-const CHATGPT_IMAGE: ImageProviderPreference = {
-  providerId: "provider.openai",
-  modelId: "gpt-image-2.5-sunburst",
-  label: "GPT Image 2.5 Sunburst",
+/** Primary — native reference-image + edit support (no input_fidelity wire param). */
+const GEMINI_FLASH_IMAGE: ImageProviderPreference = {
+  providerId: "provider.google",
+  modelId: "gemini-3.1-flash-image",
+  label: "Gemini 3.1 Flash Image",
 };
-/** Declared inventory alternate — distinct from primary OpenAI fanout leaf. */
+/** OpenAI leaf — supports input_fidelity on reference-image edits. */
 const CHATGPT_IMAGE_ALT: ImageProviderPreference = {
   providerId: "provider.openai",
   modelId: "gpt-image-1.5",
@@ -37,20 +38,20 @@ const GEMINI_PRO_IMAGE: ImageProviderPreference = {
 };
 
 /**
- * Ordered preferences — OpenAI primary, Gemini, OpenAI secondary.
+ * Ordered preferences — three distinct models, no repeats.
  * Ideogram is not an active fanout target.
  */
 export const IMAGE_USE_CASE_PREFERENCES: Record<
   ImageCreativeUseCase,
   readonly ImageProviderPreference[]
 > = {
-  logo: [CHATGPT_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
-  brand_imagery: [CHATGPT_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
-  marketing_creative: [CHATGPT_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
-  photorealistic: [GEMINI_PRO_IMAGE, CHATGPT_IMAGE, CHATGPT_IMAGE_ALT],
-  typography: [CHATGPT_IMAGE, CHATGPT_IMAGE_ALT, GEMINI_PRO_IMAGE],
-  product: [CHATGPT_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
-  general: [CHATGPT_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
+  logo: [GEMINI_FLASH_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
+  brand_imagery: [GEMINI_FLASH_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
+  marketing_creative: [GEMINI_FLASH_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
+  photorealistic: [GEMINI_PRO_IMAGE, GEMINI_FLASH_IMAGE, CHATGPT_IMAGE_ALT],
+  typography: [GEMINI_FLASH_IMAGE, CHATGPT_IMAGE_ALT, GEMINI_PRO_IMAGE],
+  product: [GEMINI_FLASH_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
+  general: [GEMINI_FLASH_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
 };
 
 export function resolveImageCreativeUseCase(

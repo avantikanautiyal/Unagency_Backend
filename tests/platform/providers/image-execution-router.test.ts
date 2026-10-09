@@ -33,7 +33,7 @@ describe("ImageExecutionRouter", () => {
     }
   });
 
-  it("assigns distinct providers per routeVisualSlot for parallel fan-out", () => {
+  it("assigns distinct models per routeVisualSlot for parallel fan-out", () => {
     const slot0 = router.resolve({
       prompt: "Instagram post for DiVastra with attached logo",
       preferredProviderId: "provider.recraft",
@@ -50,9 +50,9 @@ describe("ImageExecutionRouter", () => {
     });
     expect(slot0.ok && slot1.ok).toBe(true);
     if (slot0.ok && slot1.ok) {
-      expect(slot0.value.providerId).toBe("provider.openai");
-      expect(slot1.value.providerId).toBe("provider.google");
-      expect(slot0.value.providerId).not.toBe(slot1.value.providerId);
+      expect(slot0.value.modelId).toBe("gemini-3.1-flash-image");
+      expect(slot1.value.modelId).toBe("gemini-3-pro-image");
+      expect(slot0.value.modelId).not.toBe(slot1.value.modelId);
     }
   });
 

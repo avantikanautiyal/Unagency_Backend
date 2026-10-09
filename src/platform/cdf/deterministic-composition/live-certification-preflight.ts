@@ -20,12 +20,16 @@ import type { CompositionCanvasSpec } from "./types";
 
 export const LIVE_CERT_REQUIRED_TARGETS = [
   {
-    providerId: "provider.openai",
-    modelId: "gpt-image-2.5-sunburst",
+    providerId: "provider.google",
+    modelId: "gemini-3.1-flash-image",
   },
   {
     providerId: "provider.google",
     modelId: "gemini-3-pro-image",
+  },
+  {
+    providerId: "provider.openai",
+    modelId: "gpt-image-1.5",
   },
   {
     providerId: "provider.ideogram",

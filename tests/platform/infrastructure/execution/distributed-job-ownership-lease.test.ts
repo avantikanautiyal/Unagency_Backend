@@ -309,6 +309,8 @@ describe("distributed job durable ownership / lease", () => {
     );
     expect(expired).toBe(true);
     store.renewLease = async () => false;
+    // Simulate a newer attempt owning the row — reacquire must not succeed.
+    store.reacquireUnclaimed = async () => false;
     const recovered = await store.reclaimExpired!(
       new Date(now).toISOString(),
       now,
@@ -334,6 +336,68 @@ describe("distributed job durable ownership / lease", () => {
     // Original owner must not finalize terminal completion after loss.
     expect(store.get(asJobId("job_loss_d"))?.status).toBe("queued");
     expect(store.get(asJobId("job_loss_d"))?.attempt).toBe(ownerAttempt);
+  });
+
+  it("D2 — reclaimed but unclaimed: in-flight worker reacquires and finalizes once", async () => {
+    const store = new InMemoryClaimableJobStore();
+    store.save(sampleQueued("job_reacquire_d2"));
+
+    let releaseExecute!: () => void;
+    const executeGate = new Promise<void>((r) => {
+      releaseExecute = r;
+    });
+    const now = Date.parse("2026-09-15T03:30:00.000Z");
+    let executeCount = 0;
+
+    const platform = createDistributedExecutionPlatform({
+      jobStore: store,
+      leaseTtlMs: LEASE_TTL_MS,
+      clockMs: () => now,
+      nowIso: () => new Date(now).toISOString(),
+      executor: {
+        execute: async () => {
+          executeCount += 1;
+          await executeGate;
+          return {
+            ok: true as const,
+            value: { summary: { success: true }, durationMs: 1 },
+          };
+        },
+      },
+    });
+    platform.engine.registerWorker("execution", 2);
+
+    const tickPromise = platform.engine.tick(1);
+    for (let i = 0; i < 40; i += 1) {
+      if (store.get(asJobId("job_reacquire_d2"))?.status === "running") break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    const running = store.get(asJobId("job_reacquire_d2"))!;
+    expect(running.status).toBe("running");
+    const ownerAttempt = running.attempt;
+
+    await store.renewLease!(
+      running.jobId,
+      0,
+      new Date(now - 10).toISOString(),
+      running.reservedBy,
+    );
+    const recovered = await store.reclaimExpired!(
+      new Date(now).toISOString(),
+      now,
+    );
+    expect(recovered.some((j) => String(j.jobId) === "job_reacquire_d2")).toBe(
+      true,
+    );
+    expect(store.get(asJobId("job_reacquire_d2"))?.status).toBe("queued");
+
+    releaseExecute();
+    await tickPromise;
+
+    expect(executeCount).toBe(1);
+    const final = store.get(asJobId("job_reacquire_d2"))!;
+    expect(final.status).toBe("completed");
+    expect(final.attempt).toBe(ownerAttempt);
   });
 
   it("E — concurrent tick: no duplicate claim/execution", async () => {
@@ -1036,6 +1100,8 @@ describe("distributed job durable ownership / lease", () => {
       running.reservedBy,
     );
     store.renewLease = async () => false;
+    const originalReacquire = store.reacquireUnclaimed.bind(store);
+    store.reacquireUnclaimed = async () => false;
 
     const recovered = await store.reclaimExpired!(
       new Date(now).toISOString(),
@@ -1064,6 +1130,7 @@ describe("distributed job durable ownership / lease", () => {
     expect(store.get(asJobId("job_genuine_loss_l"))?.attempt).toBe(ownerAttempt);
     // Original owner must not still hold durable reservation
     expect(store.get(asJobId("job_genuine_loss_l"))?.reservedBy).toBeUndefined();
+    store.reacquireUnclaimed = originalReacquire;
 
     // Recovered worker may continue per normal retry/claim policy
     let recoveredExecute = 0;

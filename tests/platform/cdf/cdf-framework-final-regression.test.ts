@@ -18,7 +18,7 @@ import { resolvePhaseCompletionForApproval } from "../../../src/platform/cdf/lif
 import type { CdfSessionState } from "../../../src/platform/cdf/types";
 
 describe("CDF framework fanout contract (A–G, Y–Z)", () => {
-  it("A — declared 3-leaf image fanout (OpenAI / Gemini / OpenAI-alt)", () => {
+  it("A — declared 3-leaf image fanout (Gemini Flash / Gemini Pro / OpenAI)", () => {
     const contract = resolveGenerationFanoutContract({
       useCase: "marketing_creative",
       groupId: "fanout_a",
@@ -30,12 +30,12 @@ describe("CDF framework fanout contract (A–G, Y–Z)", () => {
     assert.equal(contract.failoverPolicy, "intra_leaf_only");
     assert.deepEqual(
       contract.targets.map((t) => t.providerId),
-      ["provider.openai", "provider.google", "provider.openai"],
+      ["provider.google", "provider.google", "provider.openai"],
     );
-    assert.equal(contract.targets[0]!.modelId, "gpt-image-2.5-sunburst");
+    assert.equal(contract.targets[0]!.modelId, "gemini-3.1-flash-image");
     assert.equal(contract.targets[1]!.modelId, "gemini-3-pro-image");
     assert.equal(contract.targets[2]!.modelId, "gpt-image-1.5");
-    assert.notEqual(contract.targets[0]!.modelId, contract.targets[2]!.modelId);
+    assert.notEqual(contract.targets[0]!.modelId, contract.targets[1]!.modelId);
     assert.equal(
       contract.targets.some((t) => t.providerId === "provider.ideogram"),
       false,
@@ -48,14 +48,14 @@ describe("CDF framework fanout contract (A–G, Y–Z)", () => {
     const plan = planImageGenerationFanout({
       useCase: "general",
       groupId: "fanout_b",
-      executableProviderIds: new Set(["provider.openai"]),
+      executableProviderIds: new Set(["provider.google"]),
     });
     assert.equal(plan.cardinality, 3);
     assert.equal(plan.targets.length, 3);
-    const google = plan.targets.find((t) => t.providerId === "provider.google");
-    assert.ok(google);
-    assert.equal(google!.availability, "unavailable");
-    // OpenAI slots remain executable; Google unavailable.
+    const openai = plan.targets.find((t) => t.providerId === "provider.openai");
+    assert.ok(openai);
+    assert.equal(openai!.availability, "unavailable");
+    // Gemini slots remain executable; OpenAI unavailable.
     assert.equal(executableFanoutTargets(plan).length, 2);
   });
 

@@ -205,6 +205,12 @@ function fitOpenAiImagePrompt(prompt: string, correlationId?: string): string {
   return truncated;
 }
 
+/** OpenAI returns 400 invalid_input_fidelity_model for any other image model. */
+const OPENAI_INPUT_FIDELITY_MODELS: ReadonlySet<string> = new Set([
+  "gpt-image-1",
+  "gpt-image-1.5",
+]);
+
 function applyOpenAiImageBody(
   body: Record<string, unknown>,
   request: ProviderAdapterRequest,
@@ -244,7 +250,10 @@ function applyOpenAiImageBody(
       .filter((url): url is string => Boolean(url))
       .slice(0, 16);
     body.images = imageUrls.map((image_url) => ({ image_url }));
-    if (body.input_fidelity == null) {
+    const wireModel = String(body.model ?? "").split("/").pop() ?? "";
+    if (!OPENAI_INPUT_FIDELITY_MODELS.has(wireModel)) {
+      delete body.input_fidelity;
+    } else if (body.input_fidelity == null) {
       body.input_fidelity = "high";
     }
     const { prompt: rolePrompt } = applyReferenceRolePromptGuidance({

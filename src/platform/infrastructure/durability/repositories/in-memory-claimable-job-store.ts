@@ -148,6 +148,30 @@ export class InMemoryClaimableJobStore implements IJobStore {
     return true;
   }
 
+  async reacquireUnclaimed(
+    jobId: JobId,
+    workerId: WorkerId,
+    attempt: number,
+    ttlMs: number,
+    nowIso: string
+  ): Promise<boolean> {
+    const id = String(jobId);
+    const job = this.jobs.get(id);
+    if (!job || job.attempt !== attempt || job.cancelRequested) return false;
+    if (job.status !== "queued" && job.status !== "retrying") return false;
+    const baseMs = Date.parse(nowIso);
+    this.jobs.set(id, {
+      ...job,
+      status: "running",
+      reservedBy: workerId,
+      leaseExpiresAt: new Date(
+        (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
+      ).toISOString(),
+      updatedAt: nowIso,
+    });
+    return true;
+  }
+
   clear(): void {
     this.jobs.clear();
     this.claimLocks.clear();

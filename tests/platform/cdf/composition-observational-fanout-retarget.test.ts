@@ -83,7 +83,7 @@ describe("composition observational + 3-leaf OpenAI/Gemini/OpenAI-alt", () => {
     );
   });
 
-  it("4/5/6 — exactly 3 leaves; Ideogram absent; third is distinct OpenAI model", () => {
+  it("4/5/6 — exactly 3 leaves; Ideogram absent; two distinct Gemini models + OpenAI", () => {
     const plan = resolveGenerationFanoutContract({
       useCase: "general",
       groupId: "live_fix",
@@ -95,12 +95,13 @@ describe("composition observational + 3-leaf OpenAI/Gemini/OpenAI-alt", () => {
       plan.targets.some((t) => t.providerId === "provider.ideogram"),
       false,
     );
-    assert.equal(plan.targets[0]!.providerId, "provider.openai");
-    assert.equal(plan.targets[0]!.modelId, "gpt-image-2.5-sunburst");
+    assert.equal(plan.targets[0]!.providerId, "provider.google");
+    assert.equal(plan.targets[0]!.modelId, "gemini-3.1-flash-image");
     assert.equal(plan.targets[1]!.providerId, "provider.google");
+    assert.equal(plan.targets[1]!.modelId, "gemini-3-pro-image");
     assert.equal(plan.targets[2]!.providerId, "provider.openai");
     assert.equal(plan.targets[2]!.modelId, "gpt-image-1.5");
-    assert.notEqual(plan.targets[0]!.modelId, plan.targets[2]!.modelId);
+    assert.notEqual(plan.targets[0]!.modelId, plan.targets[1]!.modelId);
   });
 
   it("7/8 — primary failure same-provider fallback; never sibling leaf", () => {
@@ -119,11 +120,12 @@ describe("composition observational + 3-leaf OpenAI/Gemini/OpenAI-alt", () => {
         { providerId: leafB.providerId, modelId: leafB.modelId },
         { providerId: "provider.openai", modelId: "gpt-image-1.5" },
       ],
+      excludeModelKeys: new Set([`${leafB.providerId}::${leafB.modelId}`]),
     });
     assert.ok(chain.length >= 1);
     for (const step of chain) {
-      assert.equal(step.providerId, "provider.openai");
-      assert.notEqual(step.providerId, leafB.providerId);
+      assert.equal(step.providerId, "provider.google");
+      assert.notEqual(step.modelId, leafB.modelId);
     }
     assert.equal(metaA.generationFanoutTargetId, leafA.targetId);
   });
@@ -142,7 +144,7 @@ describe("composition observational + 3-leaf OpenAI/Gemini/OpenAI-alt", () => {
     assert.doesNotMatch(planFn, /quantity\s*[:=]/);
     assert.deepEqual(
       [...GENERATION_FANOUT_PROVIDER_FAMILIES],
-      ["provider.openai", "provider.google", "provider.openai"],
+      ["provider.google", "provider.google", "provider.openai"],
     );
   });
 

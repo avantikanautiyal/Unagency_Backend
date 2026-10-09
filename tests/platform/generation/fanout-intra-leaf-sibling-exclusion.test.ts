@@ -41,7 +41,7 @@ describe.each(impls)("fanout leaf independence ($name)", ({ plan, leaf, resolve 
     expect(p.targets.length).toBe(3);
     expect(new Set(ids).size).toBe(3);
     expect(p.targets.map((t) => `${t.providerId}/${t.modelId}`)).toEqual([
-      "provider.openai/gpt-image-2.5-sunburst",
+      "provider.google/gemini-3.1-flash-image",
       "provider.google/gemini-3-pro-image",
       "provider.openai/gpt-image-1.5",
     ]);
@@ -67,22 +67,22 @@ describe.each(impls)("fanout leaf independence ($name)", ({ plan, leaf, resolve 
     }
   });
 
-  it("sunburst leaf never falls back to the gpt-image-1.5 leaf's model", () => {
+  it("gemini flash leaf never falls back to the gemini-3-pro leaf's model", () => {
     const p = plan();
-    const sunburst = p.targets.find((t) => t.modelId === "gpt-image-2.5-sunburst")!;
-    const chain = leaf({ plan: p, target: sunburst } as never).imageFailoverChain as {
+    const flash = p.targets.find((t) => t.modelId === "gemini-3.1-flash-image")!;
+    const chain = leaf({ plan: p, target: flash } as never).imageFailoverChain as {
       modelId: string;
     }[];
-    expect(chain.map((c) => c.modelId)).not.toContain("gpt-image-1.5");
+    expect(chain.map((c) => c.modelId)).not.toContain("gemini-3-pro-image");
   });
 
   it("runtime re-resolution honours sibling exclusion (matrix chain cannot widen it)", () => {
     const chain = resolve({
-      primaryProviderId: "provider.openai",
-      primaryModelId: "gpt-image-2.5-sunburst",
+      primaryProviderId: "provider.google",
+      primaryModelId: "gemini-3.1-flash-image",
       matrixChain: [
-        { providerId: "provider.openai", modelId: "gpt-image-1.5" },
         { providerId: "provider.google", modelId: "gemini-3-pro-image" },
+        { providerId: "provider.openai", modelId: "gpt-image-1.5" },
       ],
       excludeModelKeys: new Set([
         "provider.google::gemini-3-pro-image",
@@ -90,8 +90,8 @@ describe.each(impls)("fanout leaf independence ($name)", ({ plan, leaf, resolve 
       ]),
     });
     expect(chain.map((c) => `${c.providerId}::${c.modelId}`)).not.toContain(
-      "provider.openai::gpt-image-1.5",
+      "provider.google::gemini-3-pro-image",
     );
-    expect(chain.every((c) => c.providerId === "provider.openai")).toBe(true);
+    expect(chain.every((c) => c.providerId === "provider.google")).toBe(true);
   });
 });

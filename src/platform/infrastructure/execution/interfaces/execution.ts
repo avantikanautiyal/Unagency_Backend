@@ -72,6 +72,17 @@ export interface IJobStore {
     nowIso: string,
     workerId?: WorkerId
   ): Promise<boolean>;
+  /**
+   * CAS: queued/retrying at exactly `attempt` → running owned by `workerId`.
+   * Lets an in-flight worker keep a job that was reclaimed but not re-claimed.
+   */
+  reacquireUnclaimed?(
+    jobId: JobId,
+    workerId: WorkerId,
+    attempt: number,
+    ttlMs: number,
+    nowIso: string
+  ): Promise<boolean>;
   /** Reload queued/retrying jobs from durable storage (Mongo) into the local cache. */
   listRunnableFromDatabase?(): Promise<readonly ExecutionJob[]>;
   /** Load one job from durable storage when the in-memory cache misses. */

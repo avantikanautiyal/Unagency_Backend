@@ -28,9 +28,9 @@ import {
   type VideoCreativeUseCase,
 } from "../providers/routing/matrix/matrix-use-case-routing";
 
-/** Declared fanout slots: OpenAI primary + Gemini + OpenAI secondary (distinct model). */
+/** Declared fanout slots: Gemini primary + Gemini secondary (distinct model) + OpenAI. */
 export const GENERATION_FANOUT_PROVIDER_FAMILIES = [
-  "provider.openai",
+  "provider.google",
   "provider.google",
   "provider.openai",
 ] as const;
@@ -96,15 +96,10 @@ export type FanoutFailoverCandidate = {
 export const INTRA_PROVIDER_IMAGE_MODEL_FALLBACKS: Readonly<
   Record<string, readonly string[]>
 > = {
-  // Primary matrix model is gemini-3-pro-image; flash models are same-provider recovery.
+  // Sibling Gemini leaves are excluded per leaf, so recovery lands on 2.5 flash.
   "provider.google": ["gemini-3.1-flash-image", "gemini-2.5-flash-image"],
   // Declared inventory OpenAI image models (distinct from whatever leaf primary is).
-  "provider.openai": [
-    "gpt-image-1.5",
-    "gpt-image-2",
-    "gpt-image-2.5-flare",
-    "gpt-image-2.5-sunburst",
-  ],
+  "provider.openai": ["gpt-image-1.5", "gpt-image-1"],
 };
 
 export const INTRA_PROVIDER_VIDEO_MODEL_FALLBACKS: Readonly<

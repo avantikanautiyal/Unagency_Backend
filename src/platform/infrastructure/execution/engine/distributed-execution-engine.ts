@@ -20,7 +20,11 @@ import type {
 } from "../contracts/job";
 import { asJobId } from "../contracts/job";
 import type { QueueKind, WorkerKind } from "../contracts/enums";
-import { DEFAULT_LEASE_TTL_MS, DEFAULT_RETRY_POLICY } from "../constants";
+import {
+  DEFAULT_LEASE_TTL_MS,
+  DEFAULT_RETRY_POLICY,
+  MAX_LEASE_HEARTBEAT_MS,
+} from "../constants";
 import { InMemoryJobStore } from "../persistence/in-memory-job-store";
 import { QueueRegistry } from "../queues/queue-registry";
 import { JobScheduler } from "../scheduler/job-scheduler";
@@ -536,17 +540,19 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
             leaseId,
           );
           if (!renewed) {
-            const owns = await this.verifyDurableOwnership(
-              running,
-              worker.workerId,
-            );
+            const owns =
+              (await this.verifyDurableOwnership(running, worker.workerId)) ||
+              (await this.reacquireUnclaimedOwnership(running, worker.workerId));
             if (!owns) {
               signal.ownershipLost = true;
               signal.cancelled = true;
             }
           }
         }
-        const heartbeatMs = Math.max(50, Math.floor(this.leaseTtlMs / 4));
+        const heartbeatMs = Math.max(
+          50,
+          Math.min(MAX_LEASE_HEARTBEAT_MS, Math.floor(this.leaseTtlMs / 4)),
+        );
         const heartbeat = leaseId
           ? setInterval(() => {
               void this.renewInFlightLease(
@@ -558,10 +564,15 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
                   if (ok) return;
                   // Transient renew failure must not mark ownership lost while
                   // the durable lease is still valid. Only durable loss does.
-                  const owns = await this.verifyDurableOwnership(
-                    running!,
-                    worker.workerId,
-                  );
+                  const owns =
+                    (await this.verifyDurableOwnership(
+                      running!,
+                      worker.workerId,
+                    )) ||
+                    (await this.reacquireUnclaimedOwnership(
+                      running!,
+                      worker.workerId,
+                    ));
                   if (!owns) {
                     signal.ownershipLost = true;
                     signal.cancelled = true;
@@ -587,6 +598,15 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
             running,
             worker.workerId,
           );
+          // A finished run must not be thrown away when the lease was merely
+          // reclaimed and no other worker has started a newer attempt.
+          if (!stillOwns && result.ok) {
+            stillOwns = await this.reacquireUnclaimedOwnership(
+              running,
+              worker.workerId,
+            );
+            if (stillOwns) signal.ownershipLost = false;
+          }
         } finally {
           if (heartbeat) clearInterval(heartbeat);
           this.inFlightJobIds.delete(String(running.jobId));
@@ -1011,6 +1031,36 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     const expiresMs = Date.parse(fresh.leaseExpiresAt);
     if (!Number.isFinite(expiresMs) || expiresMs <= this.clockMs()) return false;
     return true;
+  }
+
+  /**
+   * Re-take a job that was reclaimed (lease expired → queued/retrying) while this
+   * worker was still executing it, as long as no newer attempt has claimed it.
+   * Durable CAS on attempt keeps this safe against a concurrent tryClaim.
+   */
+  private async reacquireUnclaimedOwnership(
+    running: ExecutionJob,
+    workerId: WorkerId,
+  ): Promise<boolean> {
+    if (typeof this.store.reacquireUnclaimed !== "function") return false;
+    try {
+      const ok = await this.store.reacquireUnclaimed(
+        running.jobId,
+        workerId,
+        running.attempt,
+        this.leaseTtlMs,
+        this.nowIso(),
+      );
+      console.log(
+        `[Direct] job ownership reacquire | jobId=${String(running.jobId)} | worker=${String(workerId)} | attempt=${running.attempt} | ok=${ok}`,
+      );
+      return ok;
+    } catch (err) {
+      console.warn(
+        `[Direct] job ownership reacquire error | jobId=${String(running.jobId)} | ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
   }
 
   private async renewInFlightLease(

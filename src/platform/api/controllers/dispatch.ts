@@ -709,6 +709,26 @@ export async function dispatchController(
     }
   }
 
+  if (routeId.includes("_cdf_brief-gate") && request.method === "POST" && tenant) {
+    const { evaluateCdfBriefGate } = await import("../../cdf/brief-gate");
+    const str = (value: unknown): string | undefined =>
+      typeof value === "string" && value.trim() ? value.trim() : undefined;
+    return success(
+      await evaluateCdfBriefGate({
+        request: {
+          text: String(body.text ?? ""),
+          serviceId: str(body.serviceId),
+          service: str(body.service),
+          platform: str(body.platform),
+          subtype: str(body.subtype),
+          category: str(body.category),
+        },
+        organizationId: tenant.organizationId,
+        integration: getEnterpriseApiRuntime()?.platform.integrationEngine,
+      }),
+    );
+  }
+
   if (routeId.includes("_cdf_") && tenant) {
     const {
       getCdfSessionResult,

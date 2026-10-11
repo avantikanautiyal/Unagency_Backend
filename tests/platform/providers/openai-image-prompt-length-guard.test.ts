@@ -4,78 +4,96 @@
  * with maximum length 32000, but got a string with length 33754 instead."
  *
  * OpenAI's images.generate/images.edit `prompt` param has a hard 32000-char
- * cap. Nothing in the canonical→OpenAI image mapping enforced it — any
- * image phase whose compiled canonical prompt (brand context + composition
- * requirements + upstream refs) crosses that length fails the same way,
- * not just POSM. Fix is provider-boundary-scoped (request-mapper), not
- * phase-specific: truncate to fit and log loudly so it stays diagnosable.
+ * cap. The prompt is fitted section-aware: low-priority context is reduced
+ * first, while the instruction, direction, requirements and appended output
+ * requirements at the tail survive — a creative is always produced.
  */
 import { mapCanonicalToOpenAIRequest } from "../../../src/platform/providers/openai/requests/request-mapper";
+import { fitPromptToBudget } from "../../../src/platform/ai/canonical-model-request/fit-prompt-to-budget";
 import type { ProviderAdapterRequest } from "../../../src/platform/providers/adapters/contracts/adapter-io";
 
-describe("OpenAI image prompt length guard (live bug regression)", () => {
-  it("truncates an oversized images.generate prompt to OpenAI's documented 32000-char cap", () => {
-    const oversized = "A".repeat(33754);
-    const request = {
-      requestId: "req_test_1",
-      capabilityId: "image.generate",
-      modality: "image",
-      input: { prompt: oversized },
-      parameters: {},
-      features: [],
-      metadata: {},
-    } as unknown as ProviderAdapterRequest;
+function imageRequest(
+  requestId: string,
+  capabilityId: string,
+  input: Record<string, unknown>,
+): ProviderAdapterRequest {
+  return {
+    requestId,
+    capabilityId,
+    modality: "image",
+    input,
+    parameters: {},
+    features: [],
+    metadata: {},
+  } as unknown as ProviderAdapterRequest;
+}
 
-    const wire = mapCanonicalToOpenAIRequest(request, "gpt-image-1.5");
-    expect(typeof wire.body.prompt).toBe("string");
-    expect((wire.body.prompt as string).length).toBe(32000);
+function wirePrompt(wire: Readonly<Record<string, unknown>>): string {
+  return (wire.body as Record<string, unknown>).prompt as string;
+}
+
+const labeledPrompt = [
+  "===== CURRENT USER INSTRUCTION =====\nLuxury jewellery homepage hero, dark theme.",
+  "===== SELECTED SEMANTIC DIRECTIONS =====\nprimaryMessage: Built for the Modern Man",
+  "===== REQUIREMENTS =====\n- aspect: 16:9",
+  `===== UPSTREAM ARTIFACTS =====\n${'{\n    "page": "home",\n    "sections": ["hero", "collection"]\n}\n'.repeat(600)}`,
+  `===== WORKING MEMORY =====\n${"earlier turn about colours\n".repeat(400)}`,
+  "===== OUTPUT CONTRACT =====\nSingle UI screen.",
+  "===== AUTHORITY =====\nCDF phase contract is authoritative.",
+  "\n[Output requirements]\nDeliverable: website UI screen\nFormat: image",
+].join("\n\n");
+
+describe("OpenAI image prompt length guard (live bug regression)", () => {
+  it("fits an oversized labeled prompt under the cap, keeping essentials and the tail", () => {
+    expect(labeledPrompt.length).toBeGreaterThan(32000);
+    const wire = mapCanonicalToOpenAIRequest(
+      imageRequest("req_test_1", "image.generate", { prompt: labeledPrompt }),
+      "gpt-image-1.5",
+    );
+    const prompt = wirePrompt(wire);
+    expect(prompt.length).toBeLessThanOrEqual(32000);
+    expect(prompt).toContain("Luxury jewellery homepage hero, dark theme.");
+    expect(prompt).toContain("primaryMessage: Built for the Modern Man");
+    expect(prompt).toContain("- aspect: 16:9");
+    expect(prompt).toContain("Single UI screen.");
+    expect(prompt).toContain("[Output requirements]\nDeliverable: website UI screen\nFormat: image");
+  });
+
+  it("reduces low-priority context first (upstream artifacts before working memory)", () => {
+    const fitted = fitPromptToBudget(labeledPrompt, 32000);
+    expect(fitted.report?.middleCut).toBe(false);
+    expect(fitted.report?.trimmedSections[0]).toBe("UPSTREAM ARTIFACTS");
+    expect(fitted.prompt).toContain("upstream artifacts trimmed to fit model prompt limit");
   });
 
   it("leaves a prompt at or under the cap completely untouched", () => {
     const exact = "B".repeat(32000);
-    const request = {
-      requestId: "req_test_2",
-      capabilityId: "image.generate",
-      modality: "image",
-      input: { prompt: exact },
-      parameters: {},
-      features: [],
-      metadata: {},
-    } as unknown as ProviderAdapterRequest;
-
-    const wire = mapCanonicalToOpenAIRequest(request, "gpt-image-1.5");
-    expect(wire.body.prompt).toBe(exact);
+    const wire = mapCanonicalToOpenAIRequest(
+      imageRequest("req_test_2", "image.generate", { prompt: exact }),
+      "gpt-image-1.5",
+    );
+    expect(wirePrompt(wire)).toBe(exact);
 
     const short = "Instagram post for DiVastra";
-    const shortRequest = {
-      requestId: "req_test_3",
-      capabilityId: "image.generate",
-      modality: "image",
-      input: { prompt: short },
-      parameters: {},
-      features: [],
-      metadata: {},
-    } as unknown as ProviderAdapterRequest;
-    const shortWire = mapCanonicalToOpenAIRequest(shortRequest, "gpt-image-1.5");
-    expect(shortWire.body.prompt).toBe(short);
+    const shortWire = mapCanonicalToOpenAIRequest(
+      imageRequest("req_test_3", "image.generate", { prompt: short }),
+      "gpt-image-1.5",
+    );
+    expect(wirePrompt(shortWire)).toBe(short);
   });
 
-  it("also guards images.edits (reference-image role prompt), not just images.generations", () => {
-    const oversized = "C".repeat(40000);
-    const request = {
-      requestId: "req_test_4",
-      capabilityId: "image.edit",
-      modality: "image",
-      input: {
+  it("keeps head and tail when an unlabeled prompt must be cut (images.edits too)", () => {
+    const oversized = `HEAD-INSTRUCTION ${"C".repeat(40000)} TAIL-REQUIREMENTS`;
+    const wire = mapCanonicalToOpenAIRequest(
+      imageRequest("req_test_4", "image.edit", {
         prompt: oversized,
         referenceImages: [],
-      },
-      parameters: {},
-      features: [],
-      metadata: {},
-    } as unknown as ProviderAdapterRequest;
-
-    const wire = mapCanonicalToOpenAIRequest(request, "gpt-image-1.5");
-    expect((wire.body.prompt as string).length).toBeLessThanOrEqual(32000);
+      }),
+      "gpt-image-1.5",
+    );
+    const prompt = wirePrompt(wire);
+    expect(prompt.length).toBeLessThanOrEqual(32000);
+    expect(prompt).toContain("HEAD-INSTRUCTION");
+    expect(prompt).toContain("TAIL-REQUIREMENTS");
   });
 });

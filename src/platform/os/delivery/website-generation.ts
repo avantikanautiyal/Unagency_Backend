@@ -665,6 +665,41 @@ export type RecoverWebProjectOptions = {
   readonly layoutRouteIndex?: number;
 };
 
+/** Rebuild model output in the user-selected stack's server-owned scaffold. */
+function scaffoldInPreferredStack(
+  seed: { readonly title: string; readonly summary: string },
+  preferred: WebStack,
+  options?: RecoverWebProjectOptions
+): WebProjectPlan | null {
+  const fill = parseWebProjectFill(
+    {
+      title: seed.title,
+      summary: seed.summary,
+      brandName: seed.title,
+      tagline: seed.summary,
+      heroBody: seed.summary,
+      sections: [
+        { heading: "About", body: seed.summary },
+        { heading: "Details", body: seed.summary },
+      ],
+      ctaLabel: "Explore",
+      colors: colorsFromBrandHints(options?.brandColors),
+      stack: preferred,
+      html: "",
+    },
+    preferred
+  );
+  if (!fill) return null;
+  const project = expandWebProjectFill({
+    ...fill,
+    stack: preferred,
+    ...(typeof options?.layoutRouteIndex === "number"
+      ? { layoutRouteIndex: options.layoutRouteIndex }
+      : {}),
+  });
+  return validateWebProjectShape(project) ? project : null;
+}
+
 /** One expanded website direction (content-fill → scaffold). */
 export type WebsiteRoutePlan = WebProjectPlan & {
   description?: string;
@@ -751,34 +786,8 @@ export function recoverWebProjectPlan(
     if (!legacy) return null;
     // Prefer expanding into the chosen component stack when user picked React/Next/MERN.
     if (preferred && preferred !== "html-static") {
-      const fill = parseWebProjectFill(
-        {
-          title: legacy.title,
-          summary: legacy.summary,
-          brandName: legacy.title,
-          tagline: legacy.summary,
-          heroBody: legacy.summary,
-          sections: [
-            { heading: "About", body: legacy.summary },
-            { heading: "Details", body: legacy.summary },
-          ],
-          ctaLabel: "Explore",
-          colors: colorsFromBrandHints(options?.brandColors),
-          stack: preferred,
-          html: "",
-        },
-        preferred
-      );
-      if (fill) {
-        const project = expandWebProjectFill({
-          ...fill,
-          stack: preferred,
-          ...(typeof options?.layoutRouteIndex === "number"
-            ? { layoutRouteIndex: options.layoutRouteIndex }
-            : {}),
-        });
-        return validateWebProjectShape(project) ? project : null;
-      }
+      const scaffolded = scaffoldInPreferredStack(legacy, preferred, options);
+      if (scaffolded) return scaffolded;
     }
     return {
       title: legacy.title,
@@ -820,16 +829,10 @@ export function recoverWebProjectPlan(
   const files = parseFilesArray(rec.files);
   if (files.length > 0) {
     const inferred = inferStackFromFiles(files);
-    let stack =
-      normalizeStack(rec.stack) ||
-      normalizeStack(rec.techStack) ||
-      inferred ||
-      preferred ||
-      "html-static";
-    // Honor metadata preferred stack only when the model did not declare one.
-    if (preferred && !normalizeStack(rec.stack) && !normalizeStack(rec.techStack)) {
-      stack = preferred;
-    }
+    const declared =
+      normalizeStack(rec.stack) || normalizeStack(rec.techStack) || null;
+    const produced = inferred || declared;
+    const stack = preferred || produced || "html-static";
     const entry =
       typeof rec.entry === "string" && rec.entry.trim()
         ? normalizePath(rec.entry)
@@ -843,6 +846,25 @@ export function recoverWebProjectPlan(
       (typeof rec.summary === "string" && rec.summary.trim()) ||
       extractSummaryFromHtml(files[0]!.content) ||
       title;
+    // User-selected stack wins: never ship another stack's files under its label.
+    if (preferred && produced && produced !== preferred) {
+      if (preferred === "html-static") {
+        const html = files.find(
+          (f) => /\.html?$/i.test(f.path) && isCompleteWebsiteHtml(f.content)
+        );
+        if (html) {
+          return {
+            title,
+            summary,
+            stack: "html-static",
+            entry: "index.html",
+            files: [{ path: "index.html", content: html.content }],
+          };
+        }
+      }
+      const scaffolded = scaffoldInPreferredStack({ title, summary }, preferred, options);
+      if (scaffolded) return scaffolded;
+    }
     const project = normalizeProjectEntry({
       title,
       summary,
@@ -867,11 +889,8 @@ export function recoverWebProjectPlan(
             },
           }
         : fill;
-    const explicitStack = normalizeStack(rec.stack);
     const stamped =
-      preferred &&
-      preferred !== withColors.stack &&
-      !explicitStack
+      preferred && preferred !== withColors.stack
         ? { ...withColors, stack: preferred }
         : withColors;
     const project = expandWebProjectFill({
@@ -887,41 +906,14 @@ export function recoverWebProjectPlan(
   if (typeof rec.html === "string" && rec.html.trim()) {
     const legacy = planFromHtml(rec.html, rec);
     if (!legacy) return null;
-    const explicitStack = normalizeStack(rec.stack);
-    if (preferred && preferred !== "html-static" && explicitStack !== "html-static") {
-      const fillFromHtml = parseWebProjectFill(
-        {
-          title: legacy.title,
-          summary: legacy.summary,
-          brandName: legacy.title,
-          tagline: legacy.summary,
-          heroBody: legacy.summary,
-          sections: [
-            { heading: "About", body: legacy.summary },
-            { heading: "Details", body: legacy.summary },
-          ],
-          ctaLabel: "Explore",
-          colors: colorsFromBrandHints(options?.brandColors),
-          stack: preferred,
-          html: "",
-        },
-        preferred
-      );
-      if (fillFromHtml) {
-        const project = expandWebProjectFill({
-          ...fillFromHtml,
-          stack: preferred,
-          ...(typeof options?.layoutRouteIndex === "number"
-            ? { layoutRouteIndex: options.layoutRouteIndex }
-            : {}),
-        });
-        return validateWebProjectShape(project) ? project : null;
-      }
+    if (preferred && preferred !== "html-static") {
+      const scaffolded = scaffoldInPreferredStack(legacy, preferred, options);
+      if (scaffolded) return scaffolded;
     }
     return {
       title: legacy.title,
       summary: legacy.summary,
-      stack: preferred || normalizeStack(rec.techStack) || "html-static",
+      stack: "html-static",
       entry: "index.html",
       files: [{ path: "index.html", content: legacy.html }],
     };

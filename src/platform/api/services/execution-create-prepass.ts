@@ -84,6 +84,10 @@ import {
   updateExecutionTrace,
 } from "../../os/observability/execution-trace";
 import { logOsExecutionEvent } from "../../os/observability/execution-log";
+import {
+  metadataInheritsApprovedLogo,
+  stripBrandLogoBinding,
+} from "../../cdf/generation-context/inherited-logo";
 import { readExecutionSpecSnapshot } from "../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
 import {
   applyVisualModificationPrepass,
@@ -1001,7 +1005,12 @@ export async function runCreatePrepass(
     typeof workingMetadata?.brandId === "string"
       ? workingMetadata.brandId.trim()
       : "";
+  const inheritsApprovedLogo = metadataInheritsApprovedLogo(workingMetadata);
+  if (inheritsApprovedLogo && workingMetadata) {
+    workingMetadata = stripBrandLogoBinding(workingMetadata);
+  }
   const skipVaultLogoBind =
+    inheritsApprovedLogo ||
     workingMetadata?.skipVaultLogoBind === true ||
     (typeof workingMetadata?.cdfVisualIntent === "string" &&
       /^(pack_3d|pack_flat|environment_3d|merch_mockup|merch_artwork|product_mockup|posm|illustration|storyboard_frame|ui_screen)$/i.test(

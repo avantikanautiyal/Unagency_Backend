@@ -164,12 +164,12 @@ describe("Priority 4.9.3 — optional logo and stack invariants", () => {
     expect(result.brandLogoAssetId).toBeUndefined();
   });
 
-  it("provider-declared html-static beats inferred metadata stack", () => {
+  it("user-selected stack beats provider-declared stack; brief alone is not explicit", () => {
     const routes = recoverWebsiteRoutesPlan(
       { routes: [{ ...taskMintFill(), stack: "html-static" }] },
       { preferredStack: "react-vite" },
     );
-    expect(routes?.[0]?.stack).toBe("html-static");
+    expect(routes?.[0]?.stack).toBe("react-vite");
     expect(
       explicitPreferredStackFromMetadata({
         service: "website",

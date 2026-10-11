@@ -85,6 +85,7 @@ export function outputKindFromCdfContract(
 
   if (modality === "none" || modality === "materialize") return undefined;
 
+  if (contract.buildsWebsite) return "deferred_website";
   if (modality === "image" || modality === "hybrid") return "image";
   if (modality === "video") return "video";
 

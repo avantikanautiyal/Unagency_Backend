@@ -126,6 +126,11 @@ export class MediaDeliveryService {
       Boolean(rasterTarget) &&
       Boolean(sourceRaster) &&
       sourceRaster !== rasterTarget;
+    const exactExt = mimeToExactFormat(sourceMime);
+    const archiveFileName =
+      exactExt === "zip" && !needsRasterConversion && !needsPdfExport
+        ? `${artifactId}.zip`
+        : undefined;
 
     // Prefer provider signed URL when no conversion is required (unless browser
     // clients need same-origin bytes for CORS-safe fetch, e.g. vault re-upload).
@@ -136,7 +141,12 @@ export class MediaDeliveryService {
     ) {
       const signed = await this.blobAccess.createProviderInputSignedUrl(
         storageRef,
-        tenantOrganizationId
+        tenantOrganizationId,
+        archiveFileName
+          ? { disposition: "attachment", filename: archiveFileName }
+          : exactExt
+            ? { filename: `${artifactId}.${exactExt}` }
+            : undefined
       );
       if (signed.ok) {
         return success({
@@ -169,6 +179,9 @@ export class MediaDeliveryService {
       storageRef,
       contentType,
       ttlSeconds: this.ephemeralTtlSeconds,
+      ...(archiveFileName && !options?.preferSameOrigin
+        ? { fileName: archiveFileName }
+        : {}),
       ...(pdfRequested
         ? { requestedFormat: "pdf" as const }
         : rasterTarget

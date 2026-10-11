@@ -27,6 +27,7 @@ import {
   canonicalImageDeliveriesToOpenAIContentParts,
   CANONICAL_MULTIMODAL_MAPPING_SOURCE,
 } from "../../../ai/canonical-model-request";
+import { fitPromptToBudget } from "../../../ai/canonical-model-request/fit-prompt-to-budget";
 import { normalizeSchemaForOpenAiStrict } from "../../tools/structured/structured-output-execution";
 
 export function mapCanonicalToOpenAIRequest(
@@ -179,30 +180,26 @@ export function mapCanonicalToOpenAIRequest(
 }
 
 /**
- * OpenAI's images.generate/images.edit `prompt` param has a documented hard
- * cap (currently 32000 chars) — independent of any phase or brand. A
- * compiled canonical prompt (brand context + composition requirements +
- * upstream refs) can legitimately cross this for any image phase, not just
- * one. Truncating here (provider-boundary, not phase-specific) is the
- * generic fix — never silent: logged so an oversized compiled prompt stays
- * diagnosable rather than just quietly shorter.
+ * OpenAI's images.generate/images.edit `prompt` param has a hard 32000-char
+ * cap (HTTP 400 above it). Oversized prompts are fitted section-aware so the
+ * instruction, direction, requirements and appended output requirements
+ * survive; only low-priority context is reduced.
  */
-const OPENAI_IMAGE_PROMPT_MAX_LENGTH = 32000;
+export const OPENAI_IMAGE_PROMPT_MAX_LENGTH = 32000;
 
 function fitOpenAiImagePrompt(prompt: string, correlationId?: string): string {
-  if (prompt.length <= OPENAI_IMAGE_PROMPT_MAX_LENGTH) return prompt;
-  const truncated = prompt.slice(0, OPENAI_IMAGE_PROMPT_MAX_LENGTH);
-  console.warn(
-    JSON.stringify({
-      scope: "provider.openai.image_prompt_truncated",
-      correlationId,
-      originalLength: prompt.length,
-      truncatedLength: truncated.length,
-      maxLength: OPENAI_IMAGE_PROMPT_MAX_LENGTH,
-      droppedLength: prompt.length - truncated.length,
-    }),
-  );
-  return truncated;
+  const fitted = fitPromptToBudget(prompt, OPENAI_IMAGE_PROMPT_MAX_LENGTH);
+  if (fitted.report) {
+    console.warn(
+      JSON.stringify({
+        scope: "provider.openai.image_prompt_fitted",
+        correlationId,
+        maxLength: OPENAI_IMAGE_PROMPT_MAX_LENGTH,
+        ...fitted.report,
+      }),
+    );
+  }
+  return fitted.prompt;
 }
 
 /** OpenAI returns 400 invalid_input_fidelity_model for any other image model. */

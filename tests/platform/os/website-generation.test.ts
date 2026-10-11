@@ -195,7 +195,7 @@ describe("website-generation (WebProject)", () => {
     expect(plan?.stack).toBe("react-vite");
   });
 
-  it("preserves provider-declared html-static over metadata preferredStack", () => {
+  it("user-selected preferredStack wins over provider-declared stack", () => {
     const plan = recoverWebProjectPlan(
       {
         title: "Timeless",
@@ -222,8 +222,27 @@ describe("website-generation (WebProject)", () => {
         brandColors: ["chrome silver", "gold", "emerald green"],
       }
     );
-    expect(plan?.stack).toBe("html-static");
-    expect(plan?.entry).toBe("index.html");
+    expect(plan?.stack).toBe("react-vite");
+    expect(plan?.entry).toBe("package.json");
+    expect(plan?.files.some((f) => f.path === "package.json")).toBe(true);
+  });
+
+  it("rebuilds files[] output in the user-selected stack when they differ", () => {
+    const html =
+      "<!DOCTYPE html><html><head><title>Acme</title></head><body><h1>Acme</h1><p>Hello</p></body></html>";
+    const plan = recoverWebProjectPlan(
+      {
+        title: "Acme",
+        summary: "Widgets",
+        stack: "html-static",
+        entry: "index.html",
+        files: [{ path: "index.html", content: html }],
+      },
+      { preferredStack: "next" }
+    );
+    expect(plan?.stack).toBe("next");
+    expect(plan?.files.some((f) => f.path === "package.json")).toBe(true);
+    expect(plan?.files.some((f) => /^app\//.test(f.path))).toBe(true);
   });
 
   it("applies preferredStack when model omits explicit stack", () => {

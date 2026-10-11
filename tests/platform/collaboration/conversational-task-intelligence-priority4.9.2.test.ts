@@ -220,23 +220,22 @@ describe("Priority 4.9.2 — website materialization hardening", () => {
     expect(exported.artifactIds?.length).toBeGreaterThan(0);
   });
 
-  it("provider-declared html-static is preserved when metadata infers react-vite", () => {
+  it("user-selected react-vite wins over provider-declared html-static", () => {
     const routes = recoverWebsiteRoutesPlan(
       { routes: [{ ...taskMintFill(), stack: "html-static" }] },
       { preferredStack: "react-vite" },
     );
-    expect(routes?.[0]?.stack).toBe("html-static");
+    expect(routes?.[0]?.stack).toBe("react-vite");
   });
 
-  it("metadata-inferred stack does not override via explicitPreferredStackFromMetadata absence", () => {
-    expect(
-      explicitPreferredStackFromMetadata({
-        service: "website",
-        websiteUserBrief: "Build a React Vite app",
-      }),
-    ).toBeUndefined();
+  it("brief-only metadata is not an explicit stack, so provider stack is kept", () => {
+    const preferred = explicitPreferredStackFromMetadata({
+      service: "website",
+      websiteUserBrief: "Build a React Vite app",
+    });
+    expect(preferred).toBeUndefined();
     const project = recoverWebProjectPlan(taskMintFill(), {
-      preferredStack: "react-vite",
+      preferredStack: preferred,
     });
     expect(project?.stack).toBe("html-static");
   });

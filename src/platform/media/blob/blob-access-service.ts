@@ -6,7 +6,11 @@ import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
 import { BlobOwnershipRegistry } from "./blob-ownership-registry";
 import type { IBlobMetadataRepository } from "./blob-metadata-repository";
-import type { S3BlobStorage, RecordingS3BlobStorage } from "../../persistence/storage/s3-blob-storage";
+import type {
+  S3BlobStorage,
+  RecordingS3BlobStorage,
+  SignedGetUrlOptions,
+} from "../../persistence/storage/s3-blob-storage";
 import { parseStorageRefKey } from "./tenant-blob-key-builder";
 
 export interface ResolvedBlobAsset {
@@ -84,7 +88,8 @@ export class BlobAccessService {
 
   async createProviderInputSignedUrl(
     storageRef: string,
-    tenantOrganizationId: string
+    tenantOrganizationId: string,
+    options?: SignedGetUrlOptions
   ): Promise<Result<SignedBlobAccess>> {
     const resolved = await this.resolveForTenantAsync(storageRef, tenantOrganizationId);
     if (!resolved.ok) return resolved;
@@ -93,7 +98,8 @@ export class BlobAccessService {
     }
     const signed = await this.blobStorage.createSignedGetUrl(
       resolved.value.storageKey,
-      this.signedUrlTtlSeconds
+      this.signedUrlTtlSeconds,
+      options
     );
     if (!signed.ok) return signed;
     return success({

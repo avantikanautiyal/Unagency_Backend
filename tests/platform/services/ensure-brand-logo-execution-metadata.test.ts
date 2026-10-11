@@ -126,7 +126,7 @@ describe("ensure-brand-logo-execution-metadata", () => {
     expect(meta.brandLogoAssetId).toBe(attachedId);
   });
 
-  it("binds the brand's official logo without asking when several vault logos exist", async () => {
+  it("asks which logo to use when several vault logos exist, official one first", async () => {
     const officialId = new mongoose.Types.ObjectId();
     const vaultLogo = (id: mongoose.Types.ObjectId, name: string, day: string) => ({
       _id: id,
@@ -160,9 +160,17 @@ describe("ensure-brand-logo-execution-metadata", () => {
       metadata: { service: "social", productAction: "route_visual" },
     });
 
-    expect(meta.logoChoiceRequired).toBeUndefined();
-    expect(meta.brandLogoAssetId).toBe(officialId.toString());
-    expect(meta.brandLogoProvenance).toBe("Brand profile logo");
+    expect(meta.logoChoiceRequired).toBe(true);
+    expect(meta.brandLogoAssetId).toBeUndefined();
+    const candidates = meta.logoChoiceCandidates as Array<{
+      assetId: string;
+      official?: boolean;
+    }>;
+    expect(candidates).toHaveLength(3);
+    expect(candidates[0]).toMatchObject({
+      assetId: officialId.toString(),
+      official: true,
+    });
   });
 
   it("honors vaultLogoChoice without re-asking", async () => {

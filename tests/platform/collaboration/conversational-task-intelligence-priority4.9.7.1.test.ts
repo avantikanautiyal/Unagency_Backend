@@ -146,13 +146,30 @@ describe("P4.9.7.1 — logo clarification presentation + selection", () => {
     expect(turn.executionSpec?.referenceAssets?.logo?.value.source).toBe("ATTACHMENT");
   });
 
-  it("2b. multiple Vault logos, no stated preference → primary logo, no question", () => {
+  it("2b. multiple Vault logos, no stated preference → asks, never guesses", () => {
     const turn = resolveTurn("Create a merchandise mockup using our brand logo.", {
       logoDiscovery: multiLogoDiscovery(),
     });
+    expect(turn.clarification?.kind).toBe("logo_selection");
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("NEEDS_SELECTION");
+    expect(turn.requiresExecution).toBe(false);
+  });
+
+  it("2d. conversation's remembered choice → that logo, no question", () => {
+    const turn = resolveTurn("Create a merchandise mockup using our brand logo.", {
+      logoDiscovery: { ...multiLogoDiscovery(), vaultLogoChoice: VAULT_LOGO_B },
+    });
     expect(turn.clarification).toBeUndefined();
     expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("USE_EXISTING");
-    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(VAULT_LOGO_A);
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(VAULT_LOGO_B);
+  });
+
+  it("2e. small talk with multiple Vault logos → no logo question", () => {
+    const turn = resolveTurn("Hi", { logoDiscovery: multiLogoDiscovery() });
+    expect(turn.clarification?.kind).not.toBe("logo_selection");
+    expect(
+      turn.updatedTaskState.threads.some((t) => t.pendingLogoClarification),
+    ).toBe(false);
   });
 
   it("2c. brief names a variant that matches one Vault logo → that logo", () => {

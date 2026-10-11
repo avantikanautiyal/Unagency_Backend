@@ -32,7 +32,10 @@ import {
   updateTaskStateThread,
 } from "./conversational-task-intelligence";
 import type { ConversationalTurnResolution } from "./conversational-task-intelligence";
-import { discoverAuthoritativeLogoInputs } from "./conversational-task-intelligence/discover-authoritative-logo-inputs";
+import {
+  conversationLogoChoicePatch,
+  discoverConversationLogoInputs,
+} from "./conversational-task-intelligence/conversation-logo-choice";
 import { getEnterpriseApiRuntime } from "../api/runtime/bootstrap-enterprise-api";
 import type { SemanticSignals } from "./conversational-task-intelligence/semantic-signals";
 
@@ -411,12 +414,12 @@ export class ServiceConversationService {
       userId: input.userId,
       channelId: input.channelId,
     });
-    const logoDiscovery = await discoverAuthoritativeLogoInputs({
+    const logoDiscovery = await discoverConversationLogoInputs({
       organizationId: conversation.organizationId.toString(),
-      brandId: state.brandId,
+      state,
+      latestUserMessage: input.latestUserMessage,
       vaultLogoChoice: input.vaultLogoChoice,
       attachmentLogoAssetIds: input.attachmentLogoAssetIds,
-      brief: input.latestUserMessage,
     });
     const taskState = ensureTaskIntelligenceState(state.taskIntelligence);
     const hasActiveDeliverable = Boolean(
@@ -447,7 +450,16 @@ export class ServiceConversationService {
       await this.updateState({
         userId: input.userId,
         channelId: input.channelId,
-        patch: { taskIntelligence: resolution.updatedTaskState },
+        patch: {
+          taskIntelligence: resolution.updatedTaskState,
+          ...conversationLogoChoicePatch({
+            state,
+            discovery: logoDiscovery,
+            latestUserMessage: input.latestUserMessage,
+            vaultLogoChoice: input.vaultLogoChoice,
+            resolvedLogo: resolution.executionSpec?.referenceAssets?.logo?.value,
+          }),
+        },
       });
     }
     return resolution;
@@ -474,12 +486,12 @@ export class ServiceConversationService {
       userId: input.userId,
       channelId: input.channelId,
     });
-    const logoDiscovery = await discoverAuthoritativeLogoInputs({
+    const logoDiscovery = await discoverConversationLogoInputs({
       organizationId: conversation.organizationId.toString(),
-      brandId: state.brandId,
+      state,
+      latestUserMessage: input.latestUserMessage,
       vaultLogoChoice: input.vaultLogoChoice,
       attachmentLogoAssetIds: input.attachmentLogoAssetIds,
-      brief: input.latestUserMessage,
     });
     let turn = input.turn;
     if (!turn) {
@@ -512,7 +524,16 @@ export class ServiceConversationService {
       await this.updateState({
         userId: input.userId,
         channelId: input.channelId,
-        patch: { taskIntelligence: turn.updatedTaskState },
+        patch: {
+          taskIntelligence: turn.updatedTaskState,
+          ...conversationLogoChoicePatch({
+            state,
+            discovery: logoDiscovery,
+            latestUserMessage: input.latestUserMessage,
+            vaultLogoChoice: input.vaultLogoChoice,
+            resolvedLogo: turn.executionSpec?.referenceAssets?.logo?.value,
+          }),
+        },
       });
     }
     return buildExecutionContextFromConversation({

@@ -233,8 +233,13 @@ export function resolveConversationalTurn(
     visibleMessage;
 
   const explicitLogoChoice = input.logoDiscovery?.vaultLogoChoice?.trim();
+  // Only ask when this turn will produce something, or a choice is already pending.
+  const logoQuestionApplies =
+    Boolean(priorPendingLogo) || actionRequiresExecution(action) || substantiveNew;
   const pendingLogoCandidates =
-    logoSpec?.mode === "NEEDS_SELECTION" && logoSpec.candidates?.length
+    logoSpec?.mode === "NEEDS_SELECTION" &&
+    logoSpec.candidates?.length &&
+    logoQuestionApplies
       ? logoSpec.candidates
       : priorPendingLogo?.candidates?.length && !logoFollowUp && !explicitLogoChoice
         ? priorPendingLogo.candidates
@@ -341,7 +346,9 @@ export function resolveConversationalTurn(
     ...thread,
     lastExecutionSpec: executionSpec,
     pendingLogoClarification:
-      logoSpec?.mode === "NEEDS_SELECTION" && logoSpec.candidates?.length
+      logoSpec?.mode === "NEEDS_SELECTION" &&
+      logoSpec.candidates?.length &&
+      logoQuestionApplies
         ? Object.freeze({
             candidates: logoSpec.candidates,
             resumePrompt: pendingResumePrompt,

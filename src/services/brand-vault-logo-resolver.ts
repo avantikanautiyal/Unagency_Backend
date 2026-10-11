@@ -21,13 +21,15 @@ export type VaultLogoCandidate = {
   readonly updatedAt?: string;
   readonly mimeType?: string;
   readonly tags?: readonly string[];
+  /** True for the logo set as the brand's official logo on its profile. */
+  readonly official?: boolean;
 };
 
 export type BrandVaultLogoResolution = {
   readonly candidates: readonly VaultLogoCandidate[];
   readonly selectedAssetId?: string;
   readonly needsChoice: boolean;
-  /** True when selectedAssetId is the primary-PNG default among 2+ logos. */
+  /** True when selectedAssetId is the variant the brief named among 2+ logos. */
   readonly defaulted?: boolean;
 };
 
@@ -111,6 +113,8 @@ function sortCandidates(
   a: VaultLogoCandidate,
   b: VaultLogoCandidate
 ): number {
+  const officialDiff = (b.official ? 1 : 0) - (a.official ? 1 : 0);
+  if (officialDiff !== 0) return officialDiff;
   const approvedScore = (c: VaultLogoCandidate) =>
     c.approvalStatus === "approved" ? 1 : 0;
   const approvedDiff = approvedScore(b) - approvedScore(a);
@@ -159,7 +163,8 @@ export function applyVaultLogoSelection(input: {
  * Search the brand vault for logo assets.
  * - 0 candidates → caller keeps missing logo slot
  * - 1 candidate → auto-select
- * - 2+ → needsChoice (unless metadata already carries vaultLogoChoice)
+ * - 2+ → needsChoice (unless metadata already carries vaultLogoChoice or the
+ *   brief names exactly one of them); the official profile logo is listed first
  */
 export async function resolveBrandVaultLogos(input: {
   readonly organizationId: string;
@@ -225,7 +230,13 @@ export async function resolveBrandVaultLogos(input: {
     if (!isLogoLikeAsset(doc) && doc._id.toString() !== profileLogoId) {
       continue;
     }
-    byId.set(doc._id.toString(), toCandidate(doc));
+    const candidate = toCandidate(doc);
+    byId.set(
+      candidate.assetId,
+      candidate.assetId === profileLogoId
+        ? { ...candidate, official: true }
+        : candidate
+    );
   }
 
   const candidates = [...byId.values()].sort(sortCandidates);

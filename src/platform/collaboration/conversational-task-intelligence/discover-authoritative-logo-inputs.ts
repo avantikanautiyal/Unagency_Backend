@@ -12,7 +12,23 @@ export type AuthoritativeLogoDiscoveryInput = {
   readonly vaultLogoChoice?: string;
   readonly attachmentLogoAssetIds?: readonly string[];
   readonly brief?: string;
+  readonly service?: string;
+  readonly subtype?: string;
 };
+
+/** Jobs that design a new mark never reuse (or ask about) existing logos. */
+export function jobCreatesNewLogo(input: {
+  readonly brief?: string;
+  readonly service?: string;
+  readonly subtype?: string;
+}): boolean {
+  const service = (input.service ?? "").trim().toLowerCase();
+  const subtype = (input.subtype ?? "").trim().toLowerCase();
+  if (service === "branding" && /logo/.test(subtype)) return true;
+  return /\b(?:create|design|generate|make|build)\s+(?:me\s+|us\s+)?(?:a|an)\s+(?:new\s+)?(?:logo|wordmark)\b|\bnew\s+(?:logo|wordmark)\b|\bredesign\s+(?:the\s+|our\s+)?logo\b/i.test(
+    input.brief ?? "",
+  );
+}
 
 export type AuthoritativeLogoDiscoveryResult = {
   readonly vaultCandidates: readonly AuthoritativeLogoCandidate[];
@@ -28,7 +44,7 @@ export async function discoverAuthoritativeLogoInputs(
     .filter(Boolean);
 
   const brandId = input.brandId?.trim();
-  if (!brandId) {
+  if (!brandId || jobCreatesNewLogo(input)) {
     return Object.freeze({
       vaultCandidates: Object.freeze([]),
       attachmentLogoAssetIds: Object.freeze(attachmentLogoAssetIds),
@@ -50,14 +66,9 @@ export async function discoverAuthoritativeLogoInputs(
     profileLogoAssetId: profileContext.logoAssetId,
     brief: input.brief,
   });
-  const officialLogo = profileContext.logoAssetId?.trim();
-  const officialLogoWins =
-    !!officialLogo &&
-    attachmentLogoAssetIds.length === 0 &&
-    vault.candidates.some((c) => c.assetId === officialLogo);
-  const vaultDefault = officialLogoWins
-    ? officialLogo
-    : vault.needsChoice || (vault.defaulted && attachmentLogoAssetIds.length > 0)
+  // 2+ vault logos never resolve silently — the official one is only listed first.
+  const vaultDefault =
+    vault.needsChoice || attachmentLogoAssetIds.length > 0
       ? undefined
       : vault.selectedAssetId;
 
@@ -68,6 +79,7 @@ export async function discoverAuthoritativeLogoInputs(
         source: "VAULT" as const,
         name: candidate.name,
         folder: candidate.folder,
+        ...(candidate.official ? { official: true } : {}),
       }),
   );
 

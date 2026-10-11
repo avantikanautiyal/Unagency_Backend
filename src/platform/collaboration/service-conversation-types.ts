@@ -33,6 +33,8 @@ export type ServiceAiConversationState = {
   inProgressExecutionId?: string;
   /** Priority 4.5 — durable conversational task intelligence state. */
   taskIntelligence?: ConversationalTaskIntelligenceState;
+  /** Logo the user picked for this conversation — asked once, reused after. */
+  logoChoice?: { assetId: string; brandId?: string };
   updatedAt?: string;
 };
 

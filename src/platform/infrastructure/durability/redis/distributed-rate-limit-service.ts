@@ -87,26 +87,55 @@ export class DistributedRateLimitService implements IRateLimitService {
     let tightest: RateLimitDecision | undefined;
     const now = this.clockMs();
 
+    // All dimensions are counted in one concurrent batch: one network round
+    // trip to Redis per request instead of one (or two) per dimension.
+    const active = checks.flatMap((c) => {
+      if (!c.value) return [];
+      const policy = this.policies.find((p) => p.dimension === c.dimension);
+      if (!policy) return [];
+      const windowId = Math.floor(now / policy.windowMs);
+      return [
+        {
+          dimension: c.dimension,
+          value: c.value,
+          policy,
+          windowId,
+          key: `${this.keyPrefix}${c.dimension}:${c.value}:${windowId}`,
+        },
+      ];
+    });
+
     try {
-      for (const c of checks) {
-        if (!c.value) continue;
-        const policy = this.policies.find((p) => p.dimension === c.dimension);
-        if (!policy) continue;
-        const windowId = Math.floor(now / policy.windowMs);
-        const key = `${this.keyPrefix}${c.dimension}:${c.value}:${windowId}`;
-        const count = await this.redis.incrby(key, 1);
-        if (count === 1) {
-          await this.redis.set(key, String(count), "EX", Math.ceil(policy.windowMs / 1000));
-        }
-        const remaining = Math.max(0, policy.limit - count);
+      const redis = this.redis;
+      const counts = await Promise.all(
+        active.map((c) => redis.incrby(c.key, 1)),
+      );
+      // First hit of a window sets the key's expiry.
+      await Promise.all(
+        active.flatMap((c, i) =>
+          counts[i] === 1
+            ? [
+                redis.set(
+                  c.key,
+                  String(counts[i]),
+                  "EX",
+                  Math.ceil(c.policy.windowMs / 1000),
+                ),
+              ]
+            : [],
+        ),
+      );
+      for (let i = 0; i < active.length; i += 1) {
+        const c = active[i]!;
+        const count = counts[i]!;
         const decision: RateLimitDecision = {
-          allowed: count <= policy.limit,
-          remaining,
-          resetAt: new Date((windowId + 1) * policy.windowMs).toISOString(),
+          allowed: count <= c.policy.limit,
+          remaining: Math.max(0, c.policy.limit - count),
+          resetAt: new Date((c.windowId + 1) * c.policy.windowMs).toISOString(),
           dimension: c.dimension,
           key: `${c.dimension}:${c.value}`,
-          limit: policy.limit,
-          windowMs: policy.windowMs,
+          limit: c.policy.limit,
+          windowMs: c.policy.windowMs,
           accountingClass,
         };
         if (!decision.allowed) return success(decision);

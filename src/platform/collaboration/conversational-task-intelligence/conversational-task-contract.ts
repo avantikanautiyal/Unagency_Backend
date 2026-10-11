@@ -159,6 +159,7 @@ export type LogoClarificationCandidate = {
   readonly source: "VAULT" | "ATTACHMENT";
   readonly name?: string;
   readonly folder?: string;
+  readonly official?: boolean;
   readonly thumbnailUrl?: string;
   readonly mimeType?: string;
 };

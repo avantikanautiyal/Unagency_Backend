@@ -102,6 +102,9 @@ import { updateExecutionTrace } from "../../os/observability/execution-trace";
 
 
 
+/** Longest a status poll waits on the job worker before answering. */
+const POLL_TICK_BUDGET_MS = 1500;
+
 export class ExecutionApiService implements IExecutionApiService {
   private readonly executionStore = new Map<string, ExecutionResource>();
   private readonly artifactStore = new Map<string, ExecutionArtifactRef[]>();
@@ -1644,7 +1647,18 @@ export class ExecutionApiService implements IExecutionApiService {
         this.deps.autoTick !== false
       ) {
         this.deps.distributed.registerWorker("execution", 4);
-        await this.deps.distributed.tick(1).catch(() => undefined);
+        // Kick the worker, but wait only briefly: tick() runs the job to
+        // completion, which would otherwise hold this status poll open for the
+        // whole generation (and tie up one of the browser's few API
+        // connections). Quick jobs still finish inside the poll.
+        const kicked = this.deps.distributed.tick(1).catch(() => undefined);
+        await Promise.race([
+          kicked,
+          new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, POLL_TICK_BUDGET_MS);
+            timer.unref?.();
+          }),
+        ]);
         job = readJob();
       }
       if (job.ok && job.value) {

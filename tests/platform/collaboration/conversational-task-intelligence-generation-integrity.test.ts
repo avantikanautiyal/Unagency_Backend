@@ -123,7 +123,7 @@ describe("P4.9.7 generation integrity — authoritative logo", () => {
     expect(resolution.candidates).toBeUndefined();
   });
 
-  it("4. two different Vault logos → defaults to the primary logo PNG", () => {
+  it("4. two different Vault logos → asks which one, even with a primary PNG", () => {
     const turn = resolveTurn("Create a merchandise mockup using our brand logo.", {
       logoDiscovery: {
         vaultCandidates: [
@@ -132,9 +132,8 @@ describe("P4.9.7 generation integrity — authoritative logo", () => {
         ],
       },
     });
-    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("USE_EXISTING");
-    expect(turn.executionSpec?.referenceAssets?.logo?.value.assetId).toBe(VAULT_LOGO_B);
-    expect(turn.clarification).toBeUndefined();
+    expect(turn.executionSpec?.referenceAssets?.logo?.value.mode).toBe("NEEDS_SELECTION");
+    expect(turn.clarification?.kind).toBe("logo_selection");
   });
 
   it("4b. two Vault logos + brief names a variant neither matches → clarification", () => {

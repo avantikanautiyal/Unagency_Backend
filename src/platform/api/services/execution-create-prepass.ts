@@ -107,6 +107,18 @@ function brandDisplayName(
   return name || "This brand";
 }
 
+function logoChoiceLabel(candidate: {
+  readonly name?: string;
+  readonly folder?: string;
+  readonly official?: boolean;
+}): string {
+  const name = String(candidate.name ?? "Logo");
+  const detail = [candidate.official ? "official" : "", candidate.folder ?? ""]
+    .filter(Boolean)
+    .join(" • ");
+  return detail ? `${name} (${detail})` : name;
+}
+
 function continuitySlotCheckApplies(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): boolean {
@@ -868,9 +880,7 @@ export async function runCreatePrepass(
                 slotKey: "logo",
                 choices: logoCandidates.map((candidate) => ({
                   id: `vault_logo:${candidate.assetId}`,
-                  label: candidate.folder
-                    ? `${candidate.name} (${candidate.folder})`
-                    : candidate.name,
+                  label: logoChoiceLabel(candidate),
                 })),
                 details: { candidates: logoCandidates },
               }
@@ -1051,11 +1061,14 @@ export async function runCreatePrepass(
             reason: "CONTINUITY_LOGO_CHOICE",
             slotKey: "logo",
             choices: candidates.map(
-              (candidate: { assetId?: string; name?: string; folder?: string }) => ({
+              (candidate: {
+                assetId?: string;
+                name?: string;
+                folder?: string;
+                official?: boolean;
+              }) => ({
                 id: `vault_logo:${String(candidate.assetId ?? "")}`,
-                label: candidate.folder
-                  ? `${candidate.name ?? "Logo"} (${candidate.folder})`
-                  : String(candidate.name ?? "Logo"),
+                label: logoChoiceLabel(candidate),
               }),
             ),
             details: { candidates },

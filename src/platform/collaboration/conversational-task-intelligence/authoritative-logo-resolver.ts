@@ -130,7 +130,10 @@ export function resolveAuthoritativeLogo(input: {
     });
   }
 
-  const attachments = merged.filter((c) => c.source === "ATTACHMENT");
+  // A logo attached to this prompt is the user's choice, even when the same
+  // asset is already filed in the vault (dedupe keeps vault provenance).
+  const attachmentIds = new Set(attachmentCandidates.map((c) => c.assetId));
+  const attachments = merged.filter((c) => attachmentIds.has(c.assetId));
   const selectionPending = input.prior?.mode === "NEEDS_SELECTION";
   const picked =
     selectionPending
@@ -299,6 +302,7 @@ export function logoCandidatesToClarificationChoices(
         source: candidate.source,
         name: candidate.name?.trim() || `Logo ${index + 1}`,
         folder: candidate.folder,
+        ...(candidate.official ? { official: true } : {}),
       }),
     ),
   );
@@ -353,6 +357,7 @@ export function authoritativeLogoFromMetadata(
                   c.source === "ATTACHMENT" ? ("ATTACHMENT" as const) : ("VAULT" as const),
                 name: typeof c.name === "string" ? c.name : undefined,
                 folder: typeof c.folder === "string" ? c.folder : undefined,
+                ...(c.official === true ? { official: true } : {}),
               }),
             )
             .filter((c) => c.assetId.trim().length > 0),

@@ -128,7 +128,7 @@ describe("brand-vault-logo-resolver", () => {
     expect(vault.needsChoice).toBe(false);
   });
 
-  it("defaults to the primary logo PNG when multiple vault logos exist", async () => {
+  it("requires choice when multiple vault logos exist, even with a primary PNG", async () => {
     const systemId = new mongoose.Types.ObjectId();
     const primaryId = new mongoose.Types.ObjectId();
     (MediaFile.find as jest.Mock).mockImplementation(() => ({
@@ -165,10 +165,41 @@ describe("brand-vault-logo-resolver", () => {
       organizationId: new mongoose.Types.ObjectId().toString(),
       brandId: new mongoose.Types.ObjectId().toString(),
     });
-    expect(vault.needsChoice).toBe(false);
-    expect(vault.defaulted).toBe(true);
-    const selected = vault.candidates.find((c) => c.assetId === vault.selectedAssetId);
-    expect(selected?.name).toBe("branding-logo-primary-logo-png");
+    expect(vault.needsChoice).toBe(true);
+    expect(vault.selectedAssetId).toBeUndefined();
+    expect(vault.candidates).toHaveLength(3);
+  });
+
+  it("lists the brand's official logo first and flags it", async () => {
+    const officialId = new mongoose.Types.ObjectId();
+    const logo = (id: mongoose.Types.ObjectId, name: string, day: string) => ({
+      _id: id,
+      fileName: name,
+      folder: "logos",
+      kind: "image",
+      mimeType: "image/png",
+      approvalStatus: "approved",
+      updatedAt: new Date(`2026-08-${day}T00:00:00.000Z`),
+    });
+    (MediaFile.find as jest.Mock).mockImplementation(() => ({
+      select: () => ({
+        lean: async () => [
+          logo(new mongoose.Types.ObjectId(), "Newer logo", "20"),
+          logo(officialId, "Uploaded mark", "01"),
+        ],
+      }),
+    }));
+    const vault = await resolveBrandVaultLogos({
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      brandId: new mongoose.Types.ObjectId().toString(),
+      profileLogoAssetId: officialId.toString(),
+    });
+    expect(vault.needsChoice).toBe(true);
+    expect(vault.candidates[0]).toMatchObject({
+      assetId: officialId.toString(),
+      official: true,
+    });
+    expect(vault.candidates[1]?.official).toBeUndefined();
   });
 
   it("requires choice when the brief names a variant no vault logo matches", async () => {

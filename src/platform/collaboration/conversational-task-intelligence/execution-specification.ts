@@ -55,6 +55,8 @@ export type AuthoritativeLogoCandidate = {
   readonly source: AuthoritativeLogoSource;
   readonly name?: string;
   readonly folder?: string;
+  /** True for the logo set as the brand's official logo on its profile. */
+  readonly official?: boolean;
 };
 
 export type AuthoritativeLogoSpec = {

@@ -73,9 +73,10 @@ export class MongoJobStore implements IJobStore {
     const id = String(job.jobId);
     if (isClaimedStatus(job.status)) {
       // Do not $set ownership fields — renewLease/tryClaim own those paths.
+      const { payload, ...fields } = stripOwnershipForClaimedPersist(job);
       await EnterpriseJob.updateOne(
         { jobId: id },
-        { $set: stripOwnershipForClaimedPersist(job) },
+        { $set: fields, $setOnInsert: { payload } },
         { upsert: true, maxTimeMS: 15_000 },
       );
       const prev = this.cache.get(id);
@@ -91,9 +92,10 @@ export class MongoJobStore implements IJobStore {
       });
       return;
     }
+    const { payload, ...fields } = job;
     await EnterpriseJob.updateOne(
       { jobId: id },
-      { $set: job },
+      { $set: fields, $setOnInsert: { payload } },
       { upsert: true, maxTimeMS: 15_000 },
     );
     this.cache.set(id, job);

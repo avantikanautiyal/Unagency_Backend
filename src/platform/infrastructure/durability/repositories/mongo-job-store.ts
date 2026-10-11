@@ -44,8 +44,45 @@ function stripOwnershipForClaimedPersist(
   return rest as Record<string, unknown>;
 }
 
+const INLINE_DATA_OMITTED = "[inline-data-omitted]";
+const INLINE_DATA_MAX_CHARS = 32 * 1024;
+
+/**
+ * Inline `data:` URLs (vault bytes resolved for providers) are duplicated across
+ * payload.metadata and can reach many MB — too large to write to Mongo on every
+ * enqueue. The full payload stays in the in-memory cache for this process.
+ */
+function omitInlineData(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.length > INLINE_DATA_MAX_CHARS && value.startsWith("data:")
+      ? INLINE_DATA_OMITTED
+      : value;
+  }
+  if (Array.isArray(value)) return value.map(omitInlineData);
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = omitInlineData(v);
+    return out;
+  }
+  return value;
+}
+
+function hasOmittedInlineData(payload: unknown): boolean {
+  try {
+    return JSON.stringify(payload ?? null).includes(INLINE_DATA_OMITTED);
+  } catch {
+    return false;
+  }
+}
+
 export class MongoJobStore implements IJobStore {
   private readonly cache = new Map<string, ExecutionJob>();
+
+  /** Durable docs carry a slimmed payload; keep the full in-memory one when present. */
+  private withCachedPayload(doc: ExecutionJob): ExecutionJob {
+    const cached = this.cache.get(String(doc.jobId))?.payload;
+    return cached !== undefined ? { ...doc, payload: cached } : doc;
+  }
 
   save(job: ExecutionJob): void {
     const id = String(job.jobId);
@@ -76,7 +113,7 @@ export class MongoJobStore implements IJobStore {
       const { payload, ...fields } = stripOwnershipForClaimedPersist(job);
       await EnterpriseJob.updateOne(
         { jobId: id },
-        { $set: fields, $setOnInsert: { payload } },
+        { $set: fields, $setOnInsert: { payload: omitInlineData(payload) } },
         { upsert: true, maxTimeMS: 15_000 },
       );
       const prev = this.cache.get(id);
@@ -95,7 +132,7 @@ export class MongoJobStore implements IJobStore {
     const { payload, ...fields } = job;
     await EnterpriseJob.updateOne(
       { jobId: id },
-      { $set: fields, $setOnInsert: { payload } },
+      { $set: fields, $setOnInsert: { payload: omitInlineData(payload) } },
       { upsert: true, maxTimeMS: 15_000 },
     );
     this.cache.set(id, job);
@@ -112,7 +149,7 @@ export class MongoJobStore implements IJobStore {
     if (!doc) {
       return this.cache.get(String(jobId));
     }
-    const job = doc as unknown as ExecutionJob;
+    const job = this.withCachedPayload(doc as unknown as ExecutionJob);
     this.cache.set(String(jobId), job);
     return job;
   }
@@ -124,7 +161,10 @@ export class MongoJobStore implements IJobStore {
   async hydrateAll(): Promise<void> {
     const docs = await EnterpriseJob.find().lean();
     for (const doc of docs) {
-      this.cache.set(String(doc.jobId), doc as unknown as ExecutionJob);
+      this.cache.set(
+        String(doc.jobId),
+        this.withCachedPayload(doc as unknown as ExecutionJob),
+      );
     }
   }
 
@@ -147,6 +187,12 @@ export class MongoJobStore implements IJobStore {
       let job = this.cache.get(jobId);
       if (!job?.payload) {
         job = await this.hydrate(doc.jobId as JobId);
+      }
+      if (job && hasOmittedInlineData(job.payload)) {
+        console.warn(
+          `[Direct] job recovery skipped | jobId=${jobId} | reason=inline_media_not_persisted`,
+        );
+        continue;
       }
       if (job && (job.status === "queued" || job.status === "retrying")) {
         this.cache.set(jobId, job);
@@ -193,7 +239,7 @@ export class MongoJobStore implements IJobStore {
       { new: true, maxTimeMS: 15_000 }
     ).lean();
     if (!doc) return undefined;
-    const job = doc as unknown as ExecutionJob;
+    const job = this.withCachedPayload(doc as unknown as ExecutionJob);
     this.cache.set(String(jobId), job);
     return job;
   }
@@ -237,7 +283,7 @@ export class MongoJobStore implements IJobStore {
       ).lean();
       if (!updated) continue;
       const job = {
-        ...(updated as unknown as ExecutionJob),
+        ...this.withCachedPayload(updated as unknown as ExecutionJob),
         reservedBy: undefined,
         reservationId: undefined,
         leaseId: undefined,
@@ -286,7 +332,7 @@ export class MongoJobStore implements IJobStore {
     }
     const job = {
       ...(existing ?? (doc as unknown as ExecutionJob)),
-      ...(doc as unknown as ExecutionJob),
+      ...this.withCachedPayload(doc as unknown as ExecutionJob),
       leaseExpiresAt,
       updatedAt: nowIso,
     };
@@ -323,7 +369,10 @@ export class MongoJobStore implements IJobStore {
       { new: true, maxTimeMS: 5_000 },
     ).lean();
     if (!doc) return false;
-    this.cache.set(String(jobId), doc as unknown as ExecutionJob);
+    this.cache.set(
+      String(jobId),
+      this.withCachedPayload(doc as unknown as ExecutionJob),
+    );
     return true;
   }
 }

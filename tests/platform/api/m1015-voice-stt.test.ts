@@ -176,6 +176,43 @@ describe("M10.15 voice / STT", () => {
     }
   });
 
+  test("VoicePromptService transcribes a live recording before the user has an organisation", async () => {
+    const saved = {
+      mode: process.env.ENTERPRISE_API_EXECUTION_MODE,
+      key: process.env.OPENAI_API_KEY,
+      fast: process.env.VOICE_STT_FAST_PATH,
+    };
+    const realFetch = global.fetch;
+    process.env.ENTERPRISE_API_EXECUTION_MODE = "live";
+    process.env.OPENAI_API_KEY = "test-key";
+    delete process.env.VOICE_STT_FAST_PATH;
+    global.fetch = (async () =>
+      new Response(JSON.stringify({ text: "we sell handmade soap" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    try {
+      const result = await new VoicePromptService().uploadAndTranscribe({
+        userId: userA.toString(),
+        filename: "about.webm",
+        mimeType: "audio/webm;codecs=opus",
+        bytes: Buffer.from("webm-bytes"),
+      });
+      expect(result.transcript).toBe("we sell handmade soap");
+      expect(result.assetId).toBe("");
+      expect(result.status).toBe("succeeded");
+    } finally {
+      global.fetch = realFetch;
+      const restore = (name: string, value: string | undefined) => {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      };
+      restore("ENTERPRISE_API_EXECUTION_MODE", saved.mode);
+      restore("OPENAI_API_KEY", saved.key);
+      restore("VOICE_STT_FAST_PATH", saved.fast);
+    }
+  });
+
   test("VoicePromptService rejects unsupported mime before upload", async () => {
     const voice = new VoicePromptService();
     await expect(

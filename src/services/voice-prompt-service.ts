@@ -157,7 +157,8 @@ function transcriptFromExecution(resource: ExecutionResource): string {
 export class VoicePromptService {
   async uploadAndTranscribe(input: {
     userId: string;
-    organizationId: string;
+    /** Absent while the user is still creating their first business. */
+    organizationId?: string;
     workspaceId?: string;
     filename: string;
     mimeType: string;
@@ -171,10 +172,34 @@ export class VoicePromptService {
     }
 
     const filename = input.filename || "voice-prompt.m4a";
+    const organizationId = input.organizationId?.trim();
+    if (!organizationId) {
+      // No tenant to store the recording under: transcribe only.
+      const key = directSttApiKey();
+      if (!key) throw new ApiError("No organisation found for user", 400);
+      const transcript = await transcribeDirect({
+        apiKey: key,
+        bytes: input.bytes,
+        filename,
+        mimeType,
+        language: input.language,
+        signal: input.signal,
+      });
+      if (!transcript) {
+        throw new ApiError("Speech-to-text returned an empty transcript", 502);
+      }
+      return {
+        transcript,
+        assetId: "",
+        executionId: `${DIRECT_EXECUTION_PREFIX}${Date.now()}`,
+        status: "succeeded",
+        mimeType,
+      };
+    }
     const uploadAsset = () =>
       productAssetService.upload({
         userId: input.userId,
-        organizationId: input.organizationId,
+        organizationId,
         filename,
         mimeType,
         bytes: input.bytes,
@@ -226,7 +251,7 @@ export class VoicePromptService {
 
     return this.transcribeAsset({
       userId: input.userId,
-      organizationId: input.organizationId,
+      organizationId,
       workspaceId: input.workspaceId,
       assetId: asset.id,
       language: input.language,

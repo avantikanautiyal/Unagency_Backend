@@ -12,6 +12,11 @@ import { voicePromptService } from "../services/voice-prompt-service";
 
 export { productAssetUpload };
 
+function optionalOrgIdFromUser(req: RequestUser): string | undefined {
+  const org = req.user?.organization as { _id?: { toString(): string } } | null;
+  return org?._id?.toString() || undefined;
+}
+
 function orgIdFromUser(req: RequestUser): string {
   const org = req.user?.organization as { _id?: { toString(): string } } | null;
   const id = org?._id?.toString();
@@ -23,8 +28,11 @@ function orgIdFromUser(req: RequestUser): string {
 export const transcribeVoicePrompt = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const userId = String(req.user!.userId);
+    // A user dictating while creating their first business has no organisation
+    // yet; a live recording can still be transcribed, it just isn't stored.
     const organizationId =
-      (req.body?.organizationId as string | undefined) || orgIdFromUser(req);
+      (req.body?.organizationId as string | undefined)?.trim() ||
+      optionalOrgIdFromUser(req);
     const workspaceId = req.body?.workspaceId as string | undefined;
     const language = req.body?.language as string | undefined;
     const signal = (req as { signal?: AbortSignal }).signal;
@@ -50,7 +58,7 @@ export const transcribeVoicePrompt = asyncHandler(
 
     const data = await voicePromptService.transcribeAsset({
       userId,
-      organizationId,
+      organizationId: organizationId || orgIdFromUser(req),
       workspaceId,
       assetId: assetId.trim(),
       language,

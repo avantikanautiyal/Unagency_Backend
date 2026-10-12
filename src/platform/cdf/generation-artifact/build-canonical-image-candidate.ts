@@ -115,6 +115,41 @@ export function buildCanonicalImageIngestCandidate(input: {
     ];
   }
 
+  // packaging.complete-pack is one flat sheet laying out all six pack
+  // surfaces. The sheet carries the generated image; the six surfaces are the
+  // regions it shows — a single image is the accepted deliverable.
+  if (artifactKey === "packaging.complete-pack") {
+    rawOutput.surfaces = [
+      {
+        id: "package_surface_flat",
+        role: "flat",
+        notes: "Flat sheet showing all six pack surfaces",
+        previewAssetRef: { vaultAssetId, role: "preview" },
+      },
+      { id: "package_surface_front", role: "front" },
+      { id: "package_surface_back", role: "back" },
+      { id: "package_surface_left", role: "side", notes: "Left side" },
+      { id: "package_surface_right", role: "side", notes: "Right side" },
+      { id: "package_surface_top", role: "top" },
+      { id: "package_surface_bottom", role: "bottom" },
+    ];
+  }
+
+  // packaging.views / packaging.sku-adaptations: one generated image is one
+  // view / one SKU adaptation of the approved pack.
+  if (artifactKey === "packaging.views") {
+    rawOutput.views = [{ id: "view_01", name: "Pack view" }];
+  }
+  if (artifactKey === "packaging.sku-adaptations") {
+    rawOutput.skus = [
+      {
+        id: "sku_01",
+        label: "SKU adaptation",
+        previewAssetRef: { vaultAssetId, role: "preview" },
+      },
+    ];
+  }
+
   return {
     rawOutput,
     vaultAssetIds: [vaultAssetId],

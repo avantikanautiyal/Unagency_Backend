@@ -85,6 +85,32 @@ export class TextExecutionRouter {
       selected = pickFirstExecutablePref(preferenceSource, allowed);
     }
 
+    // Automatic retry (attempt 2, 3…): never call the provider that just
+    // failed or was rejected again — move down the vendor-diverse preference
+    // list, even when the first attempt pinned a provider.
+    const attempt = Number(input.metadata?.cdfQualityAttempt);
+    if (selected && Number.isInteger(attempt) && attempt > 1) {
+      const first = selected;
+      const rotation: MatrixProviderPref[] = [first];
+      const vendors = new Set<string>([first.providerId]);
+      // This use case's own list first, then the general list, so a use
+      // case with few configured vendors still has somewhere else to go.
+      const pool = isResearch
+        ? preferences
+        : [
+            ...preferences,
+            ...TEXT_USE_CASE_PREFERENCES.general.filter((p) =>
+              allowed.has(p.providerId),
+            ),
+          ];
+      for (const pref of pool) {
+        if (vendors.has(pref.providerId)) continue;
+        vendors.add(pref.providerId);
+        rotation.push(pref);
+      }
+      selected = rotation[(attempt - 1) % rotation.length]!;
+    }
+
     if (!selected) {
       // Fall back to any executable text leaf.
       const anyId = String(executable[0]);

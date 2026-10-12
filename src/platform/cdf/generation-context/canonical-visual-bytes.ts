@@ -34,7 +34,17 @@ export function extractVaultAssetIdFromArtifactData(
   if (typeof preview?.vaultAssetId === "string" && preview.vaultAssetId.trim()) {
     return preview.vaultAssetId.trim();
   }
-  for (const key of ["candidates", "options", "images", "items", "frames"] as const) {
+  for (const key of [
+    "candidates",
+    "options",
+    "images",
+    "items",
+    "frames",
+    // Packaging: complete-pack sheet, views and SKU adaptations.
+    "surfaces",
+    "views",
+    "skus",
+  ] as const) {
     const arr = root[key];
     if (!Array.isArray(arr)) continue;
     for (const item of arr) {

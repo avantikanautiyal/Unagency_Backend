@@ -40,9 +40,12 @@ describe("CDF validation leniency", () => {
     expect(status(checks, "social-media.creative-directions")).toBe("passed");
   });
 
-  it("keeps logo / headline blocking on observable artifacts", () => {
+  it("blocks logo / headline misses before the final attempt only", () => {
     expect(status([check("required_logo")], "presentation.deck")).toBe("failed");
-    expect(status([check("exact_headline")], "presentation.deck", 3)).toBe("failed");
+    expect(status([check("exact_headline")], "presentation.deck", 2)).toBe("failed");
+    // Final attempt is never blocked by a quality check — the user decides.
+    expect(status([check("required_logo")], "presentation.deck", 3)).toBe("passed");
+    expect(status([check("exact_headline")], "presentation.deck", 3)).toBe("passed");
   });
 
   it("blocks size / format before the final attempt, passes on attempt 3", () => {

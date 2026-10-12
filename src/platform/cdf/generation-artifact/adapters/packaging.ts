@@ -61,6 +61,16 @@ function requireExactRef(
   return ref;
 }
 
+/** A well-formed preview image reference, or undefined. */
+function previewRefOf(
+  value: unknown,
+): { vaultAssetId: string; role: string } | undefined {
+  if (!isRecord(value)) return undefined;
+  const vaultAssetId = asString(value.vaultAssetId);
+  if (!vaultAssetId) return undefined;
+  return { vaultAssetId, role: asString(value.role) || "preview" };
+}
+
 function assertNotImageOnly(raw: Record<string, unknown>, label: string): void {
   const r = rejectImageOnlyPackagingEnvelope(raw, label);
   if (!r.ok) {
@@ -439,7 +449,14 @@ export function normalizePackagingCompletePack(
       | "bottom"
       | "flat"
       | "other";
-    return { id, role, notes: asString(s.notes) };
+    return {
+      id,
+      role,
+      notes: asString(s.notes),
+      ...(previewRefOf(s.previewAssetRef)
+        ? { previewAssetRef: previewRefOf(s.previewAssetRef) }
+        : {}),
+    };
   });
 
   return {
@@ -566,6 +583,9 @@ export function normalizePackagingSkuAdaptations(
       variantName: asString(s.variantName),
       variantAttribute: asString(s.variantAttribute) || asString(s.size),
       artworkOverrideNotes: asString(s.artworkOverrideNotes),
+      ...(previewRefOf(s.previewAssetRef)
+        ? { previewAssetRef: previewRefOf(s.previewAssetRef) }
+        : {}),
     };
   });
 

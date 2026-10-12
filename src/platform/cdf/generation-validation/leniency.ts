@@ -2,8 +2,9 @@
  * Requirement-check leniency for the M4 acceptance gate.
  *
  * Only serious brief misses block acceptance:
- *  - logo / reference asset and exact headline wording (every attempt)
- *  - size / format (attempts before the final automatic attempt)
+ *  - logo / reference asset, exact headline wording and size / format,
+ *    on attempts before the final automatic attempt. The final attempt is
+ *    never blocked by a quality check, so its result can always be approved.
  * Everything else (counts, colours, sections, forbidden terms…) is downgraded
  * to a warning so usable creatives are not rejected for minor gaps.
  *
@@ -64,10 +65,9 @@ export function applyRequirementCheckLeniency(
   return checks.map((check) => {
     if (check.severity !== "blocking") return check;
     const kind = seriousKind(check);
-    const stillBlocks =
-      observable &&
-      kind != null &&
-      !(kind === "size_format" && finalAttempt);
+    // Final automatic attempt: nothing blocks. The user sees that result and
+    // may approve it regardless of quality checks (they refine if it is wrong).
+    const stillBlocks = observable && kind != null && !finalAttempt;
     if (stillBlocks) return check;
     return {
       ...check,
@@ -75,7 +75,7 @@ export function applyRequirementCheckLeniency(
       evidence: `${check.evidence} (non-blocking: ${
         !observable
           ? "not observable on this artifact"
-          : kind === "size_format"
+          : finalAttempt
             ? "final attempt"
             : "minor requirement"
       })`,

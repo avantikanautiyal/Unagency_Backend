@@ -89,6 +89,12 @@ export interface IJobStore {
   hydrate?(jobId: JobId): Promise<ExecutionJob | undefined>;
   /** Await durable persistence for terminal or in-flight transitions (optional). */
   persist?(job: ExecutionJob): Promise<void>;
+  /** Durably record a user stop without touching lease ownership. */
+  persistCancelRequest?(
+    jobId: JobId,
+    status: ExecutionJob["status"],
+    nowIso: string,
+  ): Promise<void>;
 }
 
 export interface IQueueBackend {

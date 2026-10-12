@@ -44,6 +44,22 @@ function stripOwnershipForClaimedPersist(
   return rest as Record<string, unknown>;
 }
 
+/** Everything except the two heavy fields. */
+const LIGHT_JOB_PROJECTION: Record<string, 0> = { payload: 0, resultSummary: 0 };
+
+/** Runnable rows whose payload could not be loaded back off and are retried later. */
+const HYDRATE_BACKOFF_BASE_MS = 5_000;
+const HYDRATE_BACKOFF_MAX_MS = 10 * 60_000;
+
+function isTerminalStatus(status: ExecutionJob["status"]): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "dead_letter"
+  );
+}
+
 const INLINE_DATA_OMITTED = "[inline-data-omitted]";
 const INLINE_DATA_MAX_CHARS = 32 * 1024;
 
@@ -77,11 +93,34 @@ function hasOmittedInlineData(payload: unknown): boolean {
 
 export class MongoJobStore implements IJobStore {
   private readonly cache = new Map<string, ExecutionJob>();
+  private readonly hydrateBackoff = new Map<
+    string,
+    { failures: number; retryAtMs: number }
+  >();
 
   /** Durable docs carry a slimmed payload; keep the full in-memory one when present. */
   private withCachedPayload(doc: ExecutionJob): ExecutionJob {
-    const cached = this.cache.get(String(doc.jobId))?.payload;
-    return cached !== undefined ? { ...doc, payload: cached } : doc;
+    const cached = this.cache.get(String(doc.jobId));
+    if (!cached) return doc;
+    return {
+      ...doc,
+      ...(cached.payload !== undefined ? { payload: cached.payload } : {}),
+      // Light reads omit resultSummary — keep the copy this process already holds.
+      ...(doc.resultSummary === undefined && cached.resultSummary !== undefined
+        ? { resultSummary: cached.resultSummary }
+        : {}),
+    };
+  }
+
+  /**
+   * Job rows carry multi-MB `payload` / `resultSummary`. Once this process
+   * holds the payload, state checks (hydrate, claim, lease renew, reclaim)
+   * read only the small state fields instead of re-downloading the whole row.
+   */
+  private lightProjectionFor(jobId: JobId | string): Record<string, 0> | undefined {
+    return this.cache.get(String(jobId))?.payload !== undefined
+      ? LIGHT_JOB_PROJECTION
+      : undefined;
   }
 
   save(job: ExecutionJob): void {
@@ -142,12 +181,50 @@ export class MongoJobStore implements IJobStore {
     return this.cache.get(String(jobId));
   }
 
+  /**
+   * Durably record a user stop. Queued rows become `cancelled`; a claimed row
+   * keeps its status/lease (the owner finishes the cancellation) but carries
+   * `cancelRequested`, which recovery and re-claim paths refuse to run.
+   */
+  async persistCancelRequest(
+    jobId: JobId,
+    status: ExecutionJob["status"],
+    nowIso: string,
+  ): Promise<void> {
+    const terminal = status === "cancelled";
+    await EnterpriseJob.updateOne(
+      { jobId: String(jobId), status: { $nin: ["completed", "dead_letter"] } },
+      {
+        $set: {
+          cancelRequested: true,
+          updatedAt: nowIso,
+          ...(terminal ? { status: "cancelled", completedAt: nowIso } : {}),
+        },
+      },
+      { maxTimeMS: 15_000 },
+    );
+  }
+
   async hydrate(jobId: JobId): Promise<ExecutionJob | undefined> {
     // Always prefer durable Mongo state for claim/recovery decisions so a
     // stale in-memory cache cannot keep tryClaim failing forever.
-    const doc = await EnterpriseJob.findOne({ jobId: String(jobId) }).lean();
+    const light = this.lightProjectionFor(jobId);
+    let doc = await EnterpriseJob.findOne({ jobId: String(jobId) }, light)
+      .maxTimeMS(15_000)
+      .lean();
     if (!doc) {
       return this.cache.get(String(jobId));
+    }
+    // A finished job whose result this process does not hold needs the full row.
+    if (
+      light &&
+      isTerminalStatus((doc as unknown as ExecutionJob).status) &&
+      this.cache.get(String(jobId))?.resultSummary === undefined
+    ) {
+      doc =
+        (await EnterpriseJob.findOne({ jobId: String(jobId) })
+          .maxTimeMS(15_000)
+          .lean()) ?? doc;
     }
     const job = this.withCachedPayload(doc as unknown as ExecutionJob);
     this.cache.set(String(jobId), job);
@@ -172,7 +249,7 @@ export class MongoJobStore implements IJobStore {
   async listRunnableFromDatabase(): Promise<readonly ExecutionJob[]> {
     const docs = await EnterpriseJob.collection
       .find(
-        { status: { $in: ["queued", "retrying"] } },
+        { status: { $in: ["queued", "retrying"] }, cancelRequested: { $ne: true } },
         {
           projection: { jobId: 1, status: 1, queueKind: 1, createdAt: 1 },
           sort: { createdAt: -1 },
@@ -186,7 +263,33 @@ export class MongoJobStore implements IJobStore {
       const jobId = String(doc.jobId);
       let job = this.cache.get(jobId);
       if (!job?.payload) {
-        job = await this.hydrate(doc.jobId as JobId);
+        // One unreadable row must not abort the scan or be re-fetched every
+        // tick: failures back off exponentially (with jitter) per job.
+        const backoff = this.hydrateBackoff.get(jobId);
+        if (backoff && Date.now() < backoff.retryAtMs) continue;
+        try {
+          job = await this.hydrate(doc.jobId as JobId);
+          this.hydrateBackoff.delete(jobId);
+        } catch (err) {
+          const failures = (backoff?.failures ?? 0) + 1;
+          const delayMs = Math.min(
+            HYDRATE_BACKOFF_MAX_MS,
+            HYDRATE_BACKOFF_BASE_MS * 2 ** (failures - 1),
+          );
+          const retryAtMs = Date.now() + delayMs * (0.5 + Math.random() * 0.5);
+          this.hydrateBackoff.set(jobId, { failures, retryAtMs });
+          console.warn(
+            JSON.stringify({
+              scope: "execution.job_store",
+              event: "runnable_job_hydrate_failed",
+              jobId,
+              failures,
+              retryInMs: Math.round(retryAtMs - Date.now()),
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+          continue;
+        }
       }
       if (job && hasOmittedInlineData(job.payload)) {
         console.warn(
@@ -221,11 +324,53 @@ export class MongoJobStore implements IJobStore {
       (Number.isFinite(baseMs) ? baseMs : Date.now()) + ttlMs,
     ).toISOString();
     const existing = this.cache.get(String(jobId));
+    // Hard cap: lease reclaims and restarts must never re-run a job beyond its
+    // configured attempts (a job once ran 76 times against paid providers).
+    if (
+      existing &&
+      typeof existing.maxAttempts === "number" &&
+      existing.maxAttempts > 0 &&
+      (existing.attempt ?? 0) >= existing.maxAttempts
+    ) {
+      const lastError = `attempt cap reached (${existing.attempt}/${existing.maxAttempts}) — not re-run`;
+      await EnterpriseJob.updateOne(
+        { jobId: String(jobId), status: { $in: ["queued", "retrying"] } },
+        {
+          $set: {
+            status: "dead_letter",
+            queueKind: "dead_letter",
+            lastError,
+            completedAt: nowIso,
+            updatedAt: nowIso,
+          },
+        },
+        { maxTimeMS: 15_000 },
+      );
+      this.cache.set(String(jobId), {
+        ...existing,
+        status: "dead_letter",
+        queueKind: "dead_letter",
+        lastError,
+        completedAt: nowIso,
+        updatedAt: nowIso,
+      });
+      console.warn(
+        JSON.stringify({
+          scope: "execution.job_store",
+          event: "attempt_cap_dead_letter",
+          jobId: String(jobId),
+          attempt: existing.attempt,
+          maxAttempts: existing.maxAttempts,
+        }),
+      );
+      return undefined;
+    }
     const nextAttempt = (existing?.attempt ?? 0) + 1;
     const doc = await EnterpriseJob.findOneAndUpdate(
       {
         jobId: String(jobId),
         status: { $in: ["queued", "retrying"] },
+        cancelRequested: { $ne: true },
       },
       {
         $set: {
@@ -236,7 +381,7 @@ export class MongoJobStore implements IJobStore {
           attempt: nextAttempt,
         },
       },
-      { new: true, maxTimeMS: 15_000 }
+      { new: true, maxTimeMS: 15_000, projection: this.lightProjectionFor(jobId) }
     ).lean();
     if (!doc) return undefined;
     const job = this.withCachedPayload(doc as unknown as ExecutionJob);
@@ -250,10 +395,15 @@ export class MongoJobStore implements IJobStore {
    */
   async reclaimExpired(nowIso: string, nowMs: number): Promise<readonly ExecutionJob[]> {
     const nowIsoLease = new Date(nowMs).toISOString();
-    const docs = await EnterpriseJob.find({
-      status: { $in: ["reserved", "running"] },
-      leaseExpiresAt: { $lte: nowIsoLease },
-    }).lean();
+    const docs = await EnterpriseJob.find(
+      {
+        status: { $in: ["reserved", "running"] },
+        leaseExpiresAt: { $lte: nowIsoLease },
+      },
+      { jobId: 1 },
+    )
+      .maxTimeMS(15_000)
+      .lean();
 
     const recovered: ExecutionJob[] = [];
     for (const doc of docs) {
@@ -279,7 +429,7 @@ export class MongoJobStore implements IJobStore {
             leaseExpiresAt: "",
           },
         },
-        { new: true }
+        { new: true, maxTimeMS: 15_000, projection: this.lightProjectionFor(doc.jobId) }
       ).lean();
       if (!updated) continue;
       const job = {
@@ -316,7 +466,7 @@ export class MongoJobStore implements IJobStore {
     const doc = await EnterpriseJob.findOneAndUpdate(
       filter,
       { $set: { leaseExpiresAt, updatedAt: nowIso } },
-      { new: true, maxTimeMS: 5_000 },
+      { new: true, maxTimeMS: 5_000, projection: LIGHT_JOB_PROJECTION },
     ).lean();
     if (!doc) {
       const durable = await EnterpriseJob.findOne(
@@ -366,7 +516,7 @@ export class MongoJobStore implements IJobStore {
           updatedAt: nowIso,
         },
       },
-      { new: true, maxTimeMS: 5_000 },
+      { new: true, maxTimeMS: 5_000, projection: this.lightProjectionFor(jobId) },
     ).lean();
     if (!doc) return false;
     this.cache.set(

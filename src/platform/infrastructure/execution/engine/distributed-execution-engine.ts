@@ -60,6 +60,10 @@ export interface DistributedExecutionEngineDeps {
   readonly leaseTtlMs?: number;
 }
 
+/** Durable-write attempts for a finished job before deferring to later ticks. */
+const TERMINAL_PERSIST_ATTEMPTS = 4;
+const TERMINAL_PERSIST_BASE_DELAY_MS = 500;
+
 export class DistributedExecutionEngine implements IDistributedExecutionEngine {
   private readonly store: IJobStore;
   private readonly queues: QueueRegistry;
@@ -68,6 +72,10 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
   private readonly leases: LeaseManager;
   private readonly reservations: ReservationManager;
   private readonly concurrency: ConcurrencyLimiter;
+  /** Live cancel flags of jobs currently executing in this process. */
+  private readonly inFlightSignals = new Map<string, { cancelled: boolean }>();
+  /** Finished jobs whose durable write failed — re-flushed each tick. */
+  private readonly unpersistedTerminalJobs = new Map<string, ExecutionJob>();
   private readonly throttle: ThrottleController;
   private readonly progressTracker: ProgressTracker;
   private readonly deadLetters: DeadLetterStore;
@@ -230,6 +238,18 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     const cancelled = requestCancellation(job, this.nowIso());
     if (!cancelled.ok) return cancelled;
     this.store.save(cancelled.value);
+    // Tell the running executor now — it stops before any further provider
+    // call, retry, or artifact step instead of finishing the whole job.
+    const live = this.inFlightSignals.get(String(jobId));
+    if (live) live.cancelled = true;
+    // Durable, so a restart or recovery scan can never re-run a stopped job.
+    await this.persistCancelRequest(cancelled.value);
+    this.logLifecycle("cancel_requested", {
+      jobId: String(jobId),
+      status: cancelled.value.status,
+      executionId: executionIdFromJobPayload(job),
+      recoverySkipReason: live ? "in_flight_signalled" : "not_running",
+    });
     this.queues.get(job.queueKind).remove(jobId);
     this.monitor.recordCancellation();
     this.publishProgress(cancelled.value, cancelled.value.status, cancelled.value.progressPercent, "cancel");
@@ -285,6 +305,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     // Serialize reclaim + runnable recovery across concurrent tick callers.
     // Claim/execute remain concurrent; durable CAS is the correctness boundary.
     await this.withRecoveryLock(async () => {
+      await this.flushUnpersistedTerminalJobs();
       await this.ensureRunnableJobsQueued();
 
       this.scheduler.promoteDue();
@@ -537,6 +558,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           if (latest?.cancelRequested) signal.cancelled = true;
 
           this.inFlightJobIds.add(String(running.jobId));
+        this.inFlightSignals.set(String(running.jobId), signal);
           const leaseId = lease?.leaseId;
           // Immediate renew so reclaim cannot race before the first heartbeat.
           if (leaseId) {
@@ -616,10 +638,18 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           } finally {
             if (heartbeat) clearInterval(heartbeat);
             this.inFlightJobIds.delete(String(running.jobId));
+            this.inFlightSignals.delete(String(running.jobId));
           }
 
           // Durable ownership is source of truth — never finalize after reclaim/steal.
-          if (!stillOwns || signal.ownershipLost) {
+          // A user stop is not an ownership loss: the row leaves "running" because
+          // we cancelled it, and the cancellation must be completed below.
+          const stopState = this.store.get(running.jobId);
+          const userStopped =
+            !signal.ownershipLost &&
+            (stopState?.cancelRequested === true ||
+              stopState?.status === "cancel_requested");
+          if (!userStopped && (!stillOwns || signal.ownershipLost)) {
             console.log(
               `[Direct] job execution discarded | jobId=${String(running.jobId)} | reason=ownership_lost | attempt=${running.attempt}`,
             );
@@ -991,14 +1021,87 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
     }
   }
 
+  /**
+   * Persist a job state. A finished job (provider already paid for) is retried
+   * with bounded exponential backoff + jitter; if it still cannot be written it
+   * is kept and re-flushed on later ticks, so a database blip can neither lose
+   * the result nor leave the durable row "running" to be re-executed.
+   */
   private async persistJobIfSupported(job: ExecutionJob): Promise<void> {
-    if (typeof this.store.persist === "function") {
+    if (typeof this.store.persist !== "function") return;
+    const terminal =
+      job.status === "completed" ||
+      job.status === "failed" ||
+      job.status === "cancelled" ||
+      job.status === "dead_letter";
+    const attempts = terminal ? TERMINAL_PERSIST_ATTEMPTS : 1;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         await this.store.persist(job);
+        this.unpersistedTerminalJobs.delete(String(job.jobId));
+        if (attempt > 1) {
+          this.logLifecycle("terminal_persist_recovered", {
+            jobId: String(job.jobId),
+            status: job.status,
+            executionId: executionIdFromJobPayload(job),
+          });
+        }
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[Direct] job persist failed | jobId=${String(job.jobId)} | status=${job.status} | attempt=${attempt}/${attempts} | ${message}`,
+        );
+        if (attempt < attempts) {
+          const delayMs =
+            TERMINAL_PERSIST_BASE_DELAY_MS * 2 ** (attempt - 1) * (0.5 + Math.random() * 0.5);
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, delayMs);
+            timer.unref?.();
+          });
+        }
+      }
+    }
+    if (terminal) {
+      this.unpersistedTerminalJobs.set(String(job.jobId), job);
+      this.logLifecycle("terminal_persist_deferred", {
+        jobId: String(job.jobId),
+        status: job.status,
+        executionId: executionIdFromJobPayload(job),
+        recoverySkipReason: "durable_write_pending",
+      });
+    }
+  }
+
+  /** Record a stop request on the durable row without touching lease ownership. */
+  private async persistCancelRequest(job: ExecutionJob): Promise<void> {
+    if (typeof this.store.persistCancelRequest === "function") {
+      try {
+        await this.store.persistCancelRequest(job.jobId, job.status, this.nowIso());
       } catch (err) {
         console.warn(
-          `[Direct] job persist failed | jobId=${String(job.jobId)} | status=${job.status} | ${err instanceof Error ? err.message : String(err)}`,
+          `[Direct] cancel persist failed | jobId=${String(job.jobId)} | ${err instanceof Error ? err.message : String(err)}`,
         );
+      }
+    }
+  }
+
+  /** One more durable-write attempt per tick for finished jobs not yet saved. */
+  private async flushUnpersistedTerminalJobs(): Promise<void> {
+    if (this.unpersistedTerminalJobs.size === 0) return;
+    if (typeof this.store.persist !== "function") return;
+    for (const [jobId, job] of [...this.unpersistedTerminalJobs]) {
+      try {
+        await this.store.persist(job);
+        this.unpersistedTerminalJobs.delete(jobId);
+        this.logLifecycle("terminal_persist_recovered", {
+          jobId,
+          status: job.status,
+          executionId: executionIdFromJobPayload(job),
+        });
+      } catch {
+        // Still unavailable — stop here and try again next tick.
+        return;
       }
     }
   }

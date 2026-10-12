@@ -395,6 +395,15 @@ export class ExecutionApiService implements IExecutionApiService {
     const got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
     const exec = got.value;
+    // A finished execution keeps its outcome: cancelling it must never turn
+    // delivered work into "cancelled" (clients may send a late stop).
+    if (
+      exec.status === "succeeded" ||
+      exec.status === "failed" ||
+      exec.status === "cancelled"
+    ) {
+      return success(exec);
+    }
     if (exec.jobId && this.deps.distributed) {
       await this.deps.distributed.cancel(exec.jobId as never, "api_cancel");
     }

@@ -655,6 +655,37 @@ export async function materializeDocumentExports(input: {
         new ValidationError("Structured output is not a valid EmailPlan")
       );
     }
+    // Real images before the file is saved: permanent brand logo, working
+    // pictures in place of the model's made-up addresses. Never blocks export.
+    let emailHtml = parsed.html;
+    try {
+      const { resolveEmailImages, productionEmailImageDeps } = await import(
+        "../../os/delivery/email-image-resolution"
+      );
+      const meta = input.metadata ?? {};
+      const brandName =
+        typeof meta.brandName === "string" ? meta.brandName.trim() : "";
+      const resolved = await resolveEmailImages(parsed.html, {
+        deps: productionEmailImageDeps({
+          organizationId: input.organizationId,
+          metadata: meta,
+        }),
+        context: brandName || undefined,
+      });
+      emailHtml = resolved.html;
+      console.info(
+        JSON.stringify({
+          scope: "email.images",
+          event: "resolved",
+          executionId: input.executionId,
+          ...resolved.report,
+        }),
+      );
+    } catch (err) {
+      console.warn(
+        `[email.images] resolution failed | executionId=${input.executionId} | ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     const files: Array<{
       label: ExportFileLabel;
       mimeType: string;
@@ -663,7 +694,7 @@ export async function materializeDocumentExports(input: {
       {
         label: "html",
         mimeType: HTML_MIME,
-        buffer: Buffer.from(parsed.html, "utf8"),
+        buffer: Buffer.from(emailHtml, "utf8"),
       },
     ];
     if (parsed.textFallback.trim()) {
@@ -694,6 +725,7 @@ export async function materializeDocumentExports(input: {
       htmlArtifactId: ingested.value.htmlArtifactId,
       plan: {
         ...parsed,
+        html: emailHtml,
         exportKind: "email",
         htmlArtifactId: ingested.value.htmlArtifactId,
         downloadFormats: ["html"],

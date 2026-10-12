@@ -230,8 +230,6 @@ app.get("/intelligence/health", (_req, res) => {
       // Recycle idle sockets before a NAT / load balancer silently drops them
       // (a dead pooled socket otherwise costs a full socketTimeout on next use).
       maxIdleTimeMS: 60_000,
-      // Fail fast instead of queueing forever when every connection is busy.
-      waitQueueTimeoutMS: 20_000,
       // Driver buffers ops while reconnecting instead of failing the process.
       bufferCommands: true,
     });

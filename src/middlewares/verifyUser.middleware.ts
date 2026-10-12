@@ -7,6 +7,46 @@ import { asyncHandler } from "../utils/asyncHandler";
 import Organizations, { IOrganization } from "../models/organization.model";
 import Staff from "../models/staff.model";
 
+const USER_REUSE_MS = 15_000;
+const USER_REUSE_MAX = 2_000;
+
+async function lookUpUser(firebaseId: string) {
+  const getUser = await Users.findOne({
+    firebaseId,
+    // isActive: true,
+  });
+  let staff;
+  if (getUser?.role == "servicing" || getUser?.role == "resource") {
+    const checkStaff = await Staff.findOne({ userId: getUser?._id });
+    if (checkStaff) {
+      staff = checkStaff;
+    }
+  }
+  let organization: IOrganization | null | undefined;
+  if (getUser?.role == "customer") {
+    organization = await Organizations.findOne({
+      owner: getUser?._id,
+    });
+  }
+  const lookup = { getUser, staff, organization };
+  // Never hold on to "no user" or "customer without an organisation yet":
+  // sign-up and business setup must be seen on the very next request.
+  if (getUser && (getUser.role !== "customer" || organization)) {
+    recentUsers.delete(firebaseId);
+    recentUsers.set(firebaseId, { untilMs: Date.now() + USER_REUSE_MS, lookup });
+    if (recentUsers.size > USER_REUSE_MAX) {
+      const oldest = recentUsers.keys().next().value;
+      if (oldest !== undefined) recentUsers.delete(oldest);
+    }
+  }
+  return lookup;
+}
+
+const recentUsers = new Map<
+  string,
+  { untilMs: number; lookup: Awaited<ReturnType<typeof lookUpUser>> }
+>();
+
 export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
   req: RequestUser,
   res: Response,
@@ -21,24 +61,15 @@ export const VerifyUserHandler = asyncHandler(async function VerifyUserHandler(
   try {
     const verification = await verifyFirebaseIdToken(accessToken);
     if (verification) {
-      const getUser = await Users.findOne({
-        firebaseId: verification.uid,
-        // isActive: true,
-      });
-      let staff;
-      if (getUser?.role == "servicing" || getUser?.role == "resource") {
-        const checkStaff = await Staff.findOne({ userId: getUser?._id });
-        if (checkStaff) {
-          staff = checkStaff;
-        }
-      }
-      let organization: IOrganization | null | undefined;
+      // The token is verified on every request; only the user / staff /
+      // organisation lookups behind it are reused for a few seconds.
+      const recent = recentUsers.get(verification.uid);
+      const lookup =
+        recent && recent.untilMs > Date.now()
+          ? recent.lookup
+          : await lookUpUser(verification.uid);
+      const { getUser, staff, organization } = lookup;
       let customerId;
-      if (getUser?.role == "customer") {
-        organization = await Organizations.findOne({
-          owner: getUser?._id,
-        });
-      }
 
       if (!getUser) {
         throw new ApiError("User not found", 401);

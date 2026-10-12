@@ -81,6 +81,10 @@ export function resetExecutionReadCacheForTests(): void {
   recentReadFailures.clear();
 }
 
+/** List rows keep `result.kind` but not the output payload. */
+const LIST_PROJECTION = { "result.data": 0, "result.text": 0 } as const;
+const LIST_MAX_TIME_MS = 15_000;
+
 export class MongoExecutionRepository implements IExecutionRepository {
   async save(execution: ExecutionResource): Promise<void> {
     const previous = await EnterpriseExecution.findOneAndUpdate(
@@ -187,12 +191,19 @@ export class MongoExecutionRepository implements IExecutionRepository {
     const filter = mongoHistoryFilter(organizationId, queryOrLimit);
     const sort =
       query.sort === "oldest" ? { createdAt: 1 as const } : { createdAt: -1 as const };
-    const total = await EnterpriseExecution.countDocuments(filter);
-    const docs = await EnterpriseExecution.find(filter)
-      .sort(sort)
-      .skip(query.offset)
-      .limit(query.limit)
-      .lean();
+    // A list row never needs the generated output itself (website HTML, copy,
+    // structured data — megabytes per row). Downloading it for 50–60 rows is
+    // what timed this query out and starved every other request of the
+    // database link while it ran.
+    const [total, docs] = await Promise.all([
+      EnterpriseExecution.countDocuments(filter).maxTimeMS(LIST_MAX_TIME_MS),
+      EnterpriseExecution.find(filter, LIST_PROJECTION)
+        .sort(sort)
+        .skip(query.offset)
+        .limit(query.limit)
+        .maxTimeMS(LIST_MAX_TIME_MS)
+        .lean(),
+    ]);
     return {
       items: docs as unknown as ExecutionResource[],
       page: query.page,

@@ -49,7 +49,13 @@ export class FirebaseAuthenticationAdapter {
       return failure(new ValidationError(message));
     }
 
-    let identity = await this.identityResolver.resolve(verified);
+    // The token is verified on every request; only the user / organisation
+    // lookup behind it (two database round trips) is reused for a few seconds.
+    const recent = recentIdentities.get(verified.uid);
+    let identity =
+      recent && recent.resolver === this.identityResolver && recent.untilMs > Date.now()
+        ? recent.identity
+        : await this.identityResolver.resolve(verified);
     if (
       !identity.ok &&
       this.autoProvisionUser &&
@@ -66,6 +72,9 @@ export class FirebaseAuthenticationAdapter {
     }
 
     const resolved = identity.value;
+    if (resolved.organizationId && recentIdentities.get(verified.uid)?.identity !== identity) {
+      rememberIdentity(verified.uid, this.identityResolver, identity);
+    }
 
     if (resolved.organizationId) {
       const sync = this.deps.tenants.syncOrganizationFromExternal?.({
@@ -103,4 +112,20 @@ export function isFirebaseAuthenticatedPrincipal(
   principal: AuthPrincipal | undefined
 ): boolean {
   return principal?.sessionId?.startsWith("firebase_") === true;
+}
+
+const IDENTITY_REUSE_MS = 15_000;
+const IDENTITY_REUSE_MAX = 2_000;
+const recentIdentities = new Map<
+  string,
+  { untilMs: number; resolver: object; identity: any }
+>();
+
+function rememberIdentity(uid: string, resolver: object, identity: unknown): void {
+  recentIdentities.delete(uid);
+  recentIdentities.set(uid, { untilMs: Date.now() + IDENTITY_REUSE_MS, resolver, identity });
+  if (recentIdentities.size > IDENTITY_REUSE_MAX) {
+    const oldest = recentIdentities.keys().next().value;
+    if (oldest !== undefined) recentIdentities.delete(oldest);
+  }
 }

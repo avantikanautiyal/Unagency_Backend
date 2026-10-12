@@ -255,8 +255,29 @@ export class ExecutionApiService implements IExecutionApiService {
     }
     const got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
-    let resource = await this.hydrateFromDistributedJob(got.value);
-    resource = await this.hydrateAsyncCanonicalIngest(resource);
+    // A finished execution whose completion record is already established used
+    // to redo the whole terminal hydrate (export check + canonical ingest
+    // replay, ~1s of database work) on every single read, forever. The outcome
+    // for an unchanged stored record is the same each time, so it is reused.
+    const settled = settledHydrates.get(executionId);
+    let resource: ExecutionResource;
+    if (
+      settled &&
+      settled.untilMs > Date.now() &&
+      got.value.status === "succeeded" &&
+      (got.value.updatedAt === settled.baseUpdatedAt ||
+        got.value.updatedAt === settled.hydrated.updatedAt)
+    ) {
+      resource = settled.hydrated;
+    } else {
+      resource = await this.hydrateFromDistributedJob(got.value);
+      resource = await this.hydrateAsyncCanonicalIngest(resource);
+      if (got.value.status === "succeeded" && resource.status === "succeeded") {
+        rememberSettledHydrate(executionId, got.value.updatedAt, resource);
+      } else {
+        settledHydrates.delete(executionId);
+      }
+    }
     if (!this.deps.toolRuntime) return success(resource);
     const records = await this.deps.toolRuntime.invocationStore.listByExecution(executionId);
     const awaiting = records.filter((record) => record.status === "awaiting_approval");
@@ -2228,6 +2249,35 @@ export class ExecutionApiService implements IExecutionApiService {
     }
     return success(exec);
   }
+}
+
+const SETTLED_HYDRATE_TTL_MS = 5 * 60_000;
+const SETTLED_HYDRATE_MAX = 500;
+const settledHydrates = new Map<
+  string,
+  { untilMs: number; baseUpdatedAt: string | undefined; hydrated: ExecutionResource }
+>();
+
+function rememberSettledHydrate(
+  executionId: string,
+  baseUpdatedAt: string | undefined,
+  hydrated: ExecutionResource,
+): void {
+  settledHydrates.delete(executionId);
+  settledHydrates.set(executionId, {
+    untilMs: Date.now() + SETTLED_HYDRATE_TTL_MS,
+    baseUpdatedAt,
+    hydrated,
+  });
+  if (settledHydrates.size > SETTLED_HYDRATE_MAX) {
+    const oldest = settledHydrates.keys().next().value;
+    if (oldest !== undefined) settledHydrates.delete(oldest);
+  }
+}
+
+/** Test hook — the reuse map is process-wide. */
+export function resetSettledHydratesForTests(): void {
+  settledHydrates.clear();
 }
 
 function missingWebsitePreview(resource: ExecutionResource): boolean {

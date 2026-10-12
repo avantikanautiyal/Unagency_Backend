@@ -92,6 +92,13 @@ export class ApiGatewayEngine implements IApiGateway {
     }
     const { route, params } = matched;
 
+    // Where a slow request spent its time (auth / tenant / rate limit / handler).
+    const stageMs: {
+      auth?: number;
+      tenant?: number;
+      rateLimit?: number;
+      rateLimitStartedAt?: number;
+    } = {};
     let principal: AuthPrincipal | undefined;
     if (route.authRequired) {
       const credential = extractCredential(request);
@@ -100,7 +107,9 @@ export class ApiGatewayEngine implements IApiGateway {
           this.errorResponse(request, 401, "AUTHORIZATION_ERROR", credential.error.message, start)
         );
       }
+      const authStartedAt = Date.now();
       const authed = await this.deps.auth.authenticate(credential.value);
+      stageMs.auth = Date.now() - authStartedAt;
       if (!authed.ok) {
         return success(
           this.errorResponse(request, 401, "AUTHORIZATION_ERROR", authed.error.message, start)
@@ -118,7 +127,9 @@ export class ApiGatewayEngine implements IApiGateway {
 
     const tenant = resolveTenantContext(request, principal, params);
     if (route.authRequired && tenant) {
+      const tenantStartedAt = Date.now();
       const isolation = await this.deps.tenants.ensureTenant(tenant);
+      stageMs.tenant = Date.now() - tenantStartedAt;
       if (!isolation.ok) {
         const status = isolation.error.code === "NOT_FOUND" ? 404 : 403;
         return success(
@@ -130,6 +141,7 @@ export class ApiGatewayEngine implements IApiGateway {
     if (route.authRequired) {
       const accountingClass: RateLimitAccountingClass =
         route.rateLimitAccountingClass ?? "USER_REQUEST";
+      stageMs.rateLimitStartedAt = Date.now();
       const rl = await this.deps.rateLimits.check({
         organizationId: tenant?.organizationId ?? principal?.organizationId,
         workspaceId: tenant?.workspaceId ?? principal?.workspaceId,
@@ -195,6 +207,10 @@ export class ApiGatewayEngine implements IApiGateway {
       }
     }
 
+    const handlerStartedAt = Date.now();
+    if (stageMs.rateLimitStartedAt !== undefined) {
+      stageMs.rateLimit = handlerStartedAt - stageMs.rateLimitStartedAt;
+    }
     const result = await dispatchController(
       this.controllers,
       route.routeId,
@@ -203,6 +219,12 @@ export class ApiGatewayEngine implements IApiGateway {
       principal,
       tenant
     );
+    logSlowApiStages(route.routeId, {
+      auth: stageMs.auth,
+      tenant: stageMs.tenant,
+      rateLimit: stageMs.rateLimit,
+      handler: Date.now() - handlerStartedAt,
+    });
 
     if (!result.ok) {
       const details =
@@ -351,4 +373,17 @@ function statusForError(code: string): number {
     default:
       return 500;
   }
+}
+
+function logSlowApiStages(
+  routeId: string,
+  stages: { auth?: number; tenant?: number; rateLimit?: number; handler: number },
+): void {
+  const raw = Number(process.env.SLOW_REQUEST_LOG_MS);
+  const threshold = Number.isFinite(raw) && raw >= 0 ? raw : 800;
+  if (threshold === 0) return;
+  const total =
+    (stages.auth ?? 0) + (stages.tenant ?? 0) + (stages.rateLimit ?? 0) + stages.handler;
+  if (total < threshold) return;
+  console.warn(JSON.stringify({ event: "slow_api_stages", routeId, ...stages, total }));
 }

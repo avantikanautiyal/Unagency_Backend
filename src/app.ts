@@ -1,3 +1,5 @@
+import { jsonCompression } from "./middlewares/jsonCompression.middleware";
+import { slowRequestLog } from "./middlewares/slowRequestLog.middleware";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -59,6 +61,12 @@ const app = express();
 
 //Use of CORS
 app.use(cors());
+
+// Evidence for slow screens: one log line per request slower than ~0.8s.
+app.use(slowRequestLog);
+
+// Large JSON payloads (executions, projects) are sent gzipped.
+app.use(jsonCompression);
 
 //Use of Express JSON CONFIG
 app.use("/razorpay/webhook", express.raw({ type: "application/json" }), razorpayWebhook)

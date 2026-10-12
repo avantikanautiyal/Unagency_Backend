@@ -17,6 +17,7 @@ import Staff from "../models/staff.model";
 import { ApiError } from "../utils/apiError";
 import { collaborationChannelService } from "../services/collaboration/collaboration-channel-service";
 import { collaborationActionsService } from "../services/collaboration/collaboration-actions-service";
+import { copyArtifactToChatAttachment } from "../services/collaboration/artifact-chat-attachment";
 import { collaborationOsService } from "../platform/collaboration/collaboration-os-service";
 import { emitCollaborationEvent } from "../platform/collaboration/socket-gateway";
 import { serviceConversationService } from "../platform/collaboration/service-conversation-service";
@@ -280,14 +281,60 @@ export const shareAssetInChannel = asyncHandler(async (req: RequestUser) => {
 });
 
 export const shareArtifactInChannel = asyncHandler(async (req: RequestUser) => {
-  const message = await collaborationActionsService.shareArtifact({
-    userId: String(req.user!.userId),
-    channelId: String(req.params.channelId),
-    artifactId: String(req.body?.artifactId || ""),
-    executionId: req.body?.executionId,
-    label: req.body?.label,
-    parentId: req.body?.parentId,
-  });
+  const userId = String(req.user!.userId);
+  const channelId = String(req.params.channelId);
+  const artifactId = String(req.body?.artifactId || "").trim();
+  const label =
+    typeof req.body?.label === "string" ? req.body.label.trim() : "";
+
+  // Copy the file into a normal chat attachment so Client Servicing sees it
+  // exactly like a client upload. Only the sender's own organization's
+  // artifacts can be copied; anything else falls back to the reference.
+  const organizationId = String(
+    (req.user?.organization as { _id?: unknown } | null | undefined)?._id ?? ""
+  );
+  let attachment: Awaited<ReturnType<typeof copyArtifactToChatAttachment>>;
+  if (artifactId && organizationId) {
+    try {
+      attachment = await copyArtifactToChatAttachment({
+        artifactId,
+        organizationId,
+        label,
+      });
+    } catch (err) {
+      console.warn(
+        "[chat] share-artifact attachment copy failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  const message = attachment
+    ? await collaborationChannelService.sendMessage({
+        userId,
+        channelId,
+        text: label || `📎 ${attachment.fileName}`,
+        messageType: "text",
+        parentId: req.body?.parentId,
+        artifactId,
+        executionId: req.body?.executionId,
+        metadata: {
+          kind: "chat_attachment",
+          url: attachment.url,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          sharedArtifactId: artifactId,
+        },
+      })
+    : await collaborationActionsService.shareArtifact({
+        userId,
+        channelId,
+        artifactId,
+        executionId: req.body?.executionId,
+        label: req.body?.label,
+        parentId: req.body?.parentId,
+      });
   emitCollaborationEvent(message.channelId, "message:new", message as any);
   return new ApiResponse(200, message, "artifact shared");
 });

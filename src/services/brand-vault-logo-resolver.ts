@@ -7,7 +7,10 @@ import mongoose from "mongoose";
 import MediaFile from "../models/mediaFile.model";
 import type { KnowledgeResolveResult } from "../platform/os/creative/knowledge-resolver";
 import type { BrandContextAssetRef } from "../platform/os/creative/brand-context-packet";
-import { selectDefaultLogoCandidate } from "./default-logo-selection";
+import {
+  selectDefaultLogoCandidate,
+  selectableLogoCandidates,
+} from "./default-logo-selection";
 
 const LOGO_FOLDERS = new Set(["logos", "logo-versions"]);
 /** Tag set by the onboarding uploader on non-logo files (visuals, creatives, guidelines, documents). */
@@ -239,7 +242,11 @@ export async function resolveBrandVaultLogos(input: {
     );
   }
 
-  const candidates = [...byId.values()].sort(sortCandidates);
+  // Only real, viewable logos are offered: PNG/JPG, no "logo system" sheets,
+  // one entry per logo across formats.
+  const candidates = selectableLogoCandidates(
+    [...byId.values()].sort(sortCandidates)
+  );
   if (candidates.length === 0) {
     return { candidates: [], needsChoice: false };
   }

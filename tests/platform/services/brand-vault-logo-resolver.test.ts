@@ -128,7 +128,7 @@ describe("brand-vault-logo-resolver", () => {
     expect(vault.needsChoice).toBe(false);
   });
 
-  it("requires choice when multiple vault logos exist, even with a primary PNG", async () => {
+  it("offers one PNG/JPG logo per mark — no PDFs, no logo-system sheets", async () => {
     const systemId = new mongoose.Types.ObjectId();
     const primaryId = new mongoose.Types.ObjectId();
     (MediaFile.find as jest.Mock).mockImplementation(() => ({
@@ -165,9 +165,42 @@ describe("brand-vault-logo-resolver", () => {
       organizationId: new mongoose.Types.ObjectId().toString(),
       brandId: new mongoose.Types.ObjectId().toString(),
     });
+    // logo-system is not a logo; primary JPG + PNG are the same mark → PNG kept.
+    expect(vault.candidates.map((c) => c.name)).toEqual([
+      "branding-logo-primary-logo-png",
+    ]);
+    expect(vault.needsChoice).toBe(false);
+    expect(vault.selectedAssetId).toBe(vault.candidates[0]!.assetId);
+  });
+
+  it("never offers PDF logos", async () => {
+    const logo = (name: string, mimeType: string) => ({
+      _id: new mongoose.Types.ObjectId(),
+      fileName: name,
+      folder: "logos",
+      kind: mimeType === "application/pdf" ? "document" : "image",
+      mimeType,
+      approvalStatus: "approved",
+    });
+    (MediaFile.find as jest.Mock).mockImplementation(() => ({
+      select: () => ({
+        lean: async () => [
+          logo("Logo · Primary Logo (PDF)", "application/pdf"),
+          logo("Logo · Logo System (PNG)", "image/png"),
+          logo("Logo · Primary Logo (JPG)", "image/jpeg"),
+          logo("Logo · Wordmark (PNG)", "image/png"),
+        ],
+      }),
+    }));
+    const vault = await resolveBrandVaultLogos({
+      organizationId: new mongoose.Types.ObjectId().toString(),
+      brandId: new mongoose.Types.ObjectId().toString(),
+    });
+    expect(vault.candidates.map((c) => c.name).sort()).toEqual([
+      "Logo · Primary Logo (JPG)",
+      "Logo · Wordmark (PNG)",
+    ]);
     expect(vault.needsChoice).toBe(true);
-    expect(vault.selectedAssetId).toBeUndefined();
-    expect(vault.candidates).toHaveLength(3);
   });
 
   it("lists the brand's official logo first and flags it", async () => {

@@ -38,3 +38,52 @@ export function selectDefaultLogoCandidate<T extends DefaultLogoCandidateShape>(
   }
   return { ask: true };
 }
+
+const RASTER_LOGO_MIME = new Set(["image/png", "image/jpeg", "image/jpg"]);
+const NOT_A_LOGO = /\blogo[\s_-]*system\b/i;
+const FORMAT_TOKEN = /[\s._-]*\(?\b(png|jpe?g|pdf|webp|svg)\b\)?/gi;
+
+function logoFormat(candidate: DefaultLogoCandidateShape): "png" | "jpg" | "other" {
+  const mime = (candidate.mimeType ?? "").toLowerCase();
+  const name = (candidate.name ?? "").toLowerCase();
+  if (mime) {
+    if (!RASTER_LOGO_MIME.has(mime)) return "other";
+    return mime === "image/png" ? "png" : "jpg";
+  }
+  if (/\bpdf\b|\bsvg\b|\bwebp\b/.test(name)) return "other";
+  if (/\bpng\b/.test(name)) return "png";
+  if (/\bjpe?g\b/.test(name)) return "jpg";
+  // No format information at all — not known to be a PDF, so keep it.
+  return "jpg";
+}
+
+/**
+ * Logos a user can be asked to choose between: PNG / JPG only, never a
+ * "logo system" sheet (that is a brand board, not the logo), and one entry per
+ * logo when the same mark is stored in several formats (PNG preferred).
+ */
+export function selectableLogoCandidates<T extends DefaultLogoCandidateShape>(
+  candidates: readonly T[]
+): T[] {
+  const byLogo = new Map<string, T>();
+  for (const candidate of candidates) {
+    const format = logoFormat(candidate);
+    if (format === "other") continue;
+    if (NOT_A_LOGO.test(logoCandidateText(candidate))) continue;
+    const key =
+      (candidate.name ?? "").toLowerCase().replace(FORMAT_TOKEN, "").trim() ||
+      `unnamed:${byLogo.size}`;
+    const existing = byLogo.get(key);
+    if (!existing || (format === "png" && logoFormat(existing) !== "png")) {
+      byLogo.set(key, candidate);
+    }
+  }
+  if (byLogo.size > 0) return [...byLogo.values()];
+  // No PNG/JPG at all: a brand whose only logo is another image type (e.g.
+  // SVG) still has a logo. PDFs and logo-system sheets stay excluded.
+  return candidates.filter(
+    (candidate) =>
+      (candidate.mimeType ?? "").toLowerCase().startsWith("image/") &&
+      !NOT_A_LOGO.test(logoCandidateText(candidate))
+  );
+}

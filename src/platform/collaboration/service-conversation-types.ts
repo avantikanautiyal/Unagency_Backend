@@ -35,6 +35,8 @@ export type ServiceAiConversationState = {
   taskIntelligence?: ConversationalTaskIntelligenceState;
   /** Logo the user picked for this conversation — asked once, reused after. */
   logoChoice?: { assetId: string; brandId?: string };
+  /** Hybrid project handed to Client Servicing — chat shows the CS conversation while active. */
+  studioHandoff?: { active: boolean; at?: string; executionId?: string };
   updatedAt?: string;
 };
 

@@ -250,11 +250,18 @@ export class ExecutionApiService implements IExecutionApiService {
 
 
   async get(executionId: string, tenant: TenantContext): Promise<Result<ExecutionResource>> {
-    if (this.deps.asyncCoordinator) {
-      await this.deps.asyncCoordinator.reconcileExecution(executionId);
-    }
-    const got = await this.scoped(executionId, tenant);
+    let got = await this.scoped(executionId, tenant);
     if (!got.ok) return got;
+    // Each step below is a database round trip, and the app re-reads finished
+    // executions constantly. A finished execution has nothing left to
+    // reconcile with a provider, cannot gain new approvals and has fixed
+    // create metadata, so those lookups are skipped / reused for it.
+    const finished = FINISHED_EXECUTION_STATUSES.has(String(got.value.status));
+    if (this.deps.asyncCoordinator && !finished) {
+      await this.deps.asyncCoordinator.reconcileExecution(executionId);
+      got = await this.scoped(executionId, tenant);
+      if (!got.ok) return got;
+    }
     // A finished execution whose completion record is already established used
     // to redo the whole terminal hydrate (export check + canonical ingest
     // replay, ~1s of database work) on every single read, forever. The outcome
@@ -279,7 +286,13 @@ export class ExecutionApiService implements IExecutionApiService {
       }
     }
     if (!this.deps.toolRuntime) return success(resource);
-    const records = await this.deps.toolRuntime.invocationStore.listByExecution(executionId);
+    const settledNow =
+      finished &&
+      FINISHED_EXECUTION_STATUSES.has(String(resource.status)) &&
+      !(resource.pendingApprovals?.length);
+    const records = settledNow
+      ? []
+      : await this.deps.toolRuntime.invocationStore.listByExecution(executionId);
     const awaiting = records.filter((record) => record.status === "awaiting_approval");
     const fromStore = buildPendingApprovals(awaiting);
     // M10.8 — stream path may persist pendingApprovals on the resource without tool-store rows yet.
@@ -289,15 +302,25 @@ export class ExecutionApiService implements IExecutionApiService {
         : resource.pendingApprovals ?? [];
     const approvalRequired =
       resource.status === "awaiting_approval" || pendingApprovals.length > 0;
-    const createMeta = await this.loadExecutionCreateMetadata(executionId);
-    const executionSpecDeliverables = Array.isArray(
-      createMeta?.executionSpecDeliverables,
-    )
-      ? createMeta.executionSpecDeliverables.filter(
-          (format): format is string =>
-            typeof format === "string" && format.trim().length > 0,
-        )
+    let executionSpecDeliverables = settledNow
+      ? finishedDeliverables.get(executionId)?.value
       : undefined;
+    if (!settledNow || !finishedDeliverables.has(executionId)) {
+      const createMeta = await this.loadExecutionCreateMetadata(executionId);
+      executionSpecDeliverables = Array.isArray(createMeta?.executionSpecDeliverables)
+        ? createMeta.executionSpecDeliverables.filter(
+            (format): format is string =>
+              typeof format === "string" && format.trim().length > 0,
+          )
+        : undefined;
+      if (settledNow) {
+        finishedDeliverables.set(executionId, { value: executionSpecDeliverables });
+        if (finishedDeliverables.size > SETTLED_HYDRATE_MAX) {
+          const oldest = finishedDeliverables.keys().next().value;
+          if (oldest !== undefined) finishedDeliverables.delete(oldest);
+        }
+      }
+    }
     return success({
       ...resource,
       ...(executionSpecDeliverables?.length
@@ -2251,6 +2274,10 @@ export class ExecutionApiService implements IExecutionApiService {
   }
 }
 
+const FINISHED_EXECUTION_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
+/** Deliverable formats requested at create time — fixed once the execution is finished. */
+const finishedDeliverables = new Map<string, { value: string[] | undefined }>();
+
 const SETTLED_HYDRATE_TTL_MS = 5 * 60_000;
 const SETTLED_HYDRATE_MAX = 500;
 const settledHydrates = new Map<
@@ -2278,6 +2305,7 @@ function rememberSettledHydrate(
 /** Test hook — the reuse map is process-wide. */
 export function resetSettledHydratesForTests(): void {
   settledHydrates.clear();
+  finishedDeliverables.clear();
 }
 
 function missingWebsitePreview(resource: ExecutionResource): boolean {

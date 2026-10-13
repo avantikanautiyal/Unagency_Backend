@@ -27,6 +27,23 @@ const DEFAULT_POLICIES: readonly RateLimitPolicy[] = [
 
 export class DistributedRateLimitService implements IRateLimitService {
   private available = true;
+  /** Running count per window key, seeded and corrected from Redis. */
+  private readonly local = new Map<string, number>();
+  /** False after a background Redis write failed — the next check waits on Redis. */
+  private backgroundHealthy = true;
+
+  private rememberLocal(key: string, count: number): void {
+    this.local.set(key, count);
+    // Window ids are in the key, so old windows simply stop being used.
+    if (this.local.size > 5_000) {
+      const drop = this.local.size - 4_000;
+      let i = 0;
+      for (const stale of this.local.keys()) {
+        if (i++ >= drop) break;
+        this.local.delete(stale);
+      }
+    }
+  }
 
   constructor(
     private readonly redis: KvClient | undefined,
@@ -105,11 +122,57 @@ export class DistributedRateLimitService implements IRateLimitService {
       ];
     });
 
+    // Local-first: once a window's count is known from Redis, this process
+    // decides from its own running count and reports the hit to Redis in the
+    // background, instead of holding every request for a Redis round trip
+    // (~0.2–0.4s when Redis is in another region). Redis stays the shared
+    // record: its replies pull the local count up to the true total, and any
+    // Redis failure sends the next request back to the waiting path below,
+    // which still refuses traffic when Redis is down.
+    // Kill switch: RATE_LIMIT_LOCAL_FIRST=false restores a Redis wait on every request.
+    const localFirst = process.env.RATE_LIMIT_LOCAL_FIRST?.trim().toLowerCase() !== "false";
+    if (localFirst && this.backgroundHealthy && active.length > 0 && active.every((c) => this.local.has(c.key))) {
+      const counts = active.map((c) => {
+        const next = (this.local.get(c.key) ?? 0) + 1;
+        this.local.set(c.key, next);
+        return next;
+      });
+      void Promise.all(active.map((c) => this.redis!.incrby(c.key, 1)))
+        .then((shared) => {
+          active.forEach((c, i) => {
+            const known = this.local.get(c.key);
+            if (known !== undefined && shared[i]! > known) this.local.set(c.key, shared[i]!);
+          });
+        })
+        .catch(() => {
+          this.backgroundHealthy = false;
+        });
+      for (let i = 0; i < active.length; i += 1) {
+        const c = active[i]!;
+        const count = counts[i]!;
+        const decision: RateLimitDecision = {
+          allowed: count <= c.policy.limit,
+          remaining: Math.max(0, c.policy.limit - count),
+          resetAt: new Date((c.windowId + 1) * c.policy.windowMs).toISOString(),
+          dimension: c.dimension,
+          key: `${c.dimension}:${c.value}`,
+          limit: c.policy.limit,
+          windowMs: c.policy.windowMs,
+          accountingClass,
+        };
+        if (!decision.allowed) return success(decision);
+        if (!tightest || decision.remaining < tightest.remaining) tightest = decision;
+      }
+      return success(tightest!);
+    }
+
     try {
       const redis = this.redis;
       const counts = await Promise.all(
         active.map((c) => redis.incrby(c.key, 1)),
       );
+      this.backgroundHealthy = true;
+      active.forEach((c, i) => this.rememberLocal(c.key, counts[i]!));
       // First hit of a window sets the key's expiry.
       await Promise.all(
         active.flatMap((c, i) =>

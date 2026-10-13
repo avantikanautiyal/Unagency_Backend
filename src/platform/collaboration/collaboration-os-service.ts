@@ -188,8 +188,8 @@ export class CollaborationOsService {
     let created = false;
     let convo = await Conversation.findOne({ roomKey });
     if (!convo) {
-      created = true;
-      convo = await Conversation.create({
+      try {
+        convo = await Conversation.create({
         roomKey,
         entityKind: input.entityKind,
         entityId: input.entityId,
@@ -209,6 +209,14 @@ export class CollaborationOsService {
         productPath: input.productPath,
         createdByUserId: new mongoose.Types.ObjectId(input.createdByUserId),
       });
+        created = true;
+      } catch (err) {
+        // Two requests opening the same chat at once: the other one created it
+        // first. Use that conversation instead of failing with a duplicate key.
+        if ((err as { code?: number } | null)?.code !== 11000) throw err;
+        convo = await Conversation.findOne({ roomKey });
+        if (!convo) throw err;
+      }
     } else if (input.productPath && !convo.productPath) {
       convo.productPath = input.productPath;
       await convo.save();

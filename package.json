@@ -16,6 +16,7 @@
     "dev": "nodemon --exec TS_NODE_TRANSPILE_ONLY=true ts-node ./index.ts",
     "seed:demo": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/seed-demo-data.ts",
     "sync:plans": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/sync-unagency-plans.ts",
+    "seed:staff-logins": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/create-staff-logins.ts",
     "seed:cs-extra": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/create-extra-cs-logins.ts",
     "seed:resource-extra": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/create-extra-resource-logins.ts",
     "seed:link-real": "TS_NODE_TRANSPILE_ONLY=true ts-node ./scripts/link-demo-staff-to-real-data.ts",

@@ -592,10 +592,12 @@ export function applyTargetedRefinement(
 
   // Session generated ref → new exact version (mirrors Packaging/Social
   // Media refinement; without this the session keeps pointing at the
-  // pre-refinement version after a deck targeted-refinement).
+  // pre-refinement version after a deck targeted-refinement). The refined
+  // version belongs to the artifact's owning phase (full-deck), not the
+  // slide-refinement phase that requested it.
   const bound = bindGeneratedArtifactToSession({
     sessionId: input.sessionId,
-    phaseId: input.phaseId,
+    phaseId: head.phaseId || input.phaseId,
     artifactId: input.artifactId,
     version: created.version.version,
     artifactKey,

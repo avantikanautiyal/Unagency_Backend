@@ -48,7 +48,34 @@ type Prim =
   | (Box & { kind: "ellipse"; fill?: string; line?: string; lineWidth?: number; opacity?: number })
   | (Box & { kind: "image"; image: PresentationSlideImage; fit?: "cover" | "contain" })
   | TextPrim;
-type SlideScene = { bg: string; prims: Prim[]; notes?: string };
+type SlideScene = { bg: string; prims: Prim[]; notes?: string; defects?: SlideLayoutDefect[] };
+
+export type SlideLayoutDefectKind =
+  | "text_shortened"
+  | "text_overflow"
+  | "off_canvas"
+  | "text_overlap"
+  | "text_too_small"
+  | "low_contrast"
+  | "low_contrast_repaired";
+
+export type SlideLayoutDefect = {
+  /** 1-based slide number in the rendered deck (cover = 1). */
+  readonly slide: number;
+  readonly kind: SlideLayoutDefectKind;
+  /** Blocking defects make the deck fail QA; repaired ones are informational. */
+  readonly severity: "blocking" | "warning" | "info";
+  readonly detail: string;
+};
+
+export type PresentationLayoutReport = {
+  readonly passed: boolean;
+  /** Slides actually rendered (cover + plan slides + continuation slides). */
+  readonly renderedSlideCount: number;
+  /** Plan slides split into continuation slides so no bullet was dropped. */
+  readonly continuationSlides: number;
+  readonly defects: readonly SlideLayoutDefect[];
+};
 
 type DeckTheme = {
   style: PresentationDesignStyle;
@@ -197,6 +224,19 @@ export function inferPresentationDesignStyle(text: string): PresentationDesignSt
 
 type Measurer = InstanceType<typeof PDFDocument>;
 
+function textFits(
+  measurer: Measurer,
+  theme: DeckTheme,
+  text: string,
+  font: FontRole,
+  box: Box,
+  size: number
+): boolean {
+  // PowerPoint lines run slightly taller than pdfkit's — keep some headroom.
+  measurer.font(theme.fonts[font].pdf).fontSize(size);
+  return measurer.heightOfString(text, { width: box.w * PT }) <= box.h * PT * 0.92;
+}
+
 function fitSize(
   measurer: Measurer,
   theme: DeckTheme,
@@ -206,13 +246,40 @@ function fitSize(
   max: number,
   min: number
 ): number {
-  // PowerPoint lines run slightly taller than pdfkit's — keep some headroom.
-  const limit = box.h * PT * 0.92;
   for (let size = max; size > min; size -= 1) {
-    measurer.font(theme.fonts[font].pdf).fontSize(size);
-    if (measurer.heightOfString(text, { width: box.w * PT }) <= limit) return size;
+    if (textFits(measurer, theme, text, font, box, size)) return size;
   }
   return min;
+}
+
+/**
+ * Text that overflows its box even at the minimum size is cut back at a
+ * sentence, then word, boundary until it fits — so PPTX never spills over
+ * neighbouring shapes and PDF never clips mid-word. Returns null when the
+ * text already fits.
+ */
+function shortenToFit(
+  measurer: Measurer,
+  theme: DeckTheme,
+  text: string,
+  font: FontRole,
+  box: Box,
+  size: number
+): string | null {
+  if (textFits(measurer, theme, text, font, box, size)) return null;
+  // Single glyphs / folio numbers are decorative and may bleed by design.
+  if (text.length <= 3 || !/\s/.test(text)) return null;
+  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) ?? [text];
+  for (let n = sentences.length - 1; n >= 1; n -= 1) {
+    const candidate = sentences.slice(0, n).join("").trim();
+    if (textFits(measurer, theme, candidate, font, box, size)) return candidate;
+  }
+  const words = text.split(/\s+/);
+  for (let n = words.length - 1; n >= 1; n -= 1) {
+    const candidate = `${words.slice(0, n).join(" ").replace(/[,;:.\-–—]+$/, "")}…`;
+    if (textFits(measurer, theme, candidate, font, box, size)) return candidate;
+  }
+  return words[0] ? `${words[0]}…` : "";
 }
 
 // ── slide builders ────────────────────────────────────────────────────────
@@ -228,6 +295,7 @@ type BuildCtx = {
 
 class SceneBuilder {
   readonly prims: Prim[] = [];
+  readonly defects: SlideLayoutDefect[] = [];
 
   constructor(private readonly ctx: BuildCtx) {}
 
@@ -261,19 +329,26 @@ class SceneBuilder {
     const clean = text.trim();
     if (!clean) return;
     const font = style.font ?? "body";
-    const size = fitSize(
-      this.ctx.measurer,
-      this.ctx.theme,
-      clean,
-      font,
-      box,
-      style.max,
-      style.min ?? Math.min(style.max, 9)
-    );
+    const min = style.min ?? Math.min(style.max, 9);
+    const { measurer, theme } = this.ctx;
+    const size = fitSize(measurer, theme, clean, font, box, style.max, min);
+    let finalText = clean;
+    const shortened = shortenToFit(measurer, theme, clean, font, box, size);
+    if (shortened != null) {
+      finalText = shortened || clean;
+      this.defects.push({
+        slide: this.ctx.index,
+        kind: shortened ? "text_shortened" : "text_overflow",
+        severity: shortened ? "warning" : "blocking",
+        detail: `"${clean.slice(0, 60)}${clean.length > 60 ? "…" : ""}" did not fit at ${size}pt; ${
+          shortened ? `shortened to ${shortened.length}/${clean.length} chars` : "could not be shortened"
+        }`,
+      });
+    }
     this.prims.push({
       kind: "text",
       ...box,
-      text: clean,
+      text: finalText,
       size,
       color: style.color,
       font,
@@ -389,7 +464,7 @@ function heroScene(
     b.text(title, { x: M, y: 1.7, w: 6, h: 2.1 }, { max: 44, min: 22, color: theme.onDark, font: "heading" });
     b.text(subtitle, { x: M, y: 3.9, w: 5.6, h: 0.85 }, { max: 15, min: 10, color: theme.darkSoft });
     b.label(kicker, { x: M, y: 5.0, w: 6, h: 0.25 }, theme.accent);
-    return { bg: theme.bg, prims: b.prims };
+    return { bg: theme.bg, prims: b.prims, defects: b.defects };
   }
   if (theme.style === "minimal") {
     if (image) {
@@ -405,7 +480,7 @@ function heroScene(
     b.text(title, { x: M, y: 1.5, w: 4.6, h: 2.1 }, { max: 40, min: 22, color: theme.text, font: "heading", valign: "bottom" });
     b.text(subtitle, { x: M, y: 3.8, w: 4.4, h: 0.85 }, { max: 14, min: 10, color: theme.soft });
     b.rect({ x: M, y: 4.95, w: 4.6, h: 0.012 }, theme.line);
-    return { bg: theme.bg, prims: b.prims };
+    return { bg: theme.bg, prims: b.prims, defects: b.defects };
   }
   // editorial
   if (image) {
@@ -424,7 +499,7 @@ function heroScene(
   b.text(title, { x: M, y: 1.2, w: 4.5, h: 2.4 }, { max: 44, min: 22, color: theme.text, font: "heading", valign: "bottom" });
   b.text(subtitle, { x: M, y: 3.8, w: 4.4, h: 0.9 }, { max: 14, min: 10, color: theme.soft });
   b.rect({ x: M, y: 4.95, w: 4.5, h: 0.012 }, theme.line);
-  return { bg: theme.bg, prims: b.prims };
+  return { bg: theme.bg, prims: b.prims, defects: b.defects };
 }
 
 function sectionScene(
@@ -447,7 +522,7 @@ function sectionScene(
     b.rect({ x: M, y: 2.55, w: 0.9, h: 0.07 }, theme.accent);
     b.text(slide.title, { x: M, y: 2.75, w: 7.2, h: 1.4 }, { max: 36, min: 20, color: theme.onDark, font: "heading" });
     b.text(lead, { x: M, y: 4.25, w: 6.8, h: 0.8 }, { max: 14, min: 10, color: theme.darkSoft });
-    return { bg: theme.bg, prims: b.prims };
+    return { bg: theme.bg, prims: b.prims, defects: b.defects };
   }
   if (theme.style === "minimal") {
     if (image) {
@@ -459,7 +534,7 @@ function sectionScene(
     b.text(pad(sectionNo), { x: M, y: 0.7, w: 3, h: 1.4 }, { max: 80, min: 50, color: theme.accentInk, font: "heading" });
     b.text(slide.title, { x: M, y: 2.3, w: 4.9, h: 1.6 }, { max: 34, min: 20, color: theme.text, font: "heading" });
     b.text(lead, { x: M, y: 4.0, w: 4.8, h: 0.9 }, { max: 14, min: 10, color: theme.soft });
-    return { bg: theme.bg, prims: b.prims };
+    return { bg: theme.bg, prims: b.prims, defects: b.defects };
   }
   // editorial — accent panel with a big folio number
   b.rect({ x: 0, y: 0, w: 4.2, h: H }, theme.accent);
@@ -475,7 +550,7 @@ function sectionScene(
     b.text(lead, { x: 4.8, y: 3.8, w: 4.4, h: 0.9 }, { max: 14, min: 10, color: theme.soft });
     b.circle({ x: 8.3, y: 4.0, w: 2.4, h: 2.4 }, { line: theme.accent, lineWidth: 1.25 });
   }
-  return { bg: theme.bg, prims: b.prims };
+  return { bg: theme.bg, prims: b.prims, defects: b.defects };
 }
 
 function contentScene(
@@ -507,7 +582,7 @@ function contentScene(
       b.text(bullet, { x: M + 0.55, y, w: textW - 0.55, h: rowH - 0.1 }, { max: 14, min: 9, color: theme.text });
     });
     b.footer(onDark);
-    return { bg: theme.bg, prims: b.prims, ...(slide.notes ? { notes: slide.notes } : {}) };
+    return { bg: theme.bg, prims: b.prims, defects: b.defects, ...(slide.notes ? { notes: slide.notes } : {}) };
   }
 
   // No image → numbered card grid
@@ -529,7 +604,7 @@ function contentScene(
     b.text(bullet, { x: x + 0.22, y: y + 0.58, w: cardW - 0.44, h: cardH - 0.75 }, { max: 14, min: 9, color: theme.text });
   });
   b.footer(onDark);
-  return { bg: theme.bg, prims: b.prims, ...(slide.notes ? { notes: slide.notes } : {}) };
+  return { bg: theme.bg, prims: b.prims, defects: b.defects, ...(slide.notes ? { notes: slide.notes } : {}) };
 }
 
 function statementScene(
@@ -550,7 +625,7 @@ function statementScene(
     b.label(slide.title, { x: M, y: 0.6, w: textW, h: 0.25 }, theme.onAccent);
     b.text(statement, { x: M, y: 1.1, w: textW, h: 3.0 }, { max: 34, min: 16, color: theme.onAccent, font: "heading", valign: "middle" });
     b.text(support, { x: M, y: 4.3, w: textW, h: 0.7 }, { max: 12, min: 9, color: theme.onAccent });
-    return { bg: theme.accent, prims: b.prims, ...(slide.notes ? { notes: slide.notes } : {}) };
+    return { bg: theme.accent, prims: b.prims, defects: b.defects, ...(slide.notes ? { notes: slide.notes } : {}) };
   }
   const imageLeft = theme.style === "editorial";
   const textX = image ? (imageLeft ? 4.6 : M) : M + 0.4;
@@ -565,7 +640,7 @@ function statementScene(
   b.text(statement, { x: textX, y: 1.8, w: textW, h: 2.5 }, { max: 32, min: 16, color: theme.text, font: "heading" });
   b.rect({ x: textX, y: 4.4, w: 0.6, h: 0.045 }, theme.accent);
   b.text(support, { x: textX, y: 4.55, w: textW, h: 0.55 }, { max: 12, min: 9, color: theme.soft });
-  return { bg: theme.bg, prims: b.prims, ...(slide.notes ? { notes: slide.notes } : {}) };
+  return { bg: theme.bg, prims: b.prims, defects: b.defects, ...(slide.notes ? { notes: slide.notes } : {}) };
 }
 
 function closingScene(
@@ -597,7 +672,7 @@ function closingScene(
   if (!b.logo({ x: M, y: 4.55, w: 1.5, h: 0.6 }, true)) {
     b.label(ctx.brand, { x: M, y: 5.0, w: 5, h: 0.25 }, onAccentBg ? theme.onAccent : theme.accent);
   }
-  return { bg, prims: b.prims, ...(slide.notes ? { notes: slide.notes } : {}) };
+  return { bg, prims: b.prims, defects: b.defects, ...(slide.notes ? { notes: slide.notes } : {}) };
 }
 
 /** Flip a hero composition: visuals move left, the text column moves right. */
@@ -617,16 +692,206 @@ function mirrorHero(scene: SlideScene): SlideScene {
   };
 }
 
+/** Bullets a content slide can hold: beside an image, and as a card grid. */
+const CONTENT_BULLETS_WITH_IMAGE = 5;
+const CONTENT_BULLETS_GRID = 6;
+
+type PlacedSlide = {
+  slide: PresentationSlide;
+  image: PresentationSlideImage | undefined;
+  continuation: boolean;
+};
+
+/**
+ * Content slides with more bullets than their layout holds continue on extra
+ * slides instead of silently dropping the overflow.
+ */
+function paginateSlides(
+  plan: PresentationPlan,
+  images: readonly (PresentationSlideImage | undefined)[]
+): PlacedSlide[] {
+  const out: PlacedSlide[] = [];
+  plan.slides.forEach((slide, i) => {
+    const image = images[i];
+    const layout = slide.layout ?? "content_bullets";
+    const bullets = slide.bullets.map((b) => b.trim()).filter(Boolean);
+    const cap = image ? CONTENT_BULLETS_WITH_IMAGE : CONTENT_BULLETS_GRID;
+    if (layout !== "content_bullets" || bullets.length <= cap) {
+      out.push({ slide, image, continuation: false });
+      return;
+    }
+    out.push({ slide: { ...slide, bullets: bullets.slice(0, cap) }, image, continuation: false });
+    for (let k = cap; k < bullets.length; k += CONTENT_BULLETS_GRID) {
+      out.push({
+        slide: {
+          title: `${slide.title} (cont.)`,
+          bullets: bullets.slice(k, k + CONTENT_BULLETS_GRID),
+          layout: "content_bullets",
+        },
+        image: undefined,
+        continuation: true,
+      });
+    }
+  });
+  return out;
+}
+
+// ── layout QA ─────────────────────────────────────────────────────────────
+
+const EPS = 0.01;
+
+function blend(base: string, over: string, opacity: number): string {
+  const a = rgb(base);
+  const b = rgb(over);
+  return a
+    .map((c, i) => Math.round((c + (b[i]! - c) * opacity) * 255).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+function containsPoint(p: Prim, x: number, y: number): boolean {
+  if (p.kind === "ellipse") {
+    const rx = p.w / 2;
+    const ry = p.h / 2;
+    const dx = (x - (p.x + rx)) / rx;
+    const dy = (y - (p.y + ry)) / ry;
+    return dx * dx + dy * dy <= 1;
+  }
+  return x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
+}
+
+/**
+ * Effective colour behind a point, compositing fills painted before `upTo`.
+ * Photos are unknown; a strong overlay on a photo is approximated over mid
+ * grey. Returns null when the backdrop is an uncovered photo.
+ */
+function backdropAt(scene: SlideScene, upTo: number, x: number, y: number): string | null {
+  let color: string | null = scene.bg;
+  for (let i = 0; i < upTo; i += 1) {
+    const p = scene.prims[i]!;
+    if (p.kind === "text" || !containsPoint(p, x, y)) continue;
+    if (p.kind === "image") {
+      // Logos sit on their own plate; only full photos hide the backdrop.
+      if (p.fit !== "contain") color = null;
+      continue;
+    }
+    if (p.kind === "ellipse" && !p.fill) continue;
+    const fill = p.kind === "rect" ? p.fill : p.fill!;
+    const opacity = p.opacity ?? 1;
+    if (color == null) {
+      if (opacity < 0.45) continue;
+      color = blend("808080", fill, opacity);
+    } else {
+      color = blend(color, fill, opacity);
+    }
+  }
+  return color;
+}
+
+/**
+ * Nudge `color` toward black or white until it reaches `target` against `bg`,
+ * staying on the colour's own light/dark side. Returns null when only an
+ * inversion (e.g. white text turned near-black) would get there.
+ */
+function ensureContrast(color: string, bg: string, target: number): string | null {
+  const toward = luminance(color) > luminance(bg) ? 1 : 0;
+  let [r, g, b] = rgb(color);
+  let hex = color;
+  for (let i = 0; i < 40 && contrast(hex, bg) < target; i += 1) {
+    [r, g, b] = [r, g, b].map((c) => c + (toward - c) * 0.1) as [number, number, number];
+    hex = [r, g, b].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+  return contrast(hex, bg) >= target ? hex : null;
+}
+
+function overlapArea(a: Box, b: Box): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/** Box the glyphs actually occupy (alignment-aware), for overlap checks. */
+function inkBox(measurer: Measurer, theme: DeckTheme, p: TextPrim): Box {
+  measurer.font(theme.fonts[p.font].pdf).fontSize(p.size);
+  const h = Math.min(p.h, measurer.heightOfString(p.text, { width: p.w * PT }) / PT);
+  const y = p.valign === "middle" ? p.y + (p.h - h) / 2 : p.valign === "bottom" ? p.y + p.h - h : p.y;
+  return { x: p.x, y, w: p.w, h };
+}
+
+/**
+ * Deterministic QA on one laid-out slide. Repairs low contrast in place
+ * (recorded as info); everything else is reported.
+ */
+function auditScene(scene: SlideScene, slideNo: number, theme: DeckTheme, measurer: Measurer): SlideScene {
+  const defects: SlideLayoutDefect[] = [...(scene.defects ?? [])];
+  const prims = [...scene.prims];
+  const texts: Array<{ prim: TextPrim; ink: Box }> = [];
+
+  prims.forEach((p, i) => {
+    if (p.kind !== "text") return;
+    const snippet = `"${p.text.slice(0, 40)}${p.text.length > 40 ? "…" : ""}"`;
+    if (p.x < -EPS || p.y < -EPS || p.x + p.w > W + EPS || p.y + p.h > H + EPS) {
+      defects.push({ slide: slideNo, kind: "off_canvas", severity: "blocking", detail: `${snippet} extends past the slide edge` });
+    }
+    if (p.size < 9 && p.text.length > 40) {
+      defects.push({ slide: slideNo, kind: "text_too_small", severity: "warning", detail: `${snippet} set at ${p.size}pt` });
+    }
+    const ink = inkBox(measurer, theme, p);
+    const bg = backdropAt(scene, i, ink.x + Math.min(ink.w, 1) / 2, ink.y + ink.h / 2);
+    if (bg) {
+      const target = p.size >= 18 || p.font !== "body" ? 3 : 4.5;
+      if (contrast(p.color, bg) < target) {
+        const fixed = ensureContrast(p.color, bg, target);
+        if (fixed) {
+          prims[i] = { ...p, color: fixed };
+          defects.push({
+            slide: slideNo,
+            kind: "low_contrast_repaired",
+            severity: "info",
+            detail: `${snippet} #${p.color} on #${bg} → #${fixed}`,
+          });
+        } else {
+          const ratio = contrast(p.color, bg);
+          defects.push({
+            slide: slideNo,
+            kind: "low_contrast",
+            // Below 3:1 nothing is comfortably readable; above it is a design call.
+            severity: ratio < 3 ? "blocking" : "warning",
+            detail: `${snippet} #${p.color} on #${bg} (${ratio.toFixed(2)}:1)`,
+          });
+        }
+      }
+    }
+    // Single glyphs / folio numbers are decorative and may sit under labels.
+    if (p.text.length > 3) texts.push({ prim: p, ink });
+  });
+
+  for (let a = 0; a < texts.length; a += 1) {
+    for (let b = a + 1; b < texts.length; b += 1) {
+      if (overlapArea(texts[a]!.ink, texts[b]!.ink) > 0.02) {
+        defects.push({
+          slide: slideNo,
+          kind: "text_overlap",
+          severity: "blocking",
+          detail: `"${texts[a]!.prim.text.slice(0, 30)}" overlaps "${texts[b]!.prim.text.slice(0, 30)}"`,
+        });
+      }
+    }
+  }
+  return { ...scene, prims, defects };
+}
+
 function buildScenes(
   plan: PresentationPlan,
   images: readonly (PresentationSlideImage | undefined)[],
   options?: PresentationDesignOptions
-): SlideScene[] {
+): { scenes: SlideScene[]; report: PresentationLayoutReport } {
   const theme = resolveTheme(options);
   const measurer = new PDFDocument({ size: [W * PT, H * PT], margin: 0 });
   const brand = options?.brandName?.trim() || "UNAGENCY";
   const logo = options?.logo?.data ? options.logo : undefined;
-  const total = plan.slides.length + 1;
+  const placed = paginateSlides(plan, images);
+  const total = placed.length + 1;
   const ctx = (index: number): BuildCtx => ({ theme, measurer, brand, logo, index, total });
 
   const heroIndex = plan.slides.findIndex((s, i) => s.layout === "title_hero" && images[i]);
@@ -636,9 +901,8 @@ function buildScenes(
   ];
 
   let sectionNo = 0;
-  plan.slides.forEach((slide, i) => {
+  placed.forEach(({ slide, image }, i) => {
     const c = ctx(i + 2);
-    const image = images[i];
     switch (slide.layout ?? "content_bullets") {
       case "title_hero": {
         const scene = mirrorHero(heroScene(c, slide.title, slide.bullets[0] ?? "", `${pad(c.index)} — ${brand}`, image));
@@ -659,7 +923,30 @@ function buildScenes(
         scenes.push(contentScene(c, slide, image));
     }
   });
-  return scenes;
+
+  const audited = scenes.map((scene, i) => auditScene(scene, i + 1, theme, measurer));
+  const defects = audited.flatMap((scene) => scene.defects ?? []);
+  return {
+    scenes: audited,
+    report: {
+      passed: !defects.some((d) => d.severity === "blocking"),
+      renderedSlideCount: audited.length,
+      continuationSlides: placed.filter((p) => p.continuation).length,
+      defects,
+    },
+  };
+}
+
+/**
+ * Lay the deck out exactly as the PDF/PPTX writers will and return the QA
+ * report (no files are written).
+ */
+export function auditPresentationLayout(
+  plan: PresentationPlan,
+  images: readonly (PresentationSlideImage | undefined)[],
+  options?: PresentationDesignOptions
+): PresentationLayoutReport {
+  return buildScenes(plan, images, options).report;
 }
 
 // ── writers ───────────────────────────────────────────────────────────────
@@ -681,7 +968,7 @@ export async function renderDesignedPresentationPptx(
   images: readonly (PresentationSlideImage | undefined)[],
   options?: PresentationDesignOptions
 ): Promise<Buffer> {
-  const scenes = buildScenes(plan, images, options);
+  const { scenes } = buildScenes(plan, images, options);
   const theme = resolveTheme(options);
   const pptx = new PptxGenJS();
   pptx.author = "Unagency";
@@ -750,7 +1037,7 @@ export async function renderDesignedPresentationPdf(
   images: readonly (PresentationSlideImage | undefined)[],
   options?: PresentationDesignOptions
 ): Promise<Buffer> {
-  const scenes = buildScenes(plan, images, options);
+  const { scenes } = buildScenes(plan, images, options);
   const theme = resolveTheme(options);
 
   return new Promise((resolve, reject) => {

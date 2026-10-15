@@ -67,15 +67,100 @@ function sectionsPayload(fill: WebProjectFill): string {
 }
 
 /** Shared CSS variables + motion; layout-specific rules appended. */
+/** Type pairing for a brand — system stacks only, so nothing fails to load. */
+export type BrandTypography = {
+  readonly id: "geometric" | "didone" | "humanist-serif" | "rounded" | "grotesk";
+  readonly display: string;
+  readonly body: string;
+  readonly displayWeight: number;
+  readonly displayTracking: string;
+};
+
+const TYPOGRAPHY: Record<BrandTypography["id"], BrandTypography> = {
+  geometric: {
+    id: "geometric",
+    display: '"Avenir Next", "Futura", "Century Gothic", "Segoe UI", sans-serif',
+    body: '"Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    displayWeight: 700,
+    displayTracking: "-0.02em",
+  },
+  didone: {
+    id: "didone",
+    display: '"Didot", "Bodoni 72", "Bodoni MT", "Playfair Display", Georgia, serif',
+    body: '"Gill Sans", "Gill Sans MT", "Segoe UI", sans-serif',
+    displayWeight: 400,
+    displayTracking: "0",
+  },
+  "humanist-serif": {
+    id: "humanist-serif",
+    display: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
+    body: '"Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif',
+    displayWeight: 600,
+    displayTracking: "-0.01em",
+  },
+  rounded: {
+    id: "rounded",
+    display: 'ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", sans-serif',
+    body: 'ui-rounded, "SF Pro Rounded", "Segoe UI", "Helvetica Neue", sans-serif',
+    displayWeight: 800,
+    displayTracking: "-0.01em",
+  },
+  grotesk: {
+    id: "grotesk",
+    display: '"Helvetica Neue", "Arial Narrow", Helvetica, Arial, sans-serif',
+    body: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+    displayWeight: 800,
+    displayTracking: "-0.035em",
+  },
+};
+
+/**
+ * Brand tone → type pairing, so two brands do not share one look. Driven by
+ * the brief's own words; falls back per layout.
+ */
+export function resolveBrandTypography(
+  fill: Pick<WebProjectFill, "title" | "summary" | "tagline" | "brandName">,
+  layout: WebLayoutId
+): BrandTypography {
+  const hay = `${fill.title} ${fill.summary} ${fill.tagline} ${fill.brandName}`.toLowerCase();
+  if (/luxury|couture|fashion|jewel|perfume|fragrance|boutique|bridal|atelier|haute/.test(hay)) return TYPOGRAPHY.didone;
+  if (/kids|child|toy|pet|playful|fun|snack|candy|ice cream|bakery|game/.test(hay)) return TYPOGRAPHY.rounded;
+  if (/saas|software|platform|\bai\b|api|fintech|crypto|cloud|developer|startup|analytics|tech/.test(hay)) return TYPOGRAPHY.geometric;
+  if (/industrial|construction|logistics|sport|fitness|gym|athletic|motor|engineering|bold/.test(hay)) return TYPOGRAPHY.grotesk;
+  if (/law|legal|heritage|wine|hotel|architecture|publishing|museum|editorial|magazine|craft/.test(hay)) return TYPOGRAPHY["humanist-serif"];
+  return layout === "editorial"
+    ? TYPOGRAPHY["humanist-serif"]
+    : layout === "product-grid"
+      ? TYPOGRAPHY.geometric
+      : layout === "bento"
+        ? TYPOGRAPHY.rounded
+        : TYPOGRAPHY.grotesk;
+}
+
+/** Text colour that stays readable on `hex` (CTA labels on the accent). */
+export function readableInkOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "#ffffff";
+  const ch = (i: number) => {
+    const c = parseInt(m[1]!.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4);
+  // White wins when it gives more contrast than near-black.
+  return (1.05 / (lum + 0.05)) >= ((lum + 0.05) / 0.0556) ? "#ffffff" : "#111111";
+}
+
 export function buildLayoutCss(fill: WebProjectFill, layout: WebLayoutId): string {
   const { primary, background, text, accent } = fill.colors;
+  const type = resolveBrandTypography(fill, layout);
   const base = `:root {
   --bg: ${background};
   --text: ${text};
   --primary: ${primary};
   --accent: ${accent};
-  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-display: ${type.display};
+  --font-body: ${type.body};
+  --on-accent: ${readableInkOn(accent)};
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -104,7 +189,7 @@ img { max-width: 100%; display: block; }
   margin-top: 1.25rem;
   padding: 0.75rem 1.25rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   text-decoration: none;
   border-radius: 2px;
   transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
@@ -115,7 +200,10 @@ img { max-width: 100%; display: block; }
   box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .eyebrow { letter-spacing: 0.1em; text-transform: uppercase; font-size: 0.72rem; opacity: 0.72; font-family: var(--font-body); }
-h1, h2 { font-family: var(--font-display); font-weight: 600; }
+h1, h2 { font-family: var(--font-display); font-weight: ${type.displayWeight}; letter-spacing: ${type.displayTracking}; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
 `;
 
   if (layout === "editorial") {
@@ -280,6 +368,94 @@ h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.1; margin: 0.4rem 0 1
 }
 `
   );
+}
+
+function esc(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * The same page the React/Next scaffold renders for `layout`, as plain HTML
+ * — so the hosted preview shows the composition the user will actually get,
+ * not one shared template for every brand and direction.
+ */
+export function buildLayoutStaticHtml(fill: WebProjectFill, layout: WebLayoutId): string {
+  const heroSrc = esc(resolveHeroImageSrc(fill));
+  const brand = esc(fill.brandName);
+  const cta = esc(fill.ctaLabel);
+  const year = new Date().getFullYear();
+  const img = (s: { heading: string }, i: number) =>
+    esc(stockImageUrl(`${fill.brandName}-${s.heading}-${i}`, 800, 520));
+  const delay = (i: number, base = 0.1) => `animation-delay:${(base + i * 0.08).toFixed(2)}s`;
+  const nav = `<header class="nav"><strong>${brand}</strong><a class="cta" href="#cta">${cta}</a></header>`;
+  const copy = `<p class="eyebrow">${brand}</p>
+<h1>${esc(fill.tagline)}</h1>
+<p class="lede">${esc(fill.heroBody)}</p>
+<a class="cta" href="#cta">${cta}</a>`;
+  const article = (s: { heading: string; body: string }, i: number, cls = "reveal", imgAttrs = "") =>
+    `<article class="${cls}" style="${delay(i)}"><img src="${img(s, i)}" alt="${esc(s.heading)}" loading="lazy"${imgAttrs}/><h2>${esc(s.heading)}</h2><p>${esc(s.body)}</p></article>`;
+
+  let main: string;
+  let ctaLine: string;
+  if (layout === "editorial") {
+    ctaLine = `${brand} — crafted for the brief.`;
+    main = `<section class="hero-editorial"><div class="reveal">${copy}</div>
+<div class="hero-media reveal"><img src="${heroSrc}" alt="${brand}" loading="eager"/></div></section>
+<section class="rail">${fill.sections.map((s, i) => article(s, i)).join("\n")}</section>`;
+  } else if (layout === "product-grid") {
+    ctaLine = `Start with ${brand} today.`;
+    main = `<section class="hero-product reveal">${copy}</section>
+<div class="hero-strip reveal"><img src="${heroSrc}" alt="${brand}" loading="eager"/></div>
+<section class="product-grid">${fill.sections.map((s, i) => article(s, i)).join("\n")}</section>`;
+  } else if (layout === "bento") {
+    ctaLine = brand;
+    main = `<section class="hero-bento reveal">${copy}</section>
+<section class="bento"><div class="tile tall reveal"><img src="${heroSrc}" alt="${brand}" loading="eager"/></div>
+${fill.sections
+  .map((s, i) =>
+    article(
+      s,
+      i,
+      `tile reveal ${i === 0 ? "wide" : "mid"}`,
+      ' style="height:120px;width:100%;object-fit:cover;border-radius:12px;margin-bottom:12px"'
+    )
+  )
+  .join("\n")}</section>`;
+  } else {
+    ctaLine = `Ready when you are — ${brand}.`;
+    main = `<section class="hero"><div class="hero-copy reveal">${copy}</div>
+<div class="hero-media reveal"><img src="${heroSrc}" alt="${brand}" loading="eager"/></div></section>
+<section class="grid">${fill.sections
+      .map((s, i) => article(s, i).replace("<img ", '<img class="card-media" '))
+      .join("\n")}</section>`;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="description" content="${esc(fill.summary)}"/>
+<title>${esc(fill.title)}</title>
+<style>
+${buildLayoutCss(fill, layout)}
+</style>
+</head>
+<body>
+<div class="page" data-layout="${layout}">
+${nav}
+<main>
+${main}
+<section id="cta" class="cta-band reveal"><h2>${cta}</h2><p>${ctaLine}</p></section>
+</main>
+<footer><span>© ${year} ${brand}</span></footer>
+</div>
+</body>
+</html>`;
 }
 
 export function buildLayoutReactApp(

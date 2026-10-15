@@ -273,6 +273,8 @@ async function runPuppeteerRuntimeCheck(
     for (const viewport of [DESKTOP_VIEWPORT, MOBILE_VIEWPORT]) {
       viewportResults.push(await evaluateViewport(page, viewport));
     }
+    // The screenshot below is recorded as desktop — restore that viewport.
+    await page.setViewport({ width: DESKTOP_VIEWPORT.width, height: DESKTOP_VIEWPORT.height });
 
     const domSnapshot = (await page.evaluate(
       BROWSER_DOM_ACCESSIBILITY_SCRIPT,

@@ -3,7 +3,9 @@
  *
  * Only serious brief misses block acceptance:
  *  - logo / reference asset, exact headline wording and size / format,
- *    on attempts before the final automatic attempt. The final attempt is
+ *    on attempts before the final automatic attempt, plus an explicit slide
+ *    count on presentation artifacts (a 3-slide storyline for a 12-slide
+ *    request must be retried, not accepted). The final attempt is
  *    never blocked by a quality check, so its result can always be approved.
  * Everything else (counts, colours, sections, forbidden terms…) is downgraded
  * to a warning so usable creatives are not rejected for minor gaps.
@@ -29,9 +31,12 @@ const SIZE_FORMAT_KEYS = new Set([
 
 const HEADLINE_KEYS = new Set(["exact_headline", "exact_wording", "headline.exact"]);
 
-type SeriousKind = "size_format" | "logo" | "headline";
+type SeriousKind = "size_format" | "logo" | "headline" | "slide_count";
 
-function seriousKind(check: CdfValidationCheck): SeriousKind | null {
+function seriousKind(
+  check: CdfValidationCheck,
+  artifactKey: string,
+): SeriousKind | null {
   const key = check.requirementKey ?? "";
   if (
     SIZE_FORMAT_KEYS.has(key) ||
@@ -42,6 +47,9 @@ function seriousKind(check: CdfValidationCheck): SeriousKind | null {
   }
   if (key === "required_logo" || key.startsWith("reference.")) return "logo";
   if (HEADLINE_KEYS.has(key)) return "headline";
+  if (key === "slide_count" && artifactKey.startsWith("presentation.")) {
+    return "slide_count";
+  }
   return null;
 }
 
@@ -64,7 +72,7 @@ export function applyRequirementCheckLeniency(
 
   return checks.map((check) => {
     if (check.severity !== "blocking") return check;
-    const kind = seriousKind(check);
+    const kind = seriousKind(check, input.artifactKey);
     // Final automatic attempt: nothing blocks. The user sees that result and
     // may approve it regardless of quality checks (they refine if it is wrong).
     const stillBlocks = observable && kind != null && !finalAttempt;

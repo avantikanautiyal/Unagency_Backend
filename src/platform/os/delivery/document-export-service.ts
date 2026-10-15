@@ -6,8 +6,10 @@
 import PDFDocument from "pdfkit";
 import { mapWithConcurrency } from "./best-effort-visual-image";
 import {
+  auditPresentationLayout,
   renderDesignedPresentationPdf,
   renderDesignedPresentationPptx,
+  type PresentationLayoutReport,
   type PresentationDesignStyle,
 } from "./presentation-design";
 
@@ -396,6 +398,58 @@ export async function buildPresentationPdf(
     options?.resolveSlideImage
   );
   return renderDesignedPresentationPdf(plan, slideImages, options);
+}
+
+export type PresentationExportQaReport = {
+  /** False when a file is missing/corrupt or a blocking layout defect remains. */
+  readonly passed: boolean;
+  readonly exportValid: boolean;
+  readonly pdfPageCount: number;
+  readonly issues: readonly string[];
+  readonly layout: PresentationLayoutReport;
+};
+
+function countPdfPages(pdf: Buffer): number {
+  return (pdf.toString("latin1").match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length;
+}
+
+/**
+ * Artifact-level QA for an exported deck: lays the deck out exactly as the
+ * writers did (slide images come from the same cached resolver) and checks
+ * the files themselves. A model response is not a finished deck until this
+ * passes.
+ */
+export async function evaluatePresentationExport(input: {
+  readonly plan: PresentationPlan;
+  readonly options?: PresentationExportOptions;
+  readonly pdf?: Buffer;
+  readonly pptx?: Buffer;
+}): Promise<PresentationExportQaReport> {
+  const slideImages = await resolveSlideImagesSafe(
+    input.plan.slides,
+    input.options?.resolveSlideImage
+  );
+  const layout = auditPresentationLayout(input.plan, slideImages, input.options);
+  const issues: string[] = [];
+  let pdfPageCount = 0;
+  if (input.pdf) {
+    if (input.pdf.subarray(0, 5).toString("latin1") !== "%PDF-") {
+      issues.push("PDF export is not a PDF file");
+    } else {
+      pdfPageCount = countPdfPages(input.pdf);
+      if (pdfPageCount !== layout.renderedSlideCount) {
+        issues.push(`PDF has ${pdfPageCount} pages, expected ${layout.renderedSlideCount}`);
+      }
+    }
+  }
+  if (input.pptx && input.pptx.subarray(0, 2).toString("latin1") !== "PK") {
+    issues.push("PPTX export is not a valid Office (zip) file");
+  }
+  const exportValid = issues.length === 0;
+  for (const d of layout.defects) {
+    if (d.severity === "blocking") issues.push(`slide ${d.slide}: ${d.kind} — ${d.detail}`);
+  }
+  return { passed: exportValid && layout.passed, exportValid, pdfPageCount, issues, layout };
 }
 
 /**

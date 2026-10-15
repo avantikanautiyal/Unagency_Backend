@@ -144,7 +144,7 @@ function findByArtifactKeyForRole(
  * design-routes). Changing that requires a presentation contract expansion —
  * out of scope for dependency-role boundary closure.
  */
-function presentationFamilyAdditionalRefs(
+export function presentationFamilyAdditionalRefs(
   session: CdfSessionState,
   presentationArtifactFamily: string | undefined,
 ): Array<{

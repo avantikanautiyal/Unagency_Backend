@@ -55,10 +55,18 @@ describe("CDF validation leniency", () => {
     expect(status(dims, "presentation.deck", 3)).toBe("passed");
   });
 
+  it("blocks an explicit slide count miss on presentations before the final attempt", () => {
+    const count = [check("slide_count", { verificationType: "count" })];
+    expect(status(count, "presentation.storyline", 1)).toBe("failed");
+    expect(status(count, "presentation.deck", 2)).toBe("failed");
+    expect(status(count, "presentation.deck", 3)).toBe("passed");
+    expect(status(count, "social-media.creative-directions", 1)).toBe("passed");
+  });
+
   it("downgrades minor requirements to warnings", () => {
     expect(
       status(
-        [check("slide_count", { verificationType: "count" }), check("brand_colors")],
+        [check("route_count", { verificationType: "count" }), check("brand_colors")],
         "presentation.deck",
       ),
     ).toBe("passed");

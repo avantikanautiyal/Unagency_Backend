@@ -10,6 +10,7 @@ import {
   buildLayoutReactApp,
   resolveWebLayout,
   type WebLayoutId,
+  buildLayoutStaticHtml,
 } from "./website-scaffold-layouts";
 
 export type WebProjectFillColors = {
@@ -256,83 +257,8 @@ img{max-width:100%;height:auto;border-radius:12px;display:block}
     }
     return html;
   }
-  const sectionCards = fill.sections
-    .map((s, i) => {
-      const img = stockImageUrl(`${fill.brandName}-${s.heading}-${i}`, 900, 560);
-      return `<article class="card reveal" style="animation-delay:${0.12 + i * 0.08}s">
-<img src="${esc(img)}" alt="${esc(s.heading)}" width="900" height="560" loading="lazy"/>
-<h2>${esc(s.heading)}</h2>
-<p>${esc(s.body)}</p>
-</article>`;
-    })
-    .join("\n");
-  const { primary, background, text, accent } = fill.colors;
-  const proofImg = stockImageUrl(`${fill.brandName}-proof`, 1200, 700);
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="description" content="${esc(fill.summary)}"/>
-<title>${esc(fill.title)}</title>
-<style>
-:root{--bg:${background};--text:${text};--accent:${accent};--primary:${primary};--display:Georgia,"Iowan Old Style",serif;--body:"Avenir Next","Segoe UI",sans-serif}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;font-family:var(--body);color:var(--text);background:
-radial-gradient(1100px 520px at 8% -10%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 55%),
-radial-gradient(900px 480px at 100% 0%,color-mix(in srgb,var(--primary) 16%,transparent),transparent 50%),
-var(--bg)}
-@keyframes rise-in{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-@keyframes ken{from{transform:scale(1.04)}to{transform:scale(1)}}
-.reveal{animation:rise-in .75s cubic-bezier(.22,1,.36,1) both}
-.nav{display:flex;justify-content:space-between;align-items:center;padding:1.1rem 6vw;position:sticky;top:0;backdrop-filter:blur(10px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid color-mix(in srgb,var(--text) 10%,transparent);z-index:5}
-.nav strong{font-family:var(--display);font-size:1.15rem}
-.hero{display:grid;gap:2rem;padding:4.5rem 6vw 2.5rem;max-width:1180px;margin:0 auto;align-items:center}
-@media(min-width:900px){.hero{grid-template-columns:1.05fr .95fr}}
-.eyebrow{letter-spacing:.12em;text-transform:uppercase;font-size:.72rem;opacity:.7}
-h1{font-family:var(--display);font-size:clamp(2.4rem,5.5vw,3.8rem);line-height:1.05;margin:.45rem 0 1rem;max-width:14ch}
-.lede{font-size:1.15rem;line-height:1.65;max-width:38rem;opacity:.94}
-.cta{display:inline-block;margin-top:1.2rem;padding:.8rem 1.25rem;background:var(--accent);color:#fff;text-decoration:none;transition:transform .25s ease,filter .25s ease,box-shadow .25s ease}
-.cta:hover{transform:translateY(-2px);filter:brightness(1.05);box-shadow:0 14px 36px color-mix(in srgb,var(--accent) 35%,transparent)}
-.hero-frame{border-radius:18px;overflow:hidden;min-height:280px;box-shadow:0 28px 70px color-mix(in srgb,var(--text) 18%,transparent)}
-.hero-frame img{width:100%;height:100%;object-fit:cover;min-height:320px;animation:ken 12s ease-out both}
-.grid{display:grid;gap:1.25rem;padding:1rem 6vw 3rem;max-width:1180px;margin:0 auto;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-.card{padding:0 0 1.2rem;border-radius:14px;overflow:hidden;background:color-mix(in srgb,var(--primary) 6%,var(--bg));border:1px solid color-mix(in srgb,var(--text) 9%,transparent);transition:transform .3s ease}
-.card:hover{transform:translateY(-4px)}
-.card img{width:100%;height:170px;object-fit:cover}
-.card h2,.card p{padding:0 1.1rem}
-.card h2{font-family:var(--display);font-size:1.2rem;margin:1rem 0 .4rem}
-.proof{display:grid;gap:1.5rem;padding:1rem 6vw 3rem;max-width:1180px;margin:0 auto;align-items:center}
-@media(min-width:860px){.proof{grid-template-columns:1.1fr .9fr}}
-.proof img{width:100%;border-radius:14px;object-fit:cover;max-height:380px}
-.proof blockquote{font-family:var(--display);font-size:clamp(1.35rem,3vw,1.9rem);line-height:1.35;margin:0}
-#cta{margin:0 6vw 3rem;padding:2.8rem 1.75rem;border-radius:18px;text-align:center;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 16%,var(--bg)),color-mix(in srgb,var(--primary) 10%,var(--bg)))}
-footer{padding:1.5rem 6vw;border-top:1px solid color-mix(in srgb,var(--text) 10%,transparent);opacity:.8}
-</style>
-</head>
-<body>
-<header class="nav"><strong>${esc(fill.brandName)}</strong><a class="cta" href="#cta">${esc(fill.ctaLabel)}</a></header>
-<main>
-<section class="hero">
-<div class="reveal">
-<p class="eyebrow">${esc(fill.brandName)}</p>
-<h1>${esc(fill.tagline)}</h1>
-<p class="lede">${esc(fill.heroBody)}</p>
-<a class="cta" href="#cta">${esc(fill.ctaLabel)}</a>
-</div>
-<div class="hero-frame reveal"><img src="${esc(heroSrc)}" alt="${esc(fill.brandName)}" width="1400" height="900" loading="eager"/></div>
-</section>
-<section class="grid">${sectionCards}</section>
-<section class="proof reveal">
-<img src="${esc(proofImg)}" alt="" width="1200" height="700" loading="lazy"/>
-<blockquote>“${esc(fill.summary)}”</blockquote>
-</section>
-<section id="cta" class="reveal"><h2>${esc(fill.ctaLabel)}</h2><p>${esc(fill.brandName)} — built around your brief.</p><a class="cta" href="#cta">${esc(fill.ctaLabel)}</a></section>
-</main>
-<footer><span>© ${new Date().getFullYear()} ${esc(fill.brandName)}</span></footer>
-</body>
-</html>`;
+  // Same composition as the React/Next scaffold for this layout.
+  return buildLayoutStaticHtml(fill, resolveWebLayout(fill, fill.layoutRouteIndex ?? 0));
 }
 
 function reactViteFiles(fill: WebProjectFill): WebProjectFile[] {

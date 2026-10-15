@@ -500,22 +500,63 @@ export async function runCreateDispatch(
       host.executionStore.set(executionId, resource);
     }
 
+    // Video vendors only read `prompt` + images: give them the real brief
+    // (never the canonical placeholder) and, with an approved timed script,
+    // a shot-by-shot plan that opens on the matching storyboard panel.
+    const videoPayloadDefaults = isVideoGenerationCapability(capabilityId)
+      ? resolveAsyncVideoPayloadFromMetadata(req.metadata)
+      : {};
+    let storyboardVideo: Awaited<
+      ReturnType<
+        typeof import("../../providers/video/common/storyboard-video-submission").prepareStoryboardVideoSubmission
+      >
+    > = null;
+    if (isVideoGenerationCapability(capabilityId)) {
+      try {
+        const { prepareStoryboardVideoSubmission } = await import(
+          "../../providers/video/common/storyboard-video-submission"
+        );
+        storyboardVideo = await prepareStoryboardVideoSubmission({
+          prompt: providerPrompt,
+          metadata: (workingMetadata ?? req.metadata) as Record<string, unknown> | undefined,
+          assets: [
+            ...(Array.isArray(workingMetadata?.assets) ? workingMetadata.assets : []),
+            ...(Array.isArray(req.metadata?.assets) ? req.metadata.assets : []),
+          ],
+          aspectRatio:
+            typeof videoPayloadDefaults.aspectRatio === "string"
+              ? videoPayloadDefaults.aspectRatio
+              : undefined,
+          executionId,
+          organizationId: trustedOrganizationId,
+          blobStorage: host.deps.asyncMedia?.blobStorage,
+        });
+      } catch (err) {
+        console.warn(
+          `[storyboard-video] plan skipped: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    const asyncPrompt = storyboardVideo?.prompt ?? providerPrompt;
+
     const submit = await host.deps.asyncCoordinator.submitExecution({
       executionId,
       organizationId: trustedOrganizationId,
       workspaceId: req.workspaceId,
-      prompt: providerPrompt,
+      prompt: asyncPrompt,
       correlationId,
       providerId,
       modelId,
       capabilityId,
       payload: {
-        prompt: providerPrompt,
+        prompt: asyncPrompt,
         ...(req.metadata?.payload as Record<string, unknown> | undefined),
         ...(Array.isArray(req.metadata?.assets) ? { assets: req.metadata.assets } : {}),
         ...(req.metadata?.audio ? { audio: req.metadata.audio } : {}),
         ...(req.metadata?.image ? { image: req.metadata.image } : {}),
         ...resolveAsyncVideoPayloadFromMetadata(req.metadata),
+        ...(storyboardVideo?.payload ?? {}),
+        ...(storyboardVideo?.assets ? { assets: storyboardVideo.assets } : {}),
         ...(isImageGenerationCapability(capabilityId)
           ? resolveAsyncImagePayloadFromMetadata(
               workingMetadata ?? req.metadata,

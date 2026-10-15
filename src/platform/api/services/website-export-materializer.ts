@@ -46,6 +46,15 @@ import {
 } from "./website-materialization-diagnostics";
 import { CDF_STRUCTURED_PAYLOAD_MISSING } from "../../cdf/structured-execution-result";
 import {
+  evaluateWebsitePreview,
+  type WebsiteQualityReport,
+  type WebsiteRuntimeCheck,
+} from "../../os/delivery/website-quality-gate";
+import {
+  createBrowserRuntimeCheck,
+  skippedRuntimeResult,
+} from "../../os/evaluation/runtime/browser-runtime-evaluator";
+import {
   hostedSitePath,
   hostedSiteUrl,
 } from "../../media/delivery/hosted-site-links";
@@ -264,7 +273,35 @@ type MaterializedRoute = WebsiteRoutePlan & {
   liveUrl?: string;
   downloadFormats: string[];
   description?: string;
+  /** Rendered-page QA of the hosted preview (see website-quality-gate). */
+  qualityReport?: WebsiteQualityReport;
 };
+
+const WEBSITE_QA_TIMEOUT_MS = 30_000;
+
+/** Browser QA bounded in time — a hung browser must not hang the export. */
+function boundedRuntimeCheck(): WebsiteRuntimeCheck {
+  const check = createBrowserRuntimeCheck();
+  return (html) =>
+    Promise.race([
+      check(html),
+      new Promise<ReturnType<typeof skippedRuntimeResult>>((resolve) =>
+        setTimeout(
+          () => resolve(skippedRuntimeResult("browser_runtime_timeout")),
+          WEBSITE_QA_TIMEOUT_MS
+        ).unref?.()
+      ),
+    ]);
+}
+
+/** Blocking issues that mean the hosted page itself is broken. */
+const BROKEN_PAGE_ISSUES = new Set([
+  "document.incomplete",
+  "content.empty",
+  "render.failed",
+  "render.desktop_empty",
+  "render.mobile_empty",
+]);
 
 async function materializeOneProject(input: {
   readonly asyncMedia: AsyncMediaPlatform;
@@ -280,6 +317,13 @@ async function materializeOneProject(input: {
    */
   readonly previewHtml?: string;
   readonly outputOffset: number;
+  /** Override the browser QA (tests); defaults to the shared evaluator. */
+  readonly runtimeCheck?: WebsiteRuntimeCheck;
+  /**
+   * The primary route is the deliverable: a broken page fails the export.
+   * Alternate directions keep their QA report but do not block delivery.
+   */
+  readonly failOnBrokenPreview: boolean;
 }): Promise<
   Result<{ artifactIds: string[]; route: MaterializedRoute }>
 > {
@@ -321,9 +365,31 @@ async function materializeOneProject(input: {
     downloadFormats.push("zip");
   }
 
-  const previewHtml = isHtmlStaticPreviewable(project)
+  const rawPreviewHtml = isHtmlStaticPreviewable(project)
     ? legacy.html
     : (input.previewHtml ?? "");
+  let previewHtml = rawPreviewHtml;
+  let qualityReport: WebsiteQualityReport | undefined;
+  if (rawPreviewHtml.trim()) {
+    const qa = await evaluateWebsitePreview({
+      html: rawPreviewHtml,
+      runtimeCheck: input.runtimeCheck ?? boundedRuntimeCheck(),
+    });
+    previewHtml = qa.html;
+    qualityReport = qa.report;
+    const broken = qa.report.issues.filter(
+      (i) => i.severity === "blocking" && BROKEN_PAGE_ISSUES.has(i.id)
+    );
+    if (broken.length && input.failOnBrokenPreview) {
+      return failure(
+        new ValidationError(
+          `Website preview for "${project.title}" failed QA: ${broken
+            .map((i) => i.detail)
+            .join("; ")}`
+        )
+      );
+    }
+  }
   if (previewHtml.trim()) {
     const artifactId = input.asyncMedia.artifacts.buildArtifactId(
       operationId,
@@ -369,6 +435,7 @@ async function materializeOneProject(input: {
       ...(projectArtifactId ? { projectArtifactId } : {}),
       downloadFormats,
       ...(project.description ? { description: project.description } : {}),
+      ...(qualityReport ? { qualityReport } : {}),
     },
   });
 }
@@ -554,6 +621,7 @@ export async function materializeWebsiteExport(input: {
         ? { previewHtml: webProjectToLegacyPage(staticPreview).html }
         : {}),
       outputOffset,
+      failOnBrokenPreview: routeIndex === 0,
     });
     if (!one.ok) return one;
     artifactIds.push(...one.value.artifactIds);

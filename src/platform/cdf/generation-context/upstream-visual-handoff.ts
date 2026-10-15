@@ -139,6 +139,12 @@ function attachUpstreamVisualAsset(input: {
   organizationId: string;
   vaultAssetId: string;
   contentHash?: string;
+  /**
+   * Put this visual first. Video providers use the first image as the opening
+   * frame — with the logo first, the video started on the logo instead of the
+   * approved storyboard.
+   */
+  leadsInputs?: boolean;
 }): Record<string, unknown> {
   const existingAssets = Array.isArray(input.metadata.assets)
     ? [...input.metadata.assets]
@@ -186,7 +192,7 @@ function attachUpstreamVisualAsset(input: {
     ...input.metadata,
     referenceInputPresent: true,
     cdfUpstreamVisualHandoffApplied: true,
-    assets: [...filtered, assetRecord],
+    assets: input.leadsInputs ? [assetRecord, ...filtered] : [...filtered, assetRecord],
   };
 }
 
@@ -385,6 +391,7 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
     });
 
     nextMeta = attachUpstreamVisualAsset({
+      leadsInputs: modality === "video",
       metadata: nextMeta,
       upstream: u,
       resolvedUrl: bytes.resolved.providerInput.url!,

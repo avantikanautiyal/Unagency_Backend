@@ -23,8 +23,9 @@ import {
   planVideoClipSegments,
   wireDurationForVideoSegment,
 } from "./video-clip-segments";
-import { concatMp4Videos, extractLastFramePng } from "./video-ffmpeg";
+import { concatMp4Videos, extractLastFramePng, normalizeShotClip } from "./video-ffmpeg";
 import {
+  readVideoShotPlan,
   resolveVideoTargetDurationSec,
   shouldComposeVideoTowardTarget,
 } from "./video-compose-safe-metadata";
@@ -118,6 +119,9 @@ export async function composeVideoTowardTargetDuration(
     targetDurationSec: number;
   }>
 > {
+  const shotPlan = readVideoShotPlan(input.payload);
+  if (shotPlan) return composeStoryboardShots(input, shotPlan);
+
   const targetDurationSec = resolveVideoTargetDurationSec(input.payload);
   const plan = planVideoClipSegments({
     targetDurationSec,
@@ -188,6 +192,82 @@ export async function composeVideoTowardTargetDuration(
     composedBytes,
     segmentCount: clips.length,
     targetDurationSec,
+  });
+}
+
+/**
+ * Storyboard shot-by-shot: the first clip (already generated from shot 1's
+ * panel) plus one clip per remaining shot, each opening on its own storyboard
+ * panel (or the previous shot's last frame when a panel is unavailable), each
+ * trimmed to its scene length, then stitched in script order.
+ */
+async function composeStoryboardShots(
+  input: VideoTargetComposeInput,
+  shotPlan: import("./storyboard-shot-plan").VideoShotPlan,
+): Promise<
+  Result<{ composedBytes: Buffer; segmentCount: number; targetDurationSec: number }>
+> {
+  const token: CancellationToken = { cancelled: false, reason: undefined };
+  const raw: Buffer[] = [await downloadBlobBytes(input.blobStorage, input.artifactStorageKey)];
+  for (let index = 1; index < shotPlan.shots.length; index++) {
+    const shot = shotPlan.shots[index]!;
+    let frame: Buffer | null = null;
+    if (shot.panelKey) {
+      try {
+        frame = await downloadBlobBytes(input.blobStorage, shot.panelKey);
+      } catch {
+        frame = null;
+      }
+    }
+    if (!frame) frame = await extractLastFramePng({ videoBytes: raw[index - 1]! });
+    const payload: Record<string, unknown> = {
+      ...input.payload,
+      prompt: shot.prompt,
+      duration: shot.durationSec,
+      videoSegmentIndex: index,
+      videoSegmentCount: shotPlan.shots.length,
+      assets: [
+        {
+          url: `data:image/png;base64,${frame.toString("base64")}`,
+          mimeType: "image/png",
+          role: "subject_reference",
+        },
+      ],
+    };
+    delete payload.image;
+    delete payload.imageUrls;
+    delete payload.videoShotPlan;
+
+    const request = input.buildRequest(payload);
+    const submit = await input.dispatcher.submitAsync(
+      request,
+      token,
+      `${input.executionId}:shot:${index}`,
+    );
+    if (!submit.ok) return submit;
+    const jobId = submit.value.providerJobId;
+    if (!jobId) return failure(new ValidationError("shot submit missing providerJobId"));
+    const terminal = await pollUntilTerminal(input.dispatcher, request, jobId, token);
+    if (!terminal.ok) return terminal;
+    raw.push(await fetchUrlBytes(terminal.value.videoUrl));
+  }
+
+  const clips: Buffer[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    clips.push(
+      await normalizeShotClip({
+        bytes: raw[i]!,
+        durationSec: shotPlan.shots[i]!.durationSec,
+        width: shotPlan.width,
+        height: shotPlan.height,
+      }),
+    );
+  }
+  const composedBytes = await concatMp4Videos({ clips });
+  return success({
+    composedBytes,
+    segmentCount: clips.length,
+    targetDurationSec: shotPlan.shots.reduce((sum, s) => sum + s.durationSec, 0),
   });
 }
 
@@ -292,8 +372,10 @@ export async function maybeComposeVideoAfterIngest(input: {
       ? meta.prompt.trim()
       : "Continue the cinematic sequence from the last frame with storyboard continuity.";
   const targetDurationSec = resolveVideoTargetDurationSec(meta);
+  const shotPlan = readVideoShotPlan(meta);
   const payload: Record<string, unknown> = {
     prompt,
+    ...(shotPlan ? { videoShotPlan: shotPlan } : {}),
     videoTargetDurationSec: targetDurationSec,
     videoSegmentIndex: 0,
     videoSegmentCount: planVideoClipSegments({

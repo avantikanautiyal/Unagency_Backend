@@ -14,6 +14,7 @@ import {
   buildDocumentDocx,
   buildDocumentPdf,
   buildPresentationPdf,
+  evaluatePresentationExport,
   buildPresentationPptx,
   parseDocumentPlan,
   parsePresentationPlan,
@@ -785,6 +786,19 @@ export async function materializeDocumentExports(input: {
     };
     const pdfBuf = await buildPresentationPdf(parsed, planOptions);
     const pptxBuf = await buildPresentationPptx(parsed, planOptions);
+    const qualityReport = await evaluatePresentationExport({
+      plan: parsed,
+      options: planOptions,
+      pdf: pdfBuf,
+      pptx: pptxBuf,
+    });
+    if (!qualityReport.exportValid) {
+      return failure(
+        new ValidationError(
+          `Presentation export failed validation: ${qualityReport.issues.join("; ")}`
+        )
+      );
+    }
     const pair = await ingestPresentationPair({
       asyncMedia: input.asyncMedia,
       executionId: input.executionId,
@@ -817,6 +831,7 @@ export async function materializeDocumentExports(input: {
         pdfArtifactId: pair.value.pdfArtifactId,
         pptxArtifactId: pair.value.pptxArtifactId,
         ...(slidePreviewArtifactIds.length ? { slidePreviewArtifactIds } : {}),
+        qualityReport,
         downloadFormats: [...producedLabels],
         producedDeliverableFormats: producedLabels.map((l) => l.toUpperCase()),
       },
@@ -1011,6 +1026,19 @@ async function materializePresentationRoutes(input: {
     };
     const pdfBuf = await buildPresentationPdf(deck, routeOptions);
     const pptxBuf = await buildPresentationPptx(deck, routeOptions);
+    const qualityReport = await evaluatePresentationExport({
+      plan: deck,
+      options: routeOptions,
+      pdf: pdfBuf,
+      pptx: pptxBuf,
+    });
+    if (!qualityReport.exportValid) {
+      return failure(
+        new ValidationError(
+          `Presentation export for "${route.title}" failed validation: ${qualityReport.issues.join("; ")}`
+        )
+      );
+    }
     const pair = await ingestPresentationPair({
       asyncMedia: input.asyncMedia,
       executionId: input.executionId,
@@ -1032,6 +1060,7 @@ async function materializePresentationRoutes(input: {
       slides: deck.slides,
       pdfArtifactId: pair.value.pdfArtifactId,
       pptxArtifactId: pair.value.pptxArtifactId,
+      qualityReport,
       downloadFormats: ["pdf", "pptx"],
     });
   }

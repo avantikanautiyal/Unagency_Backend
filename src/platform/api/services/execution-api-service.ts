@@ -105,6 +105,25 @@ import { updateExecutionTrace } from "../../os/observability/execution-trace";
 /** Longest a status poll waits on the job worker before answering. */
 const POLL_TICK_BUDGET_MS = 1500;
 
+/**
+ * Stamps the synchronous path adds once a canonical ArtifactVersion is bound
+ * to the session. Async results (video) never got them, so clients treated a
+ * pinned, approvable video as a non-approvable "diagnostic preview".
+ */
+function asyncCompletionStamps(
+  meta: Readonly<Record<string, unknown>> | undefined,
+): Record<string, unknown> {
+  const target =
+    typeof meta?.generationFanoutTargetId === "string"
+      ? meta.generationFanoutTargetId.trim()
+      : "";
+  return {
+    cdfGeneratedArtifactsBound: true,
+    cdfCanonicalCompletionEstablished: true,
+    ...(target ? { cdfCanonicalFanoutTargetId: target } : {}),
+  };
+}
+
 export class ExecutionApiService implements IExecutionApiService {
   private readonly executionStore = new Map<string, ExecutionResource>();
   private readonly artifactStore = new Map<string, ExecutionArtifactRef[]>();
@@ -1631,6 +1650,7 @@ export class ExecutionApiService implements IExecutionApiService {
         data: {
           ...(resultData ?? {}),
           ...(attach ?? {}),
+          ...(attach ? asyncCompletionStamps(meta) : {}),
           ...structuralStamps,
           artifactIds: mediaArtifactIds,
         },
@@ -2020,6 +2040,7 @@ export class ExecutionApiService implements IExecutionApiService {
                   data: {
                     ...(nextResult.data as Record<string, unknown>),
                     ...(attach ?? {}),
+                    ...(attach ? asyncCompletionStamps(pollMetadata) : {}),
                     ...structuralStamps,
                   },
                 };
@@ -2035,6 +2056,7 @@ export class ExecutionApiService implements IExecutionApiService {
                   data: {
                     ...(nextResult.data as Record<string, unknown>),
                     ...(attach ?? {}),
+                    ...(attach ? asyncCompletionStamps(pollMetadata) : {}),
                     ...structuralStamps,
                   },
                 };

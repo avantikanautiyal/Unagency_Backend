@@ -20,6 +20,7 @@ export const VIDEO_COMPOSE_SAFE_KEYS = [
   "videoComposeFailed",
   "videoComposeSegmentCount",
   "videoComposeDurationSec",
+  "videoShotPlan",
 ] as const;
 
 /** Persist compose plan fields from the submit payload (no secrets / assets). */
@@ -44,7 +45,39 @@ export function extractVideoComposeSafeMetadata(
   if (typeof payload.prompt === "string" && payload.prompt.trim()) {
     out.prompt = payload.prompt.trim().slice(0, 4000);
   }
+  const plan = readVideoShotPlan(payload);
+  if (plan) out.videoShotPlan = plan;
   return out;
+}
+
+/** Shot-by-shot storyboard plan (prompts, durations, panel blob keys — no image bytes). */
+export function readVideoShotPlan(
+  meta: Readonly<Record<string, unknown>> | undefined,
+): import("./storyboard-shot-plan").VideoShotPlan | undefined {
+  const raw = meta?.videoShotPlan;
+  if (!raw || typeof raw !== "object") return undefined;
+  const rec = raw as Record<string, unknown>;
+  const shots = Array.isArray(rec.shots)
+    ? rec.shots
+        .map((s) => {
+          if (!s || typeof s !== "object") return null;
+          const r = s as Record<string, unknown>;
+          const prompt = typeof r.prompt === "string" ? r.prompt.slice(0, 1500) : "";
+          const durationSec = Number(r.durationSec);
+          if (!prompt || !Number.isFinite(durationSec) || durationSec <= 0) return null;
+          return {
+            prompt,
+            durationSec,
+            ...(typeof r.panelKey === "string" && r.panelKey ? { panelKey: r.panelKey } : {}),
+          };
+        })
+        .filter((s): s is NonNullable<typeof s> => s != null)
+        .slice(0, 12)
+    : [];
+  const width = Number(rec.width);
+  const height = Number(rec.height);
+  if (shots.length < 2 || !(width > 0) || !(height > 0)) return undefined;
+  return { shots, width, height };
 }
 
 export function resolveVideoTargetDurationSec(
@@ -98,6 +131,7 @@ export function shouldComposeVideoTowardTarget(input: {
     mime === "";
   if (!looksVideo) return false;
 
+  if (readVideoShotPlan(meta)) return true;
   const target = resolveVideoTargetDurationSec(meta);
   const plan = planVideoClipSegments({
     targetDurationSec: target,

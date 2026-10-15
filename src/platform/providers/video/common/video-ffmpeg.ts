@@ -153,3 +153,47 @@ export async function convertMp4ToGif(input: {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/**
+ * Re-encode one shot to an exact length and a common size / frame rate, so
+ * shots from different providers (or panels of different shapes) concatenate
+ * cleanly. Letterboxes instead of cropping.
+ */
+export async function normalizeShotClip(input: {
+  readonly bytes: Buffer;
+  readonly durationSec: number;
+  readonly width: number;
+  readonly height: number;
+  readonly fps?: number;
+}): Promise<Buffer> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unagency-shot-"));
+  const inPath = path.join(dir, "in.mp4");
+  const outPath = path.join(dir, "out.mp4");
+  const w = input.width - (input.width % 2);
+  const h = input.height - (input.height % 2);
+  try {
+    fs.writeFileSync(inPath, input.bytes);
+    await runFfmpeg([
+      "-y",
+      "-i",
+      inPath,
+      "-t",
+      String(Math.max(0.5, input.durationSec)),
+      "-vf",
+      `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${input.fps ?? 24}`,
+      "-an",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      outPath,
+    ]);
+    return fs.readFileSync(outPath);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}

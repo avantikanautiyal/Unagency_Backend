@@ -501,7 +501,8 @@ describe("CDF M7 hardening — Presentation canonical runtime", () => {
       artifactId: deckRes.attach.cdfArtifactId,
       artifactVersion: deckRes.attach.cdfArtifactVersion,
       rawInstruction: "Make the title on slide 1 larger",
-      expectedSessionVersion: cur.sessionVersion,
+      // Deck ingest CAS-binds generatedArtifacts, which bumps the session.
+      expectedSessionVersion: getCdfSession(cur.sessionId)!.sessionVersion,
       m4Requirements: [],
     });
     expect(["applied", "requires_clarification", "validation_failed"]).toContain(

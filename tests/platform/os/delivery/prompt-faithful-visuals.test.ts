@@ -137,11 +137,29 @@ describe("prompt-faithful website visuals", () => {
     const html =
       htmlProject.files.find((f) => f.path.endsWith("index.html"))?.content ?? "";
     expect(html).toMatch(/<img[^>]+src="https:\/\/picsum\.photos\/seed\//i);
-    expect(html).toMatch(/sticky|hero-frame|proof/i);
+    // Static preview uses the same layout composition as the React scaffold.
+    expect(html).toMatch(/data-layout="(bold-hero|editorial|product-grid|bento)"/);
+    expect(html).toMatch(/class="(hero|hero-editorial|hero-product|hero-bento)"|class="hero-(product|bento) reveal"/);
 
     const next = expandWebProjectFill({ ...fill, stack: "next" });
     const page = next.files.find((f) => f.path.endsWith("page.tsx"))?.content ?? "";
     expect(page).toMatch(/https:\/\/picsum\.photos\/seed\//);
+  });
+
+  it("multi-route static previews are distinct and match their React layout", () => {
+    const layouts = [0, 1, 2].map((layoutRouteIndex) => {
+      const project = expandWebProjectFill({ ...fill, stack: "html-static", html: "", layoutRouteIndex });
+      const html = project.files.find((f) => f.path.endsWith("index.html"))?.content ?? "";
+      return html.match(/data-layout="([a-z-]+)"/)?.[1];
+    });
+    expect(new Set(layouts).size).toBe(3);
+    const reactLayouts = [0, 1, 2].map((layoutRouteIndex) => {
+      const app =
+        expandWebProjectFill({ ...fill, layoutRouteIndex }).files.find((f) => f.path.endsWith("App.tsx"))
+          ?.content ?? "";
+      return /hero-editorial/.test(app) ? "editorial" : /hero-product/.test(app) ? "product-grid" : /hero-bento/.test(app) ? "bento" : "bold-hero";
+    });
+    expect(layouts).toEqual(reactLayouts);
   });
 
   it("multi-route layout indexes produce distinct React scaffolds", () => {

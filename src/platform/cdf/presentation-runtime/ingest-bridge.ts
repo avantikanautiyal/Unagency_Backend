@@ -9,7 +9,12 @@
 import { PRESENTATION_ARTIFACT_KEYS } from "../artifacts/presentation/keys";
 import { bindGeneratedArtifactToSession } from "../artifacts/generated-bind";
 import { getCdfSession } from "../session-store";
-import { collectContractUpstreamRefs } from "../canonical-ingest/upstream-projection";
+import {
+  collectContractUpstreamRefs,
+  type CanonicalUpstreamArtifactRef,
+} from "../canonical-ingest/upstream-projection";
+import { presentationFamilyAdditionalRefs } from "../generation-context/resolve-dependencies";
+import type { CdfSessionState } from "../types";
 import {
   ingestGenerationCompletion,
   CdfGenerationArtifactError,
@@ -18,6 +23,34 @@ import { resolveArtifactTarget } from "../generation-artifact/target-resolution"
 import type { IngestGenerationResult } from "../generation-artifact/types";
 import { isM4AcceptanceStatus } from "../generation-validation";
 import { qualityAttemptFromMetadata } from "../generation-validation/leniency";
+
+/**
+ * Deck generation is given the approved storyline, selected design system and
+ * selected design route as extra context (see presentationFamilyAdditionalRefs),
+ * so its lineage must pin those exact versions too — not only the phase's
+ * declared dependencies.
+ */
+function deckLineageRefs(
+  session: CdfSessionState,
+  artifactKey: string,
+  declared: CanonicalUpstreamArtifactRef[],
+): CanonicalUpstreamArtifactRef[] {
+  if (artifactKey !== PRESENTATION_ARTIFACT_KEYS.deck) return declared;
+  const out = [...declared];
+  const seen = new Set(out.map((r) => `${r.artifactId}@${r.version}`));
+  for (const { ref } of presentationFamilyAdditionalRefs(session, artifactKey)) {
+    if (!ref.artifactKey || !Number.isInteger(ref.version)) continue;
+    const exact = `${ref.artifactId}@${ref.version}`;
+    if (seen.has(exact)) continue;
+    seen.add(exact);
+    out.push({
+      artifactId: ref.artifactId,
+      version: ref.version as number,
+      artifactKey: ref.artifactKey,
+    });
+  }
+  return out;
+}
 
 export const CDF_PRESENTATION_RUNTIME_VERSION = "m7.presentation.runtime.v1";
 
@@ -164,7 +197,11 @@ export function tryIngestPresentationCdfCompletion(input: {
       activeBriefVersion: session.activeBriefVersion,
       expectedSessionVersion: session.sessionVersion,
       designSystemRef,
-      upstreamArtifactRefs: collectContractUpstreamRefs({ sessionId, serviceId, phaseId }),
+      upstreamArtifactRefs: deckLineageRefs(
+        session,
+        target.artifactKey,
+        collectContractUpstreamRefs({ sessionId, serviceId, phaseId }),
+      ),
       sourceArtifacts: designSystemRef
         ? [
             {

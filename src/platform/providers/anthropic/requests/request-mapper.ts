@@ -142,6 +142,9 @@ export function mapCanonicalToAnthropicRequest(
       : typeof params.max_tokens === "number"
         ? params.max_tokens
         : 4096;
+  // Claude 5-family: thinking is always on and counts toward max_tokens.
+  const claude5 = isClaude5FamilyModel(wireModelId);
+  const effectiveMaxTokens = claude5 ? Math.max(maxTokens, 32_000) : maxTokens;
 
   const structuredTool = extractJsonSchemaTool(
     request.input as Record<string, unknown>
@@ -149,7 +152,7 @@ export function mapCanonicalToAnthropicRequest(
 
   const body: Record<string, unknown> = {
     model: wireModelId,
-    max_tokens: maxTokens,
+    max_tokens: effectiveMaxTokens,
     messages: anthropicMessages,
   };
 
@@ -161,7 +164,13 @@ export function mapCanonicalToAnthropicRequest(
         input_schema: transformSchemaForAnthropicToolInput(structuredTool.schema),
       },
     ];
-    body.tool_choice = { type: "tool", name: structuredTool.name };
+    if (claude5) {
+      // Forced tool_choice ("tool"/"any") returns 400 on Claude 5-family models.
+      body.tool_choice = { type: "auto" };
+      body.system = `Respond only by calling the "${structuredTool.name}" tool with the complete JSON object.`;
+    } else {
+      body.tool_choice = { type: "tool", name: structuredTool.name };
+    }
   }
 
   return Object.freeze({
@@ -169,6 +178,10 @@ export function mapCanonicalToAnthropicRequest(
     path: "/v1/messages",
     body: Object.freeze(body),
   });
+}
+
+function isClaude5FamilyModel(wireModelId: string): boolean {
+  return /^claude-(opus|sonnet|haiku|fable|mythos)-5(-|$)/.test(wireModelId);
 }
 
 export function canonicalToWireModelId(modelId: string): string {

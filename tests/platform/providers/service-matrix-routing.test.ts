@@ -72,11 +72,12 @@ describe("service-matrix-routing", () => {
     ).toBe("website");
   });
 
-  it("prefers OpenAI Codex / GPT-5.5 first for website generation", () => {
+  it("prefers Claude Opus 5.5 first for website generation, GPT-5.5 as failover", () => {
     const prefs = TEXT_USE_CASE_PREFERENCES.website;
-    expect(prefs[0]?.providerId).toBe("provider.openai");
-    expect(prefs[0]?.modelId).toBe("gpt-5.5");
-    expect(prefs.some((p) => p.providerId === "provider.anthropic")).toBe(true);
+    expect(prefs[0]?.providerId).toBe("provider.anthropic");
+    expect(prefs[0]?.modelId).toBe("claude-opus-5-5");
+    expect(prefs[1]?.providerId).toBe("provider.openai");
+    expect(prefs[1]?.modelId).toBe("gpt-5.5");
   });
 });
 

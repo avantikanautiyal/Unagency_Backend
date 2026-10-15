@@ -46,7 +46,7 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
   readonly MatrixProviderPref[]
 > = {
   strategy: [
-    { providerId: "provider.anthropic", modelId: "claude-opus-4-1", label: "Claude Opus 4.1" },
+    { providerId: "provider.anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
     { providerId: "provider.openai", modelId: "gpt-5.5", label: "GPT-5.5" },
     { providerId: "provider.gemini", modelId: "gemini-pro-latest", label: "Gemini 2.5 Pro" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5", label: "Claude Sonnet 4" },
@@ -78,7 +78,8 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
     },
   ],
   website: [
-    // Prefer OpenAI Codex / GPT-5.5 for production-quality site code; Anthropic for design failover.
+    // Prefer Claude Opus 5.5 for site code; GPT-5.5 is the first failover.
+    { providerId: "provider.anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
     { providerId: "provider.openai", modelId: "gpt-5.5", label: "Codex / GPT-5.5" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },

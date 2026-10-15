@@ -57,7 +57,9 @@ export type SlideLayoutDefectKind =
   | "text_overlap"
   | "text_too_small"
   | "low_contrast"
-  | "low_contrast_repaired";
+  | "low_contrast_repaired"
+  | "image_broken"
+  | "empty_slide";
 
 export type SlideLayoutDefect = {
   /** 1-based slide number in the rendered deck (cover = 1). */

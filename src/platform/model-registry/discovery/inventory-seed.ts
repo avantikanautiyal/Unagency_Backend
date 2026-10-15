@@ -480,6 +480,8 @@ export const SEED_MODELS: readonly SeedModelEntry[] = [
   seedAudio("openai", "whisper-1", "Whisper", "2023-09", 0, 0, 0.006, 0, "medium", "standard", ["media"], true, false),
   seedAudio("openai", "tts-1", "GPT Voice", "2023-11", 4096, 0, 0.015, 0, "medium", "standard", ["media"], false, true),
   // Anthropic — rates from https://docs.anthropic.com/en/docs/about-claude/pricing (USD / 1M tokens)
+  seedText("anthropic", "claude-opus-5-5", "Claude Opus 5.5", "2026-09", 1000000, 128000, 4, 20, "high", "frontier", ["research", "coding"], true),
+  seedText("anthropic", "claude-sonnet-5-5", "Claude Sonnet 5.5", "2026-09", 1000000, 128000, 2, 10, "medium", "frontier", ["general", "coding"], true),
   seedText("anthropic", "claude-sonnet-4-5", "Claude Sonnet 4.5", "2025-09", 200000, 16384, 3, 15, "medium", "frontier", ["general", "coding"], true),
   seedText("anthropic", "claude-sonnet-4-6", "Claude Sonnet 4.6", "2026-01", 200000, 16384, 3, 15, "medium", "frontier", ["general", "coding"], true),
   seedText("anthropic", "claude-3-5-sonnet", "Claude 3.5 Sonnet (alias→4.5)", "2024-10", 200000, 8192, 3, 15, "medium", "frontier", ["general", "coding"], true),

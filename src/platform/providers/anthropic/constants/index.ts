@@ -19,6 +19,8 @@ export const ANTHROPIC_VENDOR = "anthropic" as const;
  * are remapped via ANTHROPIC_WIRE_MODEL_MAP to models the API still serves.
  */
 export const ANTHROPIC_SEED_MODELS = [
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
   "claude-3-5-sonnet",
   "claude-sonnet-4",
   "claude-sonnet-4-5",
@@ -36,6 +38,8 @@ export const ANTHROPIC_SEED_MODELS = [
  * Verified against live Anthropic API (retired dated snapshots → 404).
  */
 export const ANTHROPIC_WIRE_MODEL_MAP: Readonly<Record<string, string>> = {
+  "claude-opus-5-5": "claude-opus-5-5",
+  "claude-sonnet-5-5": "claude-sonnet-5-5",
   "claude-3-5-sonnet": "claude-sonnet-4-5",
   "claude-sonnet-4": "claude-sonnet-4-6",
   "claude-sonnet-4-5": "claude-sonnet-4-5",
@@ -57,6 +61,8 @@ export const ANTHROPIC_WIRE_MODEL_MAP: Readonly<Record<string, string>> = {
 };
 
 export const ANTHROPIC_VISION_MODELS = [
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
   "claude-3-5-sonnet",
   "claude-sonnet-4",
   "claude-sonnet-4-5",

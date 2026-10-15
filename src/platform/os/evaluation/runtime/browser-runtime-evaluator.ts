@@ -217,12 +217,14 @@ async function runPuppeteerRuntimeCheck(
   const routesVerified: string[] = [];
 
   let browser: { close(): Promise<void> } | undefined;
+  let launched = false;
   try {
     const puppeteer = await import("puppeteer");
     browser = await puppeteer.default.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
+    launched = true;
     const page = await browser.newPage();
     await page.evaluateOnNewDocument(WEB_VITALS_OBSERVER_INIT_SCRIPT);
 
@@ -449,6 +451,12 @@ async function runPuppeteerRuntimeCheck(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // Host could not start Chrome (missing shared libs, no binary): that says
+    // nothing about the page, so skip QA instead of failing the deliverable.
+    if (!launched) {
+      console.warn(`[website-qa] browser launch failed; runtime QA skipped: ${message.split("\n")[0]}`);
+      return skippedRuntimeResult("browser_launch_failed");
+    }
     const failureCategory = classifyRuntimeFailure({
       evaluated: true,
       runtimeErrors: Object.freeze([message]),

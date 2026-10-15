@@ -107,6 +107,12 @@ import type {
   StageTraceRecord,
 } from "./contracts";
 
+/** Native CMR image handoff target when routing picked a provider that cannot carry it. */
+const CMR_REPRESENTABLE_FALLBACK = Object.freeze({
+  providerId: "provider.openai",
+  modelId: "gpt-5.5",
+});
+
 const DIRECT_EXECUTION_VERSION = "direct.1";
 const MAX_DIRECT_IMAGE_FAILOVERS = 2;
 /** Text/structured failover budget — vendor-diverse, not image-leaf capped. */
@@ -941,6 +947,46 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     const skipPostCmrAppends = Boolean(cmr);
 
     if (cmr) {
+      // Routed to a provider that cannot carry the required context (e.g. a
+      // reference image on text Gemini): reroute before the CMR gate rejects it.
+      const routedProviderId =
+        (typeof stampedMetadata.providerId === "string" && stampedMetadata.providerId) ||
+        (typeof stampedMetadata.preferredProviderId === "string" &&
+          stampedMetadata.preferredProviderId) ||
+        "";
+      if (routedProviderId && routedProviderId !== CMR_REPRESENTABLE_FALLBACK.providerId) {
+        const routedModelId =
+          (typeof stampedMetadata.modelId === "string" && stampedMetadata.modelId) ||
+          (typeof stampedMetadata.preferredModelId === "string" &&
+            stampedMetadata.preferredModelId) ||
+          undefined;
+        const routedPlan = buildProviderRepresentationPlan({
+          modelRequest: cmr,
+          providerId: routedProviderId,
+          modelId: routedModelId,
+        });
+        const reroutePlan = buildProviderRepresentationPlan({
+          modelRequest: cmr,
+          providerId: CMR_REPRESENTABLE_FALLBACK.providerId,
+          modelId: CMR_REPRESENTABLE_FALLBACK.modelId,
+        });
+        if (
+          routedPlan.requiredUnrepresentableCount > 0 &&
+          reroutePlan.requiredUnrepresentableCount === 0
+        ) {
+          console.warn(
+            `[direct] CMR context unrepresentable for ${routedProviderId}/${routedModelId ?? "?"}; rerouting to ${CMR_REPRESENTABLE_FALLBACK.providerId}/${CMR_REPRESENTABLE_FALLBACK.modelId}`,
+          );
+          stampedMetadata = {
+            ...stampedMetadata,
+            providerId: CMR_REPRESENTABLE_FALLBACK.providerId,
+            preferredProviderId: CMR_REPRESENTABLE_FALLBACK.providerId,
+            modelId: CMR_REPRESENTABLE_FALLBACK.modelId,
+            preferredModelId: CMR_REPRESENTABLE_FALLBACK.modelId,
+            modelRuntimeReroutedFrom: routedProviderId,
+          };
+        }
+      }
       const prepared = prepareCanonicalModelRuntime({
         modelRequest: cmr,
         metadata: stampedMetadata,
@@ -1136,7 +1182,7 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       metadata: stampedMetadata,
     };
 
-    const bag = buildDirectProviderBag(providerRequest) as IntegrationArtifactBag;
+    let bag = buildDirectProviderBag(providerRequest) as IntegrationArtifactBag;
 
     // Phase 12 — after existing provider selection, re-assess CMR representation
     // for the selected provider (no second selector; fail if required unrepresentable).
@@ -1148,7 +1194,7 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         ? String(bag.routing.plan.primary.modelId)
         : undefined;
       if (selectedProviderId) {
-        const selectedPlan = buildProviderRepresentationPlan({
+        let selectedPlan = buildProviderRepresentationPlan({
           modelRequest: cmr,
           providerId: selectedProviderId,
           modelId: selectedModelId,
@@ -1165,6 +1211,36 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
           ...providerRequest,
           metadata: stampedMetadata,
         };
+        // Routed to a provider that cannot carry the required context (e.g. a
+        // reference image on text Gemini): reroute to a native-handoff model.
+        if (selectedPlan.requiredUnrepresentableCount > 0) {
+          const reroute = CMR_REPRESENTABLE_FALLBACK;
+          const reroutePlan = buildProviderRepresentationPlan({
+            modelRequest: cmr,
+            providerId: reroute.providerId,
+            modelId: reroute.modelId,
+          });
+          if (
+            reroute.providerId !== selectedProviderId &&
+            reroutePlan.requiredUnrepresentableCount === 0
+          ) {
+            console.warn(
+              `[direct] CMR context unrepresentable for ${selectedProviderId}/${selectedModelId ?? "?"}; rerouting to ${reroute.providerId}/${reroute.modelId}`,
+            );
+            stampedMetadata = {
+              ...stampedMetadata,
+              ...summarizeRepresentationPlan(reroutePlan),
+              preferredProviderId: reroute.providerId,
+              preferredModelId: reroute.modelId,
+              modelRuntimeSelectedProviderId: reroute.providerId,
+              modelRuntimeSelectedModelId: reroute.modelId,
+              modelRuntimeReroutedFrom: selectedProviderId,
+            };
+            providerRequest = { ...providerRequest, metadata: stampedMetadata };
+            bag = buildDirectProviderBag(providerRequest) as IntegrationArtifactBag;
+            selectedPlan = reroutePlan;
+          }
+        }
         if (selectedPlan.requiredUnrepresentableCount > 0) {
           return failure(
             new ValidationError(

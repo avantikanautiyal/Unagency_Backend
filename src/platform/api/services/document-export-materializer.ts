@@ -13,9 +13,7 @@ import {
   buildBrochurePdf,
   buildDocumentDocx,
   buildDocumentPdf,
-  buildPresentationPdf,
-  evaluatePresentationExport,
-  buildPresentationPptx,
+  buildPresentationExport,
   parseDocumentPlan,
   parsePresentationPlan,
   parsePresentationRoutes,
@@ -91,6 +89,12 @@ function requestedExportLabels(
   return explicit;
 }
 
+let createIdSeq = 0;
+/** Wrap an id factory so concurrent calls in the same millisecond never collide. */
+function uniqueCreateId(createId: (prefix: string) => string): (prefix: string) => string {
+  return (prefix) => `${createId(prefix)}_${(createIdSeq = (createIdSeq + 1) % 1_000_000)}`;
+}
+
 export function resolvePresentationExportOptions(
   metadata?: Readonly<Record<string, unknown>>,
   visualDeps?: BestEffortVisualImageDeps
@@ -141,9 +145,25 @@ export function resolvePresentationExportOptions(
   const slideImageCache = new Map<string, ReturnType<NonNullable<typeof resolveSlideImage>>>();
   // pdfkit embeds PNG/JPEG only; other logo formats keep the text wordmark.
   const logoExt = referenceLogo?.mimeType.match(/^image\/(png|jpe?g)$/i)?.[1]?.toLowerCase();
+  const textFact = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const v = meta[key];
+      if (typeof v === "string" && v.trim()) return v.trim().slice(0, 600);
+      if (Array.isArray(v)) {
+        const joined = v.filter((x) => typeof x === "string" && x.trim()).join(", ");
+        if (joined) return joined.slice(0, 600);
+      }
+    }
+    return undefined;
+  };
+  const brandTone = textFact("brandTone", "toneAdjectives", "brandVoice", "voice");
+  const brandTypography = textFact("brandTypography", "typography");
   return {
     ...(brandName ? { brandName } : {}),
     ...(hexColors.length ? { brandColors: hexColors } : {}),
+    ...(brandTone ? { brandTone } : {}),
+    ...(brandTypography ? { brandTypography } : {}),
+    ...(userBrief ? { userBrief } : {}),
     ...(referenceLogo && logoExt
       ? { logo: { data: referenceLogo.base64, ext: logoExt === "jpeg" ? "jpg" : logoExt } }
       : {}),
@@ -748,7 +768,8 @@ export async function materializeDocumentExports(input: {
             ...input.visualImageDeps,
             organizationId: input.organizationId,
             executionId: input.executionId,
-            createId: input.createId,
+            // Slide images (and deck directions) generate concurrently.
+            createId: uniqueCreateId(input.createId),
           }
         : undefined
     );
@@ -784,14 +805,8 @@ export async function materializeDocumentExports(input: {
         [parsed.title, parsed.subtitle, ...parsed.slides.map((s) => s.visualCue)].join(" ")
       ),
     };
-    const pdfBuf = await buildPresentationPdf(parsed, planOptions);
-    const pptxBuf = await buildPresentationPptx(parsed, planOptions);
-    const qualityReport = await evaluatePresentationExport({
-      plan: parsed,
-      options: planOptions,
-      pdf: pdfBuf,
-      pptx: pptxBuf,
-    });
+    const bundle = await buildPresentationExport(parsed, planOptions);
+    const { pdf: pdfBuf, pptx: pptxBuf, qualityReport } = bundle;
     if (!qualityReport.exportValid) {
       return failure(
         new ValidationError(
@@ -812,7 +827,9 @@ export async function materializeDocumentExports(input: {
     });
     if (!pair.ok) return pair;
     const producedLabels = requestedLabels ?? (["pdf", "pptx"] as const);
-    const [slideImages = []] = await rasterizePdfPages([pdfBuf]);
+    const slideImages = bundle.slidePreviews
+      ? [...bundle.slidePreviews]
+      : ((await rasterizePdfPages([pdfBuf]))[0] ?? []);
     const slidePreviewArtifactIds = await ingestSlidePreviews({
       asyncMedia: input.asyncMedia,
       executionId: input.executionId,
@@ -832,6 +849,7 @@ export async function materializeDocumentExports(input: {
         pptxArtifactId: pair.value.pptxArtifactId,
         ...(slidePreviewArtifactIds.length ? { slidePreviewArtifactIds } : {}),
         qualityReport,
+        presentationRenderer: bundle.renderer,
         downloadFormats: [...producedLabels],
         producedDeliverableFormats: producedLabels.map((l) => l.toUpperCase()),
       },
@@ -1016,22 +1034,24 @@ async function materializePresentationRoutes(input: {
   const allArtifactIds: string[] = [];
   const enrichedRoutes: Array<Record<string, unknown>> = [];
   const routePdfs: Buffer[] = [];
+  const routePreviews: (readonly Buffer[] | undefined)[] = [];
+
+  // Each direction is designed independently — run them side by side.
+  const bundles = await Promise.all(
+    input.routes.map((route) =>
+      buildPresentationExport(route.deck, {
+        ...input.exportOptions,
+        designStyle: inferPresentationDesignStyle(`${route.title} ${route.description}`),
+        designDirection: `${route.title} — ${route.description}`,
+      })
+    )
+  );
 
   for (let i = 0; i < input.routes.length; i += 1) {
     const route = input.routes[i]!;
     const deck: PresentationPlan = route.deck;
-    const routeOptions: PresentationExportOptions = {
-      ...input.exportOptions,
-      designStyle: inferPresentationDesignStyle(`${route.title} ${route.description}`),
-    };
-    const pdfBuf = await buildPresentationPdf(deck, routeOptions);
-    const pptxBuf = await buildPresentationPptx(deck, routeOptions);
-    const qualityReport = await evaluatePresentationExport({
-      plan: deck,
-      options: routeOptions,
-      pdf: pdfBuf,
-      pptx: pptxBuf,
-    });
+    const bundle = bundles[i]!;
+    const { pdf: pdfBuf, pptx: pptxBuf, qualityReport } = bundle;
     if (!qualityReport.exportValid) {
       return failure(
         new ValidationError(
@@ -1052,6 +1072,7 @@ async function materializePresentationRoutes(input: {
     if (!pair.ok) return pair;
     allArtifactIds.push(...pair.value.artifactIds);
     routePdfs.push(pdfBuf);
+    routePreviews.push(bundle.slidePreviews);
     enrichedRoutes.push({
       title: route.title,
       description: route.description,
@@ -1061,12 +1082,15 @@ async function materializePresentationRoutes(input: {
       pdfArtifactId: pair.value.pdfArtifactId,
       pptxArtifactId: pair.value.pptxArtifactId,
       qualityReport,
+      presentationRenderer: bundle.renderer,
       downloadFormats: ["pdf", "pptx"],
     });
   }
 
   // Designed slides as images — what the app previews, per direction.
-  const routeSlideImages = await rasterizePdfPages(routePdfs);
+  const needsRaster = routePreviews.some((p) => !p);
+  const rasterized = needsRaster ? await rasterizePdfPages(routePdfs) : [];
+  const routeSlideImages = routePreviews.map((p, i) => (p ? [...p] : rasterized[i] ?? []));
   for (let i = 0; i < enrichedRoutes.length; i += 1) {
     const slidePreviewArtifactIds = await ingestSlidePreviews({
       asyncMedia: input.asyncMedia,

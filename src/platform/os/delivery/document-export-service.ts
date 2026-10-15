@@ -12,6 +12,21 @@ import {
   type PresentationLayoutReport,
   type PresentationDesignStyle,
 } from "./presentation-design";
+import {
+  designPresentationSlides,
+  repairPresentationSlides,
+  slideDesignerAvailable,
+  slideDesignerConfigFromEnv,
+  type DesignedDeck,
+  type SlideDesignBrief,
+} from "./presentation-html/slide-designer";
+import {
+  buildDeckDocument,
+  buildImageDeckPptx,
+  renderDesignedDeck,
+  type RenderedSlideDefect,
+  type SlideImageAsset,
+} from "./presentation-html/slide-renderer";
 
 export type PresentationSlideLayout =
   | "title_hero"
@@ -69,6 +84,12 @@ export type PresentationExportOptions = {
   readonly designStyle?: PresentationDesignStyle;
   /** The brand's chosen logo, placed on the slides. */
   readonly logo?: PresentationSlideImage;
+  /** Brand voice / typography notes and the client brief, for the slide designer. */
+  readonly brandTone?: string;
+  readonly brandTypography?: string;
+  readonly userBrief?: string;
+  /** Chosen design route ("title — description"), for the slide designer. */
+  readonly designDirection?: string;
   /**
    * Best-effort per-slide image from visualCue. Must never throw —
    * return undefined on failure so export still ships.
@@ -90,13 +111,9 @@ const SLIDE_IMAGE_PRIORITY: Record<PresentationSlideLayout, number> = {
   content_bullets: 4,
 };
 
-async function resolveSlideImagesSafe(
-  slides: readonly PresentationSlide[],
-  resolve?: PresentationExportOptions["resolveSlideImage"]
-): Promise<(PresentationSlideImage | undefined)[]> {
-  const out: (PresentationSlideImage | undefined)[] = slides.map(() => undefined);
-  if (!resolve) return out;
-  const chosen = slides
+/** Plan slide indices that get a generated image (same choice for every renderer). */
+function selectSlideImageSlots(slides: readonly PresentationSlide[]): number[] {
+  return slides
     .map((slide, index) => ({ slide, index, cue: slide.visualCue?.trim() ?? "" }))
     .filter((item) => item.cue)
     .sort(
@@ -104,7 +121,21 @@ async function resolveSlideImagesSafe(
         SLIDE_IMAGE_PRIORITY[a.slide.layout ?? "content_bullets"] -
           SLIDE_IMAGE_PRIORITY[b.slide.layout ?? "content_bullets"] || a.index - b.index
     )
-    .slice(0, MAX_SLIDE_IMAGES);
+    .slice(0, MAX_SLIDE_IMAGES)
+    .map((item) => item.index);
+}
+
+async function resolveSlideImagesSafe(
+  slides: readonly PresentationSlide[],
+  resolve?: PresentationExportOptions["resolveSlideImage"]
+): Promise<(PresentationSlideImage | undefined)[]> {
+  const out: (PresentationSlideImage | undefined)[] = slides.map(() => undefined);
+  if (!resolve) return out;
+  const chosen = selectSlideImageSlots(slides).map((index) => ({
+    slide: slides[index]!,
+    index,
+    cue: slides[index]!.visualCue!.trim(),
+  }));
   await mapWithConcurrency(chosen, SLIDE_IMAGE_CONCURRENCY, async ({ slide, index, cue }) => {
     try {
       out[index] = await resolve(cue, slide);
@@ -450,6 +481,189 @@ export async function evaluatePresentationExport(input: {
     if (d.severity === "blocking") issues.push(`slide ${d.slide}: ${d.kind} — ${d.detail}`);
   }
   return { passed: exportValid && layout.passed, exportValid, pdfPageCount, issues, layout };
+}
+
+export type PresentationExportBundle = {
+  readonly pdf: Buffer;
+  readonly pptx: Buffer;
+  readonly qualityReport: PresentationExportQaReport;
+  /** Slide images straight from the renderer (HTML path); else rasterize the PDF. */
+  readonly slidePreviews?: readonly Buffer[];
+  readonly renderer: "html_designed" | "template";
+};
+
+function imageMime(ext?: string): string {
+  const e = (ext ?? "png").toLowerCase();
+  if (e === "jpg" || e === "jpeg") return "image/jpeg";
+  if (e === "webp") return "image/webp";
+  return "image/png";
+}
+
+function toAsset(image?: PresentationSlideImage): SlideImageAsset | undefined {
+  return image ? { data: image.data, mimeType: imageMime(image.ext) } : undefined;
+}
+
+/** Defects the deck cannot ship with (repair first, then fall back). */
+const BLOCKING_HTML_DEFECTS = new Set<RenderedSlideDefect["kind"]>([
+  "text_overflow",
+  "text_clipped",
+  "empty_slide",
+]);
+
+function htmlLayoutReport(
+  slideCount: number,
+  defects: readonly RenderedSlideDefect[],
+): PresentationLayoutReport {
+  const mapped = defects.map((d) => ({
+    slide: d.slide + 1,
+    kind: d.kind === "text_clipped" ? ("text_overflow" as const) : d.kind,
+    severity: BLOCKING_HTML_DEFECTS.has(d.kind) ? ("blocking" as const) : ("warning" as const),
+    detail: d.detail,
+  }));
+  return {
+    passed: !mapped.some((d) => d.severity === "blocking"),
+    renderedSlideCount: slideCount,
+    continuationSlides: 0,
+    defects: mapped,
+  };
+}
+
+function defectsBySlide(
+  defects: readonly RenderedSlideDefect[],
+): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  for (const d of defects) {
+    if (d.kind === "image_broken") continue; // our asset, not the layout
+    out.set(d.slide, [...(out.get(d.slide) ?? []), d.detail]);
+  }
+  return out;
+}
+
+/**
+ * Model-designed deck: Claude writes each slide as HTML/CSS, Chrome renders
+ * and checks it. Returns null when the path is unavailable or the result
+ * does not pass, so the caller can fall back to the template renderer.
+ */
+async function buildHtmlDesignedPresentation(
+  plan: PresentationPlan,
+  options?: PresentationExportOptions,
+): Promise<PresentationExportBundle | null> {
+  if (!slideDesignerAvailable()) return null;
+  const started = Date.now();
+  const config = slideDesignerConfigFromEnv();
+  const imageSlots = options?.resolveSlideImage ? selectSlideImageSlots(plan.slides) : [];
+  const brief: SlideDesignBrief = {
+    plan,
+    ...(options?.brandName ? { brandName: options.brandName } : {}),
+    ...(options?.brandColors?.length ? { brandColors: options.brandColors } : {}),
+    ...(options?.brandTone ? { brandTone: options.brandTone } : {}),
+    ...(options?.brandTypography ? { brandTypography: options.brandTypography } : {}),
+    ...(options?.designDirection ? { designDirection: options.designDirection } : {}),
+    ...(options?.userBrief ? { userBrief: options.userBrief } : {}),
+    hasLogo: Boolean(options?.logo),
+    imageSlots,
+  };
+  try {
+    // Photos and slide design run side by side; slots are fixed up front.
+    const [deck, slideImages] = await Promise.all([
+      designPresentationSlides(brief, config),
+      resolveSlideImagesSafe(plan.slides, options?.resolveSlideImage),
+    ]);
+    const images = new Map<number, SlideImageAsset>();
+    slideImages.forEach((img, i) => {
+      const asset = toAsset(img);
+      if (asset) images.set(i + 2, asset); // slide 1 is the cover
+    });
+    const logo = toAsset(options?.logo);
+    const placeholderColor = options?.brandColors?.[0];
+    const expectedSlides = plan.slides.length + 1;
+    const render = (d: DesignedDeck) =>
+      renderDesignedDeck({
+        html: buildDeckDocument({
+          deck: d,
+          images,
+          ...(logo ? { logo } : {}),
+          ...(placeholderColor ? { placeholderColor } : {}),
+        }),
+        expectedSlides,
+      });
+
+    let current = deck;
+    let rendered = await render(current);
+    const toFix = defectsBySlide(rendered.defects);
+    if (toFix.size > 0) {
+      console.warn(
+        `[presentation-html] repairing ${toFix.size} slide(s): ${[...toFix.keys()].map((i) => i + 1).join(", ")}`
+      );
+      current = await repairPresentationSlides(brief, { deck: current, defects: toFix }, config);
+      rendered = await render(current);
+    }
+
+    const layout = htmlLayoutReport(expectedSlides, rendered.defects);
+    if (!layout.passed) {
+      console.warn(
+        `[presentation-html] deck still has blocking defects after repair; using template renderer: ${layout.defects
+          .filter((d) => d.severity === "blocking")
+          .map((d) => `slide ${d.slide}: ${d.detail}`)
+          .join("; ")}`
+      );
+      return null;
+    }
+
+    const pptx = await buildImageDeckPptx({
+      title: plan.title,
+      ...(options?.brandName ? { author: options.brandName } : {}),
+      slidePngs: rendered.slidePngs,
+      notes: [plan.subtitle, ...plan.slides.map((s) => s.notes)],
+    });
+    const issues: string[] = [];
+    const pdfPageCount = countPdfPages(rendered.pdf);
+    if (rendered.pdf.subarray(0, 5).toString("latin1") !== "%PDF-") {
+      issues.push("PDF export is not a PDF file");
+    } else if (pdfPageCount !== expectedSlides) {
+      issues.push(`PDF has ${pdfPageCount} pages, expected ${expectedSlides}`);
+    }
+    if (pptx.subarray(0, 2).toString("latin1") !== "PK") {
+      issues.push("PPTX export is not a valid Office (zip) file");
+    }
+    if (issues.length) {
+      console.warn(`[presentation-html] export invalid; using template renderer: ${issues.join("; ")}`);
+      return null;
+    }
+    console.log(
+      `[presentation-html] designed deck "${plan.title}" | slides=${expectedSlides} | model=${config.model} | ms=${Date.now() - started}`
+    );
+    return {
+      pdf: rendered.pdf,
+      pptx,
+      slidePreviews: rendered.slideJpegs,
+      renderer: "html_designed",
+      qualityReport: { passed: true, exportValid: true, pdfPageCount, issues: [], layout },
+    };
+  } catch (err) {
+    console.warn(
+      `[presentation-html] designed deck failed; using template renderer: ${
+        err instanceof Error ? err.message.split("\n")[0] : String(err)
+      }`
+    );
+    return null;
+  }
+}
+
+/**
+ * Build a deck's PDF + PPTX + QA in one pass: model-designed HTML slides
+ * when available, otherwise the built-in template renderer.
+ */
+export async function buildPresentationExport(
+  plan: PresentationPlan,
+  options?: PresentationExportOptions,
+): Promise<PresentationExportBundle> {
+  const designed = await buildHtmlDesignedPresentation(plan, options);
+  if (designed) return designed;
+  const pdf = await buildPresentationPdf(plan, options);
+  const pptx = await buildPresentationPptx(plan, options);
+  const qualityReport = await evaluatePresentationExport({ plan, options, pdf, pptx });
+  return { pdf, pptx, qualityReport, renderer: "template" };
 }
 
 /**

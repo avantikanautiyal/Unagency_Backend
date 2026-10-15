@@ -43,6 +43,32 @@ describe("buildArtifactBundleZip", () => {
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   });
 
+  it("adds one combined PDF with a page per board (Identity Kit)", async () => {
+    const result = await buildArtifactBundleZip({
+      files: [
+        { name: "core-system", bytes: makePngBuffer(16, 9), mimeType: "image/png" },
+        { name: "applications", bytes: makePngBuffer(8, 10), mimeType: "image/png" },
+      ],
+      formats: ["png", "pdf"],
+      combined: ["pdf"],
+      combinedName: "identity-kit",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.entryNames).toEqual([
+      "core-system.png",
+      "core-system.pdf",
+      "applications.png",
+      "applications.pdf",
+      "identity-kit.pdf",
+    ]);
+    const zip = await JSZip.loadAsync(result.value.bytes);
+    const pdf = await zip.file("identity-kit.pdf")!.async("string");
+    expect(pdf.startsWith("%PDF")).toBe(true);
+    expect((pdf.match(/\/Type \/Page\b/g) ?? []).length).toBe(2);
+  });
+
   it("rejects an empty bundle", async () => {
     const result = await buildArtifactBundleZip({ files: [] });
     expect(result.ok).toBe(false);

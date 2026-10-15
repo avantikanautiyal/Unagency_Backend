@@ -420,7 +420,7 @@ export function withStructuredOutputRequest(
         : schemaName === "WebsiteRoutes"
           ? 8_192
           : 4_096
-      : isDocumentPlan || isEmailPlan
+      : isDocumentPlan || isEmailPlan || isCdfStructuredPhaseSchema(schemaName)
         ? 16_384
         : undefined;
 
@@ -1112,16 +1112,14 @@ async function expandPresentationConceptsToRoutes(input: {
     });
   }
 
+  // Grounding gaps that remain after the retry: delivered as warnings so the
+  // user can refine — a complete deck is never thrown away for wording misses.
+  const groundingWarnings: string[] = [];
   if (needsRetry) {
-    // After one retry: only hard-fail on empty decks, missing brand, or rejected quality.
-    // Soft brief-overlap / generic-quality misses should still deliver usable routes.
-    const fatalRelevance = relevance.reasons.some(
-      (r) => r === "empty_routes" || r === "missing_brand_name"
-    );
-    const fatalMustUse =
-      !mustUse.ok && mustUse.missing.includes("brand");
-    const fatalQuality = quality.outcome === "REJECTED" && !relevance.ok;
-    if (fatalRelevance || fatalMustUse || fatalQuality) {
+    // After one retry: only an empty deck is fatal. Missing brand words,
+    // soft brief overlap or generic quality still deliver the (usable) slides.
+    const fatalRelevance = relevance.reasons.some((r) => r === "empty_routes");
+    if (fatalRelevance) {
       return failPresentationOffBrief(
         parsed.value,
         output,
@@ -1135,6 +1133,13 @@ async function expandPresentationConceptsToRoutes(input: {
         }
       );
     }
+    groundingWarnings.push(
+      ...relevance.reasons.map((r) => `relevance:${r}`),
+      ...mustUse.missing.map((m) => `must_use:${m}`),
+      ...(quality.outcome === "REJECTED" || quality.outcome === "RETRY_REQUIRED"
+        ? [`quality:${quality.outcome}`]
+        : []),
+    );
   }
 
   const meta = input.providerRequest.metadata ?? {};
@@ -1181,18 +1186,10 @@ async function expandPresentationConceptsToRoutes(input: {
     const brandPresent =
       !brandRequired ||
       blob.includes(input.ctx.brandName!.trim().toLowerCase());
-    if (!brandPresent || criticalMissing.length > 0) {
-      return failPresentationOffBrief(
-        parsed.value,
-        output,
-        "Presentation routes did not include required brand and brief facts. Please try again.",
-        {
-          presentationMeta: verify.meta,
-          presentationConcepts: input.concepts,
-          presentationExpansionDiagnostic: expansionDiag,
-        }
-      );
-    }
+    // Already retried with a grounding prompt: deliver with warnings instead of
+    // discarding a complete deck (the user can refine the missing facts).
+    if (!brandPresent) groundingWarnings.push("verify:brand_name_absent");
+    for (const m of criticalMissing) groundingWarnings.push(`verify:${m}`);
   }
 
   const structuredWithMeta = {
@@ -1213,6 +1210,9 @@ async function expandPresentationConceptsToRoutes(input: {
         presentationMustUse: mustUse,
         presentationQuality: quality.outcome,
         presentationMeta: verify.meta,
+        ...(groundingWarnings.length
+          ? { presentationGroundingWarnings: [...new Set(groundingWarnings)] }
+          : {}),
         presentationExpansionDiagnostic: {
           ...expansionDiag,
           failureCategory: "EXPANSION_OK" as const,
@@ -1932,6 +1932,15 @@ async function runWebsitePageRelevanceGate(input: {
  * Safety net — if a pitch-deck create finished with concepts-only (gate skipped
  * or expansion missed), run the full concepts → routes pipeline now.
  */
+/**
+ * Project-stage structured outputs (e.g. CdfStructuredApprovalDoc for an email
+ * layout) carry whole sections. Provider defaults (Anthropic: 4096 tokens)
+ * truncated them mid-object → schema-invalid → the stage failed.
+ */
+function isCdfStructuredPhaseSchema(schemaName: string): boolean {
+  return /^Cdf[A-Z]/.test(schemaName);
+}
+
 export async function ensurePresentationExpandedForDeliverable(input: {
   readonly executed: ProviderExecutionResult;
   readonly structured: StructuredOutputRequest;

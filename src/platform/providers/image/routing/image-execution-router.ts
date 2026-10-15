@@ -8,6 +8,7 @@ import { ValidationError } from "../../../core/errors";
 import type { ProviderId } from "../../../core/identifiers";
 import type { IProviderRuntimeRegistry } from "../../runtime/registry/in-memory-provider-runtime-registry";
 import {
+  CONTINUITY_IMAGE_PREFERENCES,
   IMAGE_USE_CASE_PREFERENCES,
   listDistinctExecutableImageProviders,
   matrixDistinctProviderIndex,
@@ -48,6 +49,8 @@ export class ImageExecutionRouter {
     routeVisualSlot?: number;
     /** Composition-derived hard/soft requirements (optional). */
     capabilityRequirements?: ExecutionCapabilityRequirements | null;
+    /** Continues an approved upstream creative — prefer reference fidelity. */
+    continuesApprovedVisual?: boolean;
   }): Result<ImageRouteDecision> {
     const rawCapability = input.capabilityId?.trim() || "image.generate";
     const capabilityId =
@@ -91,7 +94,9 @@ export class ImageExecutionRouter {
     });
     void matchCapability;
 
-    let preferences = this.preferenceChain(useCase, allowed);
+    let preferences = input.continuesApprovedVisual
+      ? CONTINUITY_IMAGE_PREFERENCES.filter((p) => allowed.has(p.providerId))
+      : this.preferenceChain(useCase, allowed);
     if (reqs) {
       preferences = [
         ...softRankProviderPreferences({

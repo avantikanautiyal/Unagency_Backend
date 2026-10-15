@@ -14,6 +14,12 @@ import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
 import { getCdfSession } from "../session-store";
 import { resolveUpstreamArtifactsForPhase } from "./resolve-dependencies";
+import { resolveCdfCanonicalService } from "../canonical";
+import {
+  createArtifactContextLoader,
+  loadUpstreamFromSessionRef,
+} from "./artifact-context-loader";
+import type { CdfSessionArtifactRef, CdfSessionState } from "../types";
 import {
   downstreamRequiresVisualMediaInput,
   extractVaultAssetIdFromArtifactData,
@@ -27,6 +33,38 @@ const UPSTREAM_VISUAL_REFERENCE_ROLE = "subject_reference" as const;
 
 export const CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE =
   "CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE";
+
+/**
+ * Services whose image stages also receive every earlier approved image stage
+ * (not only the declared direct dependency), so later stages cannot drift
+ * from the established design. Rolled out service by service.
+ */
+const FULL_VISUAL_LINEAGE_SERVICES: ReadonlySet<string> = new Set(["packaging"]);
+/** Upstream creatives per request; the brand logo is attached separately. */
+const MAX_UPSTREAM_VISUALS = 4;
+
+/** Earlier approved stages of this project, most recent stage first. */
+function earlierApprovedRefs(
+  session: CdfSessionState,
+  serviceId: string,
+  phaseId: string,
+): CdfSessionArtifactRef[] {
+  const phases = resolveCdfCanonicalService(serviceId)?.phases ?? [];
+  const order = new Map(phases.map((p, i) => [p.phaseId, i]));
+  const current = order.get(phaseId);
+  if (current === undefined) return [];
+  const latestByPhase = new Map<string, CdfSessionArtifactRef>();
+  for (const ref of session.approvedArtifacts ?? []) {
+    const idx = order.get(ref.phaseId);
+    if (idx === undefined || idx >= current) continue;
+    if (!Number.isInteger(ref.version) || ref.version < 1) continue;
+    const prev = latestByPhase.get(ref.phaseId);
+    if (!prev || ref.version > prev.version) latestByPhase.set(ref.phaseId, ref);
+  }
+  return [...latestByPhase.values()].sort(
+    (a, b) => (order.get(b.phaseId) ?? 0) - (order.get(a.phaseId) ?? 0),
+  );
+}
 
 function asRecord(v: unknown): Record<string, unknown> | undefined {
   return v && typeof v === "object" && !Array.isArray(v)
@@ -382,6 +420,87 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
       representation: "image_asset",
       resolverStatus: "provider_ready",
     });
+  }
+
+  // Full lineage: earlier approved image stages beyond the declared dependency.
+  // Optional evidence — a stage that cannot be loaded is skipped, never fatal.
+  const lineageServiceId =
+    readString(meta, "cdfServiceId") || readString(meta, "serviceId") || session.serviceId;
+  if (FULL_VISUAL_LINEAGE_SERVICES.has(lineageServiceId)) {
+    const loader = createArtifactContextLoader();
+    const projectId = input.projectId ?? session.projectId;
+    for (const ref of earlierApprovedRefs(session, lineageServiceId, phaseId)) {
+      if (attachedCount >= MAX_UPSTREAM_VISUALS) break;
+      if (assetAlreadyBoundForArtifact(nextMeta, ref.artifactId)) continue;
+      try {
+        const u = loadUpstreamFromSessionRef({
+          loader,
+          ref,
+          required: false,
+          organizationId: input.organizationId,
+          projectId,
+        });
+        let artifactType: string | undefined;
+        try {
+          const { getArtifact } = await import("../artifacts");
+          artifactType = getArtifact(u.artifactId, {
+            organizationId: input.organizationId,
+            projectId,
+          }).artifactType;
+        } catch {
+          artifactType = undefined;
+        }
+        if (
+          !extractVaultAssetIdFromArtifactData(u.data) &&
+          !isVisualMediaArtifactType(artifactType)
+        ) {
+          continue;
+        }
+        const bytes = await resolveCanonicalArtifactVisualBytes({
+          artifactId: u.artifactId,
+          artifactVersion: u.version,
+          organizationId: input.organizationId,
+          projectId,
+        });
+        if (!bytes.ok) {
+          logUpstreamVisual("lineage_skipped", {
+            cdfSessionId: sessionId,
+            sourcePhase: u.phaseId,
+            targetPhase: phaseId,
+            artifactId: u.artifactId,
+            artifactVersion: u.version,
+            reason: bytes.reason,
+          });
+          continue;
+        }
+        nextMeta = attachUpstreamVisualAsset({
+          metadata: nextMeta,
+          upstream: u,
+          resolvedUrl: bytes.resolved.providerInput.url!,
+          mimeType: bytes.resolved.mimeType,
+          organizationId: input.organizationId,
+          vaultAssetId: bytes.vaultAssetId,
+          contentHash: bytes.contentHash,
+        });
+        attachedCount += 1;
+        logUpstreamVisual("lineage_attached", {
+          cdfSessionId: sessionId,
+          sourcePhase: u.phaseId,
+          targetPhase: phaseId,
+          artifactId: u.artifactId,
+          artifactVersion: u.version,
+        });
+      } catch (err) {
+        logUpstreamVisual("lineage_skipped", {
+          cdfSessionId: sessionId,
+          sourcePhase: ref.phaseId,
+          targetPhase: phaseId,
+          artifactId: ref.artifactId,
+          artifactVersion: ref.version,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   if (attachedCount > 0) {

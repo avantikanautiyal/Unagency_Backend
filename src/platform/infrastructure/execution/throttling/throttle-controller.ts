@@ -27,8 +27,10 @@ export class ThrottleController {
 
     if (limits.maxPerMinute != null) {
       const now = this.clockMs();
-      const start = this.windowStarts.get(k) ?? now;
-      if (now - start >= 60_000) {
+      const start = this.windowStarts.get(k);
+      // The window must be recorded on first use, or it never rolls over and the
+      // per-minute cap becomes a lifetime cap (all jobs blocked until restart).
+      if (start === undefined || now - start >= 60_000) {
         this.windowStarts.set(k, now);
         this.windowCounts.set(k, 0);
       }

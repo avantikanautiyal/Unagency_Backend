@@ -10,8 +10,10 @@ import type {
 } from "../common/vendor-image-protocol";
 import {
   applyProviderReferenceAdaptations,
+  describeReferenceImages,
   extractPrompt,
   extractReferenceImages,
+  orderReferencesForContinuity,
 } from "../common/vendor-image-protocol";
 import { buildProviderReferenceRoleObservability } from "../../../ai/multimodal-context/reference-role";
 import { resolvePayloadAspectRatio } from "../common/image-aspect-ratio";
@@ -30,6 +32,9 @@ const WIRE_BY_MODEL: Record<string, string> = {
   "gemini-3.1-flash-lite-image": "gemini-3.1-flash-lite-image",
   "gemini-3-pro-image": "gemini-3-pro-image",
 };
+
+/** Reference images per request — Gemini image models accept several inline parts. */
+const MAX_GEMINI_REFERENCE_IMAGES = 6;
 
 export class GoogleImagenProtocol implements IVendorImageProtocol {
   readonly vendor = "google";
@@ -53,9 +58,11 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
   }): VendorImageWirePlan {
     const basePrompt = extractPrompt(input.request.payload);
     const aspectRatio = resolvePayloadAspectRatio(input.request.payload);
-    const references = extractReferenceImages(
-      input.request.payload,
-      input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+    const references = orderReferencesForContinuity(
+      extractReferenceImages(
+        input.request.payload,
+        input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+      ),
     );
     const reference = references[0];
     const capability = String(input.request.capabilityId ?? "").toLowerCase();
@@ -72,12 +79,18 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
       references: isArtifactEdit ? [] : references,
       vendor: "google_gemini_image",
     });
+    // An edit modifies one existing result; generation may carry the approved
+    // upstream creatives plus the brand mark — send all of them, in order.
+    const sentReferences = (isArtifactEdit ? references.slice(0, 1) : references)
+      .filter((ref) => Boolean(ref.base64))
+      .slice(0, MAX_GEMINI_REFERENCE_IMAGES);
     const promptWithFormat = [
       aspectRatio ? `Generate a ${aspectRatio} aspect ratio image.` : "Generate an image.",
       isArtifactEdit && reference
         ? "The attached image is the existing result to modify — preserve unchanged elements unless the instruction explicitly changes them."
         : "",
       rolePrompt,
+      isArtifactEdit ? "" : describeReferenceImages(sentReferences),
     ]
       .filter(Boolean)
       .join(" ");
@@ -87,13 +100,15 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
       input.spec.wireModelId;
     const parts: Record<string, unknown>[] = [{ text: promptWithFormat }];
     const primary = adaptations[0];
-    if (reference?.base64 && primary?.deliverBytes !== false) {
-      parts.push({
-        inlineData: {
-          mimeType: reference.mimeType,
-          data: reference.base64,
-        },
-      });
+    if (primary?.deliverBytes !== false) {
+      for (const ref of sentReferences) {
+        parts.push({
+          inlineData: {
+            mimeType: ref.mimeType,
+            data: ref.base64,
+          },
+        });
+      }
     }
     return {
       request: {

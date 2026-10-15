@@ -8,6 +8,7 @@
 import {
   CdfDependencyContractError,
   deriveDependencyRequiredRole,
+  isCdfPhaseActiveForSession,
   resolveCdfPhaseDefinition,
   tryResolveCdfPhaseDependencies,
   resolveCdfPhaseExecutionContract,
@@ -146,6 +147,10 @@ export function cdfDependencySatisfied(
   },
 ): CdfDependencySatisfaction {
   const serviceId = opts?.serviceId ?? session.serviceId;
+  // Upstream skipped by an earlier config choice never produces an artifact.
+  if (!isCdfPhaseActiveForSession(serviceId, dependencyPhaseId, session)) {
+    return { ok: true };
+  }
   const upstream =
     opts?.upstreamPhase ??
     resolveCdfPhaseDefinition(serviceId, dependencyPhaseId);

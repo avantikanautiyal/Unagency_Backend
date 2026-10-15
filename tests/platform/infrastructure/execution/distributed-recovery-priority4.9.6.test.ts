@@ -235,9 +235,32 @@ describe("P4.9.6 — distributed worker recovery loop", () => {
     await platform.engine.tick(1);
     // Must not execute a second copy while in-flight.
     expect(getExecuteCount()).toBe(0);
-    // Must remain queued in memory for the active attempt (not dropped/orphaned).
-    expect(raw.queues.get("immediate").list()).toContain(asJobId("job_inflight496"));
     expect(store.get(asJobId("job_inflight496"))?.status).toBe("queued");
+
+    // Not orphaned: once the attempt is no longer in flight, recovery redispatches it.
+    raw.inFlightJobIds.delete("job_inflight496");
+    await platform.engine.tick(1);
+    expect(getExecuteCount()).toBe(1);
+    expect(store.get(asJobId("job_inflight496"))?.status).toBe("completed");
+  });
+
+  it("an in-flight duplicate at the queue head does not block the jobs behind it", async () => {
+    const store = new InMemoryClaimableJobStore();
+    store.save(sampleJob("job_head496", "running elsewhere in this process"));
+    store.save(sampleJob("job_behind496", "waiting behind it"));
+    const { platform, getExecuteCount } = createRecoveryPlatform(store);
+    const raw = platform.rawEngine as unknown as {
+      inFlightJobIds: Set<string>;
+      queues: { get(kind: string): { enqueue(id: unknown): void; list(): unknown[] } };
+    };
+    raw.inFlightJobIds.add("job_head496");
+    raw.queues.get("immediate").enqueue(asJobId("job_head496"));
+    raw.queues.get("immediate").enqueue(asJobId("job_behind496"));
+
+    await platform.engine.tick(2);
+    expect(getExecuteCount()).toBe(1);
+    expect(store.get(asJobId("job_behind496"))?.status).toBe("completed");
+    expect(store.get(asJobId("job_head496"))?.status).toBe("queued");
   });
 
   it("terminal durable job is skipped and not re-executed", async () => {

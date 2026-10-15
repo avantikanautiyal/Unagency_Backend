@@ -118,6 +118,19 @@ function toExecutionError(
   };
 }
 
+/**
+ * Providers whose account is out of credit. Billing exhaustion does not trip
+ * the circuit breaker (it is not an outage), but it does not recover in seconds
+ * either — re-dispatching cost every call a round trip to the provider, and
+ * occasionally ~50s before its 429 arrived. Skip straight to failover instead.
+ */
+const QUOTA_EXHAUSTED_SKIP_MS = 5 * 60_000;
+const quotaExhaustedUntil = new Map<string, number>();
+
+export function clearQuotaExhaustedProviders(): void {
+  quotaExhaustedUntil.clear();
+}
+
 export class ExecutionPipeline {
   constructor(private readonly deps: ExecutionPipelineDependencies) {}
 
@@ -181,6 +194,22 @@ export class ExecutionPipeline {
       return this.terminate(session, "failed", {
         error: circuitError,
       });
+    }
+
+    const quotaSkipUntil = quotaExhaustedUntil.get(String(providerId));
+    if (quotaSkipUntil !== undefined) {
+      if (Date.now() < quotaSkipUntil) {
+        const quotaError: ProviderExecutionError = {
+          code: "QUOTA_EXHAUSTED",
+          message: "provider credit balance exhausted (cached)",
+          providerErrorCode: "credit_balance_exhausted",
+          failureCategory: "quota",
+          retryAfterMs: quotaSkipUntil - Date.now(),
+        };
+        this.recordFailedAttempt(session, Math.max(1, session.metadata.attempts), quotaError);
+        return this.terminate(session, "failed", { error: quotaError });
+      }
+      quotaExhaustedUntil.delete(String(providerId));
     }
 
     this.transition(session, "dispatching");
@@ -290,6 +319,7 @@ export class ExecutionPipeline {
         } else if (isQuotaExhaustion) {
           // Credit/billing exhaustion — observe without tripping (caller skips
           // this provider for the rest of the failover chain via category=quota).
+          quotaExhaustedUntil.set(String(providerId), Date.now() + QUOTA_EXHAUSTED_SKIP_MS);
           const concrete = breaker as CircuitBreaker;
           if (typeof concrete.observeNonTrippingFailure === "function") {
             concrete.observeNonTrippingFailure({

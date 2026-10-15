@@ -144,6 +144,8 @@ describe("no service exposes formats its exporter cannot produce", () => {
 
   it("supportedDownloadFormats match downloadFormatsForKind for every entry", () => {
     for (const [key, spec] of entries) {
+      // Sub-categories with agreed per-service formats (e.g. brochures, GIFs).
+      if (spec.downloadFormatsOverride) continue;
       const expected = downloadFormatsForKind(spec.kind);
       expect({
         key,

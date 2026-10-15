@@ -12,6 +12,8 @@ import {
   toLegacyNextWork,
   resolveCdfRouteInputRequirement,
   composeCdfRouteDescWithInput,
+  resolveNextActiveCdfPhaseIndex,
+  filterCdfFinalActionLabels,
   type CdfPhaseDefinition,
 } from "../canonical";
 import { resolveCdfPostBriefStart } from "../brief-start";
@@ -225,7 +227,15 @@ export function buildAuthoritativeUi(
       allowedActions: phase?.type === "final" ? ["final_action"] : [],
       showSendToStudio: false,
       refineExamples: [],
-      finalActions: phase?.type === "final" ? phase.finalActions ?? [] : [],
+      finalActions:
+        phase?.type === "final"
+          ? filterCdfFinalActionLabels({
+              serviceId: config.serviceId,
+              phaseId: phase.id,
+              labels: phase.finalActions ?? [],
+              session,
+            })
+          : [],
     };
   }
 
@@ -325,7 +335,15 @@ export function buildAuthoritativeUi(
     allowedActions,
     showSendToStudio,
     refineExamples: phase?.refineExamples ?? [],
-    finalActions: phase?.type === "final" ? phase.finalActions ?? [] : [],
+    finalActions:
+        phase?.type === "final"
+          ? filterCdfFinalActionLabels({
+              serviceId: config.serviceId,
+              phaseId: phase.id,
+              labels: phase.finalActions ?? [],
+              session,
+            })
+          : [],
   };
 }
 
@@ -1583,7 +1601,13 @@ export function prepareTransition(
       // Selection transition still proceeds; requirement bag best-effort
     }
 
-    const nextIndex = existing.phaseIndex + 1;
+    // Skip phases an earlier config choice deactivated (declarative activeWhen).
+    const nextIndex = resolveNextActiveCdfPhaseIndex({
+      serviceId: config.serviceId,
+      phases: config.phases,
+      fromIndex: existing.phaseIndex,
+      session: next,
+    }).nextPhaseIndex;
     if (nextIndex >= config.phases.length) {
       next = { ...next, status: "completed" };
       return success({
@@ -1841,7 +1865,13 @@ export function prepareTransition(
       // ignore
     }
 
-    const nextIndex = existing.phaseIndex + 1;
+    // Skip phases an earlier config choice deactivated (declarative activeWhen).
+    const nextIndex = resolveNextActiveCdfPhaseIndex({
+      serviceId: config.serviceId,
+      phases: config.phases,
+      fromIndex: existing.phaseIndex,
+      session: next,
+    }).nextPhaseIndex;
     if (nextIndex >= config.phases.length) {
       next = { ...next, status: "completed" };
       return success({
@@ -1911,7 +1941,12 @@ export function prepareTransition(
       }
     }
 
-    const nextIndexPreview = existing.phaseIndex + 1;
+    const nextIndexPreview = resolveNextActiveCdfPhaseIndex({
+      serviceId: config.serviceId,
+      phases: config.phases,
+      fromIndex: existing.phaseIndex,
+      session: existing,
+    }).nextPhaseIndex;
     const nextPhaseIdPreview =
       nextIndexPreview < config.phases.length
         ? config.phases[nextIndexPreview]?.id
@@ -2109,7 +2144,13 @@ export function prepareTransition(
       approvedPhaseId: phase.id,
       currentPhaseIndex: existing.phaseIndex,
     });
-    const nextIndex = advance.nextPhaseIndex;
+    // Then skip phases an earlier config choice deactivated (declarative activeWhen).
+    const nextIndex = resolveNextActiveCdfPhaseIndex({
+      serviceId: config.serviceId,
+      phases: config.phases,
+      fromIndex: advance.nextPhaseIndex - 1,
+      session: next,
+    }).nextPhaseIndex;
     if (advance.skippedAutoApproved.length > 0) {
       const nowIso = new Date().toISOString();
       next = {

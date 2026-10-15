@@ -888,7 +888,7 @@ export async function materializeDocumentExports(input: {
         brandColors,
         subtype: subtype === "leaflets" ? "leaflets" : "brochures",
       })
-    : await buildDocumentPdf(parsed);
+    : await buildDocumentPdf(parsed, { brandName, brandColors });
   const docxBuf = await buildDocumentDocx(parsed);
   const pair = await ingestDocumentPair({
     asyncMedia: input.asyncMedia,

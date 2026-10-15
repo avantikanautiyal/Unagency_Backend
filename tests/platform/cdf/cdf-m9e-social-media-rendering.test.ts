@@ -405,7 +405,7 @@ describe("CDF M9E Social Media Rendering", () => {
     expect(again.file.checksum).toBe(file.checksum);
   });
 
-  it("D — UNSUPPORTED representation (gif/svg/mp4/pdf)", () => {
+  it("D — UNSUPPORTED representation (gif/svg/mp4); PDF wraps the raster", () => {
     expect(() =>
       resolveRenderer({
         artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.output,
@@ -420,13 +420,14 @@ describe("CDF M9E Social Media Rendering", () => {
         purpose: "final",
       }),
     ).toThrow(CdfRenderError);
-    expect(() =>
-      resolveRenderer({
+    // PDF download of the stored creative (raster wrapped on a page).
+    expect(
+      hasRendererCapability({
         artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.output,
         format: "pdf",
         purpose: "final",
       }),
-    ).toThrow(CdfRenderError);
+    ).toBe(true);
     expect(() =>
       resolveRenderer({
         artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.output,

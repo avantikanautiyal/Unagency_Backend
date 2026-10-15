@@ -50,6 +50,9 @@ function briefForService(serviceId: string): string {
     illustration: "Editorial illustration for annual report cover.",
     production: "Adapt master photography for channel outputs.",
     "event-branding": "Event identity for a design summit.",
+    "visual-identity": "Visual identity system for a premium tea brand.",
+    "brand-guidelines": "Brand guidelines for a premium tea brand's in-house team.",
+    "brand-naming-taglines": "Name and tagline for a D2C oat-milk brand.",
   };
   return briefs[serviceId] ?? `CDF acceptance brief for ${serviceId}.`;
 }

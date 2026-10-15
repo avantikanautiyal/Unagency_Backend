@@ -1,3 +1,4 @@
+import type { ExtendedExportFormat } from "./format-exporters";
 /**
  * Short-lived tokens for auth-free image byte fetches (Expo Image cannot send Bearer).
  */
@@ -13,7 +14,7 @@ export type EphemeralMediaTokenRecord = {
   readonly contentType: string;
   readonly expiresAtMs: number;
   /** When set, content endpoint converts raster bytes to this format. */
-  readonly requestedFormat?: RasterDownloadFormat | "pdf";
+  readonly requestedFormat?: RasterDownloadFormat | "pdf" | ExtendedExportFormat;
   /** Download filename — served as an attachment without conversion. */
   readonly fileName?: string;
 };
@@ -27,7 +28,7 @@ export class EphemeralMediaTokenStore {
     storageRef: string;
     contentType: string;
     ttlSeconds: number;
-    requestedFormat?: RasterDownloadFormat | "pdf";
+    requestedFormat?: RasterDownloadFormat | "pdf" | ExtendedExportFormat;
     fileName?: string;
   }): EphemeralMediaTokenRecord {
     this.prune();

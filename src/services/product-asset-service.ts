@@ -744,6 +744,212 @@ export class ProductAssetService {
   /**
    * Resolve a product asset into a provider input reference.
    */
+  /**
+   * Download a Vault asset in another format (image → JPG/PNG/PDF, HTML →
+   * PDF/PNG, video → GIF, text → PDF/DOCX). The converted file is stored next
+   * to the original and returned as a short-lived signed attachment URL.
+   */
+  async exportMedia(input: {
+    userId: string;
+    assetId: string;
+    format: string;
+  }): Promise<{
+    mediaUrl: string;
+    expiresInSeconds: number;
+    contentType: string;
+    disposition: string;
+  }> {
+    const format = input.format.trim().toLowerCase().replace(/^jpeg$/, "jpg");
+    const doc = await this.requireOwnedAsset(input.userId, input.assetId);
+    const sourceMime = (doc.mimeType || "application/octet-stream").toLowerCase();
+    if (extensionForProductMime(sourceMime) === format) {
+      const native = await this.getMedia({
+        userId: input.userId,
+        assetId: input.assetId,
+        disposition: "attachment",
+      });
+      return {
+        mediaUrl: native.mediaUrl,
+        expiresInSeconds: native.expiresInSeconds,
+        contentType: native.contentType,
+        disposition: "attachment",
+      };
+    }
+    if (!doc.storageKey) throw new ApiError("Asset has no durable storage key", 404);
+    if (!this.storage.createSignedGetUrl) {
+      throw new ApiError("Signed media delivery unavailable", 503);
+    }
+    const got = await this.storage.get(doc.storageKey);
+    if (!got.ok || !got.value) throw new ApiError("Asset bytes unavailable", 404);
+    const raw = got.value.data;
+    const bytes = Buffer.from(
+      raw.startsWith("data:") ? raw.slice(raw.indexOf(",") + 1) : raw,
+      "base64",
+    );
+
+    const { canExportRasterAsPdf, wrapRasterImageAsPdf } = await import(
+      "../platform/media/delivery/raster-pdf-export"
+    );
+    const { canConvertRasterFormat, convertRasterImage } = await import(
+      "../platform/media/delivery/image-format-converter"
+    );
+    const { canExportExtendedFormat, exportExtendedFormat } = await import(
+      "../platform/media/delivery/format-exporters"
+    );
+    let converted: { bytes: Buffer; contentType: string } | undefined;
+    if (format === "pdf" && canExportRasterAsPdf(sourceMime)) {
+      const r = await wrapRasterImageAsPdf({ bytes, sourceMime });
+      if (!r.ok) throw new ApiError(r.error.message, 422);
+      converted = { bytes: Buffer.from(r.value.bytes), contentType: r.value.contentType };
+    } else if (
+      (format === "png" || format === "jpg") &&
+      canConvertRasterFormat({ sourceMime, requestedFormat: format })
+    ) {
+      const r = convertRasterImage({ bytes, sourceMime, targetFormat: format });
+      if (!r.ok) throw new ApiError(r.error.message, 422);
+      converted = { bytes: Buffer.from(r.value.bytes), contentType: r.value.contentType };
+    } else if (canExportExtendedFormat(sourceMime, format)) {
+      const r = await exportExtendedFormat({ bytes, sourceMime, requested: format });
+      if (!r.ok) throw new ApiError(r.error.message, 422);
+      converted = r.value;
+    }
+    if (!converted) {
+      throw new ApiError(`This file can't be downloaded as ${format.toUpperCase()}`, 400);
+    }
+
+    const exportKey = `${doc.storageKey}.export.${format}`;
+    const put = await this.storage.put(exportKey, converted.bytes, converted.contentType);
+    if (!put.ok) throw new ApiError(put.error.message || "Export store failed", 500);
+    const baseName = String(doc.fileName || "file").replace(/\.[a-z0-9]+$/i, "");
+    const signed = await this.storage.createSignedGetUrl(exportKey, SIGNED_TTL_SECONDS, {
+      disposition: "attachment",
+      filename: downloadFilenameForAsset(`${baseName}.${format}`, converted.contentType),
+    });
+    if (!signed.ok) {
+      throw new ApiError(signed.error.message || "Could not sign media URL", 500);
+    }
+    return {
+      mediaUrl: signed.value,
+      expiresInSeconds: SIGNED_TTL_SECONDS,
+      contentType: converted.contentType,
+      disposition: "attachment",
+    };
+  }
+
+  /**
+   * Written deliverables that exist only as chat text (copy, naming, UX
+   * strategy) → PDF / DOCX. Either a signed download URL, or saved to the
+   * Brand Vault as one file per requested format.
+   */
+  async exportText(input: {
+    userId: string;
+    organizationId?: string;
+    text: string;
+    title?: string;
+    formats: readonly string[];
+    saveToVault?: boolean;
+    brandId?: string;
+  }): Promise<{
+    downloads: { format: string; mediaUrl: string; contentType: string }[];
+    vaultAssets: ProductAssetDto[];
+  }> {
+    const text = input.text.trim();
+    if (!text) throw new ApiError("text is required", 400);
+    if (text.length > 200_000) throw new ApiError("text is too long to export", 413);
+    const formats = [...new Set(input.formats.map((f) => f.trim().toLowerCase()))].filter(
+      (f) => f === "pdf" || f === "docx",
+    );
+    if (!formats.length) throw new ApiError("formats must include pdf or docx", 400);
+
+    const { exportExtendedFormat } = await import(
+      "../platform/media/delivery/format-exporters"
+    );
+    const title = (input.title?.trim() || "Copy").slice(0, 120);
+    // A title line makes the document heading; the body keeps its own headings.
+    const source = Buffer.from(
+      text.startsWith("#") ? text : `# ${title}\n\n${text}`,
+      "utf8",
+    );
+    const safeStem =
+      title.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "copy";
+
+    // Brand colours + name style the document pages.
+    let brand: { brandName?: string; brandColors?: string[] } | undefined;
+    if (input.brandId && mongoose.isValidObjectId(input.brandId)) {
+      const Brands = (await import("../models/brand.model")).default;
+      const rec = await Brands.findById(input.brandId).select("name colors").lean();
+      if (rec) brand = { brandName: rec.name, brandColors: rec.colors ?? [] };
+    }
+
+    const downloads: { format: string; mediaUrl: string; contentType: string }[] = [];
+    const vaultAssets: ProductAssetDto[] = [];
+    for (const format of formats) {
+      const exported = await exportExtendedFormat({
+        bytes: source,
+        sourceMime: "text/markdown",
+        requested: format,
+        ...(brand ? { brand } : {}),
+      });
+      if (!exported.ok) throw new ApiError(exported.error.message, 422);
+      const filename = `${safeStem}.${format}`;
+      if (input.saveToVault) {
+        vaultAssets.push(
+          await this.upload({
+            userId: input.userId,
+            organizationId: input.organizationId,
+            filename,
+            mimeType: exported.value.contentType,
+            bytes: exported.value.bytes,
+            brandId: input.brandId,
+            folder: "copy",
+            tags: ["copy", `format:${format}`],
+            tag: "product_asset",
+            trustedSource: true,
+          }),
+        );
+        continue;
+      }
+      if (!this.storage.createSignedGetUrl) {
+        throw new ApiError("Signed media delivery unavailable", 503);
+      }
+      const key = `exports/text/${input.userId}/${Date.now()}-${safeStem}.${format}`;
+      const put = await this.storage.put(key, exported.value.bytes, exported.value.contentType);
+      if (!put.ok) throw new ApiError(put.error.message || "Export store failed", 500);
+      const signed = await this.storage.createSignedGetUrl(key, SIGNED_TTL_SECONDS, {
+        disposition: "attachment",
+        filename,
+      });
+      if (!signed.ok) throw new ApiError(signed.error.message || "Could not sign URL", 500);
+      downloads.push({
+        format,
+        mediaUrl: signed.value,
+        contentType: exported.value.contentType,
+      });
+    }
+    return { downloads, vaultAssets };
+  }
+
+  /** Store a generated file outside the Vault and return a signed download URL. */
+  async storeTransientExport(input: {
+    userId: string;
+    bytes: Buffer;
+    contentType: string;
+    filename: string;
+  }): Promise<string> {
+    if (!this.storage.createSignedGetUrl) {
+      throw new ApiError("Signed media delivery unavailable", 503);
+    }
+    const key = `exports/${input.userId}/${Date.now()}-${input.filename}`;
+    const put = await this.storage.put(key, input.bytes, input.contentType);
+    if (!put.ok) throw new ApiError(put.error.message || "Export store failed", 500);
+    const signed = await this.storage.createSignedGetUrl(key, SIGNED_TTL_SECONDS, {
+      disposition: "attachment",
+      filename: input.filename,
+    });
+    if (!signed.ok) throw new ApiError(signed.error.message || "Could not sign URL", 500);
+    return signed.value;
+  }
+
   async resolveProviderInputAsset(input: {
     userId: string;
     assetId: string;

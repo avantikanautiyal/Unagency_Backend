@@ -23,6 +23,11 @@ import {
   type RasterDownloadFormat,
 } from "./image-format-converter";
 import {
+  canExportExtendedFormat,
+  exportExtendedFormat,
+  type ExtendedExportFormat,
+} from "./format-exporters";
+import {
   canExportRasterAsPdf,
   wrapRasterImageAsPdf,
 } from "./raster-pdf-export";
@@ -30,6 +35,7 @@ import { randomBytes } from "crypto";
 import {
   buildArtifactBundleZip,
   sanitizeBundleName,
+  type BundleCombinedFormat,
   type BundleFormat,
   type BundleSourceFile,
 } from "./artifact-bundle";
@@ -122,6 +128,11 @@ export class MediaDeliveryService {
     const pdfRequested = requestedRaw?.trim().toLowerCase() === "pdf";
     const sourceRaster = formatFromMime(sourceMime);
     const needsPdfExport = pdfRequested && canExportRasterAsPdf(sourceMime);
+    // HTML → PDF/PNG, video → GIF, text → PDF/DOCX (server-side export).
+    const extendedTarget =
+      requestedRaw && canExportExtendedFormat(sourceMime, requestedRaw)
+        ? (requestedRaw.trim().toLowerCase() as ExtendedExportFormat)
+        : undefined;
     const needsRasterConversion =
       Boolean(rasterTarget) &&
       Boolean(sourceRaster) &&
@@ -137,6 +148,7 @@ export class MediaDeliveryService {
     if (
       !needsRasterConversion &&
       !needsPdfExport &&
+      !extendedTarget &&
       !options?.preferSameOrigin
     ) {
       const signed = await this.blobAccess.createProviderInputSignedUrl(
@@ -182,15 +194,18 @@ export class MediaDeliveryService {
       ...(archiveFileName && !options?.preferSameOrigin
         ? { fileName: archiveFileName }
         : {}),
-      ...(pdfRequested
-        ? { requestedFormat: "pdf" as const }
-        : rasterTarget
-          ? { requestedFormat: rasterTarget }
-          : {}),
+      ...(extendedTarget
+        ? { requestedFormat: extendedTarget }
+        : pdfRequested
+          ? { requestedFormat: "pdf" as const }
+          : rasterTarget
+            ? { requestedFormat: rasterTarget }
+            : {}),
     });
     const origin = normalizePublicOrigin(options?.publicOrigin);
-    const formatQuery =
-      pdfRequested || rasterTarget
+    const formatQuery = extendedTarget
+      ? `&format=${encodeURIComponent(extendedTarget)}`
+      : pdfRequested || rasterTarget
         ? `&format=${encodeURIComponent(pdfRequested ? "pdf" : rasterTarget!)}`
         : "";
     const signedUrl = `${origin}/v1/artifacts/${encodeURIComponent(artifactId)}/content?token=${encodeURIComponent(token.token)}${formatQuery}`;
@@ -198,11 +213,13 @@ export class MediaDeliveryService {
       artifactId,
       signedUrl,
       expiresInSeconds: this.ephemeralTtlSeconds,
-      contentType: pdfRequested
-        ? "application/pdf"
-        : rasterTarget
-          ? mimeForRasterFormat(rasterTarget)
-          : contentType,
+      contentType: extendedTarget
+        ? EXTENDED_EXPORT_MIME[extendedTarget]
+        : pdfRequested
+          ? "application/pdf"
+          : rasterTarget
+            ? mimeForRasterFormat(rasterTarget)
+            : contentType,
     });
   }
 
@@ -215,6 +232,7 @@ export class MediaDeliveryService {
     readonly bundleName: string;
     readonly items: readonly { readonly artifactId: string; readonly name: string }[];
     readonly formats?: readonly BundleFormat[];
+    readonly combined?: readonly BundleCombinedFormat[];
     readonly readme?: string;
     readonly publicOrigin?: string;
   }): Promise<Result<ArtifactBundleUrlResult>> {
@@ -258,6 +276,12 @@ export class MediaDeliveryService {
     const built = await buildArtifactBundleZip({
       files,
       ...(input.formats ? { formats: input.formats } : {}),
+      ...(input.combined?.length
+        ? {
+            combined: input.combined,
+            combinedName: sanitizeBundleName(input.bundleName, "combined"),
+          }
+        : {}),
       ...(input.readme ? { readme: input.readme } : {}),
     });
     if (!built.ok) return built;
@@ -339,6 +363,21 @@ export class MediaDeliveryService {
       .trim()
       .toLowerCase();
 
+    if (requestedFormat && canExportExtendedFormat(sourceMime, requestedFormat)) {
+      const exported = await exportExtendedFormat({
+        bytes,
+        sourceMime,
+        requested: requestedFormat,
+      });
+      if (!exported.ok) return exported;
+      return success({
+        kind: "binary_media",
+        artifactId,
+        contentType: exported.value.contentType,
+        bytes: exported.value.bytes,
+      });
+    }
+
     if (requestedFormat === "pdf" && canExportRasterAsPdf(sourceMime)) {
       const exported = await wrapRasterImageAsPdf({
         bytes,
@@ -396,6 +435,9 @@ export function validateRequestedDownloadFormat(input: {
   if (requested === "pdf" && canExportRasterAsPdf(input.sourceMime)) {
     return success(true);
   }
+  if (canExportExtendedFormat(input.sourceMime, requested)) {
+    return success(true);
+  }
   const rasterTarget = normalizeRasterFormat(requested);
   const sourceRaster = formatFromMime(input.sourceMime);
 
@@ -444,6 +486,13 @@ export function validateRequestedDownloadFormat(input: {
 
   return success(rasterTarget);
 }
+
+const EXTENDED_EXPORT_MIME: Record<ExtendedExportFormat, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  gif: "image/gif",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
 
 function mimeToExactFormat(mimeType: string): string | undefined {
   const mime = mimeType.toLowerCase().split(";")[0]?.trim() ?? "";

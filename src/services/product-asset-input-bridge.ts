@@ -18,7 +18,21 @@ import {
 export type ResolvedProductAssetPayload = {
   readonly assets: readonly InputAssetReference[];
   readonly audio?: InputAssetReference;
+  /** Ids that are not usable vault assets (malformed, deleted, other tenant). */
+  readonly skippedAssetIds: readonly string[];
 };
+
+/**
+ * A reference that can never resolve — not a vault id, deleted, or another
+ * tenant's. Project references are replayed on every later step, so one such
+ * id used to fail every create (and every refine) with "Invalid asset id".
+ */
+function isUnresolvableAssetError(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    (err.statusCode === 400 || err.statusCode === 403 || err.statusCode === 404)
+  );
+}
 
 /**
  * Load owned product assets and map to provider input refs.
@@ -30,14 +44,31 @@ export async function resolveProductAssetIdsForProvider(input: {
   readonly assetIds: readonly string[];
 }): Promise<ResolvedProductAssetPayload> {
   const assets: InputAssetReference[] = [];
+  const skippedAssetIds: string[] = [];
   for (const assetId of input.assetIds) {
     if (!assetId?.trim()) continue;
     const id = assetId.trim();
-    const resolved = await productAssetService.resolveProviderInputAsset({
-      userId: input.userId,
-      assetId: id,
-      organizationId: input.organizationId,
-    });
+    let resolved: Awaited<ReturnType<typeof productAssetService.resolveProviderInputAsset>>;
+    try {
+      resolved = await productAssetService.resolveProviderInputAsset({
+        userId: input.userId,
+        assetId: id,
+        organizationId: input.organizationId,
+      });
+    } catch (err) {
+      if (!isUnresolvableAssetError(err)) throw err;
+      skippedAssetIds.push(id);
+      console.warn(
+        JSON.stringify({
+          scope: "product_asset_input_bridge",
+          event: "reference_asset_skipped",
+          assetId: id,
+          organizationId: input.organizationId,
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      continue;
+    }
     // Preserve the authoritative product-asset id on the payload record.
     const resolvedRec = resolved as Record<string, unknown>;
     const resolvedAssetId =
@@ -49,12 +80,9 @@ export async function resolveProductAssetIdsForProvider(input: {
       assetId: resolvedAssetId,
     } as InputAssetReference);
   }
-  if (assets.length === 0) {
-    throw new ApiError("No resolvable product assets for provider input", 400);
-  }
   const audio =
     assets.find((a) => (a.mimeType ?? "").startsWith("audio/")) ?? assets[0];
-  return { assets, audio };
+  return { assets, audio, skippedAssetIds };
 }
 
 function metadataLogoAssetIds(
@@ -153,6 +181,14 @@ export async function attachProductAssetsToExecutionMetadata(input: {
     organizationId: input.organizationId,
     assetIds,
   });
+  if (resolved.skippedAssetIds.length) {
+    meta.productAssetIdsSkipped = [...resolved.skippedAssetIds];
+  }
+  if (resolved.assets.length === 0) {
+    // Nothing usable — generate without reference images rather than failing.
+    meta.assetIds = [];
+    return meta;
+  }
 
   const logoIds = metadataLogoAssetIds(meta);
   const existingAssets = Array.isArray(meta.assets) ? [...meta.assets] : [];
@@ -195,6 +231,8 @@ export async function attachProductAssetsToExecutionMetadata(input: {
       meta.referenceInputType = "brand_vault_asset";
     }
   }
-  meta.productAssetIds = assetIds;
+  const usableIds = assetIds.filter((id) => !resolved.skippedAssetIds.includes(id));
+  meta.assetIds = usableIds;
+  meta.productAssetIds = usableIds;
   return meta;
 }

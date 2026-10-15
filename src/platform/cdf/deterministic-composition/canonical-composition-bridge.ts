@@ -149,6 +149,15 @@ export async function tryDeterministicCompositionCanonicalBridge(input: {
     return { applied: false, reason: "not_required" };
   }
 
+  // Composition stamps the headline (bitmap font, white panel) and brand mark
+  // over the provider plate. That is only correct when the plate was generated
+  // text-free. Provider prompts include the copy and the logo reference, so the
+  // plate already carries both — composing on top duplicated the text in every
+  // downloaded / vault creative. Opt in only for an explicitly text-free plate.
+  if (meta?.cdfVisualPlateTextFree !== true) {
+    return { applied: false, reason: "not_required" };
+  }
+
   // Activate only when authority assets are present or leaf explicitly opts in
   // (fanout leaf / enforce flag). Avoids breaking legacy single-leaf paths that
   // have not yet stamped brand-mark bytes onto metadata.

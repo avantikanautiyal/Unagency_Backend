@@ -15,6 +15,7 @@ import {
   resolveCdfPhaseExecutionContract,
   type CdfPhaseDefinition,
   type CdfPhaseExecutionContract,
+  isCdfPhaseActiveForSession,
 } from "../canonical";
 import { getArtifactVersion } from "../artifacts/repository";
 import { isCdfCanonicalArtifactId } from "../artifacts/ids";
@@ -80,7 +81,9 @@ export type CdfPhaseProgressStatus =
   | "active"
   | "completed"
   | "incomplete"
-  | "failed";
+  | "failed"
+  /** Deactivated by an earlier config choice (activeWhen) — never runs. */
+  | "skipped";
 
 function matchPin(
   r: CdfSessionArtifactRef,
@@ -713,6 +716,9 @@ export function resolvePhaseProgressStatuses(
   phases: ReadonlyArray<{ id: string }>,
 ): CdfPhaseProgressStatus[] {
   return phases.map((p, i) => {
+    if (!isCdfPhaseActiveForSession(session.serviceId, p.id, session)) {
+      return "skipped";
+    }
     if (session.phaseIndex < 0) return "upcoming";
     if (i > session.phaseIndex) return "upcoming";
     if (i === session.phaseIndex) return "active";

@@ -685,7 +685,7 @@ describe("Phase 18 Canonical Benchmarking", () => {
 
   it("55–60 — no subjective scoring, no second systems, no auto flag enablement, coverage", () => {
     const coverage = listFifteenServiceCoverage();
-    expect(coverage.length).toBe(15);
+    expect(coverage.length).toBe(18);
     const classA = coverage.filter((c) => c.classLabel === "A");
     expect(classA.map((c) => c.serviceId).sort()).toEqual([
       "packaging",

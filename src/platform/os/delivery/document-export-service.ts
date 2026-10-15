@@ -396,31 +396,97 @@ export async function buildPresentationPdf(
   return renderDesignedPresentationPdf(plan, slideImages, options);
 }
 
-export async function buildDocumentPdf(plan: DocumentPlan): Promise<Buffer> {
+/**
+ * Written document (brand guidelines, strategy, UX strategy…) as clean,
+ * well-laid-out pages in the brand's colours: cover, coloured section
+ * headings, footer with brand name and page numbers.
+ */
+export async function buildDocumentPdf(
+  plan: DocumentPlan,
+  options?: {
+    readonly brandName?: string;
+    readonly brandColors?: readonly string[];
+  },
+): Promise<Buffer> {
+  const primary = normalizeBrochureHex(options?.brandColors?.[0], `#${INK}`);
+  const accent = normalizeBrochureHex(options?.brandColors?.[1], `#${ACCENT}`);
+  const brand = options?.brandName?.trim() || "";
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 54, size: "A4" });
+    const doc = new PDFDocument({ margin: 56, size: "A4", bufferPages: true });
     const chunks: Buffer[] = [];
     doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const left = 56;
+    const width = pageW - 112;
 
-    doc.fontSize(22).fillColor("#111111").text(plan.title);
-    if (plan.summary) {
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#444444").text(plan.summary);
-    }
-    doc.moveDown(1);
-
-    for (const section of plan.sections) {
-      doc.fontSize(14).fillColor("#111111").text(section.heading);
-      doc.moveDown(0.3);
-      doc.fontSize(11).fillColor("#222222").text(section.body, {
-        align: "left",
-        lineGap: 2,
+    // Cover: brand-colour band with title, brand and summary.
+    doc.rect(0, 0, pageW, pageH * 0.42).fill(primary);
+    doc.rect(0, pageH * 0.42, pageW, 6).fill(accent);
+    if (brand) {
+      doc.fillColor("#FFFFFF").fontSize(12).text(brand.toUpperCase(), left, 72, {
+        width,
+        characterSpacing: 2,
       });
-      doc.moveDown(0.9);
+    }
+    doc.fillColor("#FFFFFF").fontSize(30).text(plan.title, left, pageH * 0.2, { width });
+    if (plan.summary) {
+      doc
+        .fillColor(`#${MUTED}`)
+        .fontSize(12)
+        .text(plan.summary, left, pageH * 0.42 + 40, { width, lineGap: 3 });
     }
 
+    // Contents on the cover when there are several sections.
+    if (plan.sections.length > 2) {
+      doc.moveDown(1.5).fillColor(primary).fontSize(11).text("CONTENTS", left, undefined, {
+        characterSpacing: 1.5,
+      });
+      plan.sections.forEach((section, i) => {
+        doc
+          .fillColor(`#${INK}`)
+          .fontSize(11)
+          .text(`${String(i + 1).padStart(2, "0")}   ${section.heading}`, left, undefined, {
+            width,
+          });
+      });
+    }
+
+    // Body: each section starts with a coloured heading and rule.
+    doc.addPage();
+    plan.sections.forEach((section, i) => {
+      if (doc.y > pageH - 180) doc.addPage();
+      doc
+        .fillColor(accent)
+        .fontSize(9)
+        .text(String(i + 1).padStart(2, "0"), left, undefined, { characterSpacing: 1.5 });
+      doc.fillColor(primary).fontSize(17).text(section.heading, left, undefined, { width });
+      const ruleY = doc.y + 4;
+      doc.moveTo(left, ruleY).lineTo(left + 48, ruleY).lineWidth(2).strokeColor(accent).stroke();
+      doc.moveDown(0.9);
+      doc.fillColor(`#${INK}`).fontSize(11).text(section.body, left, undefined, {
+        width,
+        align: "left",
+        lineGap: 3,
+      });
+      doc.moveDown(1.4);
+    });
+
+    // Footer on every page except the cover.
+    const range = doc.bufferedPageRange();
+    for (let i = 1; i < range.count; i += 1) {
+      doc.switchToPage(range.start + i);
+      doc
+        .fillColor(`#${MUTED}`)
+        .fontSize(8)
+        .text(`${brand ? `${brand} · ` : ""}${plan.title}`, left, pageH - 40, {
+          width: width - 60,
+          lineBreak: false,
+        })
+        .text(String(i + 1), pageW - 56 - 40, pageH - 40, { width: 40, align: "right" });
+    }
     doc.end();
   });
 }

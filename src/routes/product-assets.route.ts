@@ -9,6 +9,9 @@ import {
   getMultipartPartUrl,
   getProductAsset,
   getProductAssetMedia,
+  exportProductAssetMedia,
+  exportProductText,
+  composePagesPdf,
   importProductAsset,
   initiateMultipartUpload,
   listProductAssets,
@@ -29,6 +32,8 @@ router.post(
   uploadProductAsset
 );
 router.post("/import", VerifyRole(["customer"]), importProductAsset);
+router.post("/export-text", VerifyRole(["customer"]), exportProductText);
+router.post("/compose-pages-pdf", VerifyRole(["customer"]), composePagesPdf);
 
 /** M10.18 — multipart / resumable large uploads */
 router.post(
@@ -66,6 +71,7 @@ router.delete(
 router.get("/:assetId", VerifyRole(["customer"]), getProductAsset);
 router.patch("/:assetId", VerifyRole(["customer"]), updateProductAssetMeta);
 router.get("/:assetId/media", VerifyRole(["customer"]), getProductAssetMedia);
+router.get("/:assetId/export", VerifyRole(["customer"]), exportProductAssetMedia);
 router.delete("/:assetId", VerifyRole(["customer"]), deleteProductAsset);
 router.post(
   "/:assetId/restore",

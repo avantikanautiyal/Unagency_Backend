@@ -242,11 +242,15 @@ export async function dispatchController(
     const formats = (Array.isArray(body.formats) ? body.formats : [])
       .map((f) => String(f).trim().toLowerCase())
       .filter((f): f is "png" | "jpg" | "pdf" => f === "png" || f === "jpg" || f === "pdf");
+    const combined = (Array.isArray(body.combined) ? body.combined : [])
+      .map((f) => String(f).trim().toLowerCase())
+      .filter((f): f is "pdf" | "pptx" => f === "pdf" || f === "pptx");
     return delivery.createArtifactBundleUrl({
       organizationId: tenant.organizationId,
       bundleName: String(body.name ?? "").trim() || "download",
       items,
       ...(formats.length ? { formats } : {}),
+      ...(combined.length ? { combined } : {}),
       ...(typeof body.readme === "string" && body.readme.trim()
         ? { readme: body.readme }
         : {}),

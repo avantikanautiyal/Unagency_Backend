@@ -12,10 +12,14 @@ import {
   type RasterDownloadFormat,
 } from "./image-format-converter";
 import { wrapRasterImageAsPdf } from "./raster-pdf-export";
+import { combineRastersAsPdf, combineRastersAsPptx } from "./combined-raster-export";
 
 export type BundleFormat = RasterDownloadFormat | "pdf";
 
 export const DEFAULT_BUNDLE_FORMATS: readonly BundleFormat[] = ["png", "jpg", "pdf"];
+
+/** One file combining every raster item in order (a page / slide each). */
+export type BundleCombinedFormat = "pdf" | "pptx";
 
 export type BundleSourceFile = {
   readonly name: string;
@@ -59,6 +63,9 @@ function uniqueName(base: string, used: Set<string>): string {
 export async function buildArtifactBundleZip(input: {
   readonly files: readonly BundleSourceFile[];
   readonly formats?: readonly BundleFormat[];
+  readonly combined?: readonly BundleCombinedFormat[];
+  /** Base name for combined files (e.g. "identity-kit"). */
+  readonly combinedName?: string;
   readonly readme?: string;
 }): Promise<Result<{ readonly bytes: Buffer; readonly entryNames: readonly string[] }>> {
   if (input.files.length === 0) {
@@ -100,6 +107,23 @@ export async function buildArtifactBundleZip(input: {
         if (!converted.ok) return converted;
         zip.file(entry, converted.value.bytes);
       }
+      entryNames.push(entry);
+    }
+  }
+
+  if (input.combined?.length) {
+    const combinedBase = uniqueName(
+      sanitizeBundleName(input.combinedName ?? "combined"),
+      usedBases,
+    );
+    for (const format of input.combined) {
+      const built =
+        format === "pdf"
+          ? await combineRastersAsPdf(input.files)
+          : await combineRastersAsPptx(input.files);
+      if (!built.ok) return built;
+      const entry = `${combinedBase}.${format}`;
+      zip.file(entry, built.value);
       entryNames.push(entry);
     }
   }

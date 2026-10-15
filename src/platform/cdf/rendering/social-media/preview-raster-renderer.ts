@@ -9,6 +9,7 @@ import {
   isSocialMediaArtifactKey,
   SOCIAL_MEDIA_ARTIFACT_KEYS,
 } from "../../artifacts/social-media/keys";
+import { isAssetRasterFormat, rasterOutputForFormat } from "../raster-output";
 import { renderError } from "../errors";
 import type { ArtifactRenderer, CdfRenderFormat } from "../types";
 import { selectSocialMediaPreviewVaultId } from "./asset-collect";
@@ -98,7 +99,7 @@ export function createSocialMediaPreviewRasterRenderer(): ArtifactRenderer {
       rendererId: SOCIAL_MEDIA_PREVIEW_RASTER_RENDERER_ID,
       rendererVersion: SOCIAL_MEDIA_PREVIEW_RASTER_RENDERER_VERSION,
       artifactKeys: [SOCIAL_MEDIA_ARTIFACT_KEYS.output],
-      formats: ["png", "jpg"],
+      formats: ["png", "jpg", "pdf"],
       purposes: ["preview", "final"],
       description:
         "Deterministic Vault previewAssetRef pass-through for social-media.output (PNG/JPG). Not a creative compositor; does not invent on-image layout.",
@@ -107,18 +108,14 @@ export function createSocialMediaPreviewRasterRenderer(): ArtifactRenderer {
       return (
         isSocialMediaArtifactKey(artifactKey) &&
         artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.output &&
-        (format === "png" || format === "jpg")
+        isAssetRasterFormat(format)
       );
     },
     async render(input) {
       const data = input.data as Record<string, unknown>;
 
       // Explicit: layout unresolved — never invent geometry from onImageCopy
-      if (
-        input.format === "svg" ||
-        input.format === "pdf" ||
-        input.format === "mp4"
-      ) {
+      if (input.format === "svg" || input.format === "mp4") {
         throw renderError(
           "RENDER_FORMAT_UNSUPPORTED",
           socialMediaUnsupportedFormatMessage(input.artifactKey, input.format),
@@ -166,10 +163,8 @@ export function createSocialMediaPreviewRasterRenderer(): ArtifactRenderer {
         }
       }
 
-      return {
-        bytes: new Uint8Array(bytes),
-        mimeType: detectMime(bytes, input.format),
-      };
+      // Stored raster in the requested format (PDF wraps the image on a page).
+      return rasterOutputForFormat(bytes, input.format);
     },
   };
 }
@@ -188,8 +183,8 @@ export function socialMediaUnsupportedFormatMessage(
   if (format === "gif" || format === "mp4") {
     return "Social Media GIF/MP4 / multi-frame representations are unsupported — single-image creative only";
   }
-  if (format === "svg" || format === "pdf") {
-    return "Social Media SVG/PDF rendering unsupported — on-image layout unresolved; raster preview only via png/jpg";
+  if (format === "svg") {
+    return "Social Media SVG rendering unsupported — on-image layout unresolved; raster delivery via png/jpg/pdf";
   }
   return `No Social Media renderer registered for ${artifactKey} format=${format}`;
 }

@@ -289,6 +289,148 @@ export const getProductAssetMedia = asyncHandler(
   }
 );
 
+/** Vault asset in another download format (JPG/PNG/PDF, HTML→PDF/PNG, video→GIF, text→PDF/DOCX). */
+export const exportProductAssetMedia = asyncHandler(
+  async (req: RequestUser, res: Response) => {
+    const format = String(req.query.format ?? "").trim();
+    if (!format) throw new ApiError("format is required", 400);
+    const data = await productAssetService.exportMedia({
+      userId: req.user!.userId!,
+      assetId: req.params.assetId,
+      format,
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    return new ApiResponse(200, data, "Export authorized");
+  }
+);
+
+/** Chat-text deliverable (copy, naming, UX strategy) → PDF / DOCX download or Vault save. */
+export const exportProductText = asyncHandler(
+  async (req: RequestUser, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const formats = Array.isArray(body.formats)
+      ? body.formats.map(String)
+      : typeof body.format === "string"
+        ? [body.format]
+        : [];
+    const data = await productAssetService.exportText({
+      userId: req.user!.userId!,
+      organizationId:
+        (typeof body.organizationId === "string" && body.organizationId) ||
+        orgIdFromUser(req),
+      text: typeof body.text === "string" ? body.text : "",
+      title: typeof body.title === "string" ? body.title : undefined,
+      formats,
+      saveToVault: body.saveToVault === true,
+      brandId: typeof body.brandId === "string" ? body.brandId : undefined,
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    return new ApiResponse(200, data, "Text exported");
+  }
+);
+
+/**
+ * Multi-page deliverable (brochure, leaflet, storyboard): ordered designed page
+ * images → one PDF (printer spreads for folded layouts). Download URL, or saved
+ * to the Brand Vault.
+ */
+export const composePagesPdf = asyncHandler(
+  async (req: RequestUser, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    const pages = Array.isArray(body.pages) ? (body.pages as Record<string, unknown>[]) : [];
+    if (pages.length === 0) throw new ApiError("pages are required", 400);
+    if (pages.length > 32) throw new ApiError("Too many pages (max 32)", 413);
+    const layoutRaw = str(body.layout) ?? "pages";
+    const layout = (["pages", "bi-fold", "tri-fold", "z-fold", "storyboard"].includes(layoutRaw)
+      ? layoutRaw
+      : "pages") as import("../platform/media/delivery/pages-pdf-composer").PagesPdfLayout;
+    const userId = String(req.user!.userId);
+    const organizationId = await resolveCustomerOrganizationId(
+      userId,
+      str(body.organizationId) || orgIdFromUser(req)
+    );
+    if (!organizationId) throw new ApiError("Organization not found", 404);
+
+    const { getEnterpriseApiRuntime } = await import(
+      "../platform/api/runtime/bootstrap-enterprise-api"
+    );
+    const platform = getEnterpriseApiRuntime()?.platform;
+    const delivery = platform?.durableStores?.asyncMedia?.mediaDelivery;
+    const artifactsRepo = platform?.durableStores?.artifacts;
+    if (!delivery) throw new ApiError("Media delivery unavailable", 503);
+
+    /** Image bytes for one page — explicit art_* id, else the job's media file. */
+    const pageImage = async (page: Record<string, unknown>, n: number): Promise<Buffer> => {
+      const candidates: string[] = [];
+      const explicit = str(page.artifactId);
+      if (explicit && !explicit.startsWith("cdfart_")) candidates.push(explicit);
+      const executionId = str(page.executionId);
+      if (executionId && artifactsRepo) {
+        const listed = await artifactsRepo.list(executionId);
+        for (const a of listed) {
+          if (a.artifactId && a.label?.startsWith("blob:")) candidates.push(a.artifactId);
+        }
+      }
+      for (const artifactId of candidates) {
+        const got = await delivery.resolveArtifactBinaryForTenant(artifactId, organizationId);
+        if (got.ok && /^image\/(png|jpe?g)/i.test(got.value.contentType)) {
+          return Buffer.from(got.value.bytes);
+        }
+        // Other raster types (e.g. webp) → PNG for the PDF.
+        if (got.ok && got.value.contentType.startsWith("image/")) {
+          const png = await delivery.resolveArtifactBinaryForTenant(artifactId, organizationId, {
+            format: "png",
+          });
+          if (png.ok) return Buffer.from(png.value.bytes);
+        }
+      }
+      throw new ApiError(`Page ${n} image is not available — regenerate that page and retry.`, 404);
+    };
+
+    const images: { bytes: Buffer; caption?: string }[] = [];
+    for (let i = 0; i < pages.length; i += 1) {
+      images.push({ bytes: await pageImage(pages[i]!, i + 1), caption: str(pages[i]!.caption) });
+    }
+    const { composePagesPdf: compose } = await import(
+      "../platform/media/delivery/pages-pdf-composer"
+    );
+    const title = str(body.title) || "Document";
+    const pdf = await compose({ title, layout, pages: images });
+    const filename = `${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "document"}.pdf`;
+
+    if (body.saveToVault === true) {
+      const dto = await productAssetService.upload({
+        userId,
+        organizationId,
+        filename,
+        mimeType: "application/pdf",
+        bytes: pdf,
+        brandId: str(body.brandId),
+        folder: "documents",
+        tags: ["page-document", `layout:${layout}`],
+        tag: "product_asset",
+        trustedSource: true,
+      });
+      const media = await productAssetService.getMedia({
+        userId,
+        assetId: dto.id,
+        disposition: "attachment",
+      });
+      res.setHeader("Cache-Control", "private, no-store");
+      return new ApiResponse(200, { mediaUrl: media.mediaUrl, vaultAsset: dto }, "PDF saved");
+    }
+    const url = await productAssetService.storeTransientExport({
+      userId,
+      bytes: pdf,
+      contentType: "application/pdf",
+      filename,
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    return new ApiResponse(200, { mediaUrl: url }, "PDF ready");
+  }
+);
+
 export const deleteProductAsset = asyncHandler(
   async (req: RequestUser, res: Response) => {
     const data = await productAssetService.delete({

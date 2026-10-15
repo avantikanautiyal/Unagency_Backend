@@ -329,7 +329,7 @@ export type CdfUiHint = {
    * incomplete ⇒ phaseIndex advanced past this phase without completion (fail-closed UI).
    */
   phaseProgressStatuses?: Array<
-    "upcoming" | "active" | "completed" | "incomplete" | "failed"
+    "upcoming" | "active" | "completed" | "incomplete" | "failed" | "skipped"
   >;
   currentPhase: CdfFlowPhase | null;
   allowedActions: CdfTransitionAction[];

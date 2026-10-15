@@ -22,8 +22,8 @@ import {
 import { approveWithCanonicalCompletion, bindMinimalGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 
 describe("CDF registry", () => {
-  it("lists all 15 service flows", () => {
-    expect(listCdfServiceIds()).toHaveLength(15);
+  it("lists all 18 service flows", () => {
+    expect(listCdfServiceIds()).toHaveLength(18);
     expect(resolveCdfServiceConfig("social-media")?.phases.map((p) => p.id)).toEqual([
       "platform",
       "size-reference",

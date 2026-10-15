@@ -54,6 +54,17 @@ export const IMAGE_USE_CASE_PREFERENCES: Record<
   general: [GEMINI_FLASH_IMAGE, GEMINI_PRO_IMAGE, CHATGPT_IMAGE_ALT],
 };
 
+/**
+ * Stages that continue an approved creative (the previous stage's output is
+ * attached as a reference): the model with the strongest reference fidelity
+ * first, then the others as fallbacks.
+ */
+export const CONTINUITY_IMAGE_PREFERENCES: readonly ImageProviderPreference[] = [
+  GEMINI_PRO_IMAGE,
+  GEMINI_FLASH_IMAGE,
+  CHATGPT_IMAGE_ALT,
+];
+
 export function resolveImageCreativeUseCase(
   prompt: string,
   context?: { service?: string; platform?: string; subtype?: string }

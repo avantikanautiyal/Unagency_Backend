@@ -343,6 +343,24 @@ function resolveDirectTimeoutMs(
   return DEFAULT_DIRECT_TIMEOUT_MS;
 }
 
+/** Attempt failures that only mean "this backup could not serve right now". */
+const BACKUP_UNAVAILABLE_CATEGORIES: ReadonlySet<string> = new Set([
+  "quota",
+  "rate_limit",
+  "authentication",
+  "circuit_open",
+  "configuration",
+  "http_4xx",
+  "skipped",
+]);
+
+/** Providers strong enough to rebuild a full deck after an expansion failure. */
+const DECK_RETRY_PROVIDERS: ReadonlySet<string> = new Set([
+  "provider.anthropic",
+  "provider.openai",
+  "provider.google",
+]);
+
 function isPresentationExpansionFailure(
   result: ProviderExecutionResult
 ): boolean {
@@ -1417,6 +1435,9 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     const circuitOpenProviders = new Set<string>();
     const rateLimitedCandidateKeys = new Set<string>();
     const quotaExhaustedProviders = new Set<string>();
+    // A deck whose slide expansion failed gets one more try on a strong model
+    // (never re-run on weaker providers) instead of failing the whole stage.
+    let presentationExpansionRetryUsed = false;
 
     for (let candidateIndex = 0; candidateIndex < uniqueCandidates.length; candidateIndex++) {
       const candidate = uniqueCandidates[candidateIndex]!;
@@ -1820,7 +1841,32 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         ) {
           lastFailureMessage =
             "Pitch deck slide expansion failed. Please try again — your concepts were generated but full slides could not be built.";
-          break;
+          const retryIndex = presentationExpansionRetryUsed
+            ? -1
+            : uniqueCandidates.findIndex(
+                (c, i) =>
+                  i > candidateIndex &&
+                  DECK_RETRY_PROVIDERS.has(c.providerId) &&
+                  !quotaExhaustedProviders.has(c.providerId) &&
+                  !circuitOpenProviders.has(c.providerId),
+              );
+          if (retryIndex < 0) break;
+          presentationExpansionRetryUsed = true;
+          // eslint-disable-next-line no-console
+          console.info(
+            JSON.stringify({
+              scope: "provider.failover",
+              event: "presentation_expansion_retry",
+              failedProviderId: String(candidate.providerId),
+              failedModelId: String(candidate.modelId),
+              retryProviderId: uniqueCandidates[retryIndex]!.providerId,
+              retryModelId: uniqueCandidates[retryIndex]!.modelId,
+              requestId: request.requestId,
+            }),
+          );
+          // Jump straight to the strong retry candidate (loop increments).
+          candidateIndex = retryIndex - 1;
+          continue;
         }
         // Side-effect block only — structured-contract invalidation must continue.
         if (providerResultBlocksFailover(attemptResult.value)) {
@@ -2108,20 +2154,34 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     }
 
     if (!result?.ok || result.value.success === false) {
+      // Report the failure that explains the outcome: the first attempt that
+      // actually produced an answer and failed on content (e.g. truncated /
+      // schema-invalid), not a later backup that was merely unavailable
+      // (no credits, rate-limited, bad key) — that hid the real cause.
+      const meaningfulFailure = attemptHistory.find(
+        (a) => !a.success && !BACKUP_UNAVAILABLE_CATEGORIES.has(a.failureCategory),
+      );
+      if (meaningfulFailure?.errorMessage) {
+        lastFailureMessage = meaningfulFailure.errorMessage;
+      }
       const historyCategory =
         attemptHistory.length > 0 &&
         attemptHistory.every((a) => a.failureCategory === "circuit_open")
           ? "circuit_open"
-          : attemptHistory.length > 0
-            ? attemptHistory[attemptHistory.length - 1]?.failureCategory
-            : undefined;
+          : meaningfulFailure
+            ? meaningfulFailure.failureCategory
+            : attemptHistory.length > 0
+              ? attemptHistory[attemptHistory.length - 1]?.failureCategory
+              : undefined;
       const category =
         historyCategory === "circuit_open" ||
         historyCategory === "rate_limit" ||
         historyCategory === "quota" ||
         historyCategory === "authentication" ||
         historyCategory === "unavailable" ||
-        historyCategory === "timeout"
+        historyCategory === "timeout" ||
+        historyCategory === "structured_output_invalid" ||
+        historyCategory === "contract_validation_failure"
           ? historyCategory
           : classifyDirectAttemptFailure(
               lastFailureMessage,

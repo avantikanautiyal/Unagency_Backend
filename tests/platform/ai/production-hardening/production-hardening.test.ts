@@ -343,7 +343,7 @@ describe("Phase 19 Production Hardening", () => {
           s.serviceId,
         ),
     );
-    expect(classD.length).toBe(12);
+    expect(classD.length).toBe(15);
     for (const s of classD) {
       assertClassDContinuityIncomplete(s.serviceId);
       const row = classifyServiceRollout(s.serviceId);
@@ -705,7 +705,7 @@ describe("Phase 19 Production Hardening", () => {
     expect(getProductionPath("web_mobile_chat")?.notes).toMatch(/web and mobile/i);
 
     const rows = listServiceRolloutClassifications();
-    expect(rows).toHaveLength(15);
+    expect(rows).toHaveLength(18);
     const classA = rows.filter((r) => r.classLabel === "A");
     expect(classA.map((r) => r.serviceId).sort()).toEqual([
       "packaging",

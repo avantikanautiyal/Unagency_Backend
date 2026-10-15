@@ -116,3 +116,40 @@ export async function concatMp4Videos(input: {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/**
+ * MP4 → animated GIF (palette-optimised). Short loops only — frame rate and
+ * width are capped so a download stays a reasonable size.
+ */
+export async function convertMp4ToGif(input: {
+  readonly videoBytes: Buffer;
+  readonly fps?: number;
+  readonly maxWidth?: number;
+}): Promise<Buffer> {
+  const fps = input.fps ?? 12;
+  const maxWidth = input.maxWidth ?? 720;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unagency-gif-"));
+  const videoPath = path.join(dir, "in.mp4");
+  const palettePath = path.join(dir, "palette.png");
+  const gifPath = path.join(dir, "out.gif");
+  const scale = `fps=${fps},scale='min(${maxWidth},iw)':-1:flags=lanczos`;
+  try {
+    fs.writeFileSync(videoPath, input.videoBytes);
+    await runFfmpeg(["-y", "-i", videoPath, "-vf", `${scale},palettegen`, palettePath]);
+    await runFfmpeg([
+      "-y",
+      "-i",
+      videoPath,
+      "-i",
+      palettePath,
+      "-lavfi",
+      `${scale}[x];[x][1:v]paletteuse`,
+      "-loop",
+      "0",
+      gifPath,
+    ]);
+    return fs.readFileSync(gifPath);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}

@@ -9,7 +9,7 @@ import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
 import { formatFromMime } from "./image-format-converter";
 
-function decodeRasterDimensions(
+export function decodeRasterDimensions(
   bytes: Buffer,
   sourceMime: string,
 ): { width: number; height: number } | undefined {

@@ -17,6 +17,8 @@ import {
 import {
   applyReferenceRolePromptGuidance,
   extractReferenceImages,
+  orderReferencesForContinuity,
+  describeReferenceImages,
   referenceImageToDataUrl,
 } from "../../image/common/vendor-image-protocol";
 import { normalizeOpenAiCompletionTokenParams } from "./openai-completion-params";
@@ -238,10 +240,12 @@ function applyOpenAiImageBody(
   ).trim();
 
   if (operation === "images.edits") {
-    const refs = extractReferenceImages(
-      request.input as Record<string, unknown>,
-      request.metadata as Readonly<Record<string, unknown>> | undefined,
-    );
+    const refs = orderReferencesForContinuity(
+      extractReferenceImages(
+        request.input as Record<string, unknown>,
+        request.metadata as Readonly<Record<string, unknown>> | undefined,
+      ),
+    ).slice(0, 16);
     const imageUrls = refs
       .map((ref) => referenceImageToDataUrl(ref))
       .filter((url): url is string => Boolean(url))
@@ -257,7 +261,11 @@ function applyOpenAiImageBody(
       basePrompt,
       references: refs,
     });
-    body.prompt = fitOpenAiImagePrompt(rolePrompt, request.requestId);
+    const described = describeReferenceImages(refs);
+    body.prompt = fitOpenAiImagePrompt(
+      described ? `${rolePrompt}\n\n${described}` : rolePrompt,
+      request.requestId,
+    );
   } else {
     delete body.images;
     delete body.input_fidelity;

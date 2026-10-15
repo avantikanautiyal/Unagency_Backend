@@ -20,6 +20,31 @@ describe("ImageExecutionRouter", () => {
     ])
   );
 
+  it("prefers the strongest reference model, with fallbacks, when continuing an approved creative", () => {
+    const routed = router.resolve({
+      prompt: "Front pack artwork for the approved 3D box",
+      service: "packaging",
+      continuesApprovedVisual: true,
+    });
+    expect(routed.ok).toBe(true);
+    if (!routed.ok) return;
+    expect(routed.value.modelId).toBe("gemini-3-pro-image");
+    expect(routed.value.failoverChain).toEqual([
+      { providerId: "provider.google", modelId: "gemini-3.1-flash-image" },
+      { providerId: "provider.openai", modelId: "gpt-image-1.5" },
+    ]);
+  });
+
+  it("keeps an explicit model pin even when continuing", () => {
+    const routed = router.resolve({
+      prompt: "Front pack",
+      preferredProviderId: "provider.google",
+      preferredModelId: "gemini-3.1-flash-image",
+      continuesApprovedVisual: true,
+    });
+    expect(routed.ok && routed.value.modelId).toBe("gemini-3.1-flash-image");
+  });
+
   it("honours client provider pin when LIVE", () => {
     const routed = router.resolve({
       prompt: "Instagram post for DiVastra",

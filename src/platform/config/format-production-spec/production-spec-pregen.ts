@@ -104,5 +104,19 @@ export function readConfirmedOverrideFromMetadata(
   ) {
     return true;
   }
+  // Rewriting the user's own brief text produces no placement artwork, so there
+  // is no print spend to hold. Blocking it made "Enhance" fail for every POS
+  // service whose placement is still R/H.
+  if (
+    typeof metadata.productAction === "string" &&
+    TEXT_ASSIST_PRODUCT_ACTIONS.has(metadata.productAction.trim())
+  ) {
+    return true;
+  }
   return false;
 }
+
+const TEXT_ASSIST_PRODUCT_ACTIONS: ReadonlySet<string> = new Set([
+  "enhance_prompt",
+  "refine_brief",
+]);

@@ -24,6 +24,9 @@ export const DEFAULT_FAILOVER_CATEGORIES: ReadonlySet<PerformanceFailureCategory
     "http_5xx",
     // Provider leaf errors that aren't classified more specifically still warrant trying the next leaf.
     "unknown",
+    // A 401/403 is one provider's credential or model-access problem — the
+    // request itself is fine, so another provider should serve it.
+    "authentication",
   ]);
 
 /** Categories that must NOT trigger failover by default. */
@@ -32,7 +35,6 @@ export const DEFAULT_NO_FAILOVER_CATEGORIES: ReadonlySet<PerformanceFailureCateg
     "invalid_request",
     "tenant_violation",
     "invalid_asset",
-    "authentication",
     "configuration",
     "infrastructure",
   ]);

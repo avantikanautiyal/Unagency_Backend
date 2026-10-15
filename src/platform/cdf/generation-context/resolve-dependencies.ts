@@ -11,6 +11,7 @@ import { CdfArtifactError } from "../artifacts/errors";
 import { PRESENTATION_ARTIFACT_KEYS } from "../artifacts/presentation/keys";
 import {
   CdfDependencyContractError,
+  isCdfPhaseActiveForSession,
   rolePreferenceForDependencyRole,
   tryResolveCdfPhaseDependencies,
   type CdfDependencyRequiredRole,
@@ -271,6 +272,17 @@ export function resolveUpstreamArtifactsForPhase(
   for (const dep of phase.dependencies) {
     const required = dep.required !== false;
     const depPhase = canonical.phases.find((p) => p.phaseId === dep.phaseId);
+
+    // Skipped by an earlier config choice (activeWhen) — no artifact exists.
+    if (!isCdfPhaseActiveForSession(input.serviceId, dep.phaseId, input.session)) {
+      skippedOptional.push({
+        phaseId: dep.phaseId,
+        artifactKey:
+          typeof dep.artifactKey === "string" ? dep.artifactKey : undefined,
+        reason: "skipped_by_activation",
+      });
+      continue;
+    }
 
     // Inactive (e.g. contract_only) dependencies: optional → skip; required → fail.
     if (depPhase && depPhase.implementationStatus !== "active") {

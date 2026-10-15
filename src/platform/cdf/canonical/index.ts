@@ -58,7 +58,11 @@ export {
   resolveCdfPresentationCategory,
   resolveCdfPresentationCategoryForArtifactKey,
   resolveCdfRouteInputRequirement,
+  resolveCdfRouteServiceHandoff,
   composeCdfRouteDescWithInput,
+  isCdfPhaseActiveForSession,
+  resolveNextActiveCdfPhaseIndex,
+  filterCdfFinalActionLabels,
 } from "../../../../../Unagency-frontend/packages/api/src/domain/cdf";
 
 export type {

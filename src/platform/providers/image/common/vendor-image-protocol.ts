@@ -68,6 +68,10 @@ export type ReferenceImagePayload = {
   readonly semanticReferenceRole?: MultimodalReferenceRole;
   readonly referenceRoleResolutionSource?: string;
   readonly assetId?: string;
+  /** Why the image is attached (e.g. an earlier stage's approved creative). */
+  readonly relationshipLabel?: string;
+  /** Project stage that produced this image, when it is an upstream creative. */
+  readonly upstreamPhaseId?: string;
 };
 
 /** First image asset / image field on an image.generate payload (logo, reference still). */
@@ -149,9 +153,19 @@ export function extractReferenceImages(
         : semanticResolved.source !== "absent"
           ? semanticResolved.source
           : undefined;
+    const relationshipLabel =
+      typeof rec.relationshipLabel === "string" && rec.relationshipLabel.trim()
+        ? rec.relationshipLabel.trim()
+        : undefined;
+    const upstreamPhaseId =
+      typeof rec.cdfUpstreamPhaseId === "string" && rec.cdfUpstreamPhaseId.trim()
+        ? rec.cdfUpstreamPhaseId.trim()
+        : undefined;
     out.push({
       ...resolved,
       ...(assetId ? { assetId } : {}),
+      ...(relationshipLabel ? { relationshipLabel } : {}),
+      ...(upstreamPhaseId ? { upstreamPhaseId } : {}),
       ...(semanticReferenceRole ? { semanticReferenceRole } : {}),
       ...(resolutionSource
         ? { referenceRoleResolutionSource: resolutionSource }
@@ -251,4 +265,63 @@ export function applyProviderReferenceAdaptations(input: {
       ? `${input.basePrompt.trim()}\n\n${guidanceBlocks.join("\n")}`.trim()
       : input.basePrompt.trim();
   return { prompt, adaptations: Object.freeze(adaptations) };
+}
+
+const USER_SELECTED_RELATIONSHIP = "user_selected_generation_reference";
+const UPSTREAM_STAGE_RELATIONSHIP = "cdf_upstream_visual_artifact";
+
+function continuityRank(ref: ReferenceImagePayload): number {
+  if (ref.relationshipLabel === USER_SELECTED_RELATIONSHIP) return 0;
+  if (ref.relationshipLabel === UPSTREAM_STAGE_RELATIONSHIP) return 1;
+  if (ref.semanticReferenceRole === "identity_mark") return 3;
+  return 2;
+}
+
+/**
+ * Order references so the creative being continued comes first and the brand
+ * mark last. Vendors that weight (or only read) the first image used to get
+ * the logo alone — every downstream stage then re-invented the design.
+ * Stable within a rank: upstream stages keep the order they were attached in.
+ */
+export function orderReferencesForContinuity(
+  refs: readonly ReferenceImagePayload[],
+): ReferenceImagePayload[] {
+  return refs
+    .map((ref, index) => ({ ref, index }))
+    .sort((a, b) => continuityRank(a.ref) - continuityRank(b.ref) || a.index - b.index)
+    .map(({ ref }) => ref);
+}
+
+function humanStage(phaseId: string | undefined): string {
+  return phaseId ? phaseId.replace(/[-_]+/g, " ") : "earlier";
+}
+
+/**
+ * Tell the model what each attached image is, in attachment order. Only
+ * emitted when an upstream creative is attached (otherwise role guidance
+ * already covers a lone logo / reference).
+ */
+export function describeReferenceImages(
+  refs: readonly ReferenceImagePayload[],
+): string {
+  const hasUpstream = refs.some((ref) => continuityRank(ref) <= 1);
+  if (!hasUpstream || refs.length === 0) return "";
+  const lines = refs.map((ref, i) => {
+    const n = i + 1;
+    if (ref.relationshipLabel === USER_SELECTED_RELATIONSHIP) {
+      return `Image ${n}: the creative the user selected to continue from — keep its exact design (form, layout, colours, typography, artwork and brand placement).`;
+    }
+    if (ref.relationshipLabel === UPSTREAM_STAGE_RELATIONSHIP) {
+      return `Image ${n}: the approved ${humanStage(ref.upstreamPhaseId)} stage output — this is the established design; stay consistent with it (same form, layout, colours, typography, artwork and brand placement).`;
+    }
+    if (ref.semanticReferenceRole === "identity_mark") {
+      return `Image ${n}: the brand logo — reproduce it exactly as provided; do not redraw, restyle or reinterpret it.`;
+    }
+    return `Image ${n}: supporting reference.`;
+  });
+  return [
+    "REFERENCE IMAGES (in the order attached):",
+    ...lines,
+    "Build this stage on the approved design above — adapt it to this stage's deliverable. When several options are requested, explore different directions (angle, composition, styling, presentation) within that design; never invent an unrelated design.",
+  ].join("\n");
 }

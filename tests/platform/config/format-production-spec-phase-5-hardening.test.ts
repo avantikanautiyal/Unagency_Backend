@@ -152,6 +152,12 @@ describe("format-production-spec phase 5 hardening", () => {
         }),
       ).toBe(true);
     });
+
+    it("does not hold brief-text rewrites, only placement generation", () => {
+      expect(readConfirmedOverrideFromMetadata({ productAction: "enhance_prompt" })).toBe(true);
+      expect(readConfirmedOverrideFromMetadata({ productAction: "refine_brief" })).toBe(true);
+      expect(readConfirmedOverrideFromMetadata({ productAction: "generate" })).toBe(false);
+    });
   });
 
   describe("instruct → gate same productionRuleId", () => {

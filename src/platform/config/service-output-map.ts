@@ -49,6 +49,7 @@ export type DownloadFormat =
   | 'html'
   | 'zip'
   | 'mp4'
+  | 'gif'
   | 'txt';
 
 /** How mockup/presentation relates to the primary deliverable. */
@@ -85,6 +86,8 @@ export type ServiceOutputSpec = {
    * Downloadable file formats this output kind’s exporter can produce.
    * UI must not invent formats beyond this list.
    */
+  /** Formats set per sub-category rather than derived from the output kind. */
+  readonly downloadFormatsOverride?: true;
   readonly supportedDownloadFormats: readonly DownloadFormat[];
   /** Preferred format when callers omit an explicit choice. */
   readonly defaultDownloadFormat?: DownloadFormat;
@@ -96,6 +99,8 @@ type SpecFlags = Partial<{
   mockupRole: MockupRole;
   prefers3dMockup: boolean;
   askIfVague: boolean;
+  /** Formats offered for this sub-category when they differ from its output kind. */
+  downloadFormats: readonly DownloadFormat[];
 }>;
 
 /** Canonical formats the materializer/exporter can produce for each output kind. */
@@ -109,11 +114,10 @@ export function downloadFormatsForKind(kind: ServiceOutputKind): {
     case 'image_3d_mockup':
     case 'edited_image':
     case 'human_form':
-      // Raster only — providers store PNG/JPEG; delivery converts between them.
-      // SVG/PDF are omitted until an exporter can actually produce them.
+      // Stored as PNG/JPEG; delivery converts PNG↔JPG and wraps rasters as PDF.
       return {
-        supportedDownloadFormats: ['png', 'jpg'],
-        defaultDownloadFormat: 'png',
+        supportedDownloadFormats: ['jpg', 'png', 'pdf'],
+        defaultDownloadFormat: 'jpg',
       };
     case 'video':
     case 'animation':
@@ -122,6 +126,8 @@ export function downloadFormatsForKind(kind: ServiceOutputKind): {
         defaultDownloadFormat: 'mp4',
       };
     case 'document':
+    case 'text':
+      // Written deliverables — text/markdown exports to PDF and DOCX.
       return {
         supportedDownloadFormats: ['pdf', 'docx'],
         defaultDownloadFormat: 'pdf',
@@ -132,8 +138,9 @@ export function downloadFormatsForKind(kind: ServiceOutputKind): {
         defaultDownloadFormat: 'pdf',
       };
     case 'email':
+      // HTML is rendered to PDF / PNG on export.
       return {
-        supportedDownloadFormats: ['html'],
+        supportedDownloadFormats: ['html', 'pdf', 'png'],
         defaultDownloadFormat: 'html',
       };
     case 'deferred_website':
@@ -141,9 +148,9 @@ export function downloadFormatsForKind(kind: ServiceOutputKind): {
         supportedDownloadFormats: ['zip', 'html'],
         defaultDownloadFormat: 'zip',
       };
-    case 'text':
     case 'dynamic':
     default:
+      // Follows whatever deliverable was actually produced (MIME fallback).
       return { supportedDownloadFormats: [] };
   }
 }
@@ -164,6 +171,7 @@ export function normalizeDownloadFormat(
     'html',
     'zip',
     'mp4',
+    'gif',
     'txt',
   ];
   return (allowed as readonly string[]).includes(f)
@@ -191,6 +199,8 @@ export function mimeTypeForDownloadFormat(format: DownloadFormat): string {
       return 'application/zip';
     case 'mp4':
       return 'video/mp4';
+    case 'gif':
+      return 'image/gif';
     case 'txt':
       return 'text/plain';
   }
@@ -202,12 +212,18 @@ export function downloadFormatsForMime(
 ): readonly DownloadFormat[] {
   const mime = (mimeType ?? '').toLowerCase().split(';')[0]?.trim() ?? '';
   if (!mime) return [];
-  if (mime === 'image/png' || mime === 'image/jpeg' || mime === 'image/jpg') {
-    return ['png', 'jpg'];
+  if (
+    mime === 'image/png' ||
+    mime === 'image/jpeg' ||
+    mime === 'image/jpg' ||
+    mime === 'image/webp'
+  ) {
+    return ['jpg', 'png', 'pdf'];
   }
+  if (mime === 'image/gif') return ['gif'];
   if (mime === 'image/svg+xml') return ['svg'];
-  if (mime === 'image/webp') return ['png', 'jpg'];
-  if (mime.startsWith('video/')) return ['mp4'];
+  // Short loops may also be taken as an animated GIF (ffmpeg export).
+  if (mime.startsWith('video/')) return ['mp4', 'gif'];
   if (mime === 'application/pdf') return ['pdf'];
   if (mime.includes('presentationml') || mime.includes('powerpoint')) {
     return ['pptx'];
@@ -215,14 +231,18 @@ export function downloadFormatsForMime(
   if (mime.includes('wordprocessingml') || mime.includes('msword')) {
     return ['docx'];
   }
-  if (mime === 'text/html' || mime === 'application/xhtml+xml') return ['html'];
+  if (mime === 'text/html' || mime === 'application/xhtml+xml') {
+    return ['html', 'pdf', 'png'];
+  }
   if (
     mime === 'application/zip' ||
     mime === 'application/x-zip-compressed'
   ) {
     return ['zip'];
   }
-  if (mime === 'text/plain') return ['txt'];
+  if (mime === 'text/plain' || mime === 'text/markdown') {
+    return ['pdf', 'docx', 'txt'];
+  }
   return [];
 }
 
@@ -261,7 +281,12 @@ export function resolveSelectableDownloadFormats(input: {
   if (fromMime.length > 0 && fromContract.length > 0 && fromMaterialized.length === 0) {
     const mimeSet = new Set(fromMime);
     const intersected = fromContract.filter((f) => mimeSet.has(f));
-    if (intersected.length > 0) candidates = intersected;
+    // Mixed services (a reel in Social, a video ad) produce a different type than
+    // the sub-category default — offer what the produced file can yield.
+    // GIF is only offered where the sub-category lists it (short loops).
+    const fallback =
+      fromMime.length > 1 ? fromMime.filter((f) => f !== 'gif') : fromMime;
+    candidates = intersected.length > 0 ? intersected : fallback;
   }
 
   const fromProduction = (input.productionExportFormats ?? [])
@@ -306,7 +331,14 @@ const SPEC = (
   const prefers3dMockup =
     flags.prefers3dMockup ?? kind === 'image_3d_mockup';
   const needsMockup = mockupRole === 'required' || mockupRole === 'primary';
-  const download = downloadFormatsForKind(kind);
+  const kindDownload = downloadFormatsForKind(kind);
+  const download = flags.downloadFormats
+    ? {
+        supportedDownloadFormats: flags.downloadFormats,
+        defaultDownloadFormat: flags.downloadFormats[0],
+      }
+    : kindDownload;
+  const downloadOverride = Boolean(flags.downloadFormats);
   return {
     kind,
     modalities,
@@ -317,6 +349,7 @@ const SPEC = (
     askIfVague: flags.askIfVague ?? false,
     exampleDeliverable,
     supportedDownloadFormats: download.supportedDownloadFormats,
+    ...(downloadOverride ? { downloadFormatsOverride: true as const } : {}),
     ...(download.defaultDownloadFormat
       ? { defaultDownloadFormat: download.defaultDownloadFormat }
       : {}),
@@ -391,6 +424,7 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
     'document',
     ['image', 'document'],
     'UI kit, component library, usage rules and documentation',
+    { downloadFormats: ['pdf', 'png'] },
   ),
   'website/app-development': SPEC(
     'deferred_website',
@@ -410,6 +444,7 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
     'presentation',
     ['image', 'presentation'],
     'Colour palette, typography, visual language and identity presentation',
+    { downloadFormats: ['pdf', 'pptx', 'png'] },
   ),
   'branding/brand-guidelines': SPEC(
     'document',
@@ -479,11 +514,13 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
     'document',
     ['document'],
     'Multipage brochure suitable for print or digital distribution',
+    { downloadFormats: ['pdf', 'jpg', 'png'] },
   ),
   'print/leaflets': SPEC(
     'document',
     ['document'],
     'Single- or double-sided leaflet artwork',
+    { downloadFormats: ['pdf', 'jpg', 'png'] },
   ),
   'print/posters': SPEC(
     'image',
@@ -545,6 +582,7 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
     'document',
     ['image', 'document'],
     'Sequential storyboard frames with scene notes',
+    { downloadFormats: ['pdf', 'jpg', 'png'] },
   ),
   'video/other': DYNAMIC,
 
@@ -574,7 +612,12 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
     ['image'],
     'Data-led or explanatory infographic',
   ),
-  'presentations/gifs': SPEC('animation', ['video', 'image'], 'Short looping animated visual'),
+  'presentations/gifs': SPEC(
+    'animation',
+    ['video', 'image'],
+    'Short looping animated visual',
+    { downloadFormats: ['gif', 'mp4'] },
+  ),
   'presentations/templates': SPEC(
     'presentation',
     ['presentation'],
@@ -779,7 +822,7 @@ export const SERVICE_OUTPUT_MAP: Readonly<Record<MapKey, ServiceOutputSpec>> = {
     'presentation',
     ['image', 'video', 'presentation'],
     'Invites, posts, stage screens, signage, decks or motion content',
-    { askIfVague: true, mockupRole: 'optional' },
+    { askIfVague: true, mockupRole: 'optional', downloadFormats: [] },
   ),
   'event/other': DYNAMIC,
 };
@@ -916,6 +959,7 @@ export function validateServiceOutputContractInvariants(
   }
   const expected = downloadFormatsForKind(spec.kind);
   if (
+    !spec.downloadFormatsOverride &&
     JSON.stringify([...spec.supportedDownloadFormats]) !==
     JSON.stringify([...expected.supportedDownloadFormats])
   ) {
@@ -924,6 +968,7 @@ export function validateServiceOutputContractInvariants(
     );
   }
   if (
+    !spec.downloadFormatsOverride &&
     expected.defaultDownloadFormat &&
     spec.defaultDownloadFormat !== expected.defaultDownloadFormat
   ) {

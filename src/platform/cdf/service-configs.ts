@@ -29,6 +29,9 @@ export const webTechConfig: CdfServiceConfig = must("web-tech");
 export const brandStrategyConfig: CdfServiceConfig = must("brand-strategy");
 export const adCampaignsConfig: CdfServiceConfig = must("ad-campaigns");
 export const logoConfig: CdfServiceConfig = must("logo");
+export const visualIdentityConfig: CdfServiceConfig = must("visual-identity");
+export const brandGuidelinesConfig: CdfServiceConfig = must("brand-guidelines");
+export const brandNamingTaglinesConfig: CdfServiceConfig = must("brand-naming-taglines");
 export const packagingConfig: CdfServiceConfig = must("packaging");
 export const printOohConfig: CdfServiceConfig = must("print-ooh");
 export const videosConfig: CdfServiceConfig = must("videos");
@@ -46,6 +49,9 @@ export const CDF_SERVICE_CONFIGS: CdfServiceConfig[] = [
   brandStrategyConfig,
   adCampaignsConfig,
   logoConfig,
+  visualIdentityConfig,
+  brandGuidelinesConfig,
+  brandNamingTaglinesConfig,
   packagingConfig,
   printOohConfig,
   videosConfig,

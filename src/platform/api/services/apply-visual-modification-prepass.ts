@@ -310,6 +310,25 @@ export function pinReferenceCapableProviderOnMetadata(input: {
   };
 }
 
+/** An approved / user-selected upstream creative is attached as a reference. */
+function metadataContinuesApprovedVisual(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (!metadata) return false;
+  if (metadata.cdfUpstreamVisualHandoffApplied === true) return true;
+  const assets = Array.isArray(metadata.assets) ? metadata.assets : [];
+  return assets.some((a) => {
+    const label =
+      a && typeof a === "object"
+        ? (a as Record<string, unknown>).relationshipLabel
+        : undefined;
+    return (
+      label === "cdf_upstream_visual_artifact" ||
+      label === "user_selected_generation_reference"
+    );
+  });
+}
+
 export async function routeImageWithReferenceSupport(input: {
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly prompt: string;
@@ -334,6 +353,7 @@ export async function routeImageWithReferenceSupport(input: {
     preferredProviderId: input.preferredProviderId,
     preferredModelId: input.preferredModelId,
     routeVisualSlot: input.routeVisualSlot,
+    continuesApprovedVisual: metadataContinuesApprovedVisual(input.metadata),
     service: input.service,
     platform: input.platform,
     subtype: input.subtype,

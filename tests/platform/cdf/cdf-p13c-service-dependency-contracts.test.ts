@@ -30,6 +30,9 @@ const EXPECTED_CLASS: Record<string, CdfServiceDependencyClass> = {
   "brand-strategy": "D",
   "ad-campaigns": "D",
   logo: "D",
+  "visual-identity": "D",
+  "brand-guidelines": "D",
+  "brand-naming-taglines": "D",
   "print-ooh": "D",
   videos: "D",
   "store-display": "D",
@@ -57,11 +60,11 @@ describe("Phase 13C CDF Service Dependency Contracts", () => {
     }
   });
 
-  it("1 — all 15 services are classified", () => {
+  it("1 — all 18 services are classified", () => {
     const ids = listCdfCanonicalServiceIds();
-    expect(ids).toHaveLength(15);
+    expect(ids).toHaveLength(18);
     const contracts = buildAllServiceDependencyContracts();
-    expect(contracts).toHaveLength(15);
+    expect(contracts).toHaveLength(18);
     for (const id of ids) {
       const c = contracts.find((x) => x.serviceId === id);
       expect(c).toBeTruthy();

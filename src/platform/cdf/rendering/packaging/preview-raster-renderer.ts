@@ -10,6 +10,7 @@
 import { PACKAGING_ARTIFACT_KEYS } from "../../artifacts/packaging/keys";
 import { isPackagingArtifactKey } from "../../artifacts/packaging/keys";
 import { renderError } from "../errors";
+import { isAssetRasterFormat, rasterOutputForFormat } from "../raster-output";
 import type { ArtifactRenderer, CdfRenderFormat } from "../types";
 import { selectPackagingPreviewVaultId } from "./asset-collect";
 import { assertPackagingUpstreamExactRefs } from "./upstream";
@@ -59,16 +60,16 @@ export function createPackagingPreviewRasterRenderer(): ArtifactRenderer {
       rendererId: PACKAGING_PREVIEW_RASTER_RENDERER_ID,
       rendererVersion: PACKAGING_PREVIEW_RASTER_RENDERER_VERSION,
       artifactKeys: [...RASTER_KEYS],
-      formats: ["png", "jpg"],
+      formats: ["png", "jpg", "pdf"],
       purposes: ["preview", "final"],
       description:
-        "Deterministic Vault previewAssetRef pass-through for Packaging (PNG/JPG). Not a creative compositor.",
+        "Deterministic Vault previewAssetRef delivery for Packaging (PNG/JPG/PDF of the stored raster). Not a creative compositor.",
     },
     canRender({ artifactKey, format }) {
       return (
         isPackagingArtifactKey(artifactKey) &&
         (RASTER_KEYS as readonly string[]).includes(artifactKey) &&
-        (format === "png" || format === "jpg")
+        isAssetRasterFormat(format)
       );
     },
     async render(input) {
@@ -107,11 +108,8 @@ export function createPackagingPreviewRasterRenderer(): ArtifactRenderer {
         );
       }
 
-      // Pass-through only — no AI, no OCR, no recomposition
-      return {
-        bytes: new Uint8Array(bytes),
-        mimeType: detectMime(bytes, input.format),
-      };
+      // Stored raster in the requested format — no AI, no OCR, no recomposition.
+      return rasterOutputForFormat(bytes, input.format);
     },
   };
 }

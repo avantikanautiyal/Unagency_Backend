@@ -96,6 +96,12 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
    * Durable ownership is reservedBy + leaseExpiresAt on the job store.
    */
   private readonly inFlightJobIds = new Set<string>();
+  /**
+   * Taken off the queue but not yet claimed/in flight. The durable row still
+   * says "queued" during the claim round trip, so recovery must not re-enqueue
+   * these — a stale duplicate at the queue head used to stall every tick.
+   */
+  private readonly claimingJobIds = new Set<string>();
   /** Serializes reclaim + runnable recovery across concurrent tick() callers. */
   private recoveryLock: Promise<void> = Promise.resolve();
 
@@ -409,20 +415,28 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         this.concurrency.release();
         continue;
       }
-      if (this.inFlightJobIds.has(String(job.jobId))) {
-        // Do NOT drop from the queue while in-flight — that orphans durable
-        // queued rows when recoveryDispatched stays set (skipped forever).
+      if (
+        this.inFlightJobIds.has(String(job.jobId)) ||
+        this.claimingJobIds.has(String(job.jobId))
+      ) {
+        // A queue entry for a job that is already running is a stale duplicate.
+        // Stopping here (the old `break`) made every job behind it wait until
+        // this one finished — generations ran one at a time. Drop the duplicate
+        // and keep dispatching; recovery re-enqueues the row if a retry needs it.
+        this.dispatcher.drop(candidate.jobId, candidate.queueKind);
+        this.recoveryDispatched.delete(String(job.jobId));
         this.concurrency.release();
         console.log(
-          `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight`,
+          `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight_duplicate_dropped`,
         );
-        break;
+        continue;
       }
 
       if (!this.dispatcher.take(candidate.jobId, candidate.queueKind)) {
         this.concurrency.release();
         continue;
       }
+      this.claimingJobIds.add(String(candidate.jobId));
 
       const next = { jobId: candidate.jobId, queueKind: candidate.queueKind };
 
@@ -433,6 +447,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
         maxPerMinute: 120,
       };
       if (!this.throttle.tryEnter(limits)) {
+        this.claimingJobIds.delete(String(next.jobId));
         this.queues.get(next.queueKind).enqueue(next.jobId);
         this.concurrency.release();
         break;
@@ -781,6 +796,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
             }
           }
         } finally {
+          this.claimingJobIds.delete(String(slotJob.jobId));
           if (reservation && lease) {
             this.cleanupSlot(
               worker.workerId,
@@ -945,7 +961,7 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
           });
           continue;
         }
-        if (this.inFlightJobIds.has(jobId)) {
+        if (this.inFlightJobIds.has(jobId) || this.claimingJobIds.has(jobId)) {
           bump("in_flight");
           this.logLifecycle("recovery_skipped", {
             jobId,

@@ -91,11 +91,11 @@ describe("Phase 13B CDF Application E2E Acceptance Matrix", () => {
 
   // ── Inventory ──────────────────────────────────────────────────────────
 
-  it("1 — inventory lists all 15 canonical CDF services", () => {
+  it("1 — inventory lists all 18 canonical CDF services", () => {
     const ids = listCdfCanonicalServiceIds();
-    expect(ids).toHaveLength(15);
+    expect(ids).toHaveLength(18);
     const inv = inventoryCdfApplicationServices();
-    expect(inv).toHaveLength(15);
+    expect(inv).toHaveLength(18);
     for (const id of ids) {
       expect(inv.some((s) => s.serviceId === id)).toBe(true);
       expect(resolveCdfCanonicalService(id)).toBeTruthy();

@@ -69,6 +69,7 @@
     "multer-s3": "^3.0.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^6.9.15",
+    "pdfjs-dist": "^3.11.174",
     "pdfkit": "^0.19.1",
     "pngjs": "^7.0.0",
     "pptxgenjs": "^4.0.1",

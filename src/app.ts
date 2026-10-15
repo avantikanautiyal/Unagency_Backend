@@ -118,6 +118,27 @@ app.use("/search", VerifyUserHandler, searchRouter);
 
 app.use("/notification", NotificationRouter);
 
+// Public live link for a generated website (signed; see hosted-site-links).
+app.get("/sites/:artifactId", async (req, res) => {
+  const { verifySiteLinkToken, HOSTED_SITE_RESPONSE_HEADERS } = await import(
+    "./platform/media/delivery/hosted-site-links"
+  );
+  const artifactId = String(req.params.artifactId ?? "").trim();
+  if (!artifactId || !verifySiteLinkToken(artifactId, req.query.t)) {
+    return res.status(404).type("text/plain").send("Site not found");
+  }
+  const media = enterpriseApiRuntime?.platform?.durableStores?.asyncMedia?.mediaDelivery;
+  if (!media) {
+    return res.status(503).type("text/plain").send("Site temporarily unavailable");
+  }
+  const html = await media.readHostedSiteHtml(artifactId);
+  if (!html.ok) {
+    return res.status(404).type("text/plain").send("Site not found");
+  }
+  res.set(HOSTED_SITE_RESPONSE_HEADERS);
+  return res.status(200).send(html.value);
+});
+
 app.use("/razorpay", razorpayRouter);
 
 app.use("/", helloWorldRouter);

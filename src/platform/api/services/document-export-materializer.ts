@@ -24,6 +24,7 @@ import {
   type PresentationRoutePlan,
 } from "../../os/delivery/document-export-service";
 import { inferPresentationDesignStyle } from "../../os/delivery/presentation-design";
+import { rasterizePdfPages } from "../../os/delivery/pdf-slide-rasterizer";
 import { parseEmailPlan } from "../../os/delivery/email-generation";
 import {
   validateDocumentPlanRelevance,
@@ -137,9 +138,14 @@ export function resolvePresentationExportOptions(
 
   // PDF and PPTX render the same deck — generate each slide visual once.
   const slideImageCache = new Map<string, ReturnType<NonNullable<typeof resolveSlideImage>>>();
+  // pdfkit embeds PNG/JPEG only; other logo formats keep the text wordmark.
+  const logoExt = referenceLogo?.mimeType.match(/^image\/(png|jpe?g)$/i)?.[1]?.toLowerCase();
   return {
     ...(brandName ? { brandName } : {}),
     ...(hexColors.length ? { brandColors: hexColors } : {}),
+    ...(referenceLogo && logoExt
+      ? { logo: { data: referenceLogo.base64, ext: logoExt === "jpeg" ? "jpg" : logoExt } }
+      : {}),
     ...(resolveSlideImage
       ? {
           resolveSlideImage: (cue, _slide) => {
@@ -734,7 +740,7 @@ export async function materializeDocumentExports(input: {
   }
 
   if (input.exportKind === "presentation") {
-    const exportOptions = resolvePresentationExportOptions(
+    const baseExportOptions = resolvePresentationExportOptions(
       input.metadata,
       input.visualImageDeps
         ? {
@@ -745,6 +751,12 @@ export async function materializeDocumentExports(input: {
           }
         : undefined
     );
+    const exportOptions: PresentationExportOptions = baseExportOptions.logo
+      ? baseExportOptions
+      : {
+          ...baseExportOptions,
+          ...(await loadChosenLogoForSlides(input.metadata, input.organizationId)),
+        };
     const routes = parsePresentationRoutes(data);
     if (routes && routes.length > 0) {
       return materializePresentationRoutes({
@@ -786,14 +798,25 @@ export async function materializeDocumentExports(input: {
     });
     if (!pair.ok) return pair;
     const producedLabels = requestedLabels ?? (["pdf", "pptx"] as const);
+    const [slideImages = []] = await rasterizePdfPages([pdfBuf]);
+    const slidePreviewArtifactIds = await ingestSlidePreviews({
+      asyncMedia: input.asyncMedia,
+      executionId: input.executionId,
+      organizationId: input.organizationId,
+      createId: input.createId,
+      providerId,
+      modelId,
+      images: slideImages,
+    });
     return success({
-      artifactIds: pair.value.artifactIds,
+      artifactIds: [...pair.value.artifactIds, ...slidePreviewArtifactIds],
       pdfArtifactId: pair.value.pdfArtifactId,
       pptxArtifactId: pair.value.pptxArtifactId,
       plan: {
         ...parsed,
         pdfArtifactId: pair.value.pdfArtifactId,
         pptxArtifactId: pair.value.pptxArtifactId,
+        ...(slidePreviewArtifactIds.length ? { slidePreviewArtifactIds } : {}),
         downloadFormats: [...producedLabels],
         producedDeliverableFormats: producedLabels.map((l) => l.toUpperCase()),
       },
@@ -919,6 +942,44 @@ export async function materializeDocumentExports(input: {
   });
 }
 
+/**
+ * The logo picked for this job, read from the Brand Vault when the request
+ * did not carry its bytes inline. Best effort: no logo → text wordmark.
+ */
+async function loadChosenLogoForSlides(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  organizationId: string,
+): Promise<Pick<PresentationExportOptions, "logo">> {
+  const id = ["vaultLogoChoice", "brandLogoAssetId", "logoAssetId"]
+    .map((key) => metadata?.[key])
+    .find((v): v is string => typeof v === "string" && /^[a-f0-9]{24}$/i.test(v.trim()))
+    ?.trim();
+  if (!id) return {};
+  try {
+    const { getDefaultVaultAssetResolver } = await import(
+      "../../cdf/rendering/default-vault-asset-resolver"
+    );
+    const bytes = await getDefaultVaultAssetResolver()?.resolve({
+      vaultAssetId: id,
+      organizationId,
+    });
+    if (!bytes?.length) return {};
+    const buf = Buffer.from(bytes);
+    const ext =
+      buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+        ? "png"
+        : buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff
+          ? "jpg"
+          : undefined;
+    return ext ? { logo: { data: buf.toString("base64"), ext } } : {};
+  } catch (err) {
+    console.warn(
+      `[presentation-export] logo load skipped: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return {};
+  }
+}
+
 async function materializePresentationRoutes(input: {
   readonly asyncMedia: AsyncMediaPlatform;
   readonly executionId: string;
@@ -939,6 +1000,7 @@ async function materializePresentationRoutes(input: {
 > {
   const allArtifactIds: string[] = [];
   const enrichedRoutes: Array<Record<string, unknown>> = [];
+  const routePdfs: Buffer[] = [];
 
   for (let i = 0; i < input.routes.length; i += 1) {
     const route = input.routes[i]!;
@@ -961,6 +1023,7 @@ async function materializePresentationRoutes(input: {
     });
     if (!pair.ok) return pair;
     allArtifactIds.push(...pair.value.artifactIds);
+    routePdfs.push(pdfBuf);
     enrichedRoutes.push({
       title: route.title,
       description: route.description,
@@ -971,6 +1034,25 @@ async function materializePresentationRoutes(input: {
       pptxArtifactId: pair.value.pptxArtifactId,
       downloadFormats: ["pdf", "pptx"],
     });
+  }
+
+  // Designed slides as images — what the app previews, per direction.
+  const routeSlideImages = await rasterizePdfPages(routePdfs);
+  for (let i = 0; i < enrichedRoutes.length; i += 1) {
+    const slidePreviewArtifactIds = await ingestSlidePreviews({
+      asyncMedia: input.asyncMedia,
+      executionId: input.executionId,
+      organizationId: input.organizationId,
+      createId: input.createId,
+      providerId: input.providerId,
+      modelId: input.modelId,
+      images: routeSlideImages[i] ?? [],
+      deckIndex: i,
+    });
+    if (slidePreviewArtifactIds.length) {
+      enrichedRoutes[i] = { ...enrichedRoutes[i], slidePreviewArtifactIds };
+      allArtifactIds.push(...slidePreviewArtifactIds);
+    }
   }
 
   const first = enrichedRoutes[0];
@@ -991,8 +1073,62 @@ async function materializePresentationRoutes(input: {
       slides: first?.slides,
       pdfArtifactId: first?.pdfArtifactId,
       pptxArtifactId: first?.pptxArtifactId,
+      ...(Array.isArray(first?.slidePreviewArtifactIds)
+        ? { slidePreviewArtifactIds: first.slidePreviewArtifactIds }
+        : {}),
     },
   });
+}
+
+/**
+ * Store slide preview JPEGs as artifacts. Best effort: previews are a view
+ * of the PDF, so a failure here never fails the export.
+ */
+async function ingestSlidePreviews(input: {
+  readonly asyncMedia: AsyncMediaPlatform;
+  readonly executionId: string;
+  readonly organizationId: string;
+  readonly createId: (prefix: string) => string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly images: readonly Buffer[];
+  /** Distinguishes each deck direction's previews within one execution. */
+  readonly deckIndex?: number;
+}): Promise<string[]> {
+  if (input.images.length === 0) return [];
+  const operationId = input.createId(`slidepreview${input.deckIndex ?? 0}`);
+  try {
+    return await Promise.all(
+      input.images.map(async (image, index) => {
+        const artifactId = input.asyncMedia.artifacts.buildArtifactId(operationId, index);
+        const ingested = await input.asyncMedia.ingestion.ingest({
+          organizationId: input.organizationId,
+          executionId: input.executionId,
+          artifactId,
+          outputIndex: index,
+          base64: image.toString("base64"),
+          mimeType: "image/jpeg",
+        });
+        if (!ingested.ok) throw ingested.error;
+        await input.asyncMedia.artifacts.finalize({
+          operationId,
+          executionId: input.executionId,
+          organizationId: input.organizationId,
+          outputIndex: index,
+          blob: ingested.value,
+          providerId: input.providerId,
+          modelId: input.modelId,
+          capabilityId: "output.presentation",
+        });
+        return artifactId;
+      }),
+    );
+  } catch (err) {
+    console.warn(
+      `[presentation-export] slide previews skipped: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return [];
+  }
 }
 
 /**

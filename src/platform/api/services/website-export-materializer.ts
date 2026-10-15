@@ -45,6 +45,10 @@ import {
   websiteRelevanceDiagnosticSummary,
 } from "./website-materialization-diagnostics";
 import { CDF_STRUCTURED_PAYLOAD_MISSING } from "../../cdf/structured-execution-result";
+import {
+  hostedSitePath,
+  hostedSiteUrl,
+} from "../../media/delivery/hosted-site-links";
 
 const HTML_MIME = "text/html; charset=utf-8";
 const ZIP_MIME = "application/zip";
@@ -254,6 +258,10 @@ type MaterializedRoute = WebsiteRoutePlan & {
   html: string;
   htmlArtifactId?: string;
   projectArtifactId?: string;
+  /** Shareable live link path (`/sites/:id?t=`) — prefix the API origin. */
+  liveSitePath?: string;
+  /** Absolute live link when the public API origin is configured. */
+  liveUrl?: string;
   downloadFormats: string[];
   description?: string;
 };
@@ -266,6 +274,11 @@ async function materializeOneProject(input: {
   readonly providerId?: string;
   readonly modelId?: string;
   readonly project: WebsiteRoutePlan;
+  /**
+   * Static HTML rendering of the same content, for stacks whose own files are
+   * not a viewable page (react-vite / next) — so every build has a live link.
+   */
+  readonly previewHtml?: string;
   readonly outputOffset: number;
 }): Promise<
   Result<{ artifactIds: string[]; route: MaterializedRoute }>
@@ -308,12 +321,15 @@ async function materializeOneProject(input: {
     downloadFormats.push("zip");
   }
 
-  if (isHtmlStaticPreviewable(project) && legacy.html.trim()) {
+  const previewHtml = isHtmlStaticPreviewable(project)
+    ? legacy.html
+    : (input.previewHtml ?? "");
+  if (previewHtml.trim()) {
     const artifactId = input.asyncMedia.artifacts.buildArtifactId(
       operationId,
       input.outputOffset + 1
     );
-    const buffer = Buffer.from(legacy.html, "utf8");
+    const buffer = Buffer.from(previewHtml, "utf8");
     const ingested = await input.asyncMedia.ingestion.ingest({
       organizationId: input.organizationId,
       executionId: input.executionId,
@@ -346,6 +362,10 @@ async function materializeOneProject(input: {
       html: legacy.html,
       exportKind: "website",
       ...(htmlArtifactId ? { htmlArtifactId } : {}),
+      ...(htmlArtifactId ? { liveSitePath: hostedSitePath(htmlArtifactId) } : {}),
+      ...(htmlArtifactId && hostedSiteUrl(htmlArtifactId)
+        ? { liveUrl: hostedSiteUrl(htmlArtifactId) }
+        : {}),
       ...(projectArtifactId ? { projectArtifactId } : {}),
       downloadFormats,
       ...(project.description ? { description: project.description } : {}),
@@ -438,16 +458,32 @@ export async function materializeWebsiteExport(input: {
       : undefined;
 
   const referenceLogo = extractReferenceLogoFromMetadata(input.metadata);
+  // Same content as static HTML, for routes built in a non-viewable stack.
+  const staticRoutes = routes.some((route) => !isHtmlStaticPreviewable(route))
+    ? (recoverWebsiteRoutesPlan(data, {
+        preferredStack: "html-static",
+        brandColors: opts.brandColors,
+      }) ?? [])
+    : [];
   const artifactIds: string[] = [];
   const materialized: MaterializedRoute[] = [];
   let outputOffset = 0;
-  for (const project of routes.slice(0, 3)) {
+  for (const [routeIndex, project] of routes.slice(0, 3).entries()) {
     let enriched: WebsiteRoutePlan = referenceLogo
       ? {
           ...stampLogoOntoWebProject(project, toDataUrl(referenceLogo), brandName),
           ...(project.description ? { description: project.description } : {}),
         }
       : project;
+    const staticSource = isHtmlStaticPreviewable(project)
+      ? undefined
+      : staticRoutes[routeIndex];
+    let staticPreview: WebsiteRoutePlan | undefined =
+      staticSource && isHtmlStaticPreviewable(staticSource)
+        ? referenceLogo
+          ? stampLogoOntoWebProject(staticSource, toDataUrl(referenceLogo), brandName)
+          : staticSource
+        : undefined;
     try {
       const heroPrompt = [
         `Website hero visual for ${project.title || brandName || "brand"}`,
@@ -467,6 +503,9 @@ export async function materializeWebsiteExport(input: {
           ...stampHeroImageOntoWebProject(enriched, toDataUrl(hero)),
           ...(project.description ? { description: project.description } : {}),
         };
+        if (staticPreview) {
+          staticPreview = stampHeroImageOntoWebProject(staticPreview, toDataUrl(hero));
+        }
       }
     } catch (err) {
       console.warn(
@@ -484,6 +523,9 @@ export async function materializeWebsiteExport(input: {
       providerId: input.providerId,
       modelId: input.modelId,
       project: enriched,
+      ...(staticPreview
+        ? { previewHtml: webProjectToLegacyPage(staticPreview).html }
+        : {}),
       outputOffset,
     });
     if (!one.ok) return one;

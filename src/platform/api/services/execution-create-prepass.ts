@@ -26,7 +26,10 @@ import { stampDocumentCreateMetadata } from "../../direct/document-direct-metada
 import { stampEmailCreateMetadata } from "../../direct/email-direct-metadata";
 import { shouldOmitCdfStructuredStamp } from "../../cdf/phase-scoped-create";
 import { stampCanonicalStructuredOutputMetadata } from "../../cdf/structured-output-contract";
-import { WEBSITE_ROUTES_STRUCTURED_SCHEMA } from "../../os/delivery/website-generation";
+import {
+  WEBSITE_ROUTES_STRUCTURED_SCHEMA,
+  WEB_PROJECT_STRUCTURED_SCHEMA,
+} from "../../os/delivery/website-generation";
 import {
   isAudioTranscribeCapability,
   isAudioSynthesizeCapability,
@@ -1600,6 +1603,32 @@ export async function runCreatePrepass(
       workingMetadata = {
         ...workingMetadata,
         structuredOutput,
+      };
+    }
+
+    // CDF website-building phase (Web Tech → Complete Website): the sealed kind
+    // is deferred_website, so the output must be site code. A client that sent
+    // a non-website schema (e.g. LaunchPlan title/summary/steps for subtype
+    // visual-asset) made the provider answer in the wrong shape and the
+    // website materializer then rejected it — nothing to preview or host.
+    if (
+      authoritativeKind === "deferred_website" &&
+      cdfAuthoritySealed &&
+      !/^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(clientStructuredName)
+    ) {
+      const structuredOutput = {
+        name: "WebProject",
+        schema: WEB_PROJECT_STRUCTURED_SCHEMA as unknown as Record<
+          string,
+          unknown
+        >,
+        strict: true,
+      };
+      req = { ...req, structuredOutput };
+      workingMetadata = {
+        ...workingMetadata,
+        structuredOutput,
+        mediaKind: "website",
       };
     }
   } catch {

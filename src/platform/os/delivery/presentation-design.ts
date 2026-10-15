@@ -21,6 +21,8 @@ export type PresentationDesignOptions = {
   readonly brandName?: string;
   readonly brandColors?: readonly string[];
   readonly designStyle?: PresentationDesignStyle;
+  /** The brand's chosen logo — placed on the cover, footers and closing slide. */
+  readonly logo?: PresentationSlideImage;
 };
 
 const W = 10;
@@ -44,7 +46,7 @@ type TextPrim = Box & {
 type Prim =
   | (Box & { kind: "rect"; fill: string; opacity?: number })
   | (Box & { kind: "ellipse"; fill?: string; line?: string; lineWidth?: number; opacity?: number })
-  | (Box & { kind: "image"; image: PresentationSlideImage })
+  | (Box & { kind: "image"; image: PresentationSlideImage; fit?: "cover" | "contain" })
   | TextPrim;
 type SlideScene = { bg: string; prims: Prim[]; notes?: string };
 
@@ -219,6 +221,7 @@ type BuildCtx = {
   theme: DeckTheme;
   measurer: Measurer;
   brand: string;
+  logo?: PresentationSlideImage;
   index: number;
   total: number;
 };
@@ -284,10 +287,36 @@ class SceneBuilder {
     this.text(text.toUpperCase(), box, { max: 9, min: 7, color, font: "bodyBold", spacing: 2 });
   }
 
+  /**
+   * The brand logo, scaled to fit (never cropped). On dark or accent grounds
+   * it sits on a light plate so a dark mark stays visible.
+   */
+  logo(slot: Box, onDark: boolean): boolean {
+    const { logo } = this.ctx;
+    if (!logo) return false;
+    // Fit inside the slot at the logo's own proportions, left-aligned.
+    const aspect = imageAspect(logo) ?? slot.w / slot.h;
+    const w = Math.min(slot.w, slot.h * aspect);
+    const h = w / aspect;
+    const box = { x: slot.x, y: slot.y + (slot.h - h) / 2, w, h };
+    if (onDark) {
+      const pad = Math.min(box.h * 0.18, 0.12);
+      this.rect(
+        { x: box.x - pad, y: box.y - pad, w: box.w + 2 * pad, h: box.h + 2 * pad },
+        // Always light: the executive theme's surface is itself dark.
+        "FFFFFF",
+      );
+    }
+    this.prims.push({ kind: "image", ...box, image: logo, fit: "contain" });
+    return true;
+  }
+
   footer(onDark: boolean): void {
     const { theme, brand, index, total } = this.ctx;
     const color = onDark ? theme.darkSoft : theme.soft;
-    this.label(brand, { x: M, y: 5.18, w: 5, h: 0.2 }, color);
+    if (!this.logo({ x: M, y: 5.08, w: 0.9, h: 0.34 }, onDark)) {
+      this.label(brand, { x: M, y: 5.18, w: 5, h: 0.2 }, color);
+    }
     this.text(`${pad(index)} / ${pad(total)}`, { x: W - M - 1.4, y: 5.18, w: 1.4, h: 0.2 }, {
       max: 8,
       min: 7,
@@ -296,6 +325,36 @@ class SceneBuilder {
       align: "right",
     });
   }
+}
+
+/** Width ÷ height from a PNG or JPEG header (no decoding). */
+function imageAspect(image: PresentationSlideImage): number | undefined {
+  try {
+    const buf = Buffer.from(image.data.slice(0, 64 * 1024), "base64");
+    if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) {
+      const w = buf.readUInt32BE(16);
+      const h = buf.readUInt32BE(20);
+      return w > 0 && h > 0 ? w / h : undefined;
+    }
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let i = 2;
+      while (i + 9 < buf.length) {
+        if (buf[i] !== 0xff) return undefined;
+        const marker = buf[i + 1]!;
+        const len = buf.readUInt16BE(i + 2);
+        // SOF0–SOF15 except DHT (C4), JPG (C8) and DAC (CC) carry the size.
+        if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+          const h = buf.readUInt16BE(i + 5);
+          const w = buf.readUInt16BE(i + 7);
+          return w > 0 && h > 0 ? w / h : undefined;
+        }
+        i += 2 + len;
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return undefined;
 }
 
 function pad(n: number): string {
@@ -325,6 +384,7 @@ function heroScene(
       b.circle({ x: 6.1, y: -1.2, w: 5.6, h: 5.6 }, { fill: theme.accent, opacity: 0.9 });
       b.circle({ x: 5.2, y: 2.6, w: 3.6, h: 3.6 }, { line: theme.onDark, lineWidth: 1, opacity: 0.35 });
     }
+    b.logo({ x: M, y: 0.45, w: 1.8, h: 0.75 }, true);
     b.rect({ x: M, y: 1.45, w: 0.9, h: 0.07 }, theme.accent);
     b.text(title, { x: M, y: 1.7, w: 6, h: 2.1 }, { max: 44, min: 22, color: theme.onDark, font: "heading" });
     b.text(subtitle, { x: M, y: 3.9, w: 5.6, h: 0.85 }, { max: 15, min: 10, color: theme.darkSoft });
@@ -338,8 +398,10 @@ function heroScene(
       b.rect({ x: 6.4, y: 0, w: 3.6, h: H }, theme.surface);
       b.circle({ x: 7.1, y: 1.7, w: 2.2, h: 2.2 }, { fill: theme.accent });
     }
-    b.rect({ x: M, y: 0.62, w: 0.2, h: 0.2 }, theme.accent);
-    b.label(kicker, { x: M + 0.35, y: 0.6, w: 4.2, h: 0.25 }, theme.soft);
+    if (!b.logo({ x: M, y: 0.4, w: 1.8, h: 0.75 }, false)) {
+      b.rect({ x: M, y: 0.62, w: 0.2, h: 0.2 }, theme.accent);
+      b.label(kicker, { x: M + 0.35, y: 0.6, w: 4.2, h: 0.25 }, theme.soft);
+    }
     b.text(title, { x: M, y: 1.5, w: 4.6, h: 2.1 }, { max: 40, min: 22, color: theme.text, font: "heading", valign: "bottom" });
     b.text(subtitle, { x: M, y: 3.8, w: 4.4, h: 0.85 }, { max: 14, min: 10, color: theme.soft });
     b.rect({ x: M, y: 4.95, w: 4.6, h: 0.012 }, theme.line);
@@ -353,8 +415,12 @@ function heroScene(
     b.circle({ x: 5.9, y: 0.7, w: 4.3, h: 4.3 }, { fill: theme.accent });
     b.circle({ x: 5.3, y: 1.3, w: 3.3, h: 3.3 }, { line: theme.text, lineWidth: 1.25 });
   }
-  b.label(kicker, { x: M, y: 0.55, w: 4.5, h: 0.25 }, theme.soft);
-  b.rect({ x: M, y: 0.88, w: 0.6, h: 0.045 }, theme.accent);
+  if (b.logo({ x: M, y: 0.3, w: 1.6, h: 0.62 }, false)) {
+    b.rect({ x: M, y: 1.02, w: 0.6, h: 0.045 }, theme.accent);
+  } else {
+    b.label(kicker, { x: M, y: 0.55, w: 4.5, h: 0.25 }, theme.soft);
+    b.rect({ x: M, y: 0.88, w: 0.6, h: 0.045 }, theme.accent);
+  }
   b.text(title, { x: M, y: 1.2, w: 4.5, h: 2.4 }, { max: 44, min: 22, color: theme.text, font: "heading", valign: "bottom" });
   b.text(subtitle, { x: M, y: 3.8, w: 4.4, h: 0.9 }, { max: 14, min: 10, color: theme.soft });
   b.rect({ x: M, y: 4.95, w: 4.5, h: 0.012 }, theme.line);
@@ -528,14 +594,19 @@ function closingScene(
   b.rect({ x: M, y: 1.2, w: 0.9, h: 0.07 }, onAccentBg ? theme.onAccent : theme.accent);
   b.text(slide.title, { x: M, y: 1.45, w: textW, h: 1.7 }, { max: 44, min: 22, color: ink, font: "heading" });
   b.text(splitBullets(slide.bullets, 4).join("\n"), { x: M, y: 3.3, w: textW, h: 1.5 }, { max: 15, min: 10, color: soft });
-  b.label(ctx.brand, { x: M, y: 5.0, w: 5, h: 0.25 }, onAccentBg ? theme.onAccent : theme.accent);
+  if (!b.logo({ x: M, y: 4.55, w: 1.5, h: 0.6 }, true)) {
+    b.label(ctx.brand, { x: M, y: 5.0, w: 5, h: 0.25 }, onAccentBg ? theme.onAccent : theme.accent);
+  }
   return { bg, prims: b.prims, ...(slide.notes ? { notes: slide.notes } : {}) };
 }
 
 /** Flip a hero composition: visuals move left, the text column moves right. */
 function mirrorHero(scene: SlideScene): SlideScene {
+  // The logo (and its plate) travels with the text column it belongs to.
   const inTextColumn = (p: Prim) =>
-    p.kind === "text" || (p.kind === "rect" && p.x < W / 2 && p.w <= 4.7);
+    p.kind === "text" ||
+    (p.kind === "image" && p.fit === "contain") ||
+    (p.kind === "rect" && p.x < W / 2 && p.w <= 4.7);
   const textRight = Math.max(...scene.prims.filter(inTextColumn).map((p) => p.x + p.w));
   const shift = W - M - textRight;
   return {
@@ -554,8 +625,9 @@ function buildScenes(
   const theme = resolveTheme(options);
   const measurer = new PDFDocument({ size: [W * PT, H * PT], margin: 0 });
   const brand = options?.brandName?.trim() || "UNAGENCY";
+  const logo = options?.logo?.data ? options.logo : undefined;
   const total = plan.slides.length + 1;
-  const ctx = (index: number): BuildCtx => ({ theme, measurer, brand, index, total });
+  const ctx = (index: number): BuildCtx => ({ theme, measurer, brand, logo, index, total });
 
   const heroIndex = plan.slides.findIndex((s, i) => s.layout === "title_hero" && images[i]);
   const coverImage = images[heroIndex] ?? images.find(Boolean);
@@ -640,7 +712,7 @@ export async function renderDesignedPresentationPptx(
           s.addImage({
             data: `image/${p.image.ext ?? "png"};base64,${p.image.data}`,
             ...box,
-            sizing: { type: "cover", w: p.w, h: p.h },
+            sizing: { type: p.fit ?? "cover", w: p.w, h: p.h },
           });
         } catch (err) {
           console.warn(`[presentation-export] pptx image failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -725,8 +797,8 @@ export async function renderDesignedPresentationPdf(
               openedImages.set(p.image.data, opened);
             }
             doc.image(opened as never, x, y, {
-              cover: [w, h],
-              align: "center",
+              ...(p.fit === "contain" ? { fit: [w, h] } : { cover: [w, h] }),
+              align: p.fit === "contain" ? "left" : "center",
               valign: "center",
             } as never);
             doc.restore();

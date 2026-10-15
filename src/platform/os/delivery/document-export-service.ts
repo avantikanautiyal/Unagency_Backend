@@ -65,6 +65,8 @@ export type PresentationExportOptions = {
   readonly brandColors?: readonly string[];
   /** Theme from the chosen design route (Clean Minimal / Bold Executive / Modern Editorial). */
   readonly designStyle?: PresentationDesignStyle;
+  /** The brand's chosen logo, placed on the slides. */
+  readonly logo?: PresentationSlideImage;
   /**
    * Best-effort per-slide image from visualCue. Must never throw —
    * return undefined on failure so export still ships.

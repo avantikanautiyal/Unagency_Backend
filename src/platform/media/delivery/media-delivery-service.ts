@@ -224,6 +224,28 @@ export class MediaDeliveryService {
   }
 
   /**
+   * HTML bytes of a generated website for its public live link. Not tenant
+   * scoped: the caller must first verify the link's signed token
+   * (hosted-site-links). Only HTML artifacts are ever returned.
+   */
+  async readHostedSiteHtml(artifactId: string): Promise<Result<Buffer>> {
+    if (!this.blobStorage) {
+      return failure(new ValidationError("Blob storage unavailable for media delivery"));
+    }
+    const rec = await this.artifacts.get(artifactId);
+    if (!rec || !rec.artifact.label.startsWith("blob:")) {
+      return failure(new NotFoundError("Site not found"));
+    }
+    const got = await this.blobStorage.get(parseStorageRefKey(rec.artifact.label));
+    if (!got.ok) return got;
+    if (!got.value) return failure(new NotFoundError("Site not found"));
+    if (!/^text\/html\b/i.test(got.value.contentType ?? "")) {
+      return failure(new NotFoundError("Site not found"));
+    }
+    return success(Buffer.from(got.value.data, "base64"));
+  }
+
+  /**
    * ZIP several tenant-owned artifacts (raster → PNG/JPG/PDF) and return a
    * short-lived tokenized download URL for the archive.
    */

@@ -373,6 +373,33 @@ async function materializeOneProject(input: {
   });
 }
 
+/**
+ * The same website content with its code removed, so the static preview is
+ * rendered from the content fields (brand, tagline, hero, sections, colours).
+ * For React/Next builds the model's `html` is the app shell
+ * (`<div id="root">` + a module script) — served as-is it is a blank page.
+ */
+function contentOnlyForStaticPreview(data: unknown): unknown {
+  const strip = (value: unknown): unknown => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const { html: _html, files: _files, entry: _entry, ...rest } = value as Record<string, unknown>;
+    return {
+      ...rest,
+      html: "",
+      stack: "html-static",
+      ...(Array.isArray(rest.routes) ? { routes: rest.routes.map(strip) } : {}),
+    };
+  };
+  if (typeof data === "string") {
+    try {
+      return strip(JSON.parse(data) as unknown);
+    } catch {
+      return data;
+    }
+  }
+  return strip(data);
+}
+
 export async function materializeWebsiteExport(input: {
   readonly asyncMedia: AsyncMediaPlatform;
   readonly executionId: string;
@@ -460,7 +487,7 @@ export async function materializeWebsiteExport(input: {
   const referenceLogo = extractReferenceLogoFromMetadata(input.metadata);
   // Same content as static HTML, for routes built in a non-viewable stack.
   const staticRoutes = routes.some((route) => !isHtmlStaticPreviewable(route))
-    ? (recoverWebsiteRoutesPlan(data, {
+    ? (recoverWebsiteRoutesPlan(contentOnlyForStaticPreview(data), {
         preferredStack: "html-static",
         brandColors: opts.brandColors,
       }) ?? [])

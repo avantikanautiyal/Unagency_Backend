@@ -118,6 +118,39 @@ app.use("/search", VerifyUserHandler, searchRouter);
 
 app.use("/notification", NotificationRouter);
 
+// Enhance Prompt — direct fast-model rewrite (no execution pipeline).
+app.post("/prompt/enhance", VerifyUserHandler, async (req, res) => {
+  const { enhancePrompt, ENHANCE_PROMPT_MAX_CHARS } = await import(
+    "./services/prompt-enhancer"
+  );
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const str = (v: unknown, max: number) =>
+    typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+  const prompt = str(body.prompt, ENHANCE_PROMPT_MAX_CHARS);
+  if (!prompt) {
+    return res.status(400).json({ success: false, message: "prompt is required" });
+  }
+  try {
+    const result = await enhancePrompt({
+      prompt,
+      brandName: str(body.brandName, 120),
+      brandSummary: str(body.brandSummary, 800),
+      brandColors: Array.isArray(body.brandColors)
+        ? body.brandColors.filter((c): c is string => typeof c === "string").slice(0, 8)
+        : undefined,
+      deliverable: str(body.deliverable, 120),
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    console.warn(
+      `[enhance-prompt] failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return res
+      .status(502)
+      .json({ success: false, message: "Could not enhance the prompt right now. Please try again." });
+  }
+});
+
 // Public live link for a generated website (signed; see hosted-site-links).
 app.get("/sites/:artifactId", async (req, res) => {
   const { verifySiteLinkToken, HOSTED_SITE_RESPONSE_HEADERS } = await import(

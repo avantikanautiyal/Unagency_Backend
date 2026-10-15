@@ -3,6 +3,7 @@
  * M10.5 — never expose vendor bodies, credentials, or signed URLs.
  */
 
+import { hostedSitePath } from "../../media/delivery/hosted-site-links";
 import type {
   ExecutionApiStatus,
   ExecutionResultPayload,
@@ -318,6 +319,11 @@ export function stampWebsiteExportPreview(input: {
     : Array.isArray(fromStructured.routes)
       ? (fromStructured.routes as Record<string, unknown>[])
       : [];
+  // Each route keeps its shareable live link — the app reads routes first.
+  const liveLink = (htmlId: unknown): Record<string, string> =>
+    typeof htmlId === "string" && htmlId.trim()
+      ? { liveSitePath: hostedSitePath(htmlId.trim()) }
+      : {};
   const stampedRoutes =
     existingRoutes.length > 0
       ? existingRoutes.map((route, i) => ({
@@ -328,12 +334,17 @@ export function stampWebsiteExportPreview(input: {
           ...(pairs[i]?.htmlArtifactId
             ? { htmlArtifactId: pairs[i]!.htmlArtifactId }
             : {}),
+          ...liveLink(pairs[i]?.htmlArtifactId ?? route.htmlArtifactId),
         }))
       : pairs.map((pair, i) => ({
-          title: `Route ${i + 1}`,
+          title:
+            i === 0 && typeof fromStructured.title === "string" && fromStructured.title.trim()
+              ? fromStructured.title.trim()
+              : `Route ${i + 1}`,
           exportKind: "website",
           projectArtifactId: pair.projectArtifactId,
           ...(pair.htmlArtifactId ? { htmlArtifactId: pair.htmlArtifactId } : {}),
+          ...liveLink(pair.htmlArtifactId),
         }));
 
   return {
@@ -343,6 +354,7 @@ export function stampWebsiteExportPreview(input: {
       ...existing,
       exportKind: "website",
       ...(htmlArtifactId ? { htmlArtifactId } : {}),
+      ...liveLink(htmlArtifactId),
       ...(projectArtifactId ? { projectArtifactId } : {}),
       artifactIds: ids,
       ...(stampedRoutes.length > 0 ? { routes: stampedRoutes } : {}),

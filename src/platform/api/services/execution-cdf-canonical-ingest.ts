@@ -1029,7 +1029,9 @@ export async function applyCdfCanonicalCompletionIngest(input: {
     const serviceId =
       typeof meta?.cdfServiceId === "string" ? meta.cdfServiceId : "";
     const phaseId = typeof meta?.cdfPhaseId === "string" ? meta.cdfPhaseId : "";
-    if (serviceId && phaseId) {
+    // A built website has no raster to OCR / pixel-check — image structural
+    // verification can only report UNVERIFIABLE and block it.
+    if (serviceId && phaseId && !isDeferredWebsiteMeta(meta)) {
       try {
         const { resolveDeliverableCompositionForPhase } = await import(
           "../../cdf/generation-context/resolve-deliverable-composition"
@@ -1419,7 +1421,9 @@ export async function applyCdfCanonicalCompletionIngest(input: {
       contractRequiresCanonicalImageIngest(meta) != null ||
       (typeof meta?.cdfExecutionStrategy === "string" &&
         meta.cdfExecutionStrategy === "canonical");
-    const ingested = tryIngestCanonicalCdfCompletion({
+    // Website builds complete through their export (website completion stamp),
+    // never the image ArtifactVersion ingest (it demands a Vault image).
+    const ingested = isDeferredWebsiteMeta(meta) ? null : tryIngestCanonicalCdfCompletion({
       metadata: meta,
       rawOutput: structuredCandidate,
       executionId: input.executionId,

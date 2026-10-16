@@ -477,7 +477,7 @@ describe("CdfWebsiteSitemap structured contract + credit/Anthropic fixes", () =>
   });
 
   it("11 — failover stops when a provider satisfies the contract", async () => {
-    // CdfWebsiteSitemap uses website vendor-diverse failover (openai → anthropic → …).
+    // Websites keep the routed primary; failover goes to a different vendor.
     const { report, dispatcher } = await runSitemapScript({
       steps: [
         { kind: "structured", structured: [{ id: "home" }] },
@@ -486,10 +486,8 @@ describe("CdfWebsiteSitemap structured contract + credit/Anthropic fixes", () =>
       ],
     });
     assert.equal(report.success, true);
-    assert.ok(dispatcher.capturedProviders.length >= 2);
-    assert.equal(dispatcher.capturedProviders[0], "provider.openai");
-    assert.equal(dispatcher.capturedProviders[1], "provider.anthropic");
     assert.equal(dispatcher.capturedProviders.length, 2);
+    assert.notEqual(dispatcher.capturedProviders[0], dispatcher.capturedProviders[1]);
     const out = report.artifacts.runtime?.response?.output as
       | { structured?: unknown; structuredOutputValid?: boolean }
       | undefined;

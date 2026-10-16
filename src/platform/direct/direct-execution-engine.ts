@@ -1454,11 +1454,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       }
     }
 
-    // Pitch decks + websites: prefer OpenAI (Codex / GPT-5.5) for structured code/JSON;
-    // Anthropic remains in the failover chain for quality/design recovery.
+    // Pitch decks: prefer OpenAI (Codex / GPT-5.5) for structured JSON; Anthropic
+    // remains in the failover chain. Websites keep the routed primary (Anthropic).
     if (
-      (presentationDeliverableRequired ||
-        isWebsiteDirectRequest(request.metadata)) &&
+      presentationDeliverableRequired &&
       !isImage &&
       uniqueCandidates.length > 1
     ) {

@@ -689,6 +689,14 @@ export function isPhaseAuthoritativelyComplete(
 
   const artifactKey = phase.artifact?.artifactKey;
   if (phase.approval?.mode === "required") {
+    // Website phases approve art_webexport* ids (no cdfart pin) — the approval
+    // precondition accepts them, so progress must too.
+    if (
+      contract.buildsWebsite &&
+      session.approved.some((a) => a.phaseId === phaseId)
+    ) {
+      return true;
+    }
     return Boolean(findPin(session.approvedArtifacts, phaseId, artifactKey));
   }
   if (

@@ -2042,6 +2042,17 @@ export async function runCreatePrepass(
     )
   );
 
+  // Client page planner (brochure/leaflet/storyboard pages) is a text-only
+  // structured call with its own schema — never a PDF/DOCX document export,
+  // even when service/subtype (print/brochures) were inferred upstream.
+  if (workingMetadata?.productAction === "page_document_plan") {
+    workingMetadata = {
+      ...workingMetadata,
+      outputKind: "structured",
+      deliverableRequired: false,
+    };
+  }
+
   // Seal: no post-authority stamp may leave mutated semantic fields.
   {
     const { reassertCdfExecutionAuthority } = await import(

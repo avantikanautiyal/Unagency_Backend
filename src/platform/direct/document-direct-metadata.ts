@@ -54,6 +54,9 @@ export function metadataRejectsDocumentPlanClassification(
 ): boolean {
   if (!metadata) return false;
 
+  // Client page planner (brochure/leaflet pages) owns its own schema.
+  if (metadata.productAction === "page_document_plan") return true;
+
   const outputKind = String(metadata.outputKind ?? "")
     .trim()
     .toLowerCase();

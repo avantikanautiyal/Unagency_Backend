@@ -84,6 +84,8 @@ export type ServiceAiMessageRecord = {
   failed?: boolean;
   intentChip?: string;
   mediaUri?: string;
+  /** Every image attached to the turn (mediaUri is the first). */
+  mediaUris?: string[];
   /**
    * Phase 9 — chat / message attachments (from CollabMessage.metadata).
    * ProductAsset shares also surface assetId here when present.

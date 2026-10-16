@@ -483,6 +483,11 @@ export const upsertServiceAiMessage = asyncHandler(async (req: RequestUser) => {
     failed: req.body?.failed,
     intentChip: req.body?.intentChip,
     mediaUri: req.body?.mediaUri,
+    mediaUris: Array.isArray(req.body?.mediaUris)
+      ? (req.body.mediaUris as unknown[])
+          .filter((u): u is string => typeof u === "string" && u.length <= 4096)
+          .slice(0, 10)
+      : undefined,
   });
   emitCollaborationEvent(channelId, "message:new", message as any);
   return new ApiResponse(200, message, "service ai message upserted");

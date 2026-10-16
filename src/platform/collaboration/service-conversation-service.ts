@@ -113,6 +113,9 @@ function toAiMessage(
     ...(meta.failed === true ? { failed: true } : {}),
     ...(typeof meta.intentChip === "string" ? { intentChip: meta.intentChip } : {}),
     ...(typeof meta.mediaUri === "string" ? { mediaUri: meta.mediaUri } : {}),
+    ...(Array.isArray(meta.mediaUris) && meta.mediaUris.every((u) => typeof u === "string")
+      ? { mediaUris: meta.mediaUris as string[] }
+      : {}),
     ...(() => {
       const attachments: ServiceAiMessageRecord["attachments"] = [];
       const kind = typeof meta.kind === "string" ? meta.kind : undefined;
@@ -267,6 +270,7 @@ export class ServiceConversationService {
     failed?: boolean;
     intentChip?: string;
     mediaUri?: string;
+    mediaUris?: string[];
   }): Promise<ServiceAiMessageRecord> {
     if (isInternalExecutionPrompt(input.text) && input.role === "user") {
       throw new ApiError("Internal execution prompts cannot be chat messages", 400);
@@ -294,6 +298,7 @@ export class ServiceConversationService {
       ...(input.failed ? { failed: true } : {}),
       ...(input.intentChip ? { intentChip: input.intentChip } : {}),
       ...(input.mediaUri ? { mediaUri: input.mediaUri } : {}),
+      ...(input.mediaUris?.length ? { mediaUris: input.mediaUris } : {}),
     };
 
     if (existing && existing.conversationId.toString() === conversation._id.toString()) {
@@ -334,6 +339,7 @@ export class ServiceConversationService {
       failed: input.failed,
       intentChip: input.intentChip,
       mediaUri: input.mediaUri,
+      ...(input.mediaUris?.length ? { mediaUris: input.mediaUris } : {}),
     };
   }
 

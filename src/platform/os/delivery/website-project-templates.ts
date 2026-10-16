@@ -66,6 +66,7 @@ export const WEB_PROJECT_FILL_STRUCTURED_SCHEMA = {
     "ctaLabel",
     "colors",
     "html",
+    "images",
   ],
   properties: {
     title: { type: "string" },
@@ -101,6 +102,27 @@ export const WEB_PROJECT_FILL_STRUCTURED_SCHEMA = {
         background: { type: "string" },
         text: { type: "string" },
         accent: { type: "string" },
+      },
+    },
+    /**
+     * Every image the design needs. The HTML references each one as
+     * src="image:<id>" (CSS: url(image:<id>)); the server generates or
+     * sources it — never write file paths or placeholder URLs.
+     */
+    images: {
+      type: "array",
+      maxItems: 8,
+      description:
+        "Every image this design needs (hero, sections, product/collection cards, team, gallery). Reference each in html as src=\"image:<id>\" or url(image:<id>). Use src=\"image:logo\" for the brand logo. Never invent file paths or placeholder URLs. prompt = a specific photo/illustration description matching the brief, brand and section.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "alt", "prompt"],
+        properties: {
+          id: { type: "string" },
+          alt: { type: "string" },
+          prompt: { type: "string" },
+        },
       },
     },
     html: { type: "string" },
@@ -751,6 +773,8 @@ export function stampLogoOntoWebProject(
 
     if (/\.html?$/i.test(path)) {
       if (/class="brand-logo"/i.test(content)) return f;
+      // The design already places this logo (image:logo slots) — no duplicate.
+      if (content.includes(url)) return f;
       const next = insertAfterOpening(
         content,
         `<img class="brand-logo" src="${safeUrl}" alt="${alt}"/>`

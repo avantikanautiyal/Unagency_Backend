@@ -145,12 +145,20 @@ export function bindGeneratedArtifactToSession(input: {
     };
   }
 
+  // A leaf is (group, target): target ids are per-provider slots
+  // ("fanout_2_openai") reused by every regeneration of the set, so a
+  // refined set must not collide with — or resolve to — the old set's leaf.
+  const sameLeafGroup = (r: { generationFanoutGroupId?: string }) =>
+    !fanoutGroup || !r.generationFanoutGroupId || r.generationFanoutGroupId === fanoutGroup;
+
   if (fanoutTarget) {
     const duplicateTarget = session.generatedArtifacts?.find(
       (r) =>
         r.artifactKey === input.artifactKey &&
         r.phaseId === input.phaseId &&
         r.generationFanoutTargetId === fanoutTarget &&
+        // Same slot of the same set only; another set's leaf is swapped out below.
+        (!fanoutGroup || r.generationFanoutGroupId === fanoutGroup) &&
         (r.artifactId !== input.artifactId || r.version !== input.version),
     );
     if (duplicateTarget) {
@@ -174,7 +182,7 @@ export function bindGeneratedArtifactToSession(input: {
       return false;
     }
     if (fanoutTarget) {
-      return r.generationFanoutTargetId === fanoutTarget;
+      return r.generationFanoutTargetId === fanoutTarget && sameLeafGroup(r);
     }
     if (generationExecutionId) {
       return r.generationExecutionId === generationExecutionId;
@@ -216,11 +224,29 @@ export function bindGeneratedArtifactToSession(input: {
     !fanoutTarget && !claimsFanoutLeaf
       ? input.supersedesGenerationExecutionId?.trim() || ""
       : "";
-  const sessionForUpsert =
-    supersededExec && supersededExec !== generationExecutionId
+  // A new set of options for this phase replaces the previous set's leaves:
+  // only the newest set is pickable, and approve must never resolve to an
+  // older set's leaf that shares this slot's target id.
+  const sessionAfterSetSwap =
+    fanoutTarget && fanoutGroup
       ? {
           ...session,
           generatedArtifacts: (session.generatedArtifacts ?? []).filter(
+            (r) =>
+              !(
+                r.phaseId === input.phaseId &&
+                r.artifactKey === input.artifactKey &&
+                r.generationFanoutTargetId &&
+                r.generationFanoutGroupId !== fanoutGroup
+              ),
+          ),
+        }
+      : session;
+  const sessionForUpsert =
+    supersededExec && supersededExec !== generationExecutionId
+      ? {
+          ...sessionAfterSetSwap,
+          generatedArtifacts: (sessionAfterSetSwap.generatedArtifacts ?? []).filter(
             (r) =>
               !(
                 r.phaseId === input.phaseId &&
@@ -230,7 +256,7 @@ export function bindGeneratedArtifactToSession(input: {
               ),
           ),
         }
-      : session;
+      : sessionAfterSetSwap;
   const next = upsertSessionArtifactRef(sessionForUpsert, ref);
   const swapped = compareAndSwapCdfSession(input.sessionId, expectedVersion, {
     ...next,

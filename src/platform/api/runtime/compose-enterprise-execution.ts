@@ -43,6 +43,10 @@ export interface ComposeEnterpriseExecutionInput {
   readonly runtimeDispatcher?: IProviderDispatcher;
   readonly toolRuntime?: import("../../providers/tools/composition/tool-runtime-platform").ToolRuntimePlatform;
   readonly asyncMedia?: AsyncMediaPlatform;
+  /** Resolved per job — the image router is composed after the worker. */
+  readonly resolveVisualImageDeps?: () =>
+    | import("../../os/delivery/best-effort-visual-image").BestEffortVisualImageDeps
+    | undefined;
 }
 
 export interface ComposedEnterpriseExecution {
@@ -162,6 +166,7 @@ export function composeEnterpriseExecution(
             createId: clocks.createId,
             providerId: args.providerId,
             modelId: args.modelId,
+            visualImageDeps: input.resolveVisualImageDeps?.(),
           });
           if (!exported.ok) return exported;
           return success({
@@ -220,6 +225,7 @@ export function composeEnterpriseExecution(
             createId: clocks.createId,
             providerId: args.providerId,
             modelId: args.modelId,
+            visualImageDeps: input.resolveVisualImageDeps?.(),
           });
           if (!exported.ok) return exported;
           return success({

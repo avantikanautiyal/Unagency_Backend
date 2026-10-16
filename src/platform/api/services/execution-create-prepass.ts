@@ -1620,10 +1620,16 @@ export async function runCreatePrepass(
     // a non-website schema (e.g. LaunchPlan title/summary/steps for subtype
     // visual-asset) made the provider answer in the wrong shape and the
     // website materializer then rejected it — nothing to preview or host.
+    // A single-output website phase builds ONE site — a client asking for
+    // WebsiteRoutes (3 sites) overflowed the provider's output and returned
+    // pages-as-alternatives.
     if (
       authoritativeKind === "deferred_website" &&
       cdfAuthoritySealed &&
-      !/^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(clientStructuredName)
+      (!/^(WebsitePage|WebProject|WebsiteRoutes)$/i.test(clientStructuredName) ||
+        (/^WebsiteRoutes$/i.test(clientStructuredName) &&
+          typeof workingMetadata?.cdfPhaseId === "string" &&
+          workingMetadata.cdfCreativeCardinalityKind !== "exactly"))
     ) {
       const structuredOutput = {
         name: "WebProject",

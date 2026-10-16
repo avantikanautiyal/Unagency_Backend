@@ -131,6 +131,14 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "POST", "/cdf/brief-gate", "cdf", "Classify typed message as brief vs conversation", ["execution:create"]),
     v(
       version,
+      "GET",
+      "/cdf/artifacts/:artifactId/versions/:version/media",
+      "cdf",
+      "Exact Brand Vault media of a CDF image/video artifact version (final download)",
+      ["execution:read"],
+    ),
+    v(
+      version,
       "POST",
       "/cdf/artifacts/:artifactId/versions/:version/render",
       "cdf",

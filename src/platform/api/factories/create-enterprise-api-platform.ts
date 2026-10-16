@@ -267,8 +267,14 @@ export function createEnterpriseApiPlatform(
 
   let distributed = options.distributed;
   let integrationEngine = options.integration;
+  // Website/document materializers in the job worker generate images; the
+  // router + registry are built below, so the worker resolves them lazily.
+  const workerVisualImageDeps: {
+    current?: import("../../os/delivery/best-effort-visual-image").BestEffortVisualImageDeps;
+  } = {};
   if (!distributed) {
     const distributedPlatform = createDistributedExecutionPlatform({
+      resolveVisualImageDeps: () => workerVisualImageDeps.current,
       nowIso,
       clockMs,
       createId,
@@ -426,9 +432,18 @@ export function createEnterpriseApiPlatform(
       registry: providerRuntimeRegistry,
       createId,
     }),
-    imageRouter: createImageExecutionRouter({
-      registry: providerRuntimeRegistry,
-    }),
+    imageRouter: (() => {
+      const imageRouter = createImageExecutionRouter({
+        registry: providerRuntimeRegistry,
+      });
+      workerVisualImageDeps.current = {
+        imageRouter,
+        registry: providerRuntimeRegistry,
+        createId,
+        nowIso,
+      };
+      return imageRouter;
+    })(),
     providerRuntimeRegistry,
     audioRouter: createAudioExecutionRouter({
       registry: providerRuntimeRegistry,

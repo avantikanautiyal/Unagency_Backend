@@ -3,7 +3,8 @@
  * Does NOT invoke document-export-materializer or any AI path.
  */
 
-import { getArtifact } from "../artifacts";
+import { getArtifact, getArtifactVersion } from "../artifacts";
+import { extractVaultAssetIdFromArtifactData } from "../generation-context/canonical-visual-bytes";
 import { renderError } from "./errors";
 import { isCdfRenderedFileId } from "./ids";
 import { renderArtifact, type RenderArtifactDeps } from "./service";
@@ -114,6 +115,57 @@ export async function httpGetRenderedFileBytes(input: {
     throw renderError("STORAGE_FAILED", `Bytes missing for ${file.fileId}`);
   }
   return { file, bytes: blob.bytes };
+}
+
+/**
+ * Exact Brand Vault media of one image/video ArtifactVersion. Final downloads
+ * of an approved visual must fetch this exact version — never "the first
+ * image" of the execution that produced it (a route set holds several).
+ */
+export async function httpGetArtifactVersionMedia(input: {
+  artifactId: string;
+  artifactVersion: number;
+  organizationId?: string;
+  projectId?: string;
+}): Promise<{
+  artifactId: string;
+  artifactVersion: number;
+  artifactKey: string;
+  artifactType: string;
+  vaultAssetId: string;
+}> {
+  const { ensureCdfArtifactBagLoaded } = await import("../artifacts/store");
+  await ensureCdfArtifactBagLoaded();
+  if (!Number.isInteger(input.artifactVersion) || input.artifactVersion < 1) {
+    throw renderError(
+      "RENDER_REQUEST_INVALID",
+      `Invalid artifact version: ${String(input.artifactVersion)}`,
+    );
+  }
+  const ownership = {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+  };
+  const head = getArtifact(input.artifactId, ownership);
+  const version = getArtifactVersion(
+    input.artifactId,
+    input.artifactVersion,
+    ownership,
+  );
+  const vaultAssetId = extractVaultAssetIdFromArtifactData(version.data);
+  if (!vaultAssetId) {
+    throw renderError(
+      "ASSET_NOT_FOUND",
+      `No stored media for ${input.artifactId}@${input.artifactVersion}`,
+    );
+  }
+  return {
+    artifactId: input.artifactId,
+    artifactVersion: input.artifactVersion,
+    artifactKey: head.artifactKey,
+    artifactType: String(head.artifactType),
+    vaultAssetId,
+  };
 }
 
 /** FE compatibility note — legacy still uses art_* media IDs. */

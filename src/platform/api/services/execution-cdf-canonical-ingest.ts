@@ -334,9 +334,18 @@ export function resolveEstablishedCanonicalCompletionAttach(
         return false;
       }
       if (isFanoutLeafMeta(meta) && leafTargetId) {
+        // Target ids are reused by every regeneration of the set — the same
+        // slot of an older set is not this leaf's completion.
+        const leafGroup =
+          typeof meta.generationFanoutGroupId === "string"
+            ? meta.generationFanoutGroupId.trim()
+            : "";
         return (
           r.phaseId === phaseId &&
-          r.generationFanoutTargetId === leafTargetId
+          r.generationFanoutTargetId === leafTargetId &&
+          (!leafGroup ||
+            !r.generationFanoutGroupId ||
+            r.generationFanoutGroupId === leafGroup)
         );
       }
       // Creative options are parallel completions of one phase. A phase-wide

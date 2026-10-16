@@ -68,6 +68,7 @@ export const WEB_PROJECT_STRUCTURED_SCHEMA = {
     "ctaLabel",
     "colors",
     "html",
+    "images",
   ],
   properties: {
     title: { type: "string" },
@@ -100,6 +101,27 @@ export const WEB_PROJECT_STRUCTURED_SCHEMA = {
         background: { type: "string" },
         text: { type: "string" },
         accent: { type: "string" },
+      },
+    },
+    /**
+     * Every image the design needs. The HTML references each one as
+     * src="image:<id>" (CSS: url(image:<id>)); the server generates or
+     * sources it — never write file paths or placeholder URLs.
+     */
+    images: {
+      type: "array",
+      maxItems: 8,
+      description:
+        "Every image this design needs (hero, sections, product/collection cards, team, gallery). Reference each in html as src=\"image:<id>\" or url(image:<id>). Use src=\"image:logo\" for the brand logo. Never invent file paths or placeholder URLs. prompt = a specific photo/illustration description matching the brief, brand and section.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "alt", "prompt"],
+        properties: {
+          id: { type: "string" },
+          alt: { type: "string" },
+          prompt: { type: "string" },
+        },
       },
     },
     /** Complete HTML5 page when stack=html-static; otherwise "". */
@@ -1108,7 +1130,9 @@ export function buildWebProjectInstructionBlock(input: {
       "Design bar: equal to a strong Claude/ChatGPT landing page — NOT a thin single-column stub.",
       "Required structure: sticky/top nav with brand + CTA, full-bleed or split hero with headline + lede + primary CTA, at least 3 content sections (features / proof / story), secondary CTA band, footer.",
       "Visual system: distinctive typography pairing, atmospheric gradients from the brand palette, generous spacing, responsive layout (mobile + desktop), intentional CSS @keyframes / transitions (2–4 motions).",
-      "REQUIRED imagery: multiple real HTTPS <img> tags (hero + section images) using https://picsum.photos/seed/<topic>/… or https://images.unsplash.com/... — never leave image slots as text descriptions.",
+      "Imagery: when the design calls for images (hero, sections, product/collection cards, gallery, team), list each one in images[] with a specific prompt that matches the brief, brand and section, and reference it as src=\"image:<id>\" (CSS: url(image:<id>)). The server generates/sources every listed image — never write file paths, picsum/unsplash or placeholder URLs, and never leave image slots as text descriptions.",
+      "Logo: use src=\"image:logo\" wherever the brand logo appears; do not add it to images[].",
+      "Multi-page sites: every page from the approved page structure is a real, fully designed page/section with its own content — every nav link must lead to it (no stub pages).",
       "Avoid generic AI-template looks (purple gradients, cream+terracotta defaults, pill spam, card grids with no hierarchy).",
       "Also fill brandName/tagline/sections/colors (used only if html is incomplete)."
     );

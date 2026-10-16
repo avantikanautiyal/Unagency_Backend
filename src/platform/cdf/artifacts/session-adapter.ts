@@ -24,7 +24,12 @@ export function upsertSessionArtifactRef(
       }
       // Generated fanout leaves: one pin per leaf target (same artifactKey/phase OK).
       if (ref.role === "generated" && ref.generationFanoutTargetId) {
-        return r.generationFanoutTargetId === ref.generationFanoutTargetId;
+        return (
+          r.generationFanoutTargetId === ref.generationFanoutTargetId &&
+          (!ref.generationFanoutGroupId ||
+            !r.generationFanoutGroupId ||
+            r.generationFanoutGroupId === ref.generationFanoutGroupId)
+        );
       }
       if (ref.role === "generated" && ref.generationExecutionId) {
         return r.generationExecutionId === ref.generationExecutionId;

@@ -4,6 +4,10 @@
  * Multi-route: up to 3 directions, each with its own zip (+ optional HTML preview).
  */
 
+import {
+  parseWebsiteImageSpecs,
+  resolveWebsiteProjectImages,
+} from "../../os/delivery/website-image-resolution";
 import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
 import type { ExecutionResultPayload } from "../contracts";
@@ -562,23 +566,68 @@ export async function materializeWebsiteExport(input: {
   const artifactIds: string[] = [];
   const materialized: MaterializedRoute[] = [];
   let outputOffset = 0;
+  const logoDataUrl = referenceLogo ? toDataUrl(referenceLogo) : undefined;
   for (const [routeIndex, project] of routes.slice(0, 3).entries()) {
-    let enriched: WebsiteRoutePlan = referenceLogo
+    // Every image the design references → a real image (generated, then a
+    // keyword-matched stock photo); logo slots → the vault logo.
+    const rawRoute =
+      data && typeof data === "object" && Array.isArray((data as { routes?: unknown }).routes)
+        ? (data as { routes: unknown[] }).routes[routeIndex]
+        : data;
+    const imageSpecs = parseWebsiteImageSpecs(rawRoute);
+    const resolvedImages = await resolveWebsiteProjectImages({
+      project,
+      specs: imageSpecs,
+      brief,
+      brandName,
+      brandColors: opts.brandColors,
+      logoDataUrl,
+      deps: visualDeps,
+    });
+    console.info(
+      JSON.stringify({
+        scope: "website.images",
+        event: "resolved",
+        executionId: input.executionId,
+        routeIndex,
+        specCount: imageSpecs.length,
+        imageGeneratorAvailable: Boolean(visualDeps?.imageRouter && visualDeps?.registry),
+        ...resolvedImages.report,
+      }),
+    );
+    const withImages: WebsiteRoutePlan = {
+      ...resolvedImages.project,
+      ...(project.description ? { description: project.description } : {}),
+    };
+    let enriched: WebsiteRoutePlan = logoDataUrl
       ? {
-          ...stampLogoOntoWebProject(project, toDataUrl(referenceLogo), brandName),
+          ...stampLogoOntoWebProject(withImages, logoDataUrl, brandName),
           ...(project.description ? { description: project.description } : {}),
         }
-      : project;
-    const staticSource = isHtmlStaticPreviewable(project)
+      : withImages;
+    const staticSourceRaw = isHtmlStaticPreviewable(project)
       ? undefined
       : staticRoutes[routeIndex];
+    const staticSource = staticSourceRaw
+      ? (
+          await resolveWebsiteProjectImages({
+            project: staticSourceRaw,
+            specs: imageSpecs,
+            brief,
+            brandName,
+            logoDataUrl,
+            reuseUrls: resolvedImages.urls,
+          })
+        ).project
+      : undefined;
     let staticPreview: WebsiteRoutePlan | undefined =
       staticSource && isHtmlStaticPreviewable(staticSource)
-        ? referenceLogo
-          ? stampLogoOntoWebProject(staticSource, toDataUrl(referenceLogo), brandName)
+        ? logoDataUrl
+          ? stampLogoOntoWebProject(staticSource, logoDataUrl, brandName)
           : staticSource
         : undefined;
-    try {
+    // The design's own imagery replaces the generic single hero image.
+    if (resolvedImages.report.referenced === 0) try {
       const heroPrompt = [
         `Website hero visual for ${project.title || brandName || "brand"}`,
         project.summary,

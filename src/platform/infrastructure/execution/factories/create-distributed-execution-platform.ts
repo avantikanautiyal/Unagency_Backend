@@ -29,6 +29,10 @@ export interface CreateDistributedExecutionOptions
   readonly jobStore?: import("../interfaces/execution").IJobStore;
   readonly toolRuntime?: import("../../../providers/tools/composition/tool-runtime-platform").ToolRuntimePlatform;
   readonly asyncMedia?: import("../../durability/create-async-media-platform").AsyncMediaPlatform;
+  /** Image generation for worker-side website/document materialization. */
+  readonly resolveVisualImageDeps?: () =>
+    | import("../../../os/delivery/best-effort-visual-image").BestEffortVisualImageDeps
+    | undefined;
 }
 
 export function createDistributedExecutionPlatform(
@@ -56,6 +60,7 @@ export function createDistributedExecutionPlatform(
       runtimeDispatcher: options.runtimeDispatcher,
       toolRuntime: options.toolRuntime,
       asyncMedia: options.asyncMedia,
+      resolveVisualImageDeps: options.resolveVisualImageDeps,
     });
     executor = composed.executor;
     integration = composed.integration ?? integration;

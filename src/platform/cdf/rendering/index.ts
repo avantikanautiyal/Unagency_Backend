@@ -137,6 +137,7 @@ export {
 } from "./structured-document";
 export {
   httpRenderArtifact,
+  httpGetArtifactVersionMedia,
   httpGetRenderedFile,
   httpGetRenderedFileBytes,
   CDF_RENDER_FE_COMPAT,

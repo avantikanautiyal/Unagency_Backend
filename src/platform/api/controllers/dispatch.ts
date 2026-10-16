@@ -932,6 +932,33 @@ export async function dispatchController(
 
     if (
       routeId.includes("_cdf_artifacts_") &&
+      routeId.includes("_media") &&
+      request.method === "GET" &&
+      params.artifactId &&
+      params.version
+    ) {
+      const { httpGetArtifactVersionMedia, CdfRenderError } = await import(
+        "../../cdf/rendering"
+      );
+      const { CdfArtifactError } = await import("../../cdf/artifacts");
+      try {
+        return success(
+          await httpGetArtifactVersionMedia({
+            artifactId: String(params.artifactId),
+            artifactVersion: Number(params.version),
+            organizationId: tenant.organizationId,
+          }),
+        );
+      } catch (err) {
+        if (err instanceof CdfRenderError || err instanceof CdfArtifactError) {
+          return failure(err);
+        }
+        throw err;
+      }
+    }
+
+    if (
+      routeId.includes("_cdf_artifacts_") &&
       routeId.includes("_render") &&
       request.method === "POST" &&
       params.artifactId &&

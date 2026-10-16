@@ -183,6 +183,46 @@ describe("C6 — fail-closed fanout identity", () => {
     assert.equal(getCdfSession(sessionId)!.generatedArtifacts?.length ?? 0, 0);
   });
 
+  it("regenerated set (new group, same target ids) replaces the old set", () => {
+    // Live defect: a refined route set reuses "fanout_N_provider" target ids;
+    // its leaves were refused as duplicates, so approving refined route 3
+    // resolved to the OLD route 3 and downloads delivered an unapproved creative.
+    const sessionId = `cdf_c6_regen_${Date.now().toString(36)}`;
+    saveCdfSession(sessionStub(sessionId));
+    const mk = () =>
+      createArtifact({
+        organizationId: "6a8d8d7dc263a4d6afe69691",
+        projectId: "proj_c5c6",
+        sessionId,
+        serviceId: "packaging",
+        phaseId: "3d-direction",
+        artifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
+        artifactType: "pack",
+        data: fixturePackaging3dDirection() as never,
+      });
+    const oldLeaf = mk();
+    const newLeaf = mk();
+    const bind = (artifactId: string, group: string, exec: string) =>
+      bindGeneratedArtifactToSession({
+        sessionId,
+        phaseId: "3d-direction",
+        artifactId,
+        version: 1,
+        artifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
+        generationFanoutGroupId: group,
+        generationFanoutTargetId: "fanout_2_openai",
+        generationExecutionId: exec,
+      });
+    assert.equal(bind(oldLeaf.artifact.artifactId, "grp_original", "exec_old").ok, true);
+    assert.equal(bind(newLeaf.artifact.artifactId, "grp_refined", "exec_new").ok, true);
+    const pins = (getCdfSession(sessionId)?.generatedArtifacts ?? []).filter(
+      (p) => p.generationFanoutTargetId === "fanout_2_openai",
+    );
+    assert.equal(pins.length, 1);
+    assert.equal(pins[0]!.artifactId, newLeaf.artifact.artifactId);
+    assert.equal(pins[0]!.generationFanoutGroupId, "grp_refined");
+  });
+
   it("duplicate targetId — second sibling refused", () => {
     const sessionId = `cdf_c6_dup_${Date.now().toString(36)}`;
     saveCdfSession(sessionStub(sessionId));

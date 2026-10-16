@@ -263,6 +263,16 @@ export function tryIngestContractCanonicalCompletion(input: {
       generationFanoutGroupId: fanoutGroup || undefined,
       generationFanoutTargetId: fanoutLeaf || undefined,
       generationExecutionId: input.executionId,
+      // Parallel creative options are siblings, never a refine of each other.
+      ...(metaString(input.metadata, "creativeOptionTargetId") ||
+      input.metadata?.creativeOptionLeaf === true
+        ? {}
+        : {
+            supersedesGenerationExecutionId: metaString(
+              input.metadata,
+              "refineFromExecutionId",
+            ),
+          }),
       generationFanoutLeaf:
         input.metadata?.generationFanoutLeaf === true ||
         Boolean(fanoutGroup) ||

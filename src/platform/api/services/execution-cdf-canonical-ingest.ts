@@ -250,7 +250,25 @@ export function resolveEstablishedCanonicalCompletionAttach(
     typeof meta.cdfArtifactKey === "string" ? meta.cdfArtifactKey.trim() : "";
   const leafTargetId = fanoutTargetIdFromMeta(meta);
 
+  // A stamp names the execution that produced it. A refine inherits the
+  // refined execution's metadata through continuity — that stamp is the
+  // original's ArtifactVersion, never this execution's.
+  const stampOwner =
+    typeof meta.cdfCanonicalExecutionId === "string"
+      ? meta.cdfCanonicalExecutionId.trim()
+      : "";
+  const execIdForStamp =
+    typeof executionId === "string" ? executionId.trim() : "";
+  const refineSource =
+    typeof meta.refineFromExecutionId === "string"
+      ? meta.refineFromExecutionId.trim()
+      : "";
+  const stampInherited = stampOwner
+    ? Boolean(execIdForStamp) && stampOwner !== execIdForStamp
+    : Boolean(refineSource) && refineSource !== execIdForStamp;
+
   if (
+    !stampInherited &&
     meta.cdfCanonicalCompletionEstablished === true &&
     stampedId.startsWith("cdfart_") &&
     typeof stampedVersion === "number" &&
@@ -332,6 +350,18 @@ export function resolveEstablishedCanonicalCompletionAttach(
       }
       // Non-fanout: ignore fanout-scoped pins (they belong to parallel leaves).
       if (r.generationFanoutTargetId) return false;
+      // Another execution's pin in this phase (e.g. the creative a refine
+      // modified) is not this execution's completion.
+      const execId =
+        typeof executionId === "string" ? executionId.trim() : "";
+      if (
+        execId &&
+        typeof r.generationExecutionId === "string" &&
+        r.generationExecutionId.trim() &&
+        r.generationExecutionId.trim() !== execId
+      ) {
+        return false;
+      }
       return r.phaseId === phaseId;
     };
 
@@ -1473,6 +1503,11 @@ export async function applyCdfCanonicalCompletionIngest(input: {
                   ? meta.generationFanoutTargetId.trim()
                   : undefined,
               generationExecutionId: input.executionId,
+              supersedesGenerationExecutionId:
+                typeof meta?.refineFromExecutionId === "string" &&
+                !isCreativeOptionLeafMeta(meta)
+                  ? meta.refineFromExecutionId.trim()
+                  : undefined,
               generationFanoutLeaf:
                 meta?.generationFanoutLeaf === true ||
                 (typeof meta?.generationFanoutGroupId === "string" &&

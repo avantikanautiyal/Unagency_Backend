@@ -105,6 +105,7 @@ export function bindGeneratedSocialMediaArtifactToSession(input: {
   generationFanoutTargetId?: string;
   generationExecutionId?: string;
   generationFanoutLeaf?: boolean;
+  supersedesGenerationExecutionId?: string;
 }): BindSocialMediaGeneratedSessionResult {
   return bindGeneratedArtifactToSession(input);
 }

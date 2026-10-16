@@ -54,6 +54,11 @@ export function bindGeneratedArtifactToSession(input: {
   generationExecutionId?: string;
   /** Explicit leaf claim — require generationFanoutTargetId when true. */
   generationFanoutLeaf?: boolean;
+  /**
+   * A refine of an earlier generation in this phase: that execution's
+   * non-fanout pin is replaced, so approve sees only the refined version.
+   */
+  supersedesGenerationExecutionId?: string;
 }): BindGeneratedArtifactResult {
   const session = getCdfSession(input.sessionId);
   if (!session) {
@@ -207,7 +212,26 @@ export function bindGeneratedArtifactToSession(input: {
       ? { generationExecutionId }
       : {}),
   };
-  const next = upsertSessionArtifactRef(session, ref);
+  const supersededExec =
+    !fanoutTarget && !claimsFanoutLeaf
+      ? input.supersedesGenerationExecutionId?.trim() || ""
+      : "";
+  const sessionForUpsert =
+    supersededExec && supersededExec !== generationExecutionId
+      ? {
+          ...session,
+          generatedArtifacts: (session.generatedArtifacts ?? []).filter(
+            (r) =>
+              !(
+                r.phaseId === input.phaseId &&
+                r.artifactKey === input.artifactKey &&
+                !r.generationFanoutTargetId &&
+                r.generationExecutionId === supersededExec
+              ),
+          ),
+        }
+      : session;
+  const next = upsertSessionArtifactRef(sessionForUpsert, ref);
   const swapped = compareAndSwapCdfSession(input.sessionId, expectedVersion, {
     ...next,
     updatedAt: new Date().toISOString(),

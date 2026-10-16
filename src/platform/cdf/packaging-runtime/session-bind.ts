@@ -60,6 +60,7 @@ export function bindGeneratedPackagingArtifactToSession(input: {
   generationFanoutTargetId?: string;
   generationExecutionId?: string;
   generationFanoutLeaf?: boolean;
+  supersedesGenerationExecutionId?: string;
 }): BindGeneratedArtifactResult {
   return bindGeneratedArtifactToSession(input);
 }

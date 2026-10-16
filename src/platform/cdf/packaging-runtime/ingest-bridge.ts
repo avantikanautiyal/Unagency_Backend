@@ -282,6 +282,15 @@ export function tryIngestPackagingCdfCompletion(input: {
       generationFanoutGroupId: metaString(metadata, "generationFanoutGroupId"),
       generationFanoutTargetId: metaString(metadata, "generationFanoutTargetId"),
       generationExecutionId: input.executionId,
+      ...(metaString(metadata, "creativeOptionTargetId") ||
+      metadata.creativeOptionLeaf === true
+        ? {}
+        : {
+            supersedesGenerationExecutionId: metaString(
+              metadata,
+              "refineFromExecutionId",
+            ),
+          }),
       generationFanoutLeaf:
         metadata.generationFanoutLeaf === true ||
         Boolean(metaString(metadata, "generationFanoutTargetId")) ||

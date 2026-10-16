@@ -66,6 +66,8 @@ export function bindSocialMediaGeneratedFromAttach(input: {
   generationFanoutTargetId?: string;
   generationExecutionId?: string;
   generationFanoutLeaf?: boolean;
+  /** See bindGeneratedArtifactToSession — refine replaces the refined pin. */
+  supersedesGenerationExecutionId?: string;
 }): BindSocialMediaGeneratedResult {
   const artifactId = input.attach.cdfArtifactId;
   const artifactVersion = input.attach.cdfArtifactVersion;
@@ -113,6 +115,7 @@ export function bindSocialMediaGeneratedFromAttach(input: {
         generationFanoutGroupId: input.generationFanoutGroupId,
         generationFanoutTargetId: input.generationFanoutTargetId,
         generationExecutionId: input.generationExecutionId,
+        supersedesGenerationExecutionId: input.supersedesGenerationExecutionId,
         generationFanoutLeaf:
           input.generationFanoutLeaf === true ||
           Boolean(input.generationFanoutGroupId?.trim()) ||

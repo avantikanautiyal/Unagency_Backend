@@ -1399,6 +1399,15 @@ export async function runCreatePrepass(
         };
       }
 
+      // A refine of this phase's generated creative edits that creative: bind
+      // it as the continuation so its bytes reach the model (below).
+      {
+        const { applyCdfRefineTargetPrepass } = await import(
+          "./apply-cdf-refine-target-prepass"
+        );
+        workingMetadata = await applyCdfRefineTargetPrepass(workingMetadata);
+      }
+
       // Exact selected upstream visual → multimodal bytes (after session hydrate).
       // Fail closed rather than text-only continuity for visual emission phases.
       {

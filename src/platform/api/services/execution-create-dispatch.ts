@@ -1397,6 +1397,7 @@ export async function runCreateDispatch(
                 : {}),
               cdfGeneratedArtifactsBound: true,
               cdfCanonicalCompletionEstablished: true,
+              cdfCanonicalExecutionId: executionId,
               ...(typeof workingMetadata?.generationFanoutTargetId === "string" &&
               workingMetadata.generationFanoutTargetId.trim()
                 ? {
@@ -3157,6 +3158,7 @@ async function finalizeDeferredDistributedJob(input: {
           ingestOut.genericCanonicalAttach) && {
           cdfGeneratedArtifactsBound: true,
           cdfCanonicalCompletionEstablished: true,
+          cdfCanonicalExecutionId: executionId,
           ...(typeof meta.generationFanoutTargetId === "string" &&
           meta.generationFanoutTargetId.trim()
             ? {

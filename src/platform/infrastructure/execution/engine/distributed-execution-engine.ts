@@ -24,6 +24,7 @@ import {
   DEFAULT_LEASE_TTL_MS,
   DEFAULT_RETRY_POLICY,
   MAX_LEASE_HEARTBEAT_MS,
+  MAX_RECOVERY_AGE_MS,
 } from "../constants";
 import { InMemoryJobStore } from "../persistence/in-memory-job-store";
 import { QueueRegistry } from "../queues/queue-registry";
@@ -344,6 +345,26 @@ export class DistributedExecutionEngine implements IDistributedExecutionEngine {
             this.clockMs()
           );
           for (const job of recovered) {
+            const ageMs = this.clockMs() - Date.parse(job.createdAt);
+            if (Number.isFinite(ageMs) && ageMs > MAX_RECOVERY_AGE_MS) {
+              const reason = `expired before recovery (queued ${Math.round(ageMs / 60_000)} min ago)`;
+              this.deadLetters.move({ ...job, status: "failed", lastError: reason }, reason, this.nowIso());
+              const dlq: ExecutionJob = {
+                ...job,
+                status: "dead_letter",
+                queueKind: "dead_letter",
+                lastError: reason,
+                updatedAt: this.nowIso(),
+                completedAt: this.nowIso(),
+              };
+              this.store.save(dlq);
+              await this.persistJobIfSupported(dlq);
+              this.queues.get("dead_letter").enqueue(dlq.jobId);
+              console.log(
+                `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=expired | ageMin=${Math.round(ageMs / 60_000)}`,
+              );
+              continue;
+            }
             if (this.inFlightJobIds.has(String(job.jobId))) {
               console.log(
                 `[Direct] job recovery skipped | jobId=${String(job.jobId)} | reason=in_flight`,

@@ -24,7 +24,8 @@ function sampleQueued(id: string): ExecutionJob {
     maxAttempts: DEFAULT_RETRY_POLICY.maxAttempts,
     retryPolicy: { ...DEFAULT_RETRY_POLICY, maxAttempts: 1, strategy: "none" },
     progressPercent: 0,
-    createdAt: "2026-09-15T00:00:00.000Z",
+    // Within MAX_RECOVERY_AGE_MS of the tests' clock (06:00).
+    createdAt: "2026-09-15T05:50:00.000Z",
     updatedAt: "2026-09-15T00:00:00.000Z",
     cancelRequested: false,
   };

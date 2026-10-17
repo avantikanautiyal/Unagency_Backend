@@ -178,6 +178,28 @@ export function extractMechanicalBrandColors(
   return extractHexColors(prompt);
 }
 
+/**
+ * Same brief → same brand facts. Each step re-read the brief 2–3 times
+ * (learn-from-brief + run prep), ~2–3 s each; results are cached per org +
+ * brief and concurrent identical requests share one call.
+ */
+const BRAND_EXTRACT_CACHE_TTL_MS = 30 * 60_000;
+const BRAND_EXTRACT_CACHE_MAX = 500;
+const brandExtractCache = new Map<string, { at: number; value: ProductBrandPreferences }>();
+const brandExtractInFlight = new Map<string, Promise<ProductBrandPreferences>>();
+
+function brandExtractCacheKey(organizationId: string, prompt: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createHash } = require("node:crypto") as typeof import("node:crypto");
+  return `${organizationId}:${createHash("sha256").update(prompt).digest("hex")}`;
+}
+
+/** Test seam. */
+export function resetBrandExtractCacheForTests(): void {
+  brandExtractCache.clear();
+  brandExtractInFlight.clear();
+}
+
 export async function extractBrandPreferencesWithLlm(input: {
   readonly integration: IDirectExecutionEngine;
   readonly organizationId: string;
@@ -192,6 +214,40 @@ export async function extractBrandPreferencesWithLlm(input: {
   if (!shouldRunLlm({ prompt, rollout })) {
     return {};
   }
+
+  const key = brandExtractCacheKey(input.organizationId, prompt);
+  const cached = brandExtractCache.get(key);
+  if (cached && Date.now() - cached.at < BRAND_EXTRACT_CACHE_TTL_MS) {
+    return cached.value;
+  }
+  const pending = brandExtractInFlight.get(key);
+  if (pending) return pending;
+  const run = runBrandExtract(input, prompt).then((value) => {
+    if (Object.keys(value).length > 0) {
+      if (brandExtractCache.size >= BRAND_EXTRACT_CACHE_MAX) {
+        const oldest = brandExtractCache.keys().next().value;
+        if (oldest !== undefined) brandExtractCache.delete(oldest);
+      }
+      brandExtractCache.set(key, { at: Date.now(), value });
+    }
+    return value;
+  });
+  brandExtractInFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    brandExtractInFlight.delete(key);
+  }
+}
+
+async function runBrandExtract(
+  input: {
+    readonly integration: IDirectExecutionEngine;
+    readonly organizationId: string;
+    readonly createId?: (prefix: string) => string;
+  },
+  prompt: string,
+): Promise<ProductBrandPreferences> {
 
   const id = input.createId ?? ((p: string) => `${p}_${Date.now()}`);
   const llmPrompt = [

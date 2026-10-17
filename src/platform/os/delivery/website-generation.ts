@@ -461,7 +461,10 @@ export function isCompleteWebsiteHtml(html: string): boolean {
 export function isStrongHtmlStaticDesign(html: string): boolean {
   if (!isCompleteWebsiteHtml(html)) return false;
   const trimmed = html.trim();
-  const imgCount = (trimmed.match(/<img\b/gi) ?? []).length;
+  // <img> tags, or image placeholders the server resolves (src / CSS url()).
+  const imgCount =
+    (trimmed.match(/<img\b/gi) ?? []).length +
+    (trimmed.match(/url\(\s*["']?image:/gi) ?? []).length;
   const hasCss = /<style[\s>]|\.css/i.test(trimmed);
   const hasMotion = /@keyframes|animation\s*:|transition\s*:/i.test(trimmed);
   const structureHits = (
@@ -501,10 +504,16 @@ export function websiteOutputNeedsDesignRetry(
       weak += 1;
       continue;
     }
+    // A recovered WebProject carries its page in files[] (no top-level html);
+    // reading only .html flagged every single-site build as weak and forced
+    // a full extra "design retry" model pass (~1.5 min).
+    const rec = route as Record<string, unknown>;
     const html =
-      typeof (route as Record<string, unknown>).html === "string"
-        ? String((route as Record<string, unknown>).html)
-        : "";
+      typeof rec.html === "string" && rec.html.trim()
+        ? rec.html
+        : Array.isArray(rec.files) && typeof rec.entry === "string"
+          ? (entryFileContent(rec as unknown as WebProjectPlan) ?? "")
+          : "";
     if (!html.trim() || !isStrongHtmlStaticDesign(html)) weak += 1;
   }
   return weak === Math.min(routes.length, 3);

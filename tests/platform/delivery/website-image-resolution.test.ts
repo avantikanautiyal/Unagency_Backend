@@ -87,9 +87,58 @@ describe("website image resolution", () => {
     expect(content).not.toContain("base64,SU1H");
   });
 
+  it("uses the user's attached photos for product slots before generating", async () => {
+    const generatedFor: string[] = [];
+    const { project: out, report } = await resolveWebsiteProjectImages({
+      project: project(),
+      specs: [
+        { id: "hero", alt: "Hero", prompt: "white chikankari kurta on muslin" },
+        { id: "collection", alt: "Kurtis", prompt: "hand-embroidered kurtis on a rail" },
+      ],
+      brandName: "Chikankari Hues",
+      providedImages: [{ base64: "UFJPRA==", mimeType: "image/jpeg" }],
+      generate: async (p) => {
+        generatedFor.push(p);
+        return { base64: "R0VO", mimeType: "image/png" };
+      },
+    });
+    const content = out.files[0]!.content;
+    // Product slot (collection) gets the user's photo; hero is generated.
+    expect(content).toContain('src="data:image/jpeg;base64,UFJPRA=="');
+    expect(report.provided).toBe(1);
+    expect(generatedFor.some((p) => p.includes("hand-embroidered kurtis"))).toBe(false);
+    expect(generatedFor.some((p) => p.includes("white chikankari kurta"))).toBe(true);
+  });
+
   it("stock fallback uses the prompt's keywords", () => {
     expect(stockPhotoUrlForPrompt("hand-embroidered kurtis on a rail", "x")).toMatch(
       /^https:\/\/loremflickr\.com\/1600\/1000\/hand%2Cembroidered%2Ckurtis\?lock=\d+$/,
     );
+  });
+});
+
+import { websiteOutputNeedsDesignRetry } from "../../../src/platform/os/delivery/website-generation";
+
+describe("design retry gate", () => {
+  const strong = `<!DOCTYPE html><html><head><style>.a{transition: all .3s}@keyframes f{}</style></head><body><nav></nav><section><h2>A</h2></section><section><h2>B</h2></section><div style="background:url(image:hero)"></div>${"x".repeat(3000)}</body></html>`;
+
+  it("does not re-run a strong single site whose page is in files[]", () => {
+    // Live: reading only .html flagged every WebProject build as weak → an
+    // extra full model pass (~1.5 min) on every website.
+    expect(
+      websiteOutputNeedsDesignRetry(
+        { title: "S", summary: "", stack: "html-static", entry: "index.html", files: [{ path: "index.html", content: strong }] },
+        "html-static",
+      ),
+    ).toBe(false);
+  });
+
+  it("still retries a genuinely thin page", () => {
+    expect(
+      websiteOutputNeedsDesignRetry(
+        { title: "S", summary: "", stack: "html-static", entry: "index.html", files: [{ path: "index.html", content: "<!DOCTYPE html><html><body>hi</body></html>" }] },
+        "html-static",
+      ),
+    ).toBe(true);
   });
 });

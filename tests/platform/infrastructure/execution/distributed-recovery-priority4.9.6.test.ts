@@ -20,8 +20,9 @@ function sampleJob(id: string, prompt: string): ExecutionJob {
     maxAttempts: DEFAULT_RETRY_POLICY.maxAttempts,
     retryPolicy: DEFAULT_RETRY_POLICY,
     progressPercent: 0,
-    createdAt: "2026-09-03T10:00:00.000Z",
-    updatedAt: "2026-09-03T10:00:00.000Z",
+    // Recent: recovery re-runs only jobs a user could still be waiting on.
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     cancelRequested: false,
   };
 }
@@ -122,6 +123,26 @@ describe("P4.9.6 — distributed worker recovery loop", () => {
     await platform.engine.tick(1);
     expect(getExecuteCount()).toBe(1);
     expect(store.get(asJobId("job_stale496"))?.status).toBe("completed");
+  });
+
+  it("an abandoned job older than the recovery window is not re-run", async () => {
+    // Live: a refine queued 45 min earlier was re-run after each deploy restart.
+    const store = new InMemoryClaimableJobStore();
+    const old = new Date(Date.now() - 45 * 60_000).toISOString();
+    store.save({
+      ...sampleJob("job_old496", "abandoned"),
+      status: "running" as const,
+      reservedBy: "worker_dead" as never,
+      leaseExpiresAt: "2020-01-01T00:00:00.000Z",
+      attempt: 2,
+      createdAt: old,
+      updatedAt: old,
+    });
+    const { platform, getExecuteCount } = createRecoveryPlatform(store);
+
+    await platform.engine.tick(1);
+    expect(getExecuteCount()).toBe(0);
+    expect(store.get(asJobId("job_old496"))?.status).toBe("dead_letter");
   });
 
   it("multiple queued jobs are consumed across ticks without duplicate execution", async () => {

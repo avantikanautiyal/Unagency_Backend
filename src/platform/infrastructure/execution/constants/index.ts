@@ -15,6 +15,12 @@ export const DEFAULT_WORKER_CAPACITY = 2;
  * never expire an active owner's lease and discard a finished generation.
  */
 export const DEFAULT_LEASE_TTL_MS = 600_000;
+/**
+ * A job whose owner died (e.g. a deploy restart) is re-run only while the user
+ * could still be waiting. Older ones were re-run across restarts long after
+ * the chat had moved on, spending provider calls nobody would see.
+ */
+export const MAX_RECOVERY_AGE_MS = 30 * 60_000;
 /** Heartbeat cadence cap — renew often even when the lease TTL is long. */
 export const MAX_LEASE_HEARTBEAT_MS = 15_000;
 export const PRIORITY_SCORES = {

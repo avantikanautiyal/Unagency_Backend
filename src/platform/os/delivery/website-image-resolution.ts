@@ -22,6 +22,8 @@ export type WebsiteImageSpec = { id: string; alt: string; prompt: string };
 
 export type WebsiteImageResolutionReport = {
   referenced: number;
+  /** Slots filled with the user's attached photos. */
+  provided: number;
   generated: number;
   external: number;
   logoSlots: number;
@@ -117,6 +119,12 @@ export async function resolveWebsiteProjectImages(input: {
    * MongoDB's 16 MB document limit ("offset is out of range").
    */
   upload?: (image: VisualImageBytes, id: string) => Promise<string | undefined>;
+  /**
+   * The user's attached photos (e.g. product shots). They fill product /
+   * collection / look slots first, then any remaining non-hero slot — before
+   * anything is generated.
+   */
+  providedImages?: readonly VisualImageBytes[];
   /** Already-resolved images (e.g. the same site's static preview) — no regeneration. */
   reuseUrls?: ReadonlyMap<string, string>;
 }): Promise<{
@@ -160,10 +168,37 @@ export async function resolveWebsiteProjectImages(input: {
 
   const urls = new Map<string, string>(input.reuseUrls ?? []);
   let generated = 0;
+  let provided = 0;
+  const toUrl = async (img: VisualImageBytes, id: string) =>
+    input.upload
+      ? await input.upload(img, id)
+      : `data:${img.mimeType || "image/png"};base64,${img.base64}`;
+
+  // User photos first: product-like slots, then other non-hero slots.
+  const supplied = [...(input.providedImages ?? [])].filter((i) => i.base64);
+  if (supplied.length) {
+    const PRODUCT = /product|collection|catalog|item|kurta|kurti|saree|sari|dress|shirt|suit|card|look|outfit|model|wear|apparel|garment|piece|shop/i;
+    const text = (id: string) => {
+      const s = specById.get(id);
+      return `${id} ${s?.alt ?? ""} ${s?.prompt ?? ""}`;
+    };
+    // Hero / background art is generated; the user's photos go to content slots.
+    const HERO = /\b(hero|banner|background|bg|backdrop)\b/i;
+    const open = imageIds.filter((id) => !urls.has(id) && !HERO.test(`${id} ${specById.get(id)?.alt ?? ""}`));
+    const productSlots = open.filter((id) => PRODUCT.test(text(id)));
+    const otherSlots = open.filter((id) => !PRODUCT.test(text(id)));
+    const order = [...productSlots, ...otherSlots];
+    for (let i = 0; i < order.length && i < supplied.length; i += 1) {
+      const url = await toUrl(supplied[i]!, order[i]!);
+      if (url) {
+        urls.set(order[i]!, url);
+        provided += 1;
+      }
+    }
+  }
   let external = 0;
   await Promise.all(
-    imageIds.map(async (id, index) => {
-      if (urls.has(id)) return;
+    imageIds.filter((id) => !urls.has(id)).map(async (id, index) => {
       const spec = specById.get(id);
       const subject = spec?.prompt || spec?.alt || id.replace(/[-_]+/g, " ");
       if (canGenerate && index < MAX_GENERATED_IMAGES) {
@@ -178,9 +213,7 @@ export async function resolveWebsiteProjectImages(input: {
               .join(". "),
           );
           if (img?.base64) {
-            const url = input.upload
-              ? await input.upload(img, id)
-              : `data:${img.mimeType || "image/png"};base64,${img.base64}`;
+            const url = await toUrl(img, id);
             if (url) {
               urls.set(id, url);
               generated += 1;
@@ -211,7 +244,7 @@ export async function resolveWebsiteProjectImages(input: {
 
   return {
     project: { ...input.project, files: out },
-    report: { referenced: imageIds.length, generated, external, logoSlots },
+    report: { referenced: imageIds.length, provided, generated, external, logoSlots },
     urls,
   };
 }

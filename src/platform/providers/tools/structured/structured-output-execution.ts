@@ -431,6 +431,12 @@ export function withStructuredOutputRequest(
       : isDocumentPlan || isEmailPlan || isCdfStructuredPhaseSchema(schemaName)
         ? 16_384
         : undefined;
+  // Short text steps (route ideas, approval docs) don't need deep reasoning;
+  // lower effort cuts latency on models that think by default. Decks and
+  // website structure keep the model's default effort.
+  const reasoningEffort = LOW_EFFORT_TEXT_STEP_SCHEMAS.has(schemaName)
+    ? ("low" as const)
+    : undefined;
 
   return {
     ...request,
@@ -464,6 +470,7 @@ export function withStructuredOutputRequest(
       ...(largeJsonMaxTokens != null
         ? { maxTokens: largeJsonMaxTokens, max_tokens: largeJsonMaxTokens }
         : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     },
     options: {
       ...(request.options ?? {}),
@@ -471,6 +478,9 @@ export function withStructuredOutputRequest(
       ...(largeJsonMaxTokens != null
         ? { maxTokens: largeJsonMaxTokens, max_tokens: largeJsonMaxTokens }
         : {}),
+      // Adapters read parameters from options (ProviderExecutionRequest has no
+      // parameters field).
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     },
   };
 }
@@ -1945,6 +1955,14 @@ async function runWebsitePageRelevanceGate(input: {
  * layout) carry whole sections. Provider defaults (Anthropic: 4096 tokens)
  * truncated them mid-object → schema-invalid → the stage failed.
  */
+/** CDF text steps whose output is short structured copy (see reasoningEffort). */
+const LOW_EFFORT_TEXT_STEP_SCHEMAS = new Set([
+  "CdfCreativeDirections",
+  "CdfStructuredApprovalDoc",
+  "CdfSocialMediaRoutes",
+  "CdfPackagingRoutes",
+]);
+
 function isCdfStructuredPhaseSchema(schemaName: string): boolean {
   return /^Cdf[A-Z]/.test(schemaName);
 }

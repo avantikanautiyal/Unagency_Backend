@@ -78,9 +78,11 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
     },
   ],
   website: [
-    // Prefer Claude Opus 5.5 for site code; GPT-5.5 is the first failover.
-    { providerId: "provider.anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
+    // GPT-5.5 first: a complete multi-page site takes it ~1.5–3 min, while
+    // Claude Opus 5.5 ran past the 5-min provider timeout (5 min lost before
+    // failover on every build). Opus stays as the first failover.
     { providerId: "provider.openai", modelId: "gpt-5.5", label: "Codex / GPT-5.5" },
+    { providerId: "provider.anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
     { providerId: "provider.gemini", modelId: "gemini-pro-latest", label: "Gemini 2.5 Pro" },

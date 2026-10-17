@@ -155,6 +155,16 @@ export function mapCanonicalToAnthropicRequest(
     max_tokens: effectiveMaxTokens,
     messages: anthropicMessages,
   };
+  // Effort (output_config.effort) — only models that accept it; Sonnet 4.5 /
+  // Haiku 4.5 return an error, and they don't think unless asked anyway.
+  const effort =
+    typeof params.reasoningEffort === "string" ? params.reasoningEffort : "";
+  if (
+    /^(low|medium|high)$/.test(effort) &&
+    (claude5 || /^claude-(opus-4-[5-9]|sonnet-4-[6-9])(-|$)/.test(wireModelId))
+  ) {
+    body.output_config = { effort };
+  }
 
   if (structuredTool) {
     body.tools = [

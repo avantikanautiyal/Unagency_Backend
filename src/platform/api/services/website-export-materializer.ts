@@ -471,6 +471,36 @@ function contentOnlyForStaticPreview(data: unknown): unknown {
   return strip(data);
 }
 
+/** Attached images in execution metadata (data URLs), excluding the brand logo. */
+function attachedContentImagesFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): { base64: string; mimeType: string }[] {
+  if (!metadata) return [];
+  const logoIds = new Set(
+    ["logoAssetId", "brandLogoAssetId", "vaultLogoChoice"]
+      .map((k) => metadata[k])
+      .filter((v): v is string => typeof v === "string" && Boolean(v.trim()))
+      .map((v) => v.replace(/^vault_logo:/, "").trim()),
+  );
+  const assets = Array.isArray(metadata.assets) ? metadata.assets : [];
+  const out: { base64: string; mimeType: string }[] = [];
+  const seen = new Set<string>();
+  for (const a of assets) {
+    if (!a || typeof a !== "object") continue;
+    const rec = a as Record<string, unknown>;
+    const id = typeof rec.assetId === "string" ? rec.assetId : typeof rec.id === "string" ? rec.id : "";
+    if (id && (logoIds.has(id) || seen.has(id))) continue;
+    const role = `${rec.semanticReferenceRole ?? ""} ${rec.explicitRole ?? ""} ${rec.brandAssetRole ?? ""} ${rec.role ?? ""}`;
+    if (/logo|identity_mark/i.test(role)) continue;
+    const url = typeof rec.url === "string" ? rec.url : "";
+    const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(url);
+    if (!m) continue;
+    if (id) seen.add(id);
+    out.push({ mimeType: m[1]!, base64: m[2]! });
+  }
+  return out.slice(0, 12);
+}
+
 export async function materializeWebsiteExport(input: {
   readonly asyncMedia: AsyncMediaPlatform;
   readonly executionId: string;
@@ -567,6 +597,8 @@ export async function materializeWebsiteExport(input: {
   const materialized: MaterializedRoute[] = [];
   let outputOffset = 0;
   const logoDataUrl = referenceLogo ? toDataUrl(referenceLogo) : undefined;
+  // The user's attached photos (product shots etc.) — never the logo.
+  const providedImages = attachedContentImagesFromMetadata(input.metadata);
   // Generated images are stored as files and linked (never embedded).
   let imageOutputIndex = 100;
   const uploadSiteImage = async (
@@ -626,6 +658,7 @@ export async function materializeWebsiteExport(input: {
       logoDataUrl,
       deps: visualDeps,
       upload: uploadSiteImage,
+      providedImages,
     });
     console.info(
       JSON.stringify({

@@ -69,6 +69,24 @@ describe("website image resolution", () => {
     expect(content).toContain("data:image/svg+xml;base64,");
   });
 
+  it("uploads generated images and links them — never embeds (16 MB record limit)", async () => {
+    const uploaded: string[] = [];
+    const { project: out } = await resolveWebsiteProjectImages({
+      project: project(),
+      specs: [{ id: "hero", alt: "Hero", prompt: "white chikankari kurta" }],
+      brandName: "Chikankari Hues",
+      generate: async () => ({ base64: "SU1H", mimeType: "image/png" }),
+      upload: async (_img, id) => {
+        uploaded.push(id);
+        return `/site-assets/art_${id}?t=x`;
+      },
+    });
+    const content = out.files[0]!.content;
+    expect(uploaded.sort()).toEqual(["auto_1", "collection", "hero"]);
+    expect(content).toContain("url(/site-assets/art_hero?t=x)");
+    expect(content).not.toContain("base64,SU1H");
+  });
+
   it("stock fallback uses the prompt's keywords", () => {
     expect(stockPhotoUrlForPrompt("hand-embroidered kurtis on a rail", "x")).toMatch(
       /^https:\/\/loremflickr\.com\/1600\/1000\/hand%2Cembroidered%2Ckurtis\?lock=\d+$/,

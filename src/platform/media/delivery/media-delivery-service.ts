@@ -245,6 +245,26 @@ export class MediaDeliveryService {
     return success(Buffer.from(got.value.data, "base64"));
   }
 
+  /** Image file referenced by a hosted website (signed /site-assets link). */
+  async readHostedSiteImage(
+    artifactId: string,
+  ): Promise<Result<{ bytes: Buffer; contentType: string }>> {
+    if (!this.blobStorage) {
+      return failure(new ValidationError("Blob storage unavailable for media delivery"));
+    }
+    const rec = await this.artifacts.get(artifactId);
+    if (!rec || !rec.artifact.label.startsWith("blob:")) {
+      return failure(new NotFoundError("Image not found"));
+    }
+    const got = await this.blobStorage.get(parseStorageRefKey(rec.artifact.label));
+    if (!got.ok) return got;
+    const contentType = got.value?.contentType ?? "";
+    if (!got.value || !/^image\//i.test(contentType)) {
+      return failure(new NotFoundError("Image not found"));
+    }
+    return success({ bytes: Buffer.from(got.value.data, "base64"), contentType });
+  }
+
   /**
    * ZIP several tenant-owned artifacts (raster → PNG/JPG/PDF) and return a
    * short-lived tokenized download URL for the archive.

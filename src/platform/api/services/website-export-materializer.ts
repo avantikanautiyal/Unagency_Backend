@@ -567,6 +567,48 @@ export async function materializeWebsiteExport(input: {
   const materialized: MaterializedRoute[] = [];
   let outputOffset = 0;
   const logoDataUrl = referenceLogo ? toDataUrl(referenceLogo) : undefined;
+  // Generated images are stored as files and linked (never embedded).
+  let imageOutputIndex = 100;
+  const uploadSiteImage = async (
+    image: { base64: string; mimeType: string },
+  ): Promise<string | undefined> => {
+    try {
+      const outputIndex = imageOutputIndex++;
+      const operationId = input.createId("webimg");
+      const artifactId = input.asyncMedia.artifacts.buildArtifactId(
+        operationId,
+        outputIndex,
+      );
+      const ingested = await input.asyncMedia.ingestion.ingest({
+        organizationId: input.organizationId,
+        executionId: input.executionId,
+        artifactId,
+        outputIndex,
+        base64: image.base64,
+        mimeType: image.mimeType || "image/png",
+      });
+      if (!ingested.ok) return undefined;
+      await input.asyncMedia.artifacts.finalize({
+        operationId,
+        executionId: input.executionId,
+        organizationId: input.organizationId,
+        outputIndex,
+        blob: ingested.value,
+        providerId: input.providerId ?? "provider.unagency",
+        modelId: input.modelId ?? "website-image",
+        capabilityId: "output.landing_page",
+      });
+      const { hostedSiteAssetUrl } = await import(
+        "../../media/delivery/hosted-site-links"
+      );
+      return hostedSiteAssetUrl(artifactId);
+    } catch (err) {
+      console.warn(
+        `[website-export] image upload failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return undefined;
+    }
+  };
   for (const [routeIndex, project] of routes.slice(0, 3).entries()) {
     // Every image the design references → a real image (generated, then a
     // keyword-matched stock photo); logo slots → the vault logo.
@@ -583,6 +625,7 @@ export async function materializeWebsiteExport(input: {
       brandColors: opts.brandColors,
       logoDataUrl,
       deps: visualDeps,
+      upload: uploadSiteImage,
     });
     console.info(
       JSON.stringify({

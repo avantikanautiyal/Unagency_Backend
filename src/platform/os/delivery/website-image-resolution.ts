@@ -111,6 +111,12 @@ export async function resolveWebsiteProjectImages(input: {
   deps?: BestEffortVisualImageDeps;
   /** Test seam. */
   generate?: (prompt: string) => Promise<VisualImageBytes | undefined>;
+  /**
+   * Stores a generated image and returns its public URL. Pages must link to
+   * stored files: embedding 6+ images as data URLs pushed the run record past
+   * MongoDB's 16 MB document limit ("offset is out of range").
+   */
+  upload?: (image: VisualImageBytes, id: string) => Promise<string | undefined>;
   /** Already-resolved images (e.g. the same site's static preview) — no regeneration. */
   reuseUrls?: ReadonlyMap<string, string>;
 }): Promise<{
@@ -172,9 +178,14 @@ export async function resolveWebsiteProjectImages(input: {
               .join(". "),
           );
           if (img?.base64) {
-            urls.set(id, `data:${img.mimeType || "image/png"};base64,${img.base64}`);
-            generated += 1;
-            return;
+            const url = input.upload
+              ? await input.upload(img, id)
+              : `data:${img.mimeType || "image/png"};base64,${img.base64}`;
+            if (url) {
+              urls.set(id, url);
+              generated += 1;
+              return;
+            }
           }
         } catch {
           // fall through to stock

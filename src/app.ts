@@ -172,6 +172,32 @@ app.get("/sites/:artifactId", async (req, res) => {
   return res.status(200).send(html.value);
 });
 
+// Images used by a generated website (signed, image types only).
+app.get("/site-assets/:artifactId", async (req, res) => {
+  const { verifySiteLinkToken } = await import(
+    "./platform/media/delivery/hosted-site-links"
+  );
+  const artifactId = String(req.params.artifactId ?? "").trim();
+  if (!artifactId || !verifySiteLinkToken(artifactId, req.query.t)) {
+    return res.status(404).type("text/plain").send("Image not found");
+  }
+  const media = enterpriseApiRuntime?.platform?.durableStores?.asyncMedia?.mediaDelivery;
+  if (!media) {
+    return res.status(503).type("text/plain").send("Image temporarily unavailable");
+  }
+  const image = await media.readHostedSiteImage(artifactId);
+  if (!image.ok) {
+    return res.status(404).type("text/plain").send("Image not found");
+  }
+  res.set({
+    "Content-Type": image.value.contentType,
+    "X-Content-Type-Options": "nosniff",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "Cache-Control": "public, max-age=86400, immutable",
+  });
+  return res.status(200).send(image.value.bytes);
+});
+
 app.use("/razorpay", razorpayRouter);
 
 app.use("/", helloWorldRouter);

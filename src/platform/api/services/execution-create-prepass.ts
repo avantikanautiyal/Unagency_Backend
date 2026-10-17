@@ -1593,7 +1593,9 @@ export async function runCreatePrepass(
       }
     }
 
-    // Web Tech — configure WebsiteRoutes only when authoritative kind is website.
+    // Web Tech — one complete site (WebProject) when authoritative kind is
+    // website. Three sites per request overflowed the model's output budget
+    // (max_tokens twice ≈ 8 min) before falling back.
     // Never force outputKind from product catalog after CDF authority.
     if (
       authoritativeKind === "deferred_website" &&
@@ -1601,8 +1603,8 @@ export async function runCreatePrepass(
       !cdfAuthoritySealed
     ) {
       const structuredOutput = {
-        name: "WebsiteRoutes",
-        schema: WEBSITE_ROUTES_STRUCTURED_SCHEMA as unknown as Record<
+        name: "WebProject",
+        schema: WEB_PROJECT_STRUCTURED_SCHEMA as unknown as Record<
           string,
           unknown
         >,

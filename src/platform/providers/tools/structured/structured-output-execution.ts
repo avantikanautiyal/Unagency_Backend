@@ -411,12 +411,20 @@ export function withStructuredOutputRequest(
   const websiteStack = isWebsitePage
     ? websiteContextFromMetadata(request.metadata, priorPrompt).stack
     : null;
+  // A truncation retry carries a larger budget (see tool-continuation-orchestrator).
+  const websiteMaxTokensOverride =
+    typeof request.metadata?.websiteMaxTokensOverride === "number" &&
+    request.metadata.websiteMaxTokensOverride > 0
+      ? request.metadata.websiteMaxTokensOverride
+      : undefined;
   const largeJsonMaxTokens =
-    isWebsitePage
+    isWebsitePage && websiteMaxTokensOverride
+      ? websiteMaxTokensOverride
+      : isWebsitePage
       ? websiteStack === "html-static"
         ? schemaName === "WebsiteRoutes"
           ? 24_576
-          : 16_384
+          : 32_768
         : schemaName === "WebsiteRoutes"
           ? 8_192
           : 4_096

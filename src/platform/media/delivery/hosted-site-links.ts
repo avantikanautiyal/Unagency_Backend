@@ -44,6 +44,13 @@ export function hostedSitePath(artifactId: string): string {
   return `/sites/${encodeURIComponent(artifactId)}?t=${siteLinkToken(artifactId)}`;
 }
 
+/** Signed link to an image a hosted website uses (served by /site-assets). */
+export function hostedSiteAssetUrl(artifactId: string): string {
+  const path = `/site-assets/${encodeURIComponent(artifactId)}?t=${siteLinkToken(artifactId)}`;
+  const origin = process.env.ENTERPRISE_PUBLIC_API_ORIGIN?.trim().replace(/\/$/, "");
+  return origin && /^https?:\/\//i.test(origin) ? `${origin}${path}` : path;
+}
+
 /** Absolute link when the public API origin is configured. */
 export function hostedSiteUrl(artifactId: string): string | undefined {
   const origin = process.env.ENTERPRISE_PUBLIC_API_ORIGIN?.trim().replace(/\/$/, "");

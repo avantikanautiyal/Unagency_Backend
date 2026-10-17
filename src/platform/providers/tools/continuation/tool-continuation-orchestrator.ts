@@ -342,9 +342,13 @@ ${stackHint}`.trim();
               multiRoute,
               isRetry: true,
             });
+            // Cut off by the output limit: retry the same site once with a
+            // larger budget (the 32k default includes the model's thinking).
+            // Otherwise (invalid shape) ask for a compact rebuild.
+            const retryMaxTokens = truncatedByLength ? 64_000 : undefined;
             const retryPrompt = `${basePrompt}
 
-[COMPLETENESS RETRY] Previous output was truncated or invalid. Emit a MINIMAL complete ${multiRoute ? "WebsiteRoutes" : "WebProject"} JSON now.
+[COMPLETENESS RETRY] Previous output was ${truncatedByLength ? "cut off before </html>. Emit the COMPLETE" : "truncated or invalid. Emit a MINIMAL complete"} ${multiRoute ? "WebsiteRoutes" : "WebProject"} JSON now${truncatedByLength ? " — keep the design and every page, finish every tag" : ""}.
 stack MUST be "${webCtx.stack}". No markdown fences.
 
 ${stackHint}`.trim();
@@ -355,6 +359,7 @@ ${stackHint}`.trim();
                 ...(enrichedProviderRequest.metadata ?? {}),
                 websiteCompletenessRetried: true,
                 websiteDesignRetried: true,
+                ...(retryMaxTokens ? { websiteMaxTokensOverride: retryMaxTokens } : {}),
                 preferredWebStack: webCtx.stack,
                 webStack: webCtx.stack,
                 preferredStack: webCtx.stack,

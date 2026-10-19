@@ -413,7 +413,7 @@ export function normalizePackagingCompletePack(
     dielineRef: PackagingExactRef;
     routesRef: PackagingExactRef;
     threeDDirectionRef: PackagingExactRef;
-    frontPackRef: PackagingExactRef;
+    frontPackRef?: PackagingExactRef;
   },
 ): PackagingCompletePackData {
   const root = unwrapProviderEnvelope(
@@ -474,10 +474,14 @@ export function normalizePackagingCompletePack(
       ...requireExactRef(opts.threeDDirectionRef, "threeDDirectionRef"),
       artifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
     },
-    frontPackRef: {
-      ...requireExactRef(opts.frontPackRef, "frontPackRef"),
-      artifactKey: PACKAGING_ARTIFACT_KEYS.frontPack,
-    },
+    ...(opts.frontPackRef
+      ? {
+          frontPackRef: {
+            ...opts.frontPackRef,
+            artifactKey: PACKAGING_ARTIFACT_KEYS.frontPack,
+          },
+        }
+      : {}),
   };
 }
 
@@ -659,7 +663,7 @@ export function normalizeToPackagingData(
           opts.threeDDirectionRef,
           "threeDDirectionRef",
         ),
-        frontPackRef: requireExactRef(opts.frontPackRef, "frontPackRef"),
+        frontPackRef: opts.frontPackRef,
       }) as unknown as Record<string, unknown>;
     case PACKAGING_ARTIFACT_KEYS.views:
       return normalizePackagingViews(raw, {

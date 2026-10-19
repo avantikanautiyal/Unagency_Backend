@@ -193,14 +193,14 @@ export const SEEDANCE_VIDEO_SPEC: VerifiedVideoProviderSpec = {
   canonicalProviderId: "provider.seedance",
   vendor: "seedance",
   displayName: "Seedance",
-  // WaveSpeed hosts Seedance 2.0; keys are wsk_live_…
-  baseUrl: "https://api.wavespeed.ai",
+  // seedanceapi.org v2 — https://seedanceapi.org/docs/v2
+  baseUrl: "https://seedanceapi.org",
   credentialEnvVar: "SEEDANCE_API_KEY",
   enableEnvVar: "SEEDANCE_ENABLED",
   liveSmokeEnvVar: "RUN_LIVE_SEEDANCE_VIDEO_SMOKE",
   vendorApiVerified: true,
   inventoryModelId: "seedance-2",
-  wireModelId: "bytedance/seedance-2.0/text-to-video",
+  wireModelId: "seedance-2.0",
   supportsTextToVideo: true,
   supportsImageToVideo: true,
   createProtocol: () => new SeedanceVideoProtocol(),

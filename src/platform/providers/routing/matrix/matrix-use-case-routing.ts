@@ -126,7 +126,6 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
 
 /** Paused in production — excluded from LIVE video routing (credits, auth, or prompt limits). */
 export const PAUSED_VIDEO_PROVIDER_IDS: ReadonlySet<string> = new Set([
-  "provider.seedance",
   "provider.runway",
   "provider.google",
   "provider.pixverse",
@@ -146,15 +145,22 @@ export const LUMA_VIDEO_PREF: MatrixProviderPref = {
   label: "Luma Ray 2",
 };
 
+export const SEEDANCE_VIDEO_PREF: MatrixProviderPref = {
+  providerId: "provider.seedance",
+  modelId: "seedance-2",
+  label: "Seedance 2.0",
+};
+
 export const MINIMAX_VIDEO_PREF: MatrixProviderPref = {
   providerId: "provider.minimax",
   modelId: "hailuo-ai",
   label: "Hailuo AI",
 };
 
-/** Active LIVE video engines — Luma, MiniMax (Kling paused: no credits). */
+/** Active LIVE video engines — Luma, Seedance, MiniMax (Kling paused: no credits). */
 export const ACTIVE_VIDEO_PROVIDER_PREFERENCES: readonly MatrixProviderPref[] = [
   LUMA_VIDEO_PREF,
+  SEEDANCE_VIDEO_PREF,
   MINIMAX_VIDEO_PREF,
 ];
 
@@ -163,45 +169,44 @@ export const VIDEO_USE_CASE_PREFERENCES: Record<
   readonly MatrixProviderPref[]
 > = {
   commercial_ad: [
-    KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
   filmmaking: [
-    KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
   cinematic: [
-    KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
   product: [
-    LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
-    KLING_VIDEO_PREF,
+    LUMA_VIDEO_PREF,
   ],
   short_form: [
     MINIMAX_VIDEO_PREF,
-    KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
   ],
-  fast: [MINIMAX_VIDEO_PREF, KLING_VIDEO_PREF, LUMA_VIDEO_PREF],
+  fast: [MINIMAX_VIDEO_PREF, LUMA_VIDEO_PREF, SEEDANCE_VIDEO_PREF],
   marketing: [
-    KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
   fashion: [
+    SEEDANCE_VIDEO_PREF,
     LUMA_VIDEO_PREF,
-    KLING_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
-  /** Declared fanout identity includes Kling; PAUSED filters execution. */
   general: [
-    KLING_VIDEO_PREF,
     LUMA_VIDEO_PREF,
+    SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
   ],
 };

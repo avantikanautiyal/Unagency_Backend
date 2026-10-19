@@ -69,7 +69,7 @@ export function assertPackagingUpstreamExactRefs(
   ]);
   if (!keysNeedingDeps.has(artifactKey)) return;
 
-  // complete-pack requires all four exact pins
+  // complete-pack requires dieline/routes/3d-direction pins; frontPackRef only on legacy versions
   if (artifactKey === PACKAGING_ARTIFACT_KEYS.completePack) {
     assertExactRef("dielineRef", data.dielineRef as ExactRef, ownership);
     assertExactRef("routesRef", data.routesRef as ExactRef, ownership);
@@ -78,7 +78,9 @@ export function assertPackagingUpstreamExactRefs(
       data.threeDDirectionRef as ExactRef,
       ownership,
     );
-    assertExactRef("frontPackRef", data.frontPackRef as ExactRef, ownership);
+    if (data.frontPackRef) {
+      assertExactRef("frontPackRef", data.frontPackRef as ExactRef, ownership);
+    }
     return;
   }
 

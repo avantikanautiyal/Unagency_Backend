@@ -123,12 +123,10 @@ describe("video fanout planning", () => {
     assert.equal(plan.disableCrossProviderFailover, true);
     const ids = new Set(plan.targets.map((t) => t.providerId));
     assert.equal(ids.size, plan.targets.length);
-    const kling = plan.targets.find((t) => t.providerId === "provider.kling");
-    assert.equal(kling?.availability, "unavailable");
     const live = plan.targets.filter((t) => t.availability === "selected");
     assert.deepEqual(
       live.map((t) => t.providerId).sort(),
-      ["provider.luma", "provider.minimax"],
+      ["provider.luma", "provider.minimax", "provider.seedance"],
     );
   });
 });

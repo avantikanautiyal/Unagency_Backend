@@ -202,7 +202,8 @@ export type PackagingCompletePackData = {
   dielineRef: PackagingExactArtifactRef;
   routesRef: PackagingExactArtifactRef;
   threeDDirectionRef: PackagingExactArtifactRef;
-  frontPackRef: PackagingExactArtifactRef;
+  /** Present only on versions created before front-pack was removed. */
+  frontPackRef?: PackagingExactArtifactRef;
   sourceRefs?: PackagingSourceRefs;
 };
 

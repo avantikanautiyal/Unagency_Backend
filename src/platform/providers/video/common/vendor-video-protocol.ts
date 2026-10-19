@@ -45,6 +45,8 @@ export interface IVendorVideoProtocol {
   readonly verified: true;
   readonly supportsCancellation: boolean;
   readonly supportsIdempotencyHeader: boolean;
+  /** Vendor fetches images itself — inline data: URLs must be staged to signed http(s) URLs. */
+  readonly requiresHttpImageInputs?: boolean;
 
   /** Canonical inventory model suffix → vendor wire model id */
   resolveWireModel(canonicalModelId: string): string | undefined;

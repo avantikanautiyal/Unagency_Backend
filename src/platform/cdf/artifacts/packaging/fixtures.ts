@@ -281,8 +281,7 @@ export function fixturePackagingCompletePack(opts?: {
   const threeDArtifactId =
     opts?.threeDArtifactId ?? PACKAGING_FIXTURE_IDS.threeDArtifactId;
   const threeDVersion = opts?.threeDVersion ?? 1;
-  const frontArtifactId =
-    opts?.frontArtifactId ?? PACKAGING_FIXTURE_IDS.frontArtifactId;
+  const frontArtifactId = opts?.frontArtifactId;
   const frontVersion = opts?.frontVersion ?? 1;
   return {
     schemaId: packagingSchemaId(PACKAGING_ARTIFACT_KEYS.completePack),
@@ -307,11 +306,15 @@ export function fixturePackagingCompletePack(opts?: {
       version: threeDVersion,
       artifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
     },
-    frontPackRef: {
-      artifactId: frontArtifactId,
-      version: frontVersion,
-      artifactKey: PACKAGING_ARTIFACT_KEYS.frontPack,
-    },
+    ...(frontArtifactId
+      ? {
+          frontPackRef: {
+            artifactId: frontArtifactId,
+            version: frontVersion,
+            artifactKey: PACKAGING_ARTIFACT_KEYS.frontPack,
+          },
+        }
+      : {}),
     sourceRefs: {
       upstreamArtifactRefs: [
         {
@@ -329,11 +332,15 @@ export function fixturePackagingCompletePack(opts?: {
           version: threeDVersion,
           artifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
         },
-        {
-          artifactId: frontArtifactId,
-          version: frontVersion,
-          artifactKey: PACKAGING_ARTIFACT_KEYS.frontPack,
-        },
+        ...(frontArtifactId
+          ? [
+              {
+                artifactId: frontArtifactId,
+                version: frontVersion,
+                artifactKey: PACKAGING_ARTIFACT_KEYS.frontPack,
+              },
+            ]
+          : []),
       ],
     },
   };

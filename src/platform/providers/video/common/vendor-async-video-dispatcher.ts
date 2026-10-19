@@ -238,9 +238,32 @@ export class VendorAsyncVideoDispatcher implements IAsyncProviderDispatcher {
         blobAccess: this.blobAccess,
       });
       if (!resolved.ok) return resolved;
-      urls.push(resolved.value);
+      urls.push(await this.stageInlineIfNeeded(resolved.value, request));
     }
     return success(urls);
+  }
+
+  /** Storyboard panels arrive as data: URLs; some vendors only fetch http(s). */
+  private async stageInlineIfNeeded(
+    url: string,
+    request: ProviderExecutionRequest
+  ): Promise<string> {
+    if (!this.protocol.requiresHttpImageInputs || !/^data:/i.test(url) || !this.blobAccess) {
+      return url;
+    }
+    const executionId = String(request.context.executionId ?? "unscoped");
+    const staged = await this.blobAccess.stageInlineProviderInput({
+      dataUrl: url,
+      organizationId: String(request.context.organizationId),
+      keyPrefix: `executions/${executionId}/provider-inputs`,
+    });
+    if (!staged.ok) {
+      console.warn(
+        `[video-dispatch] ${this.protocol.vendorId} inline image staging failed: ${staged.error.message}`
+      );
+      return url;
+    }
+    return staged.value;
   }
 
   private withQuery(path: string, query?: Readonly<Record<string, string>>): string {

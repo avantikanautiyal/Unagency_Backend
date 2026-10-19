@@ -390,11 +390,12 @@ export function validatePackagingCompletePackData(
     "dielineRef",
     "routesRef",
     "threeDDirectionRef",
-    "frontPackRef",
   ] as const) {
     const r = assertExactArtifactRef(data[path], path, true);
     if (!r.ok) return r;
   }
+  const fp = assertExactArtifactRef(data.frontPackRef, "frontPackRef", false);
+  if (!fp.ok) return fp;
   return validateSourceRefs(data.sourceRefs, "sourceRefs");
 }
 

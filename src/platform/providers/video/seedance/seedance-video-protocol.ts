@@ -1,7 +1,7 @@
 /**
- * Seedance 2.0 via WaveSpeed AI (API keys use wsk_live_… prefix).
- * Submit: POST /api/v3/bytedance/seedance-2.0/text-to-video
- * Poll:   GET  /api/v3/predictions/{id}/result
+ * Seedance 2.0 via seedanceapi.org (v2). Docs: https://seedanceapi.org/docs/v2
+ * Submit: POST /v2/generate
+ * Poll:   GET  /v2/status?task_id={id}
  */
 
 import { failure, success, type Result } from "../../../core/result";
@@ -20,9 +20,23 @@ import type {
 } from "../common/vendor-video-protocol";
 
 const WIRE_MODELS: Record<string, string> = {
-  "seedance-2": "bytedance/seedance-2.0/text-to-video",
-  "seedance-2.0": "bytedance/seedance-2.0/text-to-video",
-  "seedance-2-i2v": "bytedance/seedance-2.0/image-to-video",
+  "seedance-2": "seedance-2.0",
+  "seedance-2.0": "seedance-2.0",
+  "seedance-2-i2v": "seedance-2.0",
+  "seedance-2.0-fast": "seedance-2.0-fast",
+};
+
+const PROMPT_MAX_CHARS = 2000;
+const ALLOWED_DURATIONS = [5, 10, 15] as const;
+/** 2.0 accepts only these ratios; other ratios map to the closest shape. */
+const ASPECT_RATIOS: Record<string, string> = {
+  "16:9": "16:9",
+  "9:16": "9:16",
+  "4:3": "4:3",
+  "3:4": "3:4",
+  "1:1": "3:4",
+  "4:5": "3:4",
+  "21:9": "16:9",
 };
 
 function unwrapData(body: Readonly<Record<string, unknown>>): Record<string, unknown> {
@@ -33,11 +47,25 @@ function unwrapData(body: Readonly<Record<string, unknown>>): Record<string, unk
   return body as Record<string, unknown>;
 }
 
+function snapDuration(raw: unknown): number {
+  const n =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number(raw.replace(/s$/i, ""))
+        : 5;
+  if (!Number.isFinite(n)) return 5;
+  return ALLOWED_DURATIONS.reduce((best, d) =>
+    Math.abs(d - n) < Math.abs(best - n) ? d : best,
+  );
+}
+
 export class SeedanceVideoProtocol implements IVendorVideoProtocol {
   readonly vendorId = "seedance";
   readonly verified = true as const;
   readonly supportsCancellation = false;
   readonly supportsIdempotencyHeader = false;
+  readonly requiresHttpImageInputs = true;
 
   resolveWireModel(canonicalModelId: string): string | undefined {
     const suffix = canonicalModelId.includes("/")
@@ -66,62 +94,43 @@ export class SeedanceVideoProtocol implements IVendorVideoProtocol {
   ): Result<VendorSubmitPlan> {
     const prompt =
       typeof request.payload.prompt === "string"
-        ? request.payload.prompt
-        : undefined;
+        ? request.payload.prompt.trim()
+        : "";
     if (!prompt) {
       return failure(new ValidationError("prompt required for Seedance video"));
     }
 
-    const durationRaw = request.payload.duration;
-    let duration =
-      typeof durationRaw === "number"
-        ? durationRaw
-        : typeof durationRaw === "string"
-          ? Number(durationRaw.replace(/s$/i, ""))
-          : 5;
-    if (!Number.isFinite(duration)) duration = 5;
-    duration = Math.max(4, Math.min(15, Math.round(duration)));
-
-    const aspectRatio =
+    const requestedRatio =
       typeof request.payload.aspectRatio === "string"
-        ? request.payload.aspectRatio
+        ? request.payload.aspectRatio.trim()
         : "16:9";
 
-    const path = imageUrls.length > 0
-      ? "/api/v3/bytedance/seedance-2.0/image-to-video"
-      : `/api/v3/${wireModel.replace(/^bytedance\//, "bytedance/")}`;
-
-    // Normalize path — wireModel is already "bytedance/seedance-2.0/text-to-video"
-    const submitPath = imageUrls.length > 0
-      ? "/api/v3/bytedance/seedance-2.0/image-to-video"
-      : `/api/v3/${wireModel}`;
-
     const body: Record<string, unknown> = {
-      prompt,
-      aspect_ratio: aspectRatio,
+      prompt: prompt.slice(0, PROMPT_MAX_CHARS),
+      model: wireModel,
+      duration: snapDuration(request.payload.duration),
       resolution: "720p",
-      duration,
-      generate_audio: true,
+      aspect_ratio: ASPECT_RATIOS[requestedRatio] ?? "16:9",
     };
-    if (imageUrls.length > 0) {
-      body.reference_images = imageUrls.slice(0, 9);
-    }
+    // Only http(s) URLs are accepted. A second image would be read as the END
+    // frame, so only the opening frame is sent.
+    const startFrame = imageUrls.find((u) => /^https?:\/\//i.test(u));
+    if (startFrame) body.images = [startFrame];
 
-    void path;
-    return success({
-      method: "POST",
-      path: submitPath,
-      body,
-    });
+    return success({ method: "POST", path: "/v2/generate", body });
   }
 
   parseSubmit(
     body: Readonly<Record<string, unknown>>
   ): Result<ProviderAsyncSubmitResult> {
     const data = unwrapData(body);
-    const id = typeof data.id === "string" ? data.id : undefined;
+    const id = typeof data.task_id === "string" ? data.task_id : undefined;
     if (!id) {
-      return failure(new ValidationError("Seedance submit missing prediction id"));
+      const msg =
+        typeof body.message === "string" && body.message.trim()
+          ? `: ${body.message}`
+          : "";
+      return failure(new ValidationError(`Seedance submit missing task_id${msg}`));
     }
     return success({
       providerJobId: id,
@@ -133,7 +142,7 @@ export class SeedanceVideoProtocol implements IVendorVideoProtocol {
   buildPoll(providerJobId: string): Result<VendorPollPlan> {
     return success({
       method: "GET",
-      path: `/api/v3/predictions/${encodeURIComponent(providerJobId)}/result`,
+      path: `/v2/status?task_id=${encodeURIComponent(providerJobId)}`,
     });
   }
 
@@ -141,59 +150,44 @@ export class SeedanceVideoProtocol implements IVendorVideoProtocol {
     body: Readonly<Record<string, unknown>>
   ): Result<ProviderAsyncPollResult> {
     const data = unwrapData(body);
-    const status = String(data.status ?? "").toLowerCase();
+    const status = String(data.status ?? "").toUpperCase();
 
-    if (status === "completed") {
-      const outputs = normalizeOutputs(data.outputs);
+    if (status === "SUCCESS") {
+      const outputs = normalizeOutputs(data.response);
+      if (outputs.length === 0) {
+        return success({
+          status: "failed",
+          errorCode: "provider_failed",
+          errorMessage: "Seedance task succeeded without a video URL",
+        });
+      }
       return success({
         status: "completed",
         outputs,
         safeMetadata: { vendorStatus: status },
       });
     }
-    if (status === "failed" || status === "cancelled" || status === "timeout") {
+    if (status === "FAILED") {
       return success({
         status: "failed",
         errorCode: "provider_failed",
         errorMessage:
-          typeof data.error === "string" && data.error.trim()
-            ? data.error
-            : `Seedance task ${status}`,
+          typeof data.error_message === "string" && data.error_message.trim()
+            ? data.error_message
+            : "Seedance task failed",
       });
     }
-    return success({ status: "pending", nextPollAfterMs: 2500 });
+    return success({ status: "pending", nextPollAfterMs: 5000 });
   }
 }
 
 function normalizeOutputs(raw: unknown): readonly ProviderOperationMediaOutput[] {
-  if (!Array.isArray(raw)) return [];
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
   const out: ProviderOperationMediaOutput[] = [];
-  for (let index = 0; index < raw.length; index += 1) {
-    const item = raw[index];
+  list.forEach((item, index) => {
     if (typeof item === "string" && /^https?:\/\//i.test(item)) {
-      out.push({
-        index,
-        type: "video",
-        mimeType: "video/mp4",
-        temporaryUrl: item,
-      });
-    } else if (item && typeof item === "object") {
-      const rec = item as Record<string, unknown>;
-      const url =
-        typeof rec.url === "string"
-          ? rec.url
-          : typeof rec.video === "string"
-            ? rec.video
-            : undefined;
-      if (url && /^https?:\/\//i.test(url)) {
-        out.push({
-          index,
-          type: "video",
-          mimeType: "video/mp4",
-          temporaryUrl: url,
-        });
-      }
+      out.push({ index, type: "video", mimeType: "video/mp4", temporaryUrl: item });
     }
-  }
+  });
   return out;
 }

@@ -318,7 +318,7 @@ export const PROVIDER_CATALOG_SEED: readonly CatalogProviderEntry[] = [
     displayName: "Seedance",
     department: "video_generation",
     discoveryEndpoint: "/v1/models",
-    baseUrl: "https://api.seedance.ai",
+    baseUrl: "https://seedanceapi.org",
     envVarHint: "SEEDANCE_API_KEY",
     models: [m("Seedance 2", "Marketing videos", "Campaigns")],
   },

@@ -2,6 +2,7 @@
  * Tenant-authoritative blob access — never trust client-supplied organizationId.
  */
 
+import { createHash } from "node:crypto";
 import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
 import { BlobOwnershipRegistry } from "./blob-ownership-registry";
@@ -84,6 +85,31 @@ export class BlobAccessService {
       mimeType: rec.mimeType,
       executionId: rec.executionId,
     });
+  }
+
+  /**
+   * Store an inline (data:) image under the tenant's prefix and return a signed
+   * URL, for providers that only accept http(s) image inputs.
+   */
+  async stageInlineProviderInput(input: {
+    readonly dataUrl: string;
+    readonly organizationId: string;
+    readonly keyPrefix: string;
+  }): Promise<Result<string>> {
+    const match = /^data:([^;,]+);base64,(.+)$/i.exec(input.dataUrl.trim());
+    if (!match) return failure(new ValidationError("Not a base64 data URL"));
+    if (!this.blobStorage?.createSignedGetUrl) {
+      return failure(new ValidationError("Signed URL not available for blob storage backend"));
+    }
+    const mimeType = match[1]!.toLowerCase();
+    const bytes = Buffer.from(match[2]!, "base64");
+    const ext = mimeType.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "bin";
+    const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 24);
+    const key = `tenant/${input.organizationId}/${input.keyPrefix}/${digest}.${ext}`;
+    const put = await this.blobStorage.put(key, bytes, mimeType);
+    if (!put.ok) return put;
+    // Vendors may queue before fetching inputs; outlive a short default TTL.
+    return this.blobStorage.createSignedGetUrl(key, Math.max(this.signedUrlTtlSeconds, 3600));
   }
 
   async createProviderInputSignedUrl(

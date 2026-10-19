@@ -197,7 +197,7 @@ describe("CDF chat lifecycle A→approve→B→approve→reload→C", () => {
     });
     assert.equal(approveB.ok, true);
     if (!approveB.ok) return;
-    assert.equal(approveB.value.session.phaseId, "animation");
+    assert.equal(approveB.value.session.phaseId, "style-preview");
     const nextWorkB = approveB.value.nextWork;
     assert.ok(nextWorkB);
     const versionAfterB = approveB.value.session.sessionVersion;
@@ -210,7 +210,7 @@ describe("CDF chat lifecycle A→approve→B→approve→reload→C", () => {
     // --- Reload (re-hydrate from authoritative session store) ---
     const reloaded = getCdfSession(sessionId)!;
     assert.equal(reloaded.sessionVersion, versionAfterB);
-    assert.equal(reloaded.phaseId, "animation");
+    assert.equal(reloaded.phaseId, "style-preview");
     assert.ok(
       reloaded.approvedArtifacts?.some(
         (a) =>
@@ -232,8 +232,8 @@ describe("CDF chat lifecycle A→approve→B→approve→reload→C", () => {
     );
 
     // Phase C is current after reload — nextWork from last transition remains
-    // the authority for clients (server session phaseId === animation).
-    assert.equal(reloaded.phaseId, "animation");
+    // the authority for clients (server session phaseId === style-preview, the Choose Style step).
+    assert.equal(reloaded.phaseId, "style-preview");
     assert.equal(
       typeof nextWorkB === "object" && nextWorkB && "kind" in nextWorkB
         ? nextWorkB.kind

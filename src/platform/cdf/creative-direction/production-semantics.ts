@@ -212,13 +212,23 @@ export function compactCreativeDirectionSummary(
 /** JSON Schema property bag for optional production fields (LLM emission). */
 export function creativeDirectionProductionSchemaProperties(
   semantics?: CreativeDirectionProductionSemantics | null,
-): Record<string, { type: "string" }> {
-  const props: Record<string, { type: "string" }> = {};
+): Record<string, { type: "string"; description: string }> {
+  const props: Record<string, { type: "string"; description: string }> = {};
   for (const key of productionFieldKeysForSemantics(semantics)) {
-    props[key] = { type: "string" };
+    props[key] = { type: "string", description: PRODUCTION_FIELD_DESCRIPTION };
   }
   return props;
 }
+
+/*
+ * Length guidance per field. Without it the model wrote a paragraph for each of
+ * ~19 fields × 3 routes (thousands of output tokens, ~75 s on Sonnet 4.5).
+ * The card shows name + idea; production fields feed image prompts, where a
+ * short phrase is as useful as a paragraph.
+ */
+const PRODUCTION_FIELD_DESCRIPTION = "A short phrase, at most 15 words.";
+const NAME_FIELD_DESCRIPTION = "Route name, at most 6 words.";
+const CONCEPT_FIELD_DESCRIPTION = "One or two sentences, at most 35 words.";
 
 /**
  * Build a routes[] structured-emission schema from concept required fields +
@@ -231,12 +241,16 @@ export function buildCreativeDirectionRoutesSchema(input: {
   readonly minItems?: number;
   readonly maxItems?: number;
 }): Record<string, unknown> {
-  const properties: Record<string, { type: "string" }> = {};
+  const properties: Record<string, { type: "string"; description: string }> = {};
+  const conceptProperty = (key: string) => ({
+    type: "string" as const,
+    description: key === "name" ? NAME_FIELD_DESCRIPTION : CONCEPT_FIELD_DESCRIPTION,
+  });
   for (const key of input.requiredConceptFields) {
-    properties[key] = { type: "string" };
+    properties[key] = conceptProperty(key);
   }
   for (const key of input.optionalConceptFields ?? []) {
-    if (!properties[key]) properties[key] = { type: "string" };
+    if (!properties[key]) properties[key] = conceptProperty(key);
   }
   Object.assign(
     properties,

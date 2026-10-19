@@ -176,7 +176,7 @@ describe("CDF select_generation_for_continuation", () => {
     resetCdfArtifactEngineForTests();
   });
 
-  it("1 — AVAILABLE creative continuation succeeds and advances to front-pack", () => {
+  it("1 — AVAILABLE creative continuation succeeds and advances to complete-pack", () => {
     const sessionId = `cdf_gc_avail_${Date.now().toString(36)}`;
     const { dieline, routes } = seedUpstream(sessionId);
     const threeD = createArtifact({
@@ -236,7 +236,7 @@ describe("CDF select_generation_for_continuation", () => {
     });
     assert.equal(result.ok, true, JSON.stringify(result));
     if (!result.ok) return;
-    assert.equal(result.value.session.phaseId, "front-pack");
+    assert.equal(result.value.session.phaseId, "complete-pack");
     assert.equal(result.value.nextWork.kind, "generate");
     const cont = result.value.session.generationContinuations?.at(-1);
     assert.ok(cont);
@@ -274,7 +274,7 @@ describe("CDF select_generation_for_continuation", () => {
     });
     assert.equal(result.ok, true, JSON.stringify(result));
     if (!result.ok) return;
-    assert.equal(result.value.session.phaseId, "front-pack");
+    assert.equal(result.value.session.phaseId, "complete-pack");
     const cont = result.value.session.generationContinuations?.at(-1)!;
     assert.equal(cont.visualArtifactId, rawId);
     assert.equal(cont.isDiagnosticRaw, true);
@@ -402,7 +402,7 @@ describe("CDF select_generation_for_continuation", () => {
     assert.ok(cont);
     assert.equal(cont!.visualArtifactId, "art_syncimg_restart_0");
     assert.equal(cont!.generationFanoutTargetId, "fanout_2_openai");
-    assert.equal(reloaded!.phaseId, "front-pack");
+    assert.equal(reloaded!.phaseId, "complete-pack");
     const routesPin = reloaded!.selectedArtifacts?.find(
       (p) => p.phaseId === "routes",
     );
@@ -538,7 +538,7 @@ describe("CDF select_generation_for_continuation", () => {
     assert.doesNotMatch(blob, /take inspiration/i);
   });
 
-  it("13/14 — remote nextWork comes from result.nextWork (front-pack generate)", () => {
+  it("13/14 — remote nextWork comes from result.nextWork (complete-pack generate)", () => {
     const sessionId = `cdf_gc_nw_${Date.now().toString(36)}`;
     const { dieline, routes } = seedUpstream(sessionId);
     const session = saveCdfSession(
@@ -557,10 +557,10 @@ describe("CDF select_generation_for_continuation", () => {
     assert.ok(result.value.nextWork);
     assert.equal(result.value.nextWork.kind, "generate");
     if (result.value.nextWork.kind === "run_generation") {
-      assert.equal(result.value.nextWork.phaseId, "front-pack");
+      assert.equal(result.value.nextWork.phaseId, "complete-pack");
     }
     // Not inventing local nextWork — phase advanced by state machine.
-    assert.equal(result.value.session.phaseId, "front-pack");
+    assert.equal(result.value.session.phaseId, "complete-pack");
   });
 
   it("15 — diagnostic continuation does not create new ArtifactVersion for raw media", () => {

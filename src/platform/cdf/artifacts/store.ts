@@ -342,6 +342,22 @@ export async function ensureCdfArtifactBagLoaded(): Promise<void> {
   await g.__cdfArtifactBagHydratePromise;
 }
 
+/**
+ * Merge one artifact from Mongo into memory when this process never saw it
+ * (created by another process after hydration). Never overwrites memory.
+ */
+export async function refreshCdfArtifactFromMongo(artifactId: string): Promise<void> {
+  try {
+    const { loadCdfArtifactFromMongo } = await import(
+      "../../infrastructure/durability/mongo/models/cdf-artifact.model"
+    );
+    const loaded = await loadCdfArtifactFromMongo(artifactId);
+    if (loaded) hydrateCdfArtifactBagFromSnapshot(loaded);
+  } catch {
+    // Mongo optional for unit tests without a connection
+  }
+}
+
 /** Awaitable flush of the current memory bag (tests + durability-required paths). */
 export async function flushCdfArtifactBagToMongo(): Promise<void> {
   const { persistCdfArtifactBagToMongo } = await import(

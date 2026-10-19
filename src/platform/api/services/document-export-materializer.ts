@@ -685,6 +685,38 @@ export async function materializeDocumentExports(input: {
     // Real images before the file is saved: permanent brand logo, working
     // pictures in place of the model's made-up addresses. Never blocks export.
     let emailHtml = parsed.html;
+    // The client approved a designed email as an image in an earlier stage —
+    // rebuild the HTML from that design so the file matches what was approved.
+    try {
+      const { matchEmailToApprovedDesign } = await import(
+        "../../os/delivery/email-design-match"
+      );
+      const meta = input.metadata ?? {};
+      const matched = await matchEmailToApprovedDesign({
+        plan: parsed,
+        metadata: meta,
+        organizationId: input.organizationId,
+        executionId: input.executionId,
+        brandName:
+          typeof meta.brandName === "string" ? meta.brandName.trim() || undefined : undefined,
+      });
+      if (matched) {
+        emailHtml = matched.html;
+        console.info(
+          JSON.stringify({
+            scope: "email.design_match",
+            event: "applied",
+            executionId: input.executionId,
+            designCount: matched.designCount,
+            cropCount: matched.cropCount,
+          }),
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[email.design_match] failed, keeping generated HTML | executionId=${input.executionId} | ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     try {
       const { resolveEmailImages, productionEmailImageDeps } = await import(
         "../../os/delivery/email-image-resolution"
@@ -692,7 +724,7 @@ export async function materializeDocumentExports(input: {
       const meta = input.metadata ?? {};
       const brandName =
         typeof meta.brandName === "string" ? meta.brandName.trim() : "";
-      const resolved = await resolveEmailImages(parsed.html, {
+      const resolved = await resolveEmailImages(emailHtml, {
         deps: productionEmailImageDeps({
           organizationId: input.organizationId,
           metadata: meta,

@@ -124,6 +124,35 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
   ],
 };
 
+/**
+ * Short CDF text steps (routes, territories, creative directions, approval
+ * docs). Latency matters more than depth here: Sonnet 4.5 took ~75 s for
+ * three routes. Fast models first, in this exact order (vendor repeats are
+ * intended — Sonnet is the last-resort failover after Haiku).
+ */
+export const FAST_TEXT_STEP_PREFERENCES: readonly MatrixProviderPref[] = [
+  { providerId: "provider.anthropic", modelId: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { providerId: "provider.openai", modelId: "gpt-4o", label: "GPT-4o" },
+  { providerId: "provider.gemini", modelId: "gemini-flash-latest", label: "Gemini Flash" },
+  { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+];
+
+/** Structured contracts of the short CDF text steps that use the fast list. */
+const FAST_TEXT_STEP_CONTRACTS: ReadonlySet<string> = new Set([
+  "CdfCreativeDirections",
+  "CdfSocialMediaRoutes",
+  "CdfPackagingRoutes",
+  "CdfStructuredApprovalDoc",
+]);
+
+export function isFastTextStep(metadata?: Readonly<Record<string, unknown>>): boolean {
+  const name =
+    typeof metadata?.cdfAuthorityStructuredOutputName === "string"
+      ? metadata.cdfAuthorityStructuredOutputName.trim()
+      : "";
+  return FAST_TEXT_STEP_CONTRACTS.has(name);
+}
+
 /** Paused in production — excluded from LIVE video routing (credits, auth, or prompt limits). */
 export const PAUSED_VIDEO_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "provider.runway",

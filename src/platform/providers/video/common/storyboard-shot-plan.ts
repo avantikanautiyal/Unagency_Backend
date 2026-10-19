@@ -23,6 +23,8 @@ export type VideoShot = {
   readonly durationSec: number;
   /** Blob storage key of the storyboard panel this shot opens on. */
   readonly panelKey?: string;
+  /** Next shot's panel: providers that accept an end frame land on it, so shots flow together. */
+  readonly endPanelKey?: string;
 };
 
 export type VideoShotPlan = {
@@ -33,7 +35,7 @@ export type VideoShotPlan = {
 
 /** Video model prompts stay short; MiniMax truncates around 2000 chars. */
 const SHOT_PROMPT_MAX_CHARS = 1200;
-const STYLE_NOTE_MAX_CHARS = 300;
+const STYLE_NOTE_MAX_CHARS = 500;
 
 // ── script → scenes ───────────────────────────────────────────────────────
 
@@ -48,35 +50,61 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
-/** Scenes with explicit timings (e.g. "### SCENE 1: TITLE (0–3 seconds)"). */
+/** Heading without timings: "## SCENE 1: THE SIGNAL". */
+const SCENE_TITLE_ONLY = /^#{1,6}\s*(?:\*\*)?\s*(?:scene|shot)\s*(\d+)\s*[:.\-–—]?\s*(.*?)\s*(?:\*\*)?\s*$/i;
+/** Timing line under a heading: "**Duration:** 0:00 - 0:08 (8 seconds)" or "Duration: 0–3s". */
+const DURATION_LINE =
+  /^\s*(?:\*\*)?\s*(?:duration|time|timing)\s*:?\s*(?:\*\*)?\s*:?\s*(\d+(?::\d{1,2})?(?:\.\d+)?)\s*(?:s|sec|secs|seconds)?\s*[–—-]\s*(\d+(?::\d{1,2})?(?:\.\d+)?)/i;
+
+function toSeconds(value: string): number {
+  if (!value.includes(":")) return Number(value);
+  const [m, sec] = value.split(":");
+  return Number(m) * 60 + Number(sec);
+}
+
+/**
+ * Scenes with explicit timings — in the heading ("### SCENE 1: TITLE (0–3 seconds)")
+ * or on a duration line just below it ("**Duration:** 0:00 - 0:08").
+ */
 export function parseScriptScenes(script: string): ScriptScene[] {
   const lines = script.split(/\r?\n/);
   const heads: { line: number; scene: Omit<ScriptScene, "visual"> }[] = [];
   lines.forEach((line, i) => {
     const m = SCENE_HEADING.exec(line.trim());
-    if (!m) return;
-    const startSec = Number(m[3]);
-    const endSec = Number(m[4]);
+    let index: number;
+    let title: string;
+    let startSec: number;
+    let endSec: number;
+    if (m) {
+      index = Number(m[1]);
+      title = m[2] ?? "";
+      startSec = Number(m[3]);
+      endSec = Number(m[4]);
+    } else {
+      const t = SCENE_TITLE_ONLY.exec(line.trim());
+      if (!t) return;
+      const timing = lines
+        .slice(i + 1, i + 4)
+        .map((l) => DURATION_LINE.exec(l))
+        .find(Boolean);
+      if (!timing) return;
+      index = Number(t[1]);
+      title = t[2] ?? "";
+      startSec = toSeconds(timing[1]!);
+      endSec = toSeconds(timing[2]!);
+    }
     if (!(endSec > startSec)) return;
-    heads.push({
-      line: i,
-      scene: {
-        index: Number(m[1]),
-        title: cleanMarkdown(m[2] ?? ""),
-        startSec,
-        endSec,
-      },
-    });
+    heads.push({ line: i, scene: { index, title: cleanMarkdown(title), startSec, endSec } });
   });
   return heads.map((h, i) => {
     const body = lines.slice(h.line + 1, heads[i + 1]?.line ?? lines.length);
     // Prefer the VISUAL block; fall back to the whole scene body.
-    const visualStart = body.findIndex((l) => /^\s*\**\s*visual\s*:?\s*\**\s*:?\s*$/i.test(l) || /^\s*\**visual\**\s*:/i.test(l));
+    const visualStart = body.findIndex((l) => /^\s*(?:#+\s*)?\**\s*visual\s*:?\s*\**\s*:?\s*$/i.test(l) || /^\s*(?:#+\s*)?\**visual\**\s*:/i.test(l));
     let visualLines = body;
     if (visualStart >= 0) {
       const rest = body.slice(visualStart + 1);
-      const stop = rest.findIndex((l) => /^\s*\**\s*(audio|text overlay|vo|voice ?over|sound|music)\b/i.test(l) || /^\s*---\s*$/.test(l));
-      const inline = body[visualStart]!.replace(/^\s*\**\s*visual\s*\**\s*:?\s*\**/i, "");
+      const stop = rest.findIndex((l) => /^\s*(?:#+\s*)?\**\s*(audio|text overlay|on-screen text|animation notes|vo|voice ?over|sound|music)\b/i.test(l) || /^\s*---\s*$/.test(l));
+      const inline = body[visualStart]!.replace(/^\s*(?:#+\s*)?\**\s*visual\s*\**\s*:?\s*\**/i, "");
       visualLines = [inline, ...(stop >= 0 ? rest.slice(0, stop) : rest)];
     }
     return { ...h.scene, visual: cleanMarkdown(visualLines.join(" ")) };
@@ -126,9 +154,10 @@ export function findStyleNote(source: unknown): string {
   collectStrings(source, strings);
   for (const s of strings) {
     const text = s.includes("\\n") ? s.replace(/\\n/g, "\n") : s;
+    const characters = /\*\*characters:\*\*\s*(.+)/i.exec(text)?.[1];
     const tone = /\*\*tone:\*\*\s*(.+)/i.exec(text)?.[1];
     const treatment = /\*\*visual treatment:\*\*\s*(.+)/i.exec(text)?.[1];
-    const note = [tone, treatment].filter(Boolean).map((v) => cleanMarkdown(v!)).join(". ");
+    const note = [characters, tone, treatment].filter(Boolean).map((v) => cleanMarkdown(v!)).join(". ");
     if (note) return note.slice(0, STYLE_NOTE_MAX_CHARS);
   }
   return "";
@@ -138,8 +167,8 @@ export function buildShotPrompt(scene: ScriptScene, styleNote: string, total: nu
   const head = `Shot ${scene.index} of ${total}${scene.title ? ` — ${scene.title}` : ""}.`;
   const prompt = [
     head,
-    scene.visual,
-    "Animate the opening frame exactly as composed: same subject, wardrobe, setting, framing and colours. Natural, smooth camera motion. No added text, captions or watermarks.",
+    `Action and camera: ${scene.visual}`,
+    "Start exactly on the opening frame and animate it as one continuous take — no cuts, no scene changes. Characters stay identical to the opening frame (design, proportions, colours, details) and move naturally; the camera moves smoothly. No added text, captions or watermarks.",
     styleNote ? `Style: ${styleNote}` : "",
   ]
     .filter(Boolean)
@@ -287,12 +316,20 @@ function edgeShare(img: Raster, vertical: boolean, pos: number, from: number, to
 }
 
 /** Positions of edge lines spanning nearly the whole extent, one per cluster. */
-function spanningCuts(img: Raster, vertical: boolean, from: number, to: number, x0: number, x1: number): number[] {
+function spanningCuts(
+  img: Raster,
+  vertical: boolean,
+  from: number,
+  to: number,
+  x0: number,
+  x1: number,
+  minShare = 0.8,
+): number[] {
   const length = to - from;
   const minSeg = Math.max(12, Math.floor(length * 0.15));
   const raw: number[] = [];
   for (let p = from + minSeg; p < to - minSeg; p++) {
-    if (edgeShare(img, vertical, p, x0, x1) > 0.8) raw.push(p);
+    if (edgeShare(img, vertical, p, x0, x1) > minShare) raw.push(p);
   }
   const cuts: number[] = [];
   let cluster: number[] = [];
@@ -358,14 +395,157 @@ function widenNarrowPanels(img: Raster, panels: readonly Box[]): Box[] {
   });
 }
 
+/** Share of a vertical line that is a thin stroke (differs the same way from both sides). */
+function verticalStrokeShare(img: Raster, x: number, y0: number, y1: number): number {
+  const d = 3;
+  if (x - d < 0 || x + d >= img.width) return 0;
+  const step = Math.max(1, Math.floor((y1 - y0) / 300));
+  let n = 0;
+  let hit = 0;
+  for (let y = y0; y < y1; y += step) {
+    const c = luminance(img, x, y);
+    const l = c - luminance(img, x - d, y);
+    const r = c - luminance(img, x + d, y);
+    n += 1;
+    if ((l > 20 && r > 20) || (l < -20 && r < -20)) hit += 1;
+  }
+  return n ? hit / n : 0;
+}
+
+function horizontalStrokeShare(img: Raster, y: number, x0: number, x1: number): number {
+  const d = 3;
+  if (y - d < 0 || y + d >= img.height) return 0;
+  const step = Math.max(1, Math.floor((x1 - x0) / 300));
+  let n = 0;
+  let hit = 0;
+  for (let x = x0; x < x1; x += step) {
+    const c = luminance(img, x, y);
+    const u = c - luminance(img, x, y - d);
+    const v = c - luminance(img, x, y + d);
+    n += 1;
+    if ((u > 20 && v > 20) || (u < -20 && v < -20)) hit += 1;
+  }
+  return n ? hit / n : 0;
+}
+
+/**
+ * Inside of a drawn frame border around a panel, dropping captions and labels;
+ * null when no frame is found. Searches a little past the box — row bands
+ * often start just inside the border.
+ */
+function frameInside(img: Raster, box: Box): Box | null {
+  const m = 12;
+  const y0 = Math.max(3, box.y - m);
+  const y1 = Math.min(img.height - 3, box.y + box.h + m);
+  const mx0 = box.x + Math.floor(box.w * 0.25);
+  const mx1 = box.x + Math.floor(box.w * 0.75);
+  const ys: number[] = [];
+  for (let y = y0; y < y1; y++) {
+    if (horizontalStrokeShare(img, y, mx0, mx1) > 0.7) ys.push(y);
+  }
+  // One position per stroke cluster; the search margin can catch a neighbour's border.
+  const lines: number[] = [];
+  for (const y of ys) {
+    if (!lines.length || y - lines[lines.length - 1]! > 6) lines.push(y);
+  }
+  if (lines.length < 2) return null;
+  const mid = box.x + box.w / 2;
+  const x0 = Math.max(3, box.x - m);
+  const x1 = Math.min(img.width - 3, box.x + box.w + m);
+  let best: Box | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    for (let j = i + 1; j < lines.length; j++) {
+      const top = lines[i]!;
+      const bottom = lines[j]!;
+      if (bottom - top < box.h * 0.3) continue;
+      let left = -1;
+      let right = -1;
+      for (let x = x0; x < x1; x++) {
+        if (verticalStrokeShare(img, x, top + 4, bottom - 4) <= 0.85) continue;
+        if (x < mid) left = x;
+        else if (right < 0) right = x;
+      }
+      if (left < 0 || right < 0 || right - left < box.w * 0.4) continue;
+      const pad = 4;
+      const cand = { x: left + pad, y: top + pad, w: right - left - 2 * pad, h: bottom - top - 2 * pad };
+      if (!best || cand.w * cand.h > best.w * best.h) best = cand;
+    }
+  }
+  return best;
+}
+
+/**
+ * Trim each panel to its frame. A panel whose frame is invisible (light art on
+ * a light border) takes its row's height and column's width from framed peers.
+ */
+function trimToFrames(img: Raster, boxes: readonly Box[]): Box[] {
+  const found = boxes.map((b) => frameInside(img, b));
+  const framed = found.filter((f): f is Box => !!f);
+  return boxes.map((b, i) => {
+    if (found[i]) return found[i]!;
+    const cy = b.y + b.h / 2;
+    const cx = b.x + b.w / 2;
+    const row = framed.find((f) => Math.abs(f.y + f.h / 2 - cy) < b.h * 0.35);
+    const col = framed.find((f) => Math.abs(f.x + f.w / 2 - cx) < b.w * 0.35);
+    if (!row || !col) return b;
+    return { x: col.x, y: row.y, w: col.w, h: row.h };
+  });
+}
+
+/** Frame border strokes running most of a band's height, one per panel gap. */
+function frameLineCuts(img: Raster, band: Box): number[] {
+  const minSeg = Math.max(12, Math.floor(band.w * 0.15));
+  const raw: number[] = [];
+  for (let x = band.x + minSeg; x < band.x + band.w - minSeg; x++) {
+    if (verticalStrokeShare(img, x, band.y, band.y + band.h) > 0.6) raw.push(x);
+  }
+  const cuts: number[] = [];
+  for (const x of raw) {
+    if (x - (cuts[cuts.length - 1] ?? band.x) >= minSeg) cuts.push(x);
+  }
+  return cuts;
+}
+
+/**
+ * Gutter bands on dark sheets often hold several framed panels side by side
+ * (panel interiors match the background). Split a band at frame edges that
+ * cover most of its height — captions under frames break full-height lines.
+ */
+function splitBandByFrames(img: Raster, band: Box): Box[] {
+  const cuts = frameLineCuts(img, band);
+  if (!cuts.length) return [band];
+  const xs = [band.x, ...cuts, band.x + band.w];
+  const out: Box[] = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    out.push({ x: xs[i]!, y: band.y, w: xs[i + 1]! - xs[i]!, h: band.h });
+  }
+  return out;
+}
+
 /**
  * Detect picture panels on a storyboard sheet: contact sheets with gutters
- * first, then collages split by full-length separators.
+ * first (splitting framed rows on dark sheets), then collages split by
+ * full-length separators.
  */
 export function detectPanels(img: Raster): Box[] {
-  const byGutters = widenNarrowPanels(img, finalizePanels(img, panelsByGutters(img)));
+  const bands = panelsByGutters(img);
+  // Full-width rows: dark panel interiors fragment gutter blocks within a row.
+  const rows = new Map<string, Box>();
+  for (const b of bands) {
+    const k = `${b.y}:${b.h}`;
+    if (!rows.has(k)) rows.set(k, { x: 0, y: b.y, w: img.width, h: b.h });
+  }
+  const framed = finalizePanels(img, [...rows.values()].flatMap((b) => splitBandByFrames(img, b)));
+  const plain = widenNarrowPanels(img, finalizePanels(img, bands));
+  const byGutters =
+    framed.length > plain.length ? trimToFrames(img, framed) : plain;
   if (byGutters.length >= 2) return byGutters;
   return finalizePanels(img, panelsBySeparators(img));
+}
+
+/** Any image bytes → PNG (approved storyboard frames arrive as JPEG or PNG). */
+export async function imageBytesToPng(bytes: Buffer): Promise<Buffer> {
+  return toPng(bytes);
 }
 
 /** Crop each detected panel out of a storyboard sheet (PNG buffers, reading order). */

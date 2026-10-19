@@ -468,8 +468,8 @@ describe("CDF Final lifecycle (framework)", () => {
     assert.equal(story!.requiredRole, "approved");
   });
 
-  it("J — Packaging front-pack dependency role remains contract-derived", () => {
-    const deps = resolveCdfPhaseDependencies("packaging", "front-pack");
+  it("J — Packaging complete-pack dependency role remains contract-derived", () => {
+    const deps = resolveCdfPhaseDependencies("packaging", "complete-pack");
     assert.ok(deps.length >= 1);
     for (const d of deps) {
       assert.ok(

@@ -114,10 +114,10 @@ describe("CDF M8B Packaging Generation → Artifact Boundary", () => {
         phaseId: "3d-direction",
       }).artifactKey,
     ).toBe(PACKAGING_ARTIFACT_KEYS.threeDDirection);
-    expect(
-      resolveArtifactTarget({ serviceId: "packaging", phaseId: "front-pack" })
-        .artifactKey,
-    ).toBe(PACKAGING_ARTIFACT_KEYS.frontPack);
+    // front-pack was removed from the pipeline — no phase targets it any more.
+    expect(() =>
+      resolveArtifactTarget({ serviceId: "packaging", phaseId: "front-pack" }),
+    ).toThrow(/Unknown phase "front-pack"/);
     expect(
       resolveArtifactTarget({
         serviceId: "packaging",
@@ -297,7 +297,7 @@ describe("CDF M8B Packaging Generation → Artifact Boundary", () => {
     ).toBe(true);
   });
 
-  it("7–8 — front-pack structured + asset-backed preview", () => {
+  it("7–8 — complete-pack generates straight from 3d-direction (no front-pack pin)", () => {
     const session = startPackagingSession();
     const d = createArtifact({
       sessionId: session.sessionId,
@@ -332,35 +332,34 @@ describe("CDF M8B Packaging Generation → Artifact Boundary", () => {
         routesArtifactId: r.artifact.artifactId,
       }) as never,
     });
-    const front = ingestGenerationCompletion({
+    const complete = ingestGenerationCompletion({
       sessionId: session.sessionId,
       serviceId: "packaging",
-      phaseId: "front-pack",
+      phaseId: "complete-pack",
       organizationId: "org_pack_m8b",
       projectId: "proj_pack_m8b",
-      executionId: "exec_front_1",
+      executionId: "exec_complete_direct_1",
       expectedSessionVersion: session.sessionVersion,
       rawOutput: {
-        frontId: "package_surface_front",
-        compositionNotes: "Centered lockup",
-        previewAssetRef: {
-          vaultAssetId: PACKAGING_FIXTURE_IDS.vaultImage,
-          role: "front_preview",
-        },
+        surfaces: [
+          { id: "package_surface_front", role: "front", notes: "Centered lockup" },
+          { id: "package_surface_back", role: "back" },
+        ],
       },
       packagingRefs: {
+        dielineRef: { artifactId: d.artifact.artifactId, version: 1 },
         routesRef: { artifactId: r.artifact.artifactId, version: 1 },
         threeDDirectionRef: { artifactId: t.artifact.artifactId, version: 1 },
-        dielineRef: { artifactId: d.artifact.artifactId, version: 1 },
       },
-      vaultAssetIds: [PACKAGING_FIXTURE_IDS.vaultImage],
       requirements: [],
     });
-    expect(front.artifactVersion).toBe(1);
-    expect(
-      (getArtifactVersion(front.artifactId, 1).data as { frontId: string })
-        .frontId,
-    ).toBe("package_surface_front");
+    expect(complete.artifactVersion).toBe(1);
+    const data = getArtifactVersion(complete.artifactId, 1).data as {
+      threeDDirectionRef: { artifactId: string };
+      frontPackRef?: unknown;
+    };
+    expect(data.threeDDirectionRef.artifactId).toBe(t.artifact.artifactId);
+    expect(data.frontPackRef).toBeUndefined();
   });
 
   it("9–11 — complete-pack / views / SKU exact deps; no latest", () => {

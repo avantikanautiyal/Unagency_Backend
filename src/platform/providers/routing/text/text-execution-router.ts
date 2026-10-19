@@ -9,6 +9,8 @@ import type { IProviderRuntimeRegistry } from "../../runtime/registry/in-memory-
 import {
   TEXT_USE_CASE_PREFERENCES,
   RESEARCH_WEB_SEARCH_PREFERENCES,
+  FAST_TEXT_STEP_PREFERENCES,
+  isFastTextStep,
   pickFirstExecutablePref,
   resolveTextCreativeUseCaseFromMetadata,
   type MatrixProviderPref,
@@ -56,9 +58,12 @@ export class TextExecutionRouter {
     const useCase = isResearch
       ? ("research" as TextCreativeUseCase)
       : resolveTextCreativeUseCaseFromMetadata(input.prompt, input.metadata);
+    const fastStep = !isResearch && isFastTextStep(input.metadata);
     const preferenceSource = isResearch
       ? RESEARCH_WEB_SEARCH_PREFERENCES
-      : TEXT_USE_CASE_PREFERENCES[useCase];
+      : fastStep
+        ? FAST_TEXT_STEP_PREFERENCES
+        : TEXT_USE_CASE_PREFERENCES[useCase];
     const preferences = preferenceSource.filter((p) =>
       allowed.has(p.providerId)
     );
@@ -129,7 +134,8 @@ export class TextExecutionRouter {
       if (seen.has(key)) continue;
       // Prefer vendor diversity — two Anthropic models must not consume the
       // Direct text failover budget before Gemini/DeepSeek (website CDF).
-      if (seenProviders.has(step.providerId)) continue;
+      // Fast text steps keep their list order as given.
+      if (!fastStep && seenProviders.has(step.providerId)) continue;
       seen.add(key);
       seenProviders.add(step.providerId);
       failoverChain.push({ providerId: step.providerId, modelId: step.modelId });

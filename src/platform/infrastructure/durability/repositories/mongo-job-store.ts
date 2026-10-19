@@ -292,9 +292,41 @@ export class MongoJobStore implements IJobStore {
         }
       }
       if (job && hasOmittedInlineData(job.payload)) {
-        console.warn(
-          `[Direct] job recovery skipped | jobId=${jobId} | reason=inline_media_not_persisted`,
-        );
+        // Its images were never written to Mongo (see omitInlineData) and the
+        // process that held them restarted — it can never run. Close it out
+        // instead of skipping it on every scan forever; the client sees it fail.
+        const lastError =
+          "Job was interrupted by a server restart before it ran; its attached images were not saved. Please try again.";
+        const nowIso = new Date().toISOString();
+        try {
+          await EnterpriseJob.collection.updateOne(
+            { jobId, status: { $in: ["queued", "retrying"] } },
+            {
+              $set: {
+                status: "dead_letter",
+                queueKind: "dead_letter",
+                lastError,
+                updatedAt: nowIso,
+                completedAt: nowIso,
+              },
+            },
+          );
+          this.cache.set(jobId, {
+            ...job,
+            status: "dead_letter",
+            queueKind: "dead_letter",
+            lastError,
+            updatedAt: nowIso,
+            completedAt: nowIso,
+          } as ExecutionJob);
+          console.warn(
+            `[Direct] job dead-lettered | jobId=${jobId} | reason=inline_media_not_persisted`,
+          );
+        } catch (err) {
+          console.warn(
+            `[Direct] job recovery skipped | jobId=${jobId} | reason=inline_media_not_persisted | deadLetterFailed=${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
         continue;
       }
       if (job && (job.status === "queued" || job.status === "retrying")) {

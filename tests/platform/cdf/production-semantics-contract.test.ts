@@ -44,8 +44,8 @@ describe("production-semantics capability contract", () => {
       };
     };
     const props = schema.properties.routes.items.properties;
-    expect(props.communicationObjective).toEqual({ type: "string" });
-    expect(props.avoidances).toEqual({ type: "string" });
+    expect(props.communicationObjective).toMatchObject({ type: "string", description: expect.stringMatching(/at most 15 words/) });
+    expect(props.avoidances).toMatchObject({ type: "string", description: expect.stringMatching(/at most 15 words/) });
     expect(props.composition).toBeUndefined();
   });
 
@@ -79,9 +79,9 @@ describe("production-semantics capability contract", () => {
     for (const key of productionFieldKeysForSemantics(
       FULL_VISUAL_PRODUCTION_SEMANTICS,
     )) {
-      expect(socialProps[key]).toEqual({ type: "string" });
-      expect(packProps[key]).toEqual({ type: "string" });
-      expect(genericProps[key]).toEqual({ type: "string" });
+      expect(socialProps[key]).toMatchObject({ type: "string", description: expect.stringMatching(/at most 15 words/) });
+      expect(packProps[key]).toMatchObject({ type: "string", description: expect.stringMatching(/at most 15 words/) });
+      expect(genericProps[key]).toMatchObject({ type: "string", description: expect.stringMatching(/at most 15 words/) });
     }
   });
 
@@ -116,7 +116,7 @@ describe("production-semantics capability contract", () => {
     const props = creativeDirectionProductionSchemaProperties({
       visual: true,
     });
-    expect(props.composition).toEqual({ type: "string" });
+    expect(props.composition).toMatchObject({ type: "string", description: expect.stringMatching(/at most 15 words/) });
     expect(props.primaryMessage).toBeUndefined();
   });
 });

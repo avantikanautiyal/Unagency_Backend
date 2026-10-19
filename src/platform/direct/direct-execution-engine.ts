@@ -91,7 +91,10 @@ import {
   ensurePresentationExpandedForDeliverable,
 } from "../providers/tools/structured/structured-output-execution";
 import type { StructuredOutputRequest } from "../providers/tools/contracts/tool-contracts";
-import { TEXT_USE_CASE_PREFERENCES } from "../providers/routing/matrix/matrix-use-case-routing";
+import {
+  TEXT_USE_CASE_PREFERENCES,
+  isFastTextStep,
+} from "../providers/routing/matrix/matrix-use-case-routing";
 import {
   isImageGenerationCapability,
   isVideoGenerationCapability,
@@ -417,6 +420,7 @@ function parseTextFailoverChain(
 ): readonly { providerId: string; modelId: string }[] {
   const raw = metadata?.failoverChain;
   if (!Array.isArray(raw)) return [];
+  const fastStep = isFastTextStep(metadata);
   const out: { providerId: string; modelId: string }[] = [];
   const seenProviders = new Set<string>(
     primary?.providerId ? [primary.providerId] : []
@@ -437,7 +441,9 @@ function parseTextFailoverChain(
     if (!providerId || !modelId) continue;
     const key = `${providerId}::${modelId}`;
     if (seenKeys.has(key)) continue;
-    if (seenProviders.has(providerId)) continue;
+    // Fast text steps (routes / territories) keep the router's exact order,
+    // including a second Anthropic model as the last-resort failover.
+    if (!fastStep && seenProviders.has(providerId)) continue;
     seenKeys.add(key);
     seenProviders.add(providerId);
     out.push({ providerId, modelId });

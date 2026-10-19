@@ -197,3 +197,56 @@ export async function normalizeShotClip(input: {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/**
+ * Join normalized shots (same size / fps / codec) with a short crossfade at
+ * each cut. Each join overlaps by `fadeSec`, so the film is (n-1)·fade shorter.
+ */
+export async function crossfadeShotClips(input: {
+  readonly clips: readonly Buffer[];
+  readonly durationsSec: readonly number[];
+  readonly fadeSec?: number;
+}): Promise<Buffer> {
+  if (input.clips.length === 0) throw new Error("crossfadeShotClips requires clips");
+  if (input.clips.length === 1) return input.clips[0]!;
+  const fade = input.fadeSec ?? 0.3;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unagency-xfade-"));
+  const outPath = path.join(dir, "out.mp4");
+  try {
+    const args: string[] = ["-y"];
+    input.clips.forEach((buf, i) => {
+      const p = path.join(dir, `clip_${i}.mp4`);
+      fs.writeFileSync(p, buf);
+      args.push("-i", p);
+    });
+    const filters: string[] = [];
+    let prev = "[0:v]";
+    let elapsed = Math.max(fade * 2, input.durationsSec[0] ?? 5);
+    for (let i = 1; i < input.clips.length; i++) {
+      const out = i === input.clips.length - 1 ? "[vout]" : `[x${i}]`;
+      const offset = Math.max(0, elapsed - fade);
+      filters.push(`${prev}[${i}:v]xfade=transition=fade:duration=${fade}:offset=${offset.toFixed(3)}${out}`);
+      prev = out;
+      elapsed = offset + Math.max(fade * 2, input.durationsSec[i] ?? 5);
+    }
+    args.push(
+      "-filter_complex",
+      filters.join(";"),
+      "-map",
+      "[vout]",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      outPath,
+    );
+    await runFfmpeg(args, 300_000);
+    return fs.readFileSync(outPath);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}

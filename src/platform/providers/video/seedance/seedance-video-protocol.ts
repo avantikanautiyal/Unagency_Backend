@@ -112,10 +112,15 @@ export class SeedanceVideoProtocol implements IVendorVideoProtocol {
       resolution: "720p",
       aspect_ratio: ASPECT_RATIOS[requestedRatio] ?? "16:9",
     };
-    // Only http(s) URLs are accepted. A second image would be read as the END
-    // frame, so only the opening frame is sent.
-    const startFrame = imageUrls.find((u) => /^https?:\/\//i.test(u));
-    if (startFrame) body.images = [startFrame];
+    // Only http(s) URLs are accepted. A second image is read as the END frame,
+    // so it is sent only when the shot plan deliberately attached one.
+    const urls = imageUrls.filter((u) => /^https?:\/\//i.test(u));
+    if (urls.length) {
+      body.images =
+        request.payload.videoUseEndFrame === true && urls.length >= 2
+          ? urls.slice(0, 2)
+          : [urls[0]];
+    }
 
     return success({ method: "POST", path: "/v2/generate", body });
   }

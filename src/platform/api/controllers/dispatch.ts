@@ -258,7 +258,12 @@ export async function dispatchController(
     });
   }
 
-  if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_content")) {
+  // Legacy art_* delivery. /cdf/artifacts/... routes (cdfart_* ids) share the
+  // "_artifacts_" / "_media" route-id fragments and must fall through to the
+  // CDF handlers below — the legacy store never holds them ("Artifact not found").
+  const isCdfArtifactRoute = routeId.includes("_cdf_artifacts_");
+
+  if (params.artifactId && !isCdfArtifactRoute && routeId.includes("_artifacts_") && routeId.includes("_content")) {
     const apiRuntime = getEnterpriseApiRuntime();
     const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
     const token = String(request.query?.token ?? "").trim();
@@ -278,7 +283,7 @@ export async function dispatchController(
     });
   }
 
-  if (params.artifactId && routeId.includes("_artifacts_") && routeId.includes("_media") && tenant) {
+  if (params.artifactId && !isCdfArtifactRoute && routeId.includes("_artifacts_") && routeId.includes("_media") && tenant) {
     const apiRuntime = getEnterpriseApiRuntime();
     const delivery = apiRuntime?.platform.durableStores?.asyncMedia?.mediaDelivery;
     if (delivery) {

@@ -40,9 +40,7 @@ export type PackagingPhaseContractRow = {
  *      ↓
  *   3d-direction
  *      ↓
- *   front-pack
- *      ↓
- *   complete-pack  (pins dieline+routes+3d+front exact versions)
+ *   complete-pack  (pins dieline+routes+3d exact versions; legacy versions may also pin front-pack)
  *      ↓
  *   views
  *      ↓
@@ -124,8 +122,9 @@ export function assertPackagingContractKeyAlignment(): {
       );
     }
   }
-  // Ensure every M8A key appears
+  // Ensure every M8A key appears (front-pack is read-only history: no phase emits it)
   for (const key of Object.values(PACKAGING_ARTIFACT_KEYS)) {
+    if (key === PACKAGING_ARTIFACT_KEYS.frontPack) continue;
     const hit = svc.phases.some((p) => p.artifact?.artifactKey === key);
     if (!hit) {
       mismatches.push(`M8A key ${key} not present on any packaging phase`);

@@ -15,6 +15,9 @@
  * Fix: front-pack now declares `['3d-direction', 'routes']` — the same
  * generic dependency-declaration mechanism every other phase already uses.
  * No runtime branch, no phase-specific code, no phase-prompt fallback.
+  *
+ * Front-pack was later removed; complete-pack inherits the same dependencies
+ * (['3d-direction', 'routes']) and the same exact-message requirement.
  */
 
 import {
@@ -73,16 +76,16 @@ function upstream(over: Partial<UpstreamArtifactContext>): UpstreamArtifactConte
   };
 }
 
-describe("packaging front-pack — communication surface source (live bug regression)", () => {
-  it("1. registry declares routes as a front-pack dependency (the message authority)", () => {
+describe("packaging complete-pack — communication surface source (live bug regression)", () => {
+  it("1. registry declares routes as a complete-pack dependency (the message authority)", () => {
     const svc = resolveCdfCanonicalService("packaging")!;
-    const frontPack = svc.phases.find((p) => p.phaseId === "front-pack")!;
-    const depIds = frontPack.dependencies.map((d) => d.phaseId);
+    const completePack = svc.phases.find((p) => p.phaseId === "complete-pack")!;
+    const depIds = completePack.dependencies.map((d) => d.phaseId);
     expect(depIds).toContain("3d-direction");
     expect(depIds).toContain("routes");
   });
 
-  it("front-pack (pack_flat) requires an exact-message primary_message_surface", () => {
+  it("complete-pack (pack_flat) requires an exact-message primary_message_surface", () => {
     const contract = resolveDeliverableCompositionContract("pack_flat")!;
     expect(requiredExactRenderedCommunicationElements(contract)).toContain(
       "primary_message_surface",

@@ -149,8 +149,11 @@ describe("CDF M8A Packaging Artifact Model", () => {
     expect(validatePackaging3dDirectionData(threeD as never).ok).toBe(false);
 
     const complete = fixturePackagingCompletePack();
-    delete (complete as { frontPackRef?: unknown }).frontPackRef;
+    delete (complete as { threeDDirectionRef?: unknown }).threeDDirectionRef;
     expect(validatePackagingCompletePackData(complete as never).ok).toBe(false);
+
+    // Front-pack was removed: complete-pack is valid without a frontPackRef.
+    expect(validatePackagingCompletePackData(fixturePackagingCompletePack() as never).ok).toBe(true);
   });
 
   it("F — missing dependency rejected", () => {
@@ -181,7 +184,8 @@ describe("CDF M8A Packaging Artifact Model", () => {
       dielineVersion: 2,
       threeDVersion: 1,
     });
-    expect(complete.frontPackRef.version).toBe(4);
+    // Legacy versions created before front-pack was removed keep their pin.
+    expect(complete.frontPackRef?.version).toBe(4);
     expect(complete.routesRef.version).toBe(3);
     expect(complete.dielineRef.version).toBe(2);
     expect(validatePackagingCompletePackData(complete as never).ok).toBe(true);
@@ -190,9 +194,11 @@ describe("CDF M8A Packaging Artifact Model", () => {
     expect(graph["packaging.complete-pack"]).toEqual(
       PACKAGING_DEPENDENCY_GRAPH["packaging.complete-pack"],
     );
-    expect(graph["packaging.complete-pack"]).toContain(
-      PACKAGING_ARTIFACT_KEYS.frontPack,
-    );
+    expect(graph["packaging.complete-pack"]).toEqual([
+      PACKAGING_ARTIFACT_KEYS.dieline,
+      PACKAGING_ARTIFACT_KEYS.routes,
+      PACKAGING_ARTIFACT_KEYS.threeDDirection,
+    ]);
   });
 
   it("H — Vault ObjectId validation", () => {
@@ -446,7 +452,6 @@ describe("CDF M8A Packaging Artifact Model", () => {
       "dieline",
       "routes",
       "3d-direction",
-      "front-pack",
       "complete-pack",
       "views",
       "sku-adaptations",

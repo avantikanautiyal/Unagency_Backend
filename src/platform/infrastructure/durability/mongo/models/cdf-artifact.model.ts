@@ -231,3 +231,23 @@ export async function loadCdfArtifactBagFromMongo(): Promise<CdfArtifactBagSnaps
     idempotency: idempotency as unknown as CdfArtifactBagSnapshot["idempotency"],
   };
 }
+
+/** One artifact head + its versions — for processes whose bag predates its creation. */
+export async function loadCdfArtifactFromMongo(
+  artifactId: string,
+): Promise<CdfArtifactBagSnapshot | null> {
+  if (!mongoReady()) return null;
+  const artifactModel = getArtifactModel();
+  const versionModel = getVersionModel();
+  if (!artifactModel || !versionModel) return null;
+  const [artifacts, versions] = await Promise.all([
+    artifactModel.find({ artifactId }).lean().exec(),
+    versionModel.find({ artifactId }).lean().exec(),
+  ]);
+  if (!artifacts.length && !versions.length) return null;
+  return {
+    artifacts: artifacts as unknown as CdfCanonicalArtifact[],
+    versions: versions as unknown as CdfArtifactVersionRecord[],
+    idempotency: [],
+  };
+}

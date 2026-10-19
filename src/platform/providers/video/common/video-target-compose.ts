@@ -23,7 +23,12 @@ import {
   planVideoClipSegments,
   wireDurationForVideoSegment,
 } from "./video-clip-segments";
-import { concatMp4Videos, extractLastFramePng, normalizeShotClip } from "./video-ffmpeg";
+import {
+  concatMp4Videos,
+  crossfadeShotClips,
+  extractLastFramePng,
+  normalizeShotClip,
+} from "./video-ffmpeg";
 import {
   readVideoShotPlan,
   resolveVideoTargetDurationSec,
@@ -220,18 +225,36 @@ async function composeStoryboardShots(
       }
     }
     if (!frame) frame = await extractLastFramePng({ videoBytes: raw[index - 1]! });
+    let endFrame: Buffer | null = null;
+    if (shot.endPanelKey) {
+      try {
+        endFrame = await downloadBlobBytes(input.blobStorage, shot.endPanelKey);
+      } catch {
+        endFrame = null;
+      }
+    }
     const payload: Record<string, unknown> = {
       ...input.payload,
       prompt: shot.prompt,
       duration: shot.durationSec,
       videoSegmentIndex: index,
       videoSegmentCount: shotPlan.shots.length,
+      videoUseEndFrame: Boolean(endFrame),
       assets: [
         {
           url: `data:image/png;base64,${frame.toString("base64")}`,
           mimeType: "image/png",
           role: "subject_reference",
         },
+        ...(endFrame
+          ? [
+              {
+                url: `data:image/png;base64,${endFrame.toString("base64")}`,
+                mimeType: "image/png",
+                role: "end_frame",
+              },
+            ]
+          : []),
       ],
     };
     delete payload.image;
@@ -263,7 +286,18 @@ async function composeStoryboardShots(
       }),
     );
   }
-  const composedBytes = await concatMp4Videos({ clips });
+  let composedBytes: Buffer;
+  try {
+    composedBytes = await crossfadeShotClips({
+      clips,
+      durationsSec: shotPlan.shots.map((s) => s.durationSec),
+    });
+  } catch (err) {
+    console.warn(
+      `[storyboard-video] crossfade join failed, using plain join: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    composedBytes = await concatMp4Videos({ clips });
+  }
   return success({
     composedBytes,
     segmentCount: clips.length,

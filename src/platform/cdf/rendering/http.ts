@@ -39,8 +39,11 @@ export async function httpRenderArtifact(input: {
   projectId?: string;
   deps?: RenderArtifactDeps;
 }): Promise<CdfRenderedFile> {
-  const { ensureCdfArtifactBagLoaded } = await import("../artifacts/store");
+  const { ensureCdfArtifactBagLoaded, refreshCdfArtifactFromMongo } = await import(
+    "../artifacts/store"
+  );
   await ensureCdfArtifactBagLoaded();
+  await refreshCdfArtifactFromMongo(input.artifactId);
 
   const head = getArtifact(input.artifactId, {
     organizationId: input.organizationId,
@@ -134,7 +137,9 @@ export async function httpGetArtifactVersionMedia(input: {
   artifactType: string;
   vaultAssetId: string;
 }> {
-  const { ensureCdfArtifactBagLoaded } = await import("../artifacts/store");
+  const { ensureCdfArtifactBagLoaded, refreshCdfArtifactFromMongo } = await import(
+    "../artifacts/store"
+  );
   await ensureCdfArtifactBagLoaded();
   if (!Number.isInteger(input.artifactVersion) || input.artifactVersion < 1) {
     throw renderError(
@@ -142,6 +147,7 @@ export async function httpGetArtifactVersionMedia(input: {
       `Invalid artifact version: ${String(input.artifactVersion)}`,
     );
   }
+  await refreshCdfArtifactFromMongo(input.artifactId);
   const ownership = {
     organizationId: input.organizationId,
     projectId: input.projectId,

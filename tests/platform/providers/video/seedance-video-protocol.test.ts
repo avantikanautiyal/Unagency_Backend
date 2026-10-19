@@ -64,3 +64,21 @@ describe("BlobAccessService.stageInlineProviderInput", () => {
     expect(storage.objects.get(keys[0]!)?.data.toString()).toBe("panel");
   });
 });
+
+describe("seedance end frame", () => {
+  const protocol = new SeedanceVideoProtocol();
+  const urls = ["https://cdn.example.com/start.png", "https://cdn.example.com/end.png"];
+
+  it("sends start + end frame only when the shot plan asks for it", () => {
+    const withEnd = protocol.buildSubmit(
+      request({ prompt: "Shot 1", videoUseEndFrame: true }),
+      "seedance-2.0",
+      urls,
+      "idem",
+    );
+    expect(withEnd.ok && withEnd.value.body.images).toEqual(urls);
+
+    const withoutEnd = protocol.buildSubmit(request({ prompt: "Shot 1" }), "seedance-2.0", urls, "idem");
+    expect(withoutEnd.ok && withoutEnd.value.body.images).toEqual([urls[0]]);
+  });
+});

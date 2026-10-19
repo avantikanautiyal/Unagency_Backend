@@ -160,7 +160,7 @@ describe("CDF canonical structured schema invariant (framework)", () => {
   it("C — canonical image phase: no structured schema requirement", async () => {
     const contract = resolveCdfPhaseExecutionContract({
       serviceId: "packaging",
-      phaseId: "front-pack",
+      phaseId: "complete-pack",
     });
     assert.ok(contract);
     assert.equal(contract!.generationModality, "image");

@@ -367,7 +367,7 @@ describe("CDF text_choice emission → ingest (framework)", () => {
   it("F — canonical image phase unchanged", () => {
     const contract = resolveCdfPhaseExecutionContract({
       serviceId: "packaging",
-      phaseId: "front-pack",
+      phaseId: "complete-pack",
     });
     assert.ok(contract);
     assert.equal(contract!.generationModality, "image");

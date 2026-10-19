@@ -408,7 +408,7 @@ describe("CDF Wave 3 services", () => {
     expect(options.value.ui.showSendToStudio).toBe(true);
   });
 
-  it("runs Packaging dieline → routes → 3d → front → complete pack", () => {
+  it("runs Packaging dieline → routes → 3d → complete pack", () => {
     const started = applyCdfTransition({
       action: "start",
       serviceId: "packaging",
@@ -426,9 +426,7 @@ describe("CDF Wave 3 services", () => {
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
     // design routes
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
-    // 3d-direction → front-pack
-    approveWithCanonicalCompletion(sessionId);
-    // front-pack → complete-pack
+    // 3d-direction → complete-pack (front-pack was removed)
     const complete = approveWithCanonicalCompletion(sessionId);
     expect(complete.ok).toBe(true);
     if (!complete.ok) return;

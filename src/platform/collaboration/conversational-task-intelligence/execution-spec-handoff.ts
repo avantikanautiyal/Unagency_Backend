@@ -61,6 +61,29 @@ export function resolveParentExecutionIdFromMetadata(
   return resolveParentExecutionIdFromContinuationMetadata(metadata);
 }
 
+function readCdfPhaseId(
+  metadata?: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const phase =
+    typeof metadata?.cdfPhaseId === "string" ? metadata.cdfPhaseId.trim() : "";
+  return phase || undefined;
+}
+
+/**
+ * A staged (CDF) run parented on an earlier stage must not inherit that
+ * stage's spec — its instruction ("This stage only: 3D Direction") and hard
+ * constraints ("Do NOT include a dieline") would be applied to the next stage.
+ * Refine / retry of the same stage still inherit.
+ */
+function isCrossPhaseParent(
+  child?: Readonly<Record<string, unknown>>,
+  parent?: Readonly<Record<string, unknown>>,
+): boolean {
+  const childPhase = readCdfPhaseId(child);
+  const parentPhase = readCdfPhaseId(parent);
+  return Boolean(childPhase && parentPhase && childPhase !== parentPhase);
+}
+
 /** Load client handoff or parent execution spec snapshot (no stamping). */
 export async function readInheritedExecutionSpec(input: {
   readonly host: {
@@ -78,13 +101,15 @@ export async function readInheritedExecutionSpec(input: {
   try {
     if (input.host.loadExecutionCreateMetadata) {
       const createMeta = await input.host.loadExecutionCreateMetadata(parentId);
+      if (isCrossPhaseParent(input.metadata, createMeta)) return undefined;
       const fromCreate = readExecutionSpecSnapshot(createMeta)?.spec;
       if (fromCreate) return fromCreate;
     }
     const parent = await input.host.loadExecution(parentId);
-    return readExecutionSpecSnapshot(
-      (parent as { metadata?: Record<string, unknown> } | undefined)?.metadata,
-    )?.spec;
+    const parentMeta = (parent as { metadata?: Record<string, unknown> } | undefined)
+      ?.metadata;
+    if (isCrossPhaseParent(input.metadata, parentMeta)) return undefined;
+    return readExecutionSpecSnapshot(parentMeta)?.spec;
   } catch {
     return undefined;
   }
@@ -148,13 +173,15 @@ async function inheritSpecFromParentExecution(
   try {
     if (host.loadExecutionCreateMetadata) {
       const createMeta = await host.loadExecutionCreateMetadata(parentId);
+      if (isCrossPhaseParent(metadata, createMeta)) return undefined;
       const fromCreate = readExecutionSpecSnapshot(createMeta)?.spec;
       if (fromCreate) return fromCreate;
     }
     const parent = await host.loadExecution(parentId);
-    return readExecutionSpecSnapshot(
-      (parent as { metadata?: Record<string, unknown> } | undefined)?.metadata,
-    )?.spec;
+    const parentMeta = (parent as { metadata?: Record<string, unknown> } | undefined)
+      ?.metadata;
+    if (isCrossPhaseParent(metadata, parentMeta)) return undefined;
+    return readExecutionSpecSnapshot(parentMeta)?.spec;
   } catch {
     return undefined;
   }

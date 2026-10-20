@@ -218,6 +218,40 @@ export function resolveClientRoutingPin(
 }
 
 /**
+ * Model pin for a staged image run, from the image run it continues
+ * (parentExecutionId) in the same CDF session. Skipped when the caller already
+ * pinned a model, or the parent was not an image generation.
+ */
+async function resolveUpstreamVisualModelPin(
+  host: ExecutionCreateHost,
+  req: CreateExecutionRequest,
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): Promise<{ providerId: string; modelId: string; executionId: string } | undefined> {
+  const existing = resolveClientRoutingPin(req, metadata);
+  if (existing.providerId || existing.modelId) return undefined;
+  const parentId =
+    typeof metadata?.parentExecutionId === "string"
+      ? metadata.parentExecutionId.trim()
+      : "";
+  if (!parentId || !host.loadExecutionCreateMetadata) return undefined;
+  let parent: Readonly<Record<string, unknown>> | undefined;
+  try {
+    parent = await host.loadExecutionCreateMetadata(parentId);
+  } catch {
+    return undefined;
+  }
+  if (!parent) return undefined;
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const sessionId = str(metadata?.cdfSessionId);
+  if (!sessionId || str(parent.cdfSessionId) !== sessionId) return undefined;
+  if (str(parent.cdfGenerationModality).toLowerCase() !== "image") return undefined;
+  const providerId = str(parent.preferredProviderId);
+  const modelId = str(parent.preferredModelId);
+  if (!providerId || !modelId) return undefined;
+  return { providerId, modelId, executionId: parentId };
+}
+
+/**
  * Byte length of control metadata. Inline media (data-URL audio/image bytes)
  * is omitted so a voice note or attachment is not treated as metadata bloat.
  */
@@ -1672,6 +1706,38 @@ export async function runCreatePrepass(
     capabilityIdRaw = "text.generate";
     req = { ...req, capabilityId: "text.generate" };
     workingMetadata = { ...workingMetadata, forcedTextForWebTech: true };
+  }
+
+  // Staged visual continuation: keep the model that made the creative being
+  // continued. Another model redraws the approved design in its own style.
+  if (
+    isCdfPhaseRun &&
+    isImageGenerationCapability(capabilityIdRaw) &&
+    !isGenerationFanoutLeafMetadata(workingMetadata) &&
+    workingMetadata?.allowsModelGenerationFanout !== true
+  ) {
+    const inheritedPin = await resolveUpstreamVisualModelPin(
+      host,
+      req,
+      workingMetadata,
+    );
+    if (inheritedPin) {
+      workingMetadata = {
+        ...workingMetadata,
+        preferredProviderId: inheritedPin.providerId,
+        preferredModelId: inheritedPin.modelId,
+        upstreamVisualModelPinFrom: inheritedPin.executionId,
+      };
+      console.info(
+        JSON.stringify({
+          scope: "cdf.routing",
+          event: "UPSTREAM_VISUAL_MODEL_PINNED",
+          parentExecutionId: inheritedPin.executionId,
+          providerId: inheritedPin.providerId,
+          modelId: inheritedPin.modelId,
+        }),
+      );
+    }
   }
 
   const clientRoutingPin = resolveClientRoutingPin(req, workingMetadata);

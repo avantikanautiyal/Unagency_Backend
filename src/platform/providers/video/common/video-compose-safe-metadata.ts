@@ -69,6 +69,8 @@ export function readVideoShotPlan(
             prompt,
             durationSec,
             ...(typeof r.panelKey === "string" && r.panelKey ? { panelKey: r.panelKey } : {}),
+            ...(typeof r.endPanelKey === "string" && r.endPanelKey ? { endPanelKey: r.endPanelKey } : {}),
+            ...(r.fresh === true ? { fresh: true } : {}),
           };
         })
         .filter((s): s is NonNullable<typeof s> => s != null)

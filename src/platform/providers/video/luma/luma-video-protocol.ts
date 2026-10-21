@@ -60,11 +60,13 @@ function normalizeLumaDuration(raw: unknown): "5s" | "10s" {
   return seconds > 6 ? "10s" : "5s";
 }
 
+/** Unset requests render at 1080p (override with LUMA_VIDEO_DEFAULT_RESOLUTION). */
 function normalizeLumaResolution(raw: unknown): string {
+  const fallback = process.env.LUMA_VIDEO_DEFAULT_RESOLUTION?.trim().toLowerCase() || "1080p";
   const s =
     typeof raw === "string" && raw.trim()
       ? raw.trim().toLowerCase().replace(/\s+/g, "")
-      : "720p";
+      : fallback;
   if (["360p", "540p", "720p", "1080p"].includes(s)) return s;
   if (s.includes("1080")) return "1080p";
   if (s.includes("540")) return "540p";

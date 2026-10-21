@@ -23,8 +23,11 @@ import {
   type VideoShot,
   type VideoShotPlan,
 } from "./storyboard-shot-plan";
+import { planDirectVideoShots } from "./direct-video-shot-planner";
 
 const DEFAULT_FRAME_SHOT_SEC = 5;
+/** Shorter shots leave the engine no room to move from one frame to the next. */
+const MIN_FRAME_SHOT_SEC = 4;
 
 type StoryboardFrameRef = {
   readonly artifactId: string;
@@ -85,8 +88,9 @@ async function loadApprovedFrames(
 }
 
 /**
- * Frame for each shot: the frame of the same script scene; else 1:1 by order
- * when counts match. Unmatched shots open on the previous shot's last frame.
+ * Frame for each shot: 1:1 by order when counts match (shots are planned per
+ * frame); else the frame of the same script scene. Unmatched shots open on the
+ * previous shot's last frame.
  */
 export function frameIndexForShot(
   scene: ScriptScene,
@@ -94,13 +98,118 @@ export function frameIndexForShot(
   shotCount: number,
   refs: readonly StoryboardFrameRef[],
 ): number {
+  if (refs.length === shotCount) return shotIndex;
   const byScene = refs.findIndex((r) => r.scene === scene.index);
   if (byScene >= 0) return byScene;
-  if (refs.length === shotCount) return shotIndex;
   return shotIndex === 0 ? 0 : -1;
 }
 
+type SessionView = {
+  readonly brief?: string;
+  readonly phaseId?: string | null;
+  readonly lastRefinePrompt?: string;
+  readonly generatedArtifacts?: readonly {
+    artifactId: string;
+    version: number;
+    phaseId: string;
+    generationExecutionId?: string;
+  }[];
+  readonly approvedArtifacts?: readonly {
+    artifactId: string;
+    version: number;
+    phaseId: string;
+    generationExecutionId?: string;
+  }[];
+};
+
+async function loadSessionView(meta: Readonly<Record<string, unknown>>): Promise<SessionView | null> {
+  const sessionId = typeof meta.cdfSessionId === "string" ? meta.cdfSessionId.trim() : "";
+  if (!sessionId) return null;
+  try {
+    const { ensureCdfSessionLoaded } = await import("../../../cdf/session-store");
+    return ((await ensureCdfSessionLoaded(sessionId)) as SessionView | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Creation time encoded in "exec_<n>_<ms>" ids (frames are submitted in page order). */
+function executionOrderKey(id: string | undefined): number {
+  const m = /_(\d{10,})$/.exec(id ?? "");
+  return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Storyboard frames bound to the CDF session, in frame order — used when the
+ * client did not send cdfStoryboardFrames (its page index is in-memory only).
+ */
+export function storyboardFramesFromSession(session: SessionView | null): StoryboardFrameRef[] {
+  if (!session) return [];
+  const latest = new Map<string, { version: number; order: number }>();
+  for (const a of [...(session.generatedArtifacts ?? []), ...(session.approvedArtifacts ?? [])]) {
+    if (a.phaseId !== "storyboard") continue;
+    const prev = latest.get(a.artifactId);
+    const order = executionOrderKey(a.generationExecutionId);
+    if (!prev || a.version > prev.version) {
+      latest.set(a.artifactId, { version: a.version, order: Math.min(order, prev?.order ?? order) });
+    }
+  }
+  return [...latest.entries()]
+    .sort((x, y) => x[1].order - y[1].order)
+    .slice(0, 12)
+    .map(([artifactId, v]) => ({ artifactId, artifactVersion: v.version }));
+}
+
+/** The client's refine note for this video, when this run is a refinement of it. */
+function refinementForRun(meta: Readonly<Record<string, unknown>>, session: SessionView | null): string {
+  const refining =
+    typeof meta.refineFromExecutionId === "string" && meta.refineFromExecutionId.trim().length > 0;
+  if (!refining || !session?.lastRefinePrompt) return "";
+  return session.lastRefinePrompt.trim().slice(0, 400);
+}
+
+/**
+ * One shot per approved frame. Each frame takes the script scene at the same
+ * relative position; the script's total length is shared across the frames.
+ */
+function scenesFromFrames(
+  frames: readonly StoryboardFrameRef[],
+  scriptScenes: readonly ScriptScene[],
+): ScriptScene[] {
+  const scriptTotal =
+    scriptScenes.length > 0
+      ? scriptScenes[scriptScenes.length - 1]!.endSec - scriptScenes[0]!.startSec
+      : 0;
+  const per = Math.max(
+    MIN_FRAME_SHOT_SEC,
+    scriptTotal > 0 ? Math.round(scriptTotal / frames.length) : DEFAULT_FRAME_SHOT_SEC,
+  );
+  return frames.map((f, i) => {
+    const byScene = f.scene != null ? scriptScenes.find((s) => s.index === f.scene) : undefined;
+    const scene =
+      byScene ??
+      (scriptScenes.length
+        ? scriptScenes[Math.min(scriptScenes.length - 1, Math.floor((i * scriptScenes.length) / frames.length))]
+        : undefined);
+    return {
+      index: i + 1,
+      title: f.title ?? scene?.title ?? "",
+      startSec: i * per,
+      endSec: (i + 1) * per,
+      visual: f.visual ?? scene?.visual ?? f.title ?? "",
+    };
+  });
+}
+
 const FALLBACK_PROMPT_MAX_CHARS = 1800;
+const MAX_DIRECT_SHOTS = 6;
+
+/** Requested film length (seconds) for the direct path; 15 s when unset. */
+function directTargetSec(meta: Readonly<Record<string, unknown>>): number {
+  const raw = meta.videoTargetDurationSec ?? meta.duration;
+  const n = typeof raw === "number" ? raw : Number(String(raw ?? "").replace(/s$/i, ""));
+  return Number.isFinite(n) && n > 0 ? Math.min(60, n) : 15;
+}
 const UPSTREAM_VISUAL_RELATIONSHIP = "cdf_upstream_visual_artifact";
 
 export type StoryboardVideoSubmission = {
@@ -118,13 +227,13 @@ function isPlaceholder(prompt: string): boolean {
 function frameSize(aspectRatio: string | undefined): { width: number; height: number } {
   switch ((aspectRatio ?? "16:9").trim()) {
     case "9:16":
-      return { width: 720, height: 1280 };
+      return { width: 1080, height: 1920 };
     case "1:1":
       return { width: 1080, height: 1080 };
     case "4:5":
-      return { width: 864, height: 1080 };
+      return { width: 1080, height: 1350 };
     default:
-      return { width: 1280, height: 720 };
+      return { width: 1920, height: 1080 };
   }
 }
 
@@ -159,17 +268,52 @@ export async function prepareStoryboardVideoSubmission(input: {
 }): Promise<StoryboardVideoSubmission | null> {
   const meta = input.metadata ?? {};
   const cmr = meta.canonicalModelRequest;
-  const frameRefs = readFrameRefs(meta);
+  const session = await loadSessionView(meta);
+  let frameRefs = readFrameRefs(meta);
+  if (frameRefs.length === 0) frameRefs = storyboardFramesFromSession(session);
+  const changeRequest = refinementForRun(meta, session);
   let scenes = findScriptScenes(cmr ?? meta);
-  // No timed script but approved frames: one shot per frame from its planned shot.
-  if (scenes.length < 2 && frameRefs.length >= 2) {
-    scenes = frameRefs.map((f, i) => ({
-      index: f.scene ?? i + 1,
-      title: f.title ?? "",
-      startSec: i * DEFAULT_FRAME_SHOT_SEC,
-      endSec: (i + 1) * DEFAULT_FRAME_SHOT_SEC,
-      visual: f.visual ?? f.title ?? "",
-    }));
+  // Approved frames drive the film: one shot per frame, so every frame appears.
+  if (frameRefs.length >= 2 && scenes.length !== frameRefs.length) {
+    scenes = scenesFromFrames(frameRefs, scenes);
+  }
+
+  // Direct path (no script, no frames): plan fresh shots from the client's brief.
+  let freshShots = false;
+  if (scenes.length < 2 && session && frameRefs.length < 2) {
+    const brief = session.brief?.trim() ?? "";
+    const targetSec = directTargetSec(meta);
+    const shotCount = Math.min(MAX_DIRECT_SHOTS, Math.max(1, Math.round(targetSec / DEFAULT_FRAME_SHOT_SEC)));
+    const planned =
+      brief && shotCount >= 2
+        ? await planDirectVideoShots({
+            brief,
+            changeRequest,
+            brandName: typeof meta.brandName === "string" ? meta.brandName : undefined,
+            shotCount,
+            shotSec: DEFAULT_FRAME_SHOT_SEC,
+            aspectRatio: input.aspectRatio,
+          })
+        : null;
+    if (planned) {
+      freshShots = true;
+      scenes = planned.map((p, i) => ({
+        index: i + 1,
+        title: p.title,
+        startSec: i * DEFAULT_FRAME_SHOT_SEC,
+        endSec: (i + 1) * DEFAULT_FRAME_SHOT_SEC,
+        visual: p.visual,
+      }));
+    } else if (brief) {
+      // Planner unavailable: lead with the client's own words, not the request dump.
+      return {
+        prompt: [changeRequest ? `Client change request (must follow): ${changeRequest}` : "", brief]
+          .filter(Boolean)
+          .join("\n\n")
+          .slice(0, FALLBACK_PROMPT_MAX_CHARS),
+        payload: {},
+      };
+    }
   }
 
   if (scenes.length < 2) {
@@ -227,7 +371,12 @@ export async function prepareStoryboardVideoSubmission(input: {
   const shots: VideoShot[] = scenes.map((scene, i) => {
     const panel = panelFor(scene, i);
     return {
-      prompt: buildShotPrompt(scene, styleNote, scenes.length),
+      prompt: buildShotPrompt(scene, styleNote, scenes.length, {
+        changeRequest,
+        isLast: i === scenes.length - 1,
+        fresh: freshShots,
+      }),
+      ...(freshShots ? { fresh: true } : {}),
       durationSec: Math.max(1, scene.endSec - scene.startSec),
       ...(panel >= 0 && panelKeys[panel] ? { panelKey: panelKeys[panel] } : {}),
     };
@@ -278,9 +427,12 @@ export async function prepareStoryboardVideoSubmission(input: {
               : []),
           ],
         }
-      : withoutSheet
-        ? { assets: withoutSheet }
-        : {}),
+      : freshShots
+        ? // Text-to-video: a logo or product still must not become the opening frame.
+          { assets: [] }
+        : withoutSheet
+          ? { assets: withoutSheet }
+          : {}),
     payload: {
       duration: shots[0]!.durationSec,
       videoTargetDurationSec: totalSec,

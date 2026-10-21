@@ -224,7 +224,7 @@ async function composeStoryboardShots(
         frame = null;
       }
     }
-    if (!frame) frame = await extractLastFramePng({ videoBytes: raw[index - 1]! });
+    if (!frame && !shot.fresh) frame = await extractLastFramePng({ videoBytes: raw[index - 1]! });
     let endFrame: Buffer | null = null;
     if (shot.endPanelKey) {
       try {
@@ -239,14 +239,18 @@ async function composeStoryboardShots(
       duration: shot.durationSec,
       videoSegmentIndex: index,
       videoSegmentCount: shotPlan.shots.length,
-      videoUseEndFrame: Boolean(endFrame),
+      videoUseEndFrame: Boolean(frame && endFrame),
       assets: [
-        {
-          url: `data:image/png;base64,${frame.toString("base64")}`,
-          mimeType: "image/png",
-          role: "subject_reference",
-        },
-        ...(endFrame
+        ...(frame
+          ? [
+              {
+                url: `data:image/png;base64,${frame.toString("base64")}`,
+                mimeType: "image/png",
+                role: "subject_reference",
+              },
+            ]
+          : []),
+        ...(frame && endFrame
           ? [
               {
                 url: `data:image/png;base64,${endFrame.toString("base64")}`,

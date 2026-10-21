@@ -25,6 +25,8 @@ export type VideoShot = {
   readonly panelKey?: string;
   /** Next shot's panel: providers that accept an end frame land on it, so shots flow together. */
   readonly endPanelKey?: string;
+  /** Planned from the brief (no storyboard): generate from text, not the previous clip's last frame. */
+  readonly fresh?: boolean;
 };
 
 export type VideoShotPlan = {
@@ -163,12 +165,25 @@ export function findStyleNote(source: unknown): string {
   return "";
 }
 
-export function buildShotPrompt(scene: ScriptScene, styleNote: string, total: number): string {
+export function buildShotPrompt(
+  scene: ScriptScene,
+  styleNote: string,
+  total: number,
+  opts?: { readonly changeRequest?: string; readonly isLast?: boolean; readonly fresh?: boolean },
+): string {
   const head = `Shot ${scene.index} of ${total}${scene.title ? ` — ${scene.title}` : ""}.`;
+  const change = opts?.changeRequest?.trim();
   const prompt = [
     head,
     `Action and camera: ${scene.visual}`,
-    "Start exactly on the opening frame and animate it as one continuous take — no cuts, no scene changes. Characters stay identical to the opening frame (design, proportions, colours, details) and move naturally; the camera moves smoothly. No added text, captions or watermarks.",
+    // Ahead of the style note so the length cap never cuts it.
+    change ? `Client change request (must follow): ${change}` : "",
+    opts?.fresh
+      ? "One continuous take — no cuts. Photorealistic, cinematic, premium commercial look: sharp focus, rich true-to-life colour, natural skin and fabric detail, smooth stabilised camera, people move naturally."
+      : "Start exactly on the opening frame and animate it as one continuous take — no cuts, no scene changes. Characters stay identical to the opening frame (design, proportions, colours, details) and move naturally; the camera moves smoothly.",
+    opts?.isLast
+      ? "This is the closing shot: keep any logo or end-card text already in the frame exactly as it is; add no other text."
+      : "No added text, captions or watermarks.",
     styleNote ? `Style: ${styleNote}` : "",
   ]
     .filter(Boolean)

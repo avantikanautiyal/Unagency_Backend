@@ -168,3 +168,55 @@ describe("shot prompts", () => {
     expect(prompt).toContain("Style: Cosmo: round white robot.");
   });
 });
+
+describe("storyboard frames drive the shot plan", () => {
+  it("orders session storyboard frames by creation and keeps the latest version", () => {
+    const { storyboardFramesFromSession } = jest.requireActual(
+      "../../../../src/platform/providers/video/common/storyboard-video-submission",
+    );
+    const frames = storyboardFramesFromSession({
+      generatedArtifacts: [
+        { artifactId: "a", version: 1, phaseId: "storyboard", generationExecutionId: "exec_1_1792617169864" },
+        { artifactId: "c", version: 1, phaseId: "storyboard", generationExecutionId: "exec_3_1792617185902" },
+        { artifactId: "b", version: 1, phaseId: "storyboard", generationExecutionId: "exec_2_1792617185557" },
+        { artifactId: "b", version: 2, phaseId: "storyboard", generationExecutionId: "exec_9_1792617999999" },
+        { artifactId: "v", version: 1, phaseId: "style-preview", generationExecutionId: "exec_4_1792617999000" },
+      ],
+    });
+    expect(frames).toEqual([
+      { artifactId: "a", artifactVersion: 1 },
+      { artifactId: "b", artifactVersion: 2 },
+      { artifactId: "c", artifactVersion: 1 },
+    ]);
+  });
+
+  it("puts the client change request in every shot and allows the end card on the last", () => {
+    const { buildShotPrompt } = jest.requireActual(
+      "../../../../src/platform/providers/video/common/storyboard-shot-plan",
+    );
+    const scene = { index: 3, title: "END", startSec: 8, endSec: 10, visual: "Logo settles." };
+    const last = buildShotPrompt(scene, "x".repeat(2000), 3, { changeRequest: "must end with the logo", isLast: true });
+    expect(last).toContain("Client change request (must follow): must end with the logo");
+    expect(last).toContain("keep any logo or end-card text");
+    expect(last).not.toContain("No added text");
+    const mid = buildShotPrompt({ ...scene, index: 1 }, "", 3);
+    expect(mid).toContain("No added text");
+  });
+});
+
+describe("direct video shot planner", () => {
+  const { parsePlannedShots } = jest.requireActual(
+    "../../../../src/platform/providers/video/common/direct-video-shot-planner",
+  );
+  it("parses fenced JSON and caps to the requested count", () => {
+    const raw = '```json\n{"shots":[{"title":"A","visual":"one"},{"title":"B","visual":"two"},{"title":"C","visual":"three"}]}\n```';
+    expect(parsePlannedShots(raw, 2)).toEqual([
+      { title: "A", visual: "one" },
+      { title: "B", visual: "two" },
+    ]);
+  });
+  it("rejects plans with fewer than two usable shots", () => {
+    expect(parsePlannedShots('{"shots":[{"title":"A","visual":""},{"visual":"ok"}]}', 4)).toBeNull();
+    expect(parsePlannedShots("not json", 4)).toBeNull();
+  });
+});

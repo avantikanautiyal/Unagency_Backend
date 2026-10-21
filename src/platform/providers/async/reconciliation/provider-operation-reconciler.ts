@@ -396,6 +396,11 @@ export class ProviderOperationReconciler {
       }
 
       const artifactIds = ingestResult.value;
+      // Video compose patches safeMetadata during ingest; keep those flags.
+      const afterIngest = await this.deps.store.get(record.operationId);
+      if (afterIngest?.safeMetadata) {
+        record = { ...record, safeMetadata: { ...record.safeMetadata, ...afterIngest.safeMetadata } };
+      }
       record = transitionOperation(record, "artifact_created", this.nowIso(), {
         artifactIds,
         terminalAt: this.nowIso(),

@@ -121,7 +121,10 @@ export class MinimaxVideoProtocol implements IVendorVideoProtocol {
     const resolution =
       typeof request.payload.resolution === "string"
         ? String(request.payload.resolution).toUpperCase().replace("P", "P")
-        : "768P";
+        : // Hailuo renders 1080P only for 6 s clips; 10 s clips stay at 768P.
+          duration === 6
+          ? "1080P"
+          : "768P";
 
     const body: Record<string, unknown> = {
       prompt,

@@ -9,6 +9,7 @@ import {
   CDF_CONTRACT_VERSION,
   resolveCdfCanonicalService,
   tryResolveCdfPhaseDependencies,
+  isCdfPhaseActiveForSession,
   type CdfPhaseDefinition,
 } from "../canonical";
 import { cdfDependencySatisfied } from "../lifecycle/dependency-satisfaction";
@@ -343,6 +344,11 @@ export function resolveGenerationContext(
 
   for (const dep of phase.dependencies) {
     const depPhaseId = dep.phaseId;
+    // Upstream skipped by an earlier config choice (e.g. Videos "generate
+    // directly" skips storyboard) never produces an artifact — not missing.
+    if (!isCdfPhaseActiveForSession(canonical.serviceId, depPhaseId, session)) {
+      continue;
+    }
     // Skip deferred contract_only deps that were remapped in legacy (select → design-routes)
     const depPhase = canonical.phases.find((p) => p.phaseId === depPhaseId);
     if (depPhase && depPhase.implementationStatus !== "active") {

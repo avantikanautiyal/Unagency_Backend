@@ -137,7 +137,10 @@ export async function persistCdfSessionCasToMongo(
     const updated = await Model.findOneAndUpdate(
       {
         sessionId: normalized.sessionId,
-        sessionVersion: expectedVersion,
+        // Memory CAS already ordered this write. Mongo may lag memory when a
+        // fire-and-forget flush was lost; only a newer durable version (another
+        // writer) is a real conflict.
+        sessionVersion: { $lte: expectedVersion },
       },
       {
         $set: {

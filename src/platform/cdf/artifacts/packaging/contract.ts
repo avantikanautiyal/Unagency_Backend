@@ -122,9 +122,15 @@ export function assertPackagingContractKeyAlignment(): {
       );
     }
   }
-  // Ensure every M8A key appears (front-pack is read-only history: no phase emits it)
+  // Ensure every M8A key appears. front-pack / views / sku-adaptations are
+  // read-only history: their phases were removed, so no phase emits them.
+  const LEGACY_KEYS: ReadonlySet<string> = new Set([
+    PACKAGING_ARTIFACT_KEYS.frontPack,
+    PACKAGING_ARTIFACT_KEYS.views,
+    PACKAGING_ARTIFACT_KEYS.skuAdaptations,
+  ]);
   for (const key of Object.values(PACKAGING_ARTIFACT_KEYS)) {
-    if (key === PACKAGING_ARTIFACT_KEYS.frontPack) continue;
+    if (LEGACY_KEYS.has(key)) continue;
     const hit = svc.phases.some((p) => p.artifact?.artifactKey === key);
     if (!hit) {
       mismatches.push(`M8A key ${key} not present on any packaging phase`);

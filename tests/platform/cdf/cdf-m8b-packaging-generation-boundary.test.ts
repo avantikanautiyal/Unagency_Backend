@@ -29,7 +29,6 @@ import {
   fixturePackaging3dDirection,
   fixturePackagingFrontPack,
   fixturePackagingCompletePack,
-  fixturePackagingViews,
   fixturePackagingSkuAdaptations,
   resetCdfArtifactEngineForTests,
   resetCdfRequirementEngineForTests,
@@ -124,16 +123,12 @@ describe("CDF M8B Packaging Generation → Artifact Boundary", () => {
         phaseId: "complete-pack",
       }).artifactKey,
     ).toBe(PACKAGING_ARTIFACT_KEYS.completePack);
-    expect(
-      resolveArtifactTarget({ serviceId: "packaging", phaseId: "views" })
-        .artifactKey,
-    ).toBe(PACKAGING_ARTIFACT_KEYS.views);
-    expect(
-      resolveArtifactTarget({
-        serviceId: "packaging",
-        phaseId: "sku-adaptations",
-      }).artifactKey,
-    ).toBe(PACKAGING_ARTIFACT_KEYS.skuAdaptations);
+    // views / sku-adaptations were removed from the pipeline.
+    for (const removed of ["views", "sku-adaptations"]) {
+      expect(() =>
+        resolveArtifactTarget({ serviceId: "packaging", phaseId: removed }),
+      ).toThrow(new RegExp(`Unknown phase "${removed}"`));
+    }
     expect(() =>
       resolveArtifactTarget({ serviceId: "packaging", phaseId: "final" }),
     ).toThrow(/ARTIFACT_TARGET_UNRESOLVED|no Packaging creative/);
@@ -362,7 +357,7 @@ describe("CDF M8B Packaging Generation → Artifact Boundary", () => {
     expect(data.frontPackRef).toBeUndefined();
   });
 
-  it("9–11 — complete-pack / views / SKU exact deps; no latest", () => {
+  it("9–11 — complete-pack exact deps; no latest", () => {
     const session = startPackagingSession();
     const d = createArtifact({
       sessionId: session.sessionId,
@@ -442,48 +437,6 @@ describe("CDF M8B Packaging Generation → Artifact Boundary", () => {
     expect(cData.frontPackRef.version).toBe(1);
     expect(JSON.stringify(cData)).not.toMatch(/"latest"/);
 
-    const views = ingestGenerationCompletion({
-      sessionId: session.sessionId,
-      serviceId: "packaging",
-      phaseId: "views",
-      organizationId: "org_pack_m8b",
-      projectId: "proj_pack_m8b",
-      executionId: "exec_views_1",
-      expectedSessionVersion: session.sessionVersion,
-      rawOutput: fixturePackagingViews(complete.artifactId, 1),
-      packagingRefs: {
-        completePackRef: { artifactId: complete.artifactId, version: 1 },
-      },
-      requirements: [],
-    });
-    expect(
-      (getArtifactVersion(views.artifactId, 1).data as { views: unknown[] })
-        .views.length,
-    ).toBe(3);
-
-    const skus = ingestGenerationCompletion({
-      sessionId: session.sessionId,
-      serviceId: "packaging",
-      phaseId: "sku-adaptations",
-      organizationId: "org_pack_m8b",
-      projectId: "proj_pack_m8b",
-      executionId: "exec_sku_1",
-      expectedSessionVersion: session.sessionVersion,
-      rawOutput: fixturePackagingSkuAdaptations({
-        viewsArtifactId: views.artifactId,
-        viewsVersion: 1,
-        completePackArtifactId: complete.artifactId,
-      }),
-      packagingRefs: {
-        viewsRef: { artifactId: views.artifactId, version: 1 },
-        completePackRef: { artifactId: complete.artifactId, version: 1 },
-      },
-      requirements: [],
-    });
-    expect(
-      (getArtifactVersion(skus.artifactId, 1).data as { skus: Array<{ id: string }> })
-        .skus.map((s) => s.id),
-    ).toEqual(["sku_01", "sku_02", "sku_03", "sku_04"]);
   });
 
   it("12–15 — reject latest / exec_* / art_* / cdfart as vault", () => {

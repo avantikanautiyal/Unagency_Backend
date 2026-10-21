@@ -1450,7 +1450,15 @@ export function prepareTransition(
     const label =
       req.routeLabel?.trim() || route?.label || `Route ${idx + 1}`;
     const title = req.routeTitle?.trim() || route?.title || label;
-    const baseDesc = req.routeDesc?.trim() || route?.desc;
+    const productPlatform = existing.masters?.productPlatform?.trim();
+    // Social has no Platform phase: carry the picker platform on "Use Platform Size".
+    const baseDesc =
+      existing.serviceId === "social-media" &&
+      phase.id === "size-reference" &&
+      /platform size/i.test(label) &&
+      productPlatform
+        ? `Use the recommended ${productPlatform} size.`
+        : req.routeDesc?.trim() || route?.desc;
     const desc =
       inputRequirement && routeInput
         ? composeCdfRouteDescWithInput(baseDesc, inputRequirement, routeInput)

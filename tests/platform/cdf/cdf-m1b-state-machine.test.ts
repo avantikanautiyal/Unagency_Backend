@@ -463,28 +463,27 @@ describe("CDF M1B state machine", () => {
     expect(cFull!.readiness.allowNonVisualReady).toBe(true);
   });
 
-  it("Z/AA — Presentation select stays contract_only; slide-refinement is active (M6)", () => {
+  it("Z/AA — Presentation select stays contract_only; refinement lives on full-deck", () => {
     const cfg = resolveCdfServiceConfig("presentation");
     expect(cfg!.phases.some((p) => p.id === "select")).toBe(false);
-    expect(cfg!.phases.some((p) => p.id === "slide-refinement")).toBe(true);
+    expect(cfg!.phases.some((p) => p.id === "slide-refinement")).toBe(false);
     const canonical = resolveCdfCanonicalService("presentation")!;
     expect(
       canonical.phases.find((p) => p.phaseId === "select")?.implementationStatus,
     ).toBe("contract_only");
-    expect(
-      canonical.phases.find((p) => p.phaseId === "slide-refinement")
-        ?.implementationStatus,
-    ).toBe("active");
+    const fullDeck = canonical.phases.find((p) => p.phaseId === "full-deck")!;
+    expect(fullDeck.refinement.enabled).toBe(true);
+    expect(fullDeck.refinement.scopes).toEqual(
+      expect.arrayContaining(["slide", "element"]),
+    );
 
-    // Runtime path: design-routes → full-deck → slide-refinement → final
+    // Runtime path: design-routes → full-deck → final
     const designIdx = cfg!.phases.findIndex((p) => p.id === "design-routes");
     const fullIdx = cfg!.phases.findIndex((p) => p.id === "full-deck");
-    const refineIdx = cfg!.phases.findIndex((p) => p.id === "slide-refinement");
     const finalIdx = cfg!.phases.findIndex((p) => p.id === "final");
     expect(designIdx).toBeGreaterThanOrEqual(0);
     expect(fullIdx).toBe(designIdx + 1);
-    expect(refineIdx).toBe(fullIdx + 1);
-    expect(finalIdx).toBe(refineIdx + 1);
+    expect(finalIdx).toBe(fullIdx + 1);
   });
 
   describe("invariants", () => {

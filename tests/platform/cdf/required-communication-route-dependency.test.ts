@@ -66,14 +66,14 @@ const ROUTE = {
 describe("required on-asset communication — routes dependency", () => {
   const rows = phasesRequiringExactCommunication();
 
-  it("covers the phases from the live bug", () => {
+  it("covers the phases from the live bug and the new pipeline creatives", () => {
     const ids = rows.map((r) => `${r.serviceId}.${r.phase.phaseId}`);
     for (const id of [
-      "store-display.posm-family",
       "packaging.complete-pack",
-      "packaging.sku-adaptations",
       "emailers.responsive",
-      "event-branding.touchpoints",
+      "print-ooh.master-artwork",
+      "store-display.posm-design",
+      "ad-campaigns.asset-creative",
     ]) {
       expect(ids).toContain(id);
     }

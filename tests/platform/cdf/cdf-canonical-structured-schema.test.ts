@@ -247,12 +247,7 @@ describe("CDF canonical structured schema invariant (framework)", () => {
     assert.ok(withSchema.some((p) => p.artifactKey === "presentation.storyline"));
     assert.ok(withSchema.some((p) => p.artifactKey === "presentation.slide-content"));
     assert.ok(withSchema.some((p) => p.artifactKey === "web-tech.page-structure"));
-    assert.ok(withSchema.some((p) => p.artifactKey === "brand-strategy.brand-platform"));
-    // Non-emission structured phases (structuredEmission: none) stay without stamps.
-    assert.ok(
-      withoutSchema.some((p) => p.phaseId === "slide-refinement"),
-      "expected explicit non-emission structured phase without catalog stamp",
-    );
+    assert.ok(withSchema.some((p) => p.artifactKey === "brand-strategy.messaging"));
 
     // Contract-name catalog remains the registry source of truth.
     assert.ok(listRegisteredCanonicalStructuredArtifactKeys().length >= 3);
@@ -338,24 +333,6 @@ describe("CDF canonical structured schema invariant (framework)", () => {
     assert.equal(run.ok, true);
     assert.equal(run.providerInvoked, true);
     assert.equal(run.schemaPresentAtDispatch, true);
-  });
-
-  it("H2 — explicit non-emission structured phase skips schema gate", () => {
-    const contract = resolveCdfPhaseExecutionContract({
-      serviceId: "presentation",
-      phaseId: "slide-refinement",
-    });
-    assert.ok(contract);
-    assert.equal(contract!.structuredEmission, "none");
-    assert.equal(requiresCanonicalStructuredSchema(contract!), false);
-
-    const stamped = stampCanonicalStructuredOutputMetadata({
-      cdfServiceId: "presentation",
-      cdfPhaseId: "slide-refinement",
-    });
-    assert.equal(hasUsableStructuredOutputSchema(stamped), false);
-    const gate = assertCanonicalStructuredSchemaBeforeProvider(stamped);
-    assert.equal(gate.ok, true);
   });
 
   it("does not stamp PresentationRouteConcepts for storyline (wrong schema)", () => {

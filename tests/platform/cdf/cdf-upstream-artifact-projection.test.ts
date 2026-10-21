@@ -13,7 +13,7 @@ function session(): CdfSessionState {
     status: "active",
     brief: "Newsletter",
     phaseIndex: 2,
-    phaseId: "structure",
+    phaseId: "email-design",
     approved: [],
     selected: [],
     masters: {},
@@ -41,7 +41,7 @@ describe("CDF completion upstream artifact projection", () => {
       collectContractUpstreamRefs({
         sessionId: "cdf_upstream_projection",
         serviceId: "emailers",
-        phaseId: "structure",
+        phaseId: "email-design",
       }),
       [{ artifactId: "cdfart_a", version: 2, artifactKey: "emailers.full-copy" }],
     );

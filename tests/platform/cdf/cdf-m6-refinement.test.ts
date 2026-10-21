@@ -767,14 +767,15 @@ describe("CDF M6 Targeted Refinement", () => {
     }
   });
 
-  it("slide-refinement phase is active in canonical registry", () => {
+  it("slide/element targeted refinement lives on full-deck (no separate step)", () => {
     const canonical = resolveCdfCanonicalService("presentation")!;
-    expect(
-      canonical.phases.find((p) => p.phaseId === "slide-refinement")
-        ?.implementationStatus,
-    ).toBe("active");
+    const fullDeck = canonical.phases.find((p) => p.phaseId === "full-deck")!;
+    expect(fullDeck.refinement.enabled).toBe(true);
+    expect(fullDeck.refinement.scopes).toEqual(
+      expect.arrayContaining(["slide", "element"]),
+    );
     const legacy = resolveCdfServiceConfig("presentation")!;
-    expect(legacy.phases.some((p) => p.id === "slide-refinement")).toBe(true);
+    expect(legacy.phases.some((p) => p.id === "slide-refinement")).toBe(false);
     expect(legacy.phases.some((p) => p.id === "select")).toBe(false);
   });
 });

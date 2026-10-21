@@ -55,7 +55,6 @@ export const SOCIAL_MEDIA_PHASE_ARTIFACT_KEY: Record<
   string,
   SocialMediaArtifactKey | null
 > = {
-  platform: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
   "size-reference": SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
   routes: SOCIAL_MEDIA_ARTIFACT_KEYS.routes,
   output: SOCIAL_MEDIA_ARTIFACT_KEYS.output,

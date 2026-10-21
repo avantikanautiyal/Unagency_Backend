@@ -55,7 +55,6 @@ export const PRESENTATION_PHASE_FALLBACK: Record<string, PresentationArtifactKey
   "design-routes": PRESENTATION_ARTIFACT_KEYS.designRoute,
   select: PRESENTATION_ARTIFACT_KEYS.designSystem,
   "full-deck": PRESENTATION_ARTIFACT_KEYS.deck,
-  "slide-refinement": PRESENTATION_ARTIFACT_KEYS.deck,
 };
 
 const GENERIC_SCHEMA_VERSION = "1";

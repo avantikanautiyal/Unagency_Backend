@@ -58,24 +58,24 @@ describe("CDF cross-service pipeline conformance", () => {
     resetCdfArtifactEngineForTests();
   });
 
-  it("locks registry baseline: 18 services × 105 phases", () => {
+  it("locks registry baseline: 18 services × 88 phases", () => {
     const ids = listCdfCanonicalServiceIds();
     assert.equal(ids.length, 18);
-    assert.equal(countCdfCanonicalPhases(), 105);
+    assert.equal(countCdfCanonicalPhases(), 88);
     const rows = buildFullConformanceMatrix();
-    assert.equal(rows.length, 105);
+    assert.equal(rows.length, 88);
     const summary = summarizeConformanceMatrix(rows);
-    assert.equal(summary.registryPhaseCount, 105);
-    assert.equal(summary.totalPhases, 105);
+    assert.equal(summary.registryPhaseCount, 88);
+    assert.equal(summary.totalPhases, 88);
   });
 
-  it("achieves 105/105 CONFORMANT with 0 PARTIAL and 0 BLOCKED", () => {
+  it("achieves 88/88 CONFORMANT with 0 PARTIAL and 0 BLOCKED", () => {
     assert.equal(isGenericCanonicalCompletionAvailable(), true);
     const rows = buildFullConformanceMatrix();
     const summary = summarizeConformanceMatrix(rows);
     assert.equal(
       summary.byStatus.CONFORMANT,
-      105,
+      88,
       JSON.stringify(summary.byStatus),
     );
     assert.equal(summary.byStatus.PARTIAL, 0);
@@ -131,18 +131,18 @@ describe("CDF cross-service pipeline conformance", () => {
 
   it("generic image completion requires vault previewAssetRef", () => {
     const sessionId = `cdf_conf_img_${Date.now().toString(36)}`;
-    saveCdfSession(sessionStub(sessionId, "ad-campaigns", "master-kv"));
+    saveCdfSession(sessionStub(sessionId, "print-ooh", "master-artwork"));
     const vaultId = "507f1f77bcf86cd799439011";
     const r = tryIngestCanonicalCdfCompletion({
       metadata: {
         cdfSessionId: sessionId,
-        cdfPhaseId: "master-kv",
-        cdfServiceId: "ad-campaigns",
+        cdfPhaseId: "master-artwork",
+        cdfServiceId: "print-ooh",
         cdfExecutionStrategy: "canonical",
       },
       rawOutput: {
         previewAssetRef: { vaultAssetId: vaultId },
-        title: "Master KV",
+        title: "Master Artwork",
       },
       executionId: "exec_conf_image_1",
       organizationId: "6a8d8d7dc263a4d6afe69691",

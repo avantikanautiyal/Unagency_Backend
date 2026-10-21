@@ -16,7 +16,6 @@ import {
   bindGeneratedSocialMediaArtifactToSession,
   bindSocialMediaGeneratedFromAttach,
   createArtifact,
-  fixtureSocialMediaPlatform,
   fixtureSocialMediaSizeReference,
   getCdfSession,
   resetCdfArtifactEngineForTests,
@@ -94,14 +93,11 @@ describe("CDF Social Media routes→output lifecycle continuity", () => {
 
   function pinCanonicalConfig(
     sessionId: string,
-    phaseId: "platform" | "size-reference",
+    phaseId: "size-reference",
     data: Record<string, unknown>,
   ) {
     expect(getCdfSession(sessionId)!.phaseId).toBe(phaseId);
-    const key =
-      phaseId === "platform"
-        ? SOCIAL_MEDIA_ARTIFACT_KEYS.platform
-        : SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference;
+    const key = SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference;
     const created = createArtifact({
       sessionId,
       serviceId: "social-media",
@@ -137,13 +133,8 @@ describe("CDF Social Media routes→output lifecycle continuity", () => {
     return selected.value.session;
   }
 
-  /** Advance to routes with canonical platform + size-reference pins. */
+  /** Advance to routes with a canonical size-reference pin. */
   function advanceToRoutesCanonical(sessionId: string) {
-    pinCanonicalConfig(
-      sessionId,
-      "platform",
-      fixtureSocialMediaPlatform(),
-    );
     pinCanonicalConfig(
       sessionId,
       "size-reference",
@@ -157,19 +148,8 @@ describe("CDF Social Media routes→output lifecycle continuity", () => {
   /** Legacy-only advance (no canonical pins) — for ingest-disabled cases. */
   function advanceToRoutesLegacy(sessionId: string) {
     let live = getCdfSession(sessionId)!;
-    expect(live.phaseId).toBe("platform");
-    let r = applyCdfTransition({
-      sessionId,
-      action: "select_route",
-      routeIndex: 0,
-      routeInput: "1080 × 1350 px",
-      expectedVersion: live.sessionVersion,
-    });
-    expect(r.ok).toBe(true);
-    if (!r.ok) throw new Error("select platform");
-    live = r.value.session;
     expect(live.phaseId).toBe("size-reference");
-    r = applyCdfTransition({
+    const r = applyCdfTransition({
       sessionId,
       action: "select_route",
       routeIndex: 0,
@@ -326,11 +306,6 @@ describe("CDF Social Media routes→output lifecycle continuity", () => {
     const session = startSocialSession();
     pinCanonicalConfig(
       session.sessionId,
-      "platform",
-      fixtureSocialMediaPlatform(),
-    );
-    pinCanonicalConfig(
-      session.sessionId,
       "size-reference",
       fixtureSocialMediaSizeReference(),
     );
@@ -468,19 +443,19 @@ describe("CDF Social Media routes→output lifecycle continuity", () => {
     const bumpArt = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_sm_lifecycle",
       projectId: "proj_sm_lifecycle",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     const concurrent = bindGeneratedSocialMediaArtifactToSession({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: bumpArt.artifact.artifactId,
       version: 1,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       expectedVersion: staleExpected,
     });
     expect(concurrent.ok).toBe(true);
@@ -503,13 +478,13 @@ describe("CDF Social Media routes→output lifecycle continuity", () => {
     expect(routesPin?.version).toBe(V);
     expect(
       live.generatedArtifacts?.some(
-        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        (r) => r.artifactId === bumpArt.artifact.artifactId,
       ),
     ).toBe(true);
   });
 
   // ─── TEST I ─────────────────────────────────────────────────────────────
-  it("I — full E2E platform→size→routes→M9B→M9C→select→approve→output dep X@V", () => {
+  it("I — full E2E size→routes→M9B→M9C→select→approve→output dep X@V", () => {
     const session = startSocialSession();
     const ingested = ingestRoutesAccepted(session.sessionId, "exec_lifecycle_i");
     const X = ingested.attach.cdfArtifactId;

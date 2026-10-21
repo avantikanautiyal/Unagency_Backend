@@ -253,10 +253,11 @@ describe("CDF M2 Requirement Engine", () => {
     });
     expect(cur.ok).toBe(true);
     if (!cur.ok) return;
+    // Size gate: "Use Platform Size" (index 1) needs no typed input.
     cur = applyCdfTransition({
       sessionId: started.session.sessionId,
       action: "select_route",
-      routeIndex: 0,
+      routeIndex: 1,
       expectedVersion: cur.value.session.sessionVersion,
     });
     // may need more selects depending on gates

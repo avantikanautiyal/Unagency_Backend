@@ -423,7 +423,8 @@ describe("CDF structured execution spine (generic)", () => {
         });
       }
     }
-    assert.ok(required.length >= 14, `expected >=14 required, got ${required.length}`);
+    // Sanity floor — the new pipelines declare 13 structured phases.
+    assert.ok(required.length >= 10, `expected >=10 required, got ${required.length}`);
     const pageStructure = required.find(
       (r) => r.serviceId === "web-tech" && r.phaseId === "page-structure",
     );
@@ -435,18 +436,6 @@ describe("CDF structured execution spine (generic)", () => {
     );
   });
 
-  it("S — slide-refinement remains structuredEmission=none", () => {
-    const contract = resolveCdfPhaseExecutionContract({
-      serviceId: "presentation",
-      phaseId: "slide-refinement",
-    });
-    assert.ok(contract);
-    assert.equal(contract!.structuredEmission, "none");
-    assert.equal(
-      resolveCdfStructuredOutputStamp({ contract: contract! }),
-      undefined,
-    );
-  });
 
   it("hash helper is deterministic (sanity)", () => {
     const h = createHash("sha256").update("x").digest("hex").slice(0, 32);

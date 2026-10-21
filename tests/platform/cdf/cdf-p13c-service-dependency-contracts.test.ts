@@ -30,7 +30,7 @@ const EXPECTED_CLASS: Record<string, CdfServiceDependencyClass> = {
   "brand-strategy": "D",
   "ad-campaigns": "D",
   logo: "D",
-  "visual-identity": "D",
+  "visual-identity": "C",
   "brand-guidelines": "D",
   "brand-naming-taglines": "D",
   "print-ooh": "D",
@@ -110,7 +110,6 @@ describe("Phase 13C CDF Service Dependency Contracts", () => {
         "storyline",
         "slide-content",
         "full-deck",
-        "slide-refinement",
       ]),
     );
     expect(c.deterministicPhases).toEqual(
@@ -153,7 +152,7 @@ describe("Phase 13C CDF Service Dependency Contracts", () => {
       "ArtifactVersion",
     );
     expect(c.deterministicPhases).toEqual(
-      expect.arrayContaining(["platform", "size-reference", "final"]),
+      expect.arrayContaining(["size-reference", "final"]),
     );
   });
 
@@ -161,6 +160,11 @@ describe("Phase 13C CDF Service Dependency Contracts", () => {
     const deep = new Set(CDF_DEEP_INGEST_RUNTIME_SERVICES);
     for (const c of buildAllServiceDependencyContracts()) {
       if (deep.has(c.serviceId as (typeof CDF_DEEP_INGEST_RUNTIME_SERVICES)[number])) {
+        continue;
+      }
+      // Visual Identity (routes → final) has no LLM→LLM content edge since core-system was removed.
+      if (c.serviceId === "visual-identity") {
+        expect(c.classification).toBe("C");
         continue;
       }
       expect(c.classification).toBe("D");

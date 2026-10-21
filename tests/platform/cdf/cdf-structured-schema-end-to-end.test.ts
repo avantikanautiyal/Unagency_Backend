@@ -63,11 +63,11 @@ describe("structured output schema end-to-end (M/N)", () => {
   it("provider request schema requires schemaId and sections[].id", () => {
     const contract = resolveCdfPhaseExecutionContract({
       serviceId: "brand-strategy",
-      phaseId: "brand-platform",
+      phaseId: "messaging",
     });
     assert.ok(contract);
     const stamp = resolveCdfStructuredOutputStamp({ contract: contract! });
-    assert.ok(stamp, "structured stamp resolves for brand-strategy.brand-platform");
+    assert.ok(stamp, "structured stamp resolves for brand-strategy.messaging");
     const schema = stamp!.schema as Record<string, unknown>;
     const required = schema.required as string[];
     assert.ok(required.includes("schemaId"));

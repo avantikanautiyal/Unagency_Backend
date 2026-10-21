@@ -81,21 +81,13 @@ describe("Brand Naming & Taglines — scope-driven flow", () => {
       shown.value.ui.phaseProgressStatuses?.[config.phases.findIndex((p) => p.id === id)];
     expect(status("naming-territories")).toBe("skipped");
     expect(status("naming-shortlist")).toBe("skipped");
-    expect(status("approve-name")).toBe("skipped");
-    expect(status("approve-name-tagline")).toBe("skipped");
-    expect(status("approve-tagline")).toBe("upcoming");
+    expect(status("final")).toBe("upcoming");
   });
 
-  it("Taglines only: approvals advance straight to the tagline approval, then Final with one CTA", () => {
+  it("Taglines only: approving the tagline shortlist goes straight to Final with one CTA", () => {
     const sessionId = startWithScope("Taglines");
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
     expect(getCdfSession(sessionId)!.phaseId).toBe("tagline-shortlist");
-
-    const shortlistApproved = approveWithCanonicalCompletion(sessionId);
-    expect(shortlistApproved.ok).toBe(true);
-    if (!shortlistApproved.ok) return;
-    expect(shortlistApproved.value.session.phaseId).toBe("approve-tagline");
-    expect(shortlistApproved.value.ui.currentPhase?.approveLabel).toBe("Approve Tagline");
 
     const finalApproved = approveWithCanonicalCompletion(sessionId);
     expect(finalApproved.ok).toBe(true);
@@ -109,12 +101,6 @@ describe("Brand Naming & Taglines — scope-driven flow", () => {
     expect(getCdfSession(sessionId)!.phaseId).toBe("naming-territories");
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
     expect(getCdfSession(sessionId)!.phaseId).toBe("naming-shortlist");
-
-    const namesSelected = approveWithCanonicalCompletion(sessionId);
-    expect(namesSelected.ok).toBe(true);
-    if (!namesSelected.ok) return;
-    expect(namesSelected.value.session.phaseId).toBe("approve-name");
-    expect(namesSelected.value.ui.currentPhase?.approveLabel).toBe("Approve Name");
 
     const approved = approveWithCanonicalCompletion(sessionId);
     expect(approved.ok).toBe(true);

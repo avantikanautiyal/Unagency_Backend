@@ -101,9 +101,9 @@ describe("CDF M9B Social Media Generation → Artifact Boundary", () => {
     expect(
       resolveArtifactTarget({
         serviceId: "social-media",
-        phaseId: "platform",
+        phaseId: "size-reference",
       }).artifactKey,
-    ).toBe(SOCIAL_MEDIA_ARTIFACT_KEYS.platform);
+    ).toBe(SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference);
     expect(
       resolveArtifactTarget({
         serviceId: "social-media",
@@ -334,12 +334,12 @@ describe("CDF M9B Social Media Generation → Artifact Boundary", () => {
       ingestGenerationCompletion({
         sessionId: session.sessionId,
         serviceId: "social-media",
-        phaseId: "platform",
+        phaseId: "size-reference",
         organizationId: "org_social_m9b",
         projectId: "proj_social_m9b",
         executionId: "exec_stale",
         expectedSessionVersion: session.sessionVersion - 1,
-        rawOutput: { platform: "instagram", label: "Instagram" },
+        rawOutput: { pathKind: "use_platform_size", label: "Use Platform Size" },
       }),
     ).toThrow(/STALE|stale/i);
   });
@@ -418,9 +418,9 @@ describe("CDF M9B Social Media Generation → Artifact Boundary", () => {
       metadata: {
         cdfSessionId: session.sessionId,
         cdfServiceId: "social-media",
-        cdfPhaseId: "platform",
+        cdfPhaseId: "size-reference",
       },
-      rawOutput: { platform: "instagram", label: "Instagram" },
+      rawOutput: { pathKind: "use_platform_size", label: "Use Platform Size" },
       executionId: "exec_off",
     });
     expect(r?.kind).toBe("opt_in_disabled");
@@ -429,24 +429,24 @@ describe("CDF M9B Social Media Generation → Artifact Boundary", () => {
     }
   });
 
-  it("S — INGEST=ON + eligible platform → accepted attach", () => {
+  it("S — INGEST=ON + eligible size choice → accepted attach", () => {
     process.env.CDF_SOCIAL_MEDIA_INGEST = "1";
     const session = startSocialSession();
     const r = tryIngestSocialMediaCdfCompletion({
       metadata: {
         cdfSessionId: session.sessionId,
         cdfServiceId: "social-media",
-        cdfPhaseId: "platform",
+        cdfPhaseId: "size-reference",
       },
-      rawOutput: { platform: "instagram", label: "Instagram" },
-      executionId: "exec_on_platform",
+      rawOutput: { pathKind: "use_platform_size", label: "Use Platform Size" },
+      executionId: "exec_on_size",
       organizationId: "org_social_m9b",
       projectId: "proj_social_m9b",
     });
     expect(r?.kind).toBe("accepted");
     if (r?.kind === "accepted") {
       expect(r.attach.cdfRuntimePath).toBe("canonical");
-      expect(r.attach.cdfArtifactKey).toBe(SOCIAL_MEDIA_ARTIFACT_KEYS.platform);
+      expect(r.attach.cdfArtifactKey).toBe(SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference);
       expect(r.attach.canonicalPath).toBe(true);
     }
   });
@@ -545,9 +545,9 @@ describe("CDF M9B Social Media Generation → Artifact Boundary", () => {
       metadata: {
         cdfSessionId: session.sessionId,
         cdfServiceId: "social-media",
-        cdfPhaseId: "platform",
+        cdfPhaseId: "size-reference",
       },
-      rawOutput: { platform: "instagram", label: "Instagram" },
+      rawOutput: { pathKind: "use_platform_size", label: "Use Platform Size" },
       executionId: "exec_no_session_mut",
       organizationId: "org_social_m9b",
       projectId: "proj_social_m9b",

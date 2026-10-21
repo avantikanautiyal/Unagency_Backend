@@ -19,6 +19,7 @@ import {
   createArtifact,
   ensureCdfSessionLoaded,
   fixtureSocialMediaPlatform,
+  fixtureSocialMediaSizeReference,
   fixtureSocialMediaRoutes,
   getArtifactVersion,
   getCdfSession,
@@ -314,17 +315,17 @@ describe("CDF canonical completion monotonicity (duplicate poll/finalize)", () =
 
   it("7b — ingest-layer conflicting payload under same requestId still throws", () => {
     const session = saveCdfSession(
-      sessionStub(`cdf_idem_${Date.now().toString(36)}`, "platform"),
+      sessionStub(`cdf_idem_${Date.now().toString(36)}`, "size-reference"),
     );
     ingestGenerationCompletion({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "6a8d8d7dc263a4d6afe69691",
       projectId: "proj_mono",
       executionId: "exec_idem_a",
       expectedSessionVersion: session.sessionVersion,
-      rawOutput: fixtureSocialMediaPlatform(),
+      rawOutput: fixtureSocialMediaSizeReference(),
       requirements: [],
       requestId: "mono_gen_idem_conflict",
     });
@@ -333,14 +334,14 @@ describe("CDF canonical completion monotonicity (duplicate poll/finalize)", () =
         ingestGenerationCompletion({
           sessionId: session.sessionId,
           serviceId: "social-media",
-          phaseId: "platform",
+          phaseId: "size-reference",
           organizationId: "6a8d8d7dc263a4d6afe69691",
           projectId: "proj_mono",
           executionId: "exec_idem_a",
           expectedSessionVersion: getCdfSession(session.sessionId)!
             .sessionVersion,
           rawOutput: {
-            ...fixtureSocialMediaPlatform(),
+            ...fixtureSocialMediaSizeReference(),
             label: "Different payload",
           },
           requirements: [],

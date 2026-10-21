@@ -73,35 +73,8 @@ function seedSocialRoutesSession(): {
   if (!briefed.ok) throw new Error("brief");
   session = briefed.value.session;
 
-  // Seed platform + size so routes ingest can proceed if deps require them.
-  const platform = fixtureSocialMediaPlatform();
+  // Seed size so routes ingest can proceed if deps require it.
   const size = fixtureSocialMediaSizeReference();
-  const platIngest = tryIngestSocialMediaCdfCompletion({
-    metadata: {
-      cdfSessionId: session.sessionId,
-      cdfPhaseId: "platform",
-      cdfServiceId: "social-media",
-      cdfExecutionStrategy: "canonical",
-    },
-    rawOutput: platform,
-    executionId: "exec_plat",
-    organizationId: "org_struct_surv",
-    projectId: "proj_struct_surv",
-    forceOptIn: true,
-  });
-  if (!platIngest || platIngest.kind !== "accepted") {
-    throw new Error(`platform ingest: ${JSON.stringify(platIngest)}`);
-  }
-  const platBound = bindSocialMediaGeneratedFromAttach({
-    sessionId: session.sessionId,
-    phaseId: "platform",
-    attach: platIngest.attach,
-    organizationId: "org_struct_surv",
-    projectId: "proj_struct_surv",
-  });
-  if (!platBound.ok) throw new Error(platBound.message);
-  session = platBound.session;
-
   const sizeIngest = tryIngestSocialMediaCdfCompletion({
     metadata: {
       cdfSessionId: session.sessionId,

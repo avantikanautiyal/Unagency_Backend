@@ -25,7 +25,6 @@ describe("CDF registry", () => {
   it("lists all 18 service flows", () => {
     expect(listCdfServiceIds()).toHaveLength(18);
     expect(resolveCdfServiceConfig("social-media")?.phases.map((p) => p.id)).toEqual([
-      "platform",
       "size-reference",
       "routes",
       "output",
@@ -63,14 +62,14 @@ describe("CDF transition service", () => {
     });
     expect(briefed.ok).toBe(true);
     if (!briefed.ok) return;
-    expect(briefed.value.session.phaseId).toBe("platform");
+    expect(briefed.value.session.phaseId).toBe("size-reference");
     expect(briefed.value.nextWork).toMatchObject({
       kind: "show_phase",
-      phaseId: "platform",
+      phaseId: "size-reference",
     });
     expect(briefed.value.ui.allowedActions).toContain("select_route");
 
-    applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
+    // "Use Platform Size" — no typed input needed.
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 1 });
 
     const selected = applyCdfTransition({
@@ -278,7 +277,7 @@ describe("CDF Wave 2 services", () => {
     expect(handoff.value.session.modeOwnership).toBe("studio");
   });
 
-  it("runs Brand Strategy territory → platform with hybrid handoff gate", () => {
+  it("runs Brand Strategy territory → messaging → final with hybrid handoff gate", () => {
     const started = applyCdfTransition({
       action: "start",
       serviceId: "brand-strategy",
@@ -293,14 +292,15 @@ describe("CDF Wave 2 services", () => {
       brief: "Strategy for CrunchO snacks",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
-    const platform = approveWithCanonicalCompletion(sessionId);
-    expect(platform.ok).toBe(true);
-    if (!platform.ok) return;
-    expect(platform.value.session.phaseId).toBe("tone-of-voice");
-    expect(platform.value.ui.showSendToStudio).toBe(true);
+    const messaging = approveWithCanonicalCompletion(sessionId);
+    expect(messaging.ok).toBe(true);
+    if (!messaging.ok) return;
+    expect(messaging.value.session.phaseId).toBe("final");
+    expect(messaging.value.ui.showSendToStudio).toBe(true);
+    expect(messaging.value.ui.finalActions).toEqual(["Download Strategy"]);
   });
 
-  it("runs Ad Campaigns strategy → big idea → concept → master KV", () => {
+  it("runs Ad Campaigns Strategy option → big idea → develop idea → final", () => {
     const started = applyCdfTransition({
       action: "start",
       serviceId: "ad-campaigns",
@@ -314,7 +314,17 @@ describe("CDF Wave 2 services", () => {
       action: "submit_brief",
       brief: "Launch campaign urban 18-30",
     });
-    approveWithCanonicalCompletion(sessionId); // campaign-strategy
+    const typed = applyCdfTransition({
+      sessionId,
+      action: "select_route",
+      routeIndex: 2,
+      routeLabel: "Strategy",
+      routeTitle: "Strategy",
+    });
+    expect(typed.ok).toBe(true);
+    if (!typed.ok) return;
+    // Assets / Headlines steps are skipped for the Strategy option.
+    expect(typed.value.session.phaseId).toBe("big-ideas");
     // Canonical session requires exact X@V on select_route for big-ideas.
     const ideas = bindMinimalGeneratedForApprove(sessionId)!;
     const selectedIdea = applyCdfTransition({
@@ -328,15 +338,12 @@ describe("CDF Wave 2 services", () => {
     });
     expect(selectedIdea.ok).toBe(true);
     if (!selectedIdea.ok) return;
-    const concept = approveWithCanonicalCompletion(sessionId);
-    expect(concept.ok).toBe(true);
-    if (!concept.ok) return;
-    expect(concept.value.session.phaseId).toBe("master-kv");
-    expect(concept.value.nextWork).toMatchObject({
-      kind: "generate",
-      phaseId: "master-kv",
-      generator: "image",
-    });
+    expect(selectedIdea.value.session.phaseId).toBe("campaign-development");
+    const developed = approveWithCanonicalCompletion(sessionId);
+    expect(developed.ok).toBe(true);
+    if (!developed.ok) return;
+    expect(developed.value.session.phaseId).toBe("final");
+    expect(developed.value.ui.finalActions).toEqual(["Download Campaign Kit"]);
   });
 });
 
@@ -488,7 +495,7 @@ describe("CDF Wave 3 services", () => {
     expect(composition.value.session.phaseId).toBe("final-illustration");
   });
 
-  it("runs Production master-select → mapping → adaptations", () => {
+  it("runs Production approved master → directions → creative", () => {
     const started = applyCdfTransition({
       action: "start",
       serviceId: "production",
@@ -500,21 +507,30 @@ describe("CDF Wave 3 services", () => {
     applyCdfTransition({
       sessionId,
       action: "submit_brief",
-      brief: "Adapt master to 15 digital sizes",
+      brief: "New creatives that follow our approved master KV",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0, routeInput: "master.png" }); // master-select
-    const adaptations = approveWithCanonicalCompletion(sessionId);
-    expect(adaptations.ok).toBe(true);
-    if (!adaptations.ok) return;
-    expect(adaptations.value.session.phaseId).toBe("adaptations");
-    expect(adaptations.value.nextWork).toMatchObject({
+    const directions = bindMinimalGeneratedForApprove(sessionId)!;
+    const selected = applyCdfTransition({
+      sessionId,
+      action: "select_route",
+      routeIndex: 0,
+      artifactId: directions.artifactId,
+      artifactVersion: directions.artifactVersion,
+      artifactKey: directions.artifactKey,
+      expectedVersion: directions.session.sessionVersion,
+    });
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) return;
+    expect(selected.value.session.phaseId).toBe("creative");
+    expect(selected.value.nextWork).toMatchObject({
       kind: "generate",
-      phaseId: "adaptations",
+      phaseId: "creative",
       generator: "image",
     });
   });
 
-  it("runs Event Branding theme → identity with hybrid handoff", () => {
+  it("runs Event Branding theme → touchpoints → environment with hybrid handoff", () => {
     const started = applyCdfTransition({
       action: "start",
       serviceId: "event-branding",
@@ -529,11 +545,21 @@ describe("CDF Wave 3 services", () => {
       brief: "Annual client summit branding",
     });
     applyCdfTransition({ sessionId, action: "select_route", routeIndex: 0 });
-    const identity = approveWithCanonicalCompletion(sessionId);
-    expect(identity.ok).toBe(true);
-    if (!identity.ok) return;
-    expect(identity.value.session.phaseId).toBe("select-touchpoints");
-    expect(identity.value.ui.showSendToStudio).toBe(true);
+    const touchpoints = applyCdfTransition({
+      sessionId,
+      action: "select_route",
+      routeIndex: 0,
+      routeLabel: "Stage",
+      routeTitle: "Stage",
+    });
+    expect(touchpoints.ok).toBe(true);
+    if (!touchpoints.ok) return;
+    expect(touchpoints.value.session.phaseId).toBe("env-mockups");
+    const environment = approveWithCanonicalCompletion(sessionId);
+    expect(environment.ok).toBe(true);
+    if (!environment.ok) return;
+    expect(environment.value.session.phaseId).toBe("final");
+    expect(environment.value.ui.showSendToStudio).toBe(true);
   });
 });
 

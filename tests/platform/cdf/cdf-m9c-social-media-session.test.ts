@@ -12,7 +12,7 @@ import {
   createArtifact,
   createVersion,
   findSocialMediaExactRef,
-  fixtureSocialMediaPlatform,
+  fixtureSocialMediaSizeReference,
   fixtureSocialMediaRoutes,
   fixtureSocialMediaOutput,
   getArtifactVersion,
@@ -71,19 +71,19 @@ describe("CDF M9C Social Media Session Integration", () => {
     return briefed.value.session;
   }
 
-  function ingestPlatform(session: {
+  function ingestSizeReference(session: {
     sessionId: string;
     sessionVersion: number;
-  }, executionId = "exec_m9c_plat") {
+  }, executionId = "exec_m9c_size") {
     return ingestGenerationCompletion({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
       executionId,
       expectedSessionVersion: getCdfSession(session.sessionId)!.sessionVersion,
-      rawOutput: fixtureSocialMediaPlatform(),
+      rawOutput: fixtureSocialMediaSizeReference(),
       requirements: [],
     });
   }
@@ -111,13 +111,13 @@ describe("CDF M9C Social Media Session Integration", () => {
 
   it("A — eligible M9B artifact → exact generatedArtifacts ref via M9C", () => {
     const session = startSocialSession();
-    const out = ingestPlatform(session, "exec_m9c_a2");
+    const out = ingestSizeReference(session, "exec_m9c_a2");
     const before = getCdfSession(session.sessionId)!;
     expect(before.generatedArtifacts ?? []).toHaveLength(0);
 
     const bound = bindSocialMediaGeneratedFromAttach({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       attach: {
         cdfArtifactId: out.artifactId,
         cdfArtifactVersion: out.artifactVersion,
@@ -131,13 +131,13 @@ describe("CDF M9C Social Media Session Integration", () => {
     expect(sessionHasSocialMediaCanonicalRefs(s)).toBe(true);
     expect(s.sessionVersion).toBe(before.sessionVersion + 1);
     const gen = s.generatedArtifacts?.find(
-      (x) => x.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      (x) => x.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     );
     expect(gen).toEqual({
       artifactId: out.artifactId,
       version: out.artifactVersion,
-      phaseId: "platform",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      phaseId: "size-reference",
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       role: "generated",
     });
     expect(s.selectedArtifacts ?? []).toHaveLength(0);
@@ -149,18 +149,18 @@ describe("CDF M9C Social Media Session Integration", () => {
     const created = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     createVersion({
       artifactId: created.artifact.artifactId,
       expectedLatestVersion: 1,
       data: {
-        ...fixtureSocialMediaPlatform(),
+        ...fixtureSocialMediaSizeReference(),
         label: "Instagram v2",
       } as never,
     });
@@ -168,7 +168,7 @@ describe("CDF M9C Social Media Session Integration", () => {
       artifactId: created.artifact.artifactId,
       expectedLatestVersion: 2,
       data: {
-        ...fixtureSocialMediaPlatform(),
+        ...fixtureSocialMediaSizeReference(),
         label: "Instagram v3",
       } as never,
     });
@@ -176,7 +176,7 @@ describe("CDF M9C Social Media Session Integration", () => {
       artifactId: created.artifact.artifactId,
       expectedLatestVersion: 3,
       data: {
-        ...fixtureSocialMediaPlatform(),
+        ...fixtureSocialMediaSizeReference(),
         label: "Instagram v4 HEAD",
       } as never,
     });
@@ -185,15 +185,15 @@ describe("CDF M9C Social Media Session Integration", () => {
 
     mustBindGenerated({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: created.artifact.artifactId,
       version: 3,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
     });
     const gen = getCdfSession(session.sessionId)!.generatedArtifacts!.find(
-      (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     )!;
     expect(gen.version).toBe(3);
     expect(gen.artifactId).toBe(created.artifact.artifactId);
@@ -201,10 +201,10 @@ describe("CDF M9C Social Media Session Integration", () => {
 
   it("C/D — select updates selectedArtifacts only; does not approve", () => {
     const session = startSocialSession();
-    const out = ingestPlatform(session);
+    const out = ingestSizeReference(session);
     mustBindGenerated({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: out.artifactId,
       version: out.artifactVersion,
       artifactKey: out.artifactKey,
@@ -213,7 +213,7 @@ describe("CDF M9C Social Media Session Integration", () => {
     const approvedBefore = [...(s.approvedArtifacts ?? [])];
     s = applyArtifactEngineOnSelect({
       session: s,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: out.artifactId,
       artifactVersion: out.artifactVersion,
       artifactKey: out.artifactKey,
@@ -222,7 +222,7 @@ describe("CDF M9C Social Media Session Integration", () => {
     s = getCdfSession(session.sessionId)!;
     expect(
       s.selectedArtifacts?.find(
-        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       ),
     ).toMatchObject({
       artifactId: out.artifactId,
@@ -303,44 +303,44 @@ describe("CDF M9C Social Media Session Integration", () => {
     const created = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     let s = getCdfSession(session.sessionId)!;
     s = applyArtifactEngineOnSelect({
       session: s,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     });
     persistCdfSession(s);
 
     createVersion({
       artifactId: created.artifact.artifactId,
       expectedLatestVersion: 1,
-      data: { ...fixtureSocialMediaPlatform(), label: "v2" } as never,
+      data: { ...fixtureSocialMediaSizeReference(), label: "v2" } as never,
     });
     mustBindGenerated({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: created.artifact.artifactId,
       version: 2,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     });
     s = getCdfSession(session.sessionId)!;
     expect(
       s.selectedArtifacts?.find(
-        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       )?.version,
     ).toBe(1);
     expect(
       s.generatedArtifacts?.find(
-        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       )?.version,
     ).toBe(2);
 
@@ -388,38 +388,38 @@ describe("CDF M9C Social Media Session Integration", () => {
     const created = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     let s = getCdfSession(session.sessionId)!;
     s = applyArtifactEngineOnSelect({
       session: s,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     });
     persistCdfSession(s);
     createVersion({
       artifactId: created.artifact.artifactId,
       expectedLatestVersion: 1,
-      data: { ...fixtureSocialMediaPlatform(), label: "v2" } as never,
+      data: { ...fixtureSocialMediaSizeReference(), label: "v2" } as never,
     });
     s = applyArtifactEngineOnSelect({
       session: getCdfSession(session.sessionId)!,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: created.artifact.artifactId,
       artifactVersion: 2,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     });
     persistCdfSession(s);
     expect(
       getCdfSession(session.sessionId)!.selectedArtifacts!.find(
-        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       )!.version,
     ).toBe(2);
 
@@ -466,12 +466,12 @@ describe("CDF M9C Social Media Session Integration", () => {
     const created = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     const v1Data = structuredClone(
       getArtifactVersion(created.artifact.artifactId, 1).data,
@@ -479,15 +479,15 @@ describe("CDF M9C Social Media Session Integration", () => {
     createVersion({
       artifactId: created.artifact.artifactId,
       expectedLatestVersion: 1,
-      data: { ...fixtureSocialMediaPlatform(), label: "newer" } as never,
+      data: { ...fixtureSocialMediaSizeReference(), label: "newer" } as never,
     });
     let s = getCdfSession(session.sessionId)!;
     s = applyArtifactEngineOnSelect({
       session: s,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: created.artifact.artifactId,
       artifactVersion: 2,
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
     });
     persistCdfSession(s);
     expect(getArtifactVersion(created.artifact.artifactId, 1).data).toEqual(
@@ -557,20 +557,20 @@ describe("CDF M9C Social Media Session Integration", () => {
     const foreign = createArtifact({
       sessionId: sessionB.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_b",
       projectId: "proj_b",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     expect(() =>
       bindGeneratedSocialMediaArtifactToSession({
         sessionId: sessionA.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: foreign.artifact.artifactId,
         version: 1,
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         organizationId: "org_a",
         projectId: "proj_a",
       }),
@@ -582,20 +582,20 @@ describe("CDF M9C Social Media Session Integration", () => {
     const created = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
-      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+      artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       artifactType: "config_choice",
-      data: fixtureSocialMediaPlatform() as never,
+      data: fixtureSocialMediaSizeReference() as never,
     });
     expect(() =>
       bindGeneratedSocialMediaArtifactToSession({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: created.artifact.artifactId,
         version: 999,
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       }),
     ).toThrow(/ARTIFACT_VERSION_NOT_FOUND/);
   });
@@ -629,10 +629,10 @@ describe("CDF M9C Social Media Session Integration", () => {
 
   it("Q/R — idempotent repeated selection and approval via requestId", () => {
     const session = startSocialSession();
-    const out = ingestPlatform(session);
+    const out = ingestSizeReference(session);
     mustBindGenerated({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: out.artifactId,
       version: out.artifactVersion,
       artifactKey: out.artifactKey,
@@ -734,12 +734,12 @@ describe("CDF M9C Social Media Session Integration", () => {
     ingestGenerationCompletion({
       sessionId: session.sessionId,
       serviceId: "social-media",
-      phaseId: "platform",
+      phaseId: "size-reference",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
       executionId: "exec_m9c_idem",
       expectedSessionVersion: session.sessionVersion,
-      rawOutput: fixtureSocialMediaPlatform(),
+      rawOutput: fixtureSocialMediaSizeReference(),
       requirements: [],
       requestId: "m9c_gen_idem_1",
     });
@@ -747,13 +747,13 @@ describe("CDF M9C Social Media Session Integration", () => {
       ingestGenerationCompletion({
         sessionId: session.sessionId,
         serviceId: "social-media",
-        phaseId: "platform",
+        phaseId: "size-reference",
         organizationId: "org_social_m9c",
         projectId: "proj_social_m9c",
         executionId: "exec_m9c_idem",
         expectedSessionVersion: getCdfSession(session.sessionId)!.sessionVersion,
         rawOutput: {
-          ...fixtureSocialMediaPlatform(),
+          ...fixtureSocialMediaSizeReference(),
           label: "Different payload",
         },
         requirements: [],
@@ -764,13 +764,13 @@ describe("CDF M9C Social Media Session Integration", () => {
       ingestGenerationCompletion({
         sessionId: session.sessionId,
         serviceId: "social-media",
-        phaseId: "platform",
+        phaseId: "size-reference",
         organizationId: "org_social_m9c",
         projectId: "proj_social_m9c",
         executionId: "exec_m9c_idem2",
         expectedSessionVersion: getCdfSession(session.sessionId)!.sessionVersion,
         rawOutput: {
-          ...fixtureSocialMediaPlatform(),
+          ...fixtureSocialMediaSizeReference(),
           label: "Different payload",
         },
         requirements: [],
@@ -781,10 +781,10 @@ describe("CDF M9C Social Media Session Integration", () => {
 
   it("T — SESSION_VERSION_CONFLICT on concurrent select", () => {
     const session = startSocialSession();
-    const out = ingestPlatform(session);
+    const out = ingestSizeReference(session);
     mustBindGenerated({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: out.artifactId,
       version: out.artifactVersion,
       artifactKey: out.artifactKey,
@@ -793,7 +793,8 @@ describe("CDF M9C Social Media Session Integration", () => {
     const first = applyCdfTransition({
       sessionId: session.sessionId,
       action: "select_route",
-      routeIndex: 0,
+      // "Use Platform Size" — no typed input required.
+      routeIndex: 1,
       expectedVersion: v,
       artifactId: out.artifactId,
       artifactVersion: out.artifactVersion,
@@ -823,9 +824,9 @@ describe("CDF M9C Social Media Session Integration", () => {
       metadata: {
         cdfSessionId: session.sessionId,
         cdfServiceId: "social-media",
-        cdfPhaseId: "platform",
+        cdfPhaseId: "size-reference",
       },
-      rawOutput: fixtureSocialMediaPlatform(),
+      rawOutput: fixtureSocialMediaSizeReference(),
       executionId: "exec_m9c_m9b_boundary",
       organizationId: "org_social_m9c",
       projectId: "proj_social_m9c",
@@ -837,28 +838,28 @@ describe("CDF M9C Social Media Session Integration", () => {
 
   it("select-only dependency: selected pin satisfies; generated-only does not", () => {
     const session = startSocialSession();
-    const plat = ingestPlatform(session);
+    const plat = ingestSizeReference(session);
     mustBindGenerated({
       sessionId: session.sessionId,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: plat.artifactId,
       version: plat.artifactVersion,
       artifactKey: plat.artifactKey,
     });
     expect(
-      socialMediaDependencySatisfied(getCdfSession(session.sessionId)!, "platform"),
+      socialMediaDependencySatisfied(getCdfSession(session.sessionId)!, "size-reference"),
     ).toEqual({ ok: false, reason: "not_approved" });
 
     let s = applyArtifactEngineOnSelect({
       session: getCdfSession(session.sessionId)!,
-      phaseId: "platform",
+      phaseId: "size-reference",
       artifactId: plat.artifactId,
       artifactVersion: plat.artifactVersion,
       artifactKey: plat.artifactKey,
     });
     persistCdfSession(s);
     expect(
-      socialMediaDependencySatisfied(getCdfSession(session.sessionId)!, "platform")
+      socialMediaDependencySatisfied(getCdfSession(session.sessionId)!, "size-reference")
         .ok,
     ).toBe(true);
   });
@@ -869,12 +870,12 @@ describe("CDF M9C Social Media Session Integration", () => {
       const a = createArtifact({
         sessionId: session.sessionId,
         serviceId: "social-media",
-        phaseId: "platform",
+        phaseId: "size-reference",
         organizationId: "org_social_m9c",
         projectId: "proj_social_m9c",
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         artifactType: "config_choice",
-        data: fixtureSocialMediaPlatform() as never,
+        data: fixtureSocialMediaSizeReference() as never,
       });
       const b = createArtifact({
         sessionId: session.sessionId,
@@ -889,10 +890,10 @@ describe("CDF M9C Social Media Session Integration", () => {
       const v = getCdfSession(session.sessionId)!.sessionVersion;
       const first = bindGeneratedSocialMediaArtifactToSession({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: a.artifact.artifactId,
         version: 1,
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         expectedVersion: v,
       });
       expect(first.ok).toBe(true);
@@ -910,7 +911,7 @@ describe("CDF M9C Social Media Session Integration", () => {
       const s = getCdfSession(session.sessionId)!;
       expect(
         s.generatedArtifacts?.some(
-          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         ),
       ).toBe(true);
       expect(
@@ -922,11 +923,11 @@ describe("CDF M9C Social Media Session Integration", () => {
 
     it("B — generated bind concurrent with select: stale select conflicts", () => {
       const session = startSocialSession();
-      const out = ingestPlatform(session);
+      const out = ingestSizeReference(session);
       const v = getCdfSession(session.sessionId)!.sessionVersion;
       const bound = bindGeneratedSocialMediaArtifactToSession({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: out.artifactId,
         version: out.artifactVersion,
         artifactKey: out.artifactKey,
@@ -1011,12 +1012,12 @@ describe("CDF M9C Social Media Session Integration", () => {
       const plat = createArtifact({
         sessionId: session.sessionId,
         serviceId: "social-media",
-        phaseId: "platform",
+        phaseId: "size-reference",
         organizationId: "org_social_m9c",
         projectId: "proj_social_m9c",
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         artifactType: "config_choice",
-        data: fixtureSocialMediaPlatform() as never,
+        data: fixtureSocialMediaSizeReference() as never,
       });
       const routes = createArtifact({
         sessionId: session.sessionId,
@@ -1030,10 +1031,10 @@ describe("CDF M9C Social Media Session Integration", () => {
       });
       const stale = bindGeneratedSocialMediaArtifactToSession({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: plat.artifact.artifactId,
         version: 1,
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         expectedVersion: 0,
       });
       expect(stale.ok).toBe(false);
@@ -1043,19 +1044,19 @@ describe("CDF M9C Social Media Session Integration", () => {
       const v1 = getCdfSession(session.sessionId)!.sessionVersion;
       mustBindGenerated({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: plat.artifact.artifactId,
         version: 1,
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         expectedVersion: v1,
       });
       const afterPlat = getCdfSession(session.sessionId)!;
       let s = applyArtifactEngineOnSelect({
         session: afterPlat,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: plat.artifact.artifactId,
         artifactVersion: 1,
-        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+        artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
       });
       const swapped = compareAndSwapCdfSession(
         session.sessionId,
@@ -1074,7 +1075,7 @@ describe("CDF M9C Social Media Session Integration", () => {
       const final = getCdfSession(session.sessionId)!;
       expect(
         final.generatedArtifacts?.find(
-          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         )?.version,
       ).toBe(1);
       expect(
@@ -1084,17 +1085,17 @@ describe("CDF M9C Social Media Session Integration", () => {
       ).toBe(1);
       expect(
         final.selectedArtifacts?.find(
-          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         )?.version,
       ).toBe(1);
     });
 
     it("idempotent same generated bind — no duplicate ref, no version bump", () => {
       const session = startSocialSession();
-      const out = ingestPlatform(session);
+      const out = ingestSizeReference(session);
       const first = mustBindGenerated({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: out.artifactId,
         version: out.artifactVersion,
         artifactKey: out.artifactKey,
@@ -1102,7 +1103,7 @@ describe("CDF M9C Social Media Session Integration", () => {
       const v = first.sessionVersion;
       const replay = bindGeneratedSocialMediaArtifactToSession({
         sessionId: session.sessionId,
-        phaseId: "platform",
+        phaseId: "size-reference",
         artifactId: out.artifactId,
         version: out.artifactVersion,
         artifactKey: out.artifactKey,
@@ -1114,7 +1115,7 @@ describe("CDF M9C Social Media Session Integration", () => {
       expect(replay.session.sessionVersion).toBe(v);
       expect(
         (replay.session.generatedArtifacts ?? []).filter(
-          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.platform,
+          (r) => r.artifactKey === SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference,
         ),
       ).toHaveLength(1);
     });

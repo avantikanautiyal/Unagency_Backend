@@ -291,7 +291,6 @@ describe("CDF M9A Social Media Artifact Model", () => {
 
     const rows = listSocialMediaPhaseContracts();
     expect(rows.map((r) => r.phaseId)).toEqual([
-      "platform",
       "size-reference",
       "routes",
       "output",

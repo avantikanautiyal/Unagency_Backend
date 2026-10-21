@@ -29,11 +29,11 @@ describe("CDF 2.0 canonical contract — backend consumer", () => {
     expect(computeCdfContractHash(getCdfCanonicalRegistry())).toBe(hash);
   });
 
-  it("projects presentation with active slide-refinement; select still deferred", () => {
+  it("projects presentation without a slide-refinement step; select still deferred", () => {
     const cfg = resolveCdfServiceConfig("presentation")!;
     const ids = cfg.phases.map((p) => p.id);
     expect(ids).not.toContain("select");
-    expect(ids).toContain("slide-refinement");
+    expect(ids).not.toContain("slide-refinement");
     expect(ids).toContain("full-deck");
   });
 });

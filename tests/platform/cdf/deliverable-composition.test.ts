@@ -314,10 +314,10 @@ describe("Phase resolution — registry-driven, no semantic branches", () => {
     }
   });
 
-  it("resolves ad-campaigns master-kv via same machinery", () => {
+  it("resolves ad-campaigns asset-creative via same machinery", () => {
     const resolution = resolveDeliverableCompositionForPhase({
       serviceId: "ad-campaigns",
-      phaseId: "master-kv",
+      phaseId: "asset-creative",
     });
     expect(resolution.required).toBe(true);
     expect(resolution.contract?.communicationMode).toBe("multi_zone_layout");
@@ -339,7 +339,7 @@ describe("Phase resolution — registry-driven, no semantic branches", () => {
     });
     const kv = resolveDeliverableCompositionForPhase({
       serviceId: "ad-campaigns",
-      phaseId: "master-kv",
+      phaseId: "asset-creative",
     });
     expect(social.required && social.contract).toBeTruthy();
     expect(kv.required && kv.contract).toBeTruthy();

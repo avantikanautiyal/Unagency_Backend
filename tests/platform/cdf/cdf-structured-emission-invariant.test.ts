@@ -107,8 +107,8 @@ describe("CDF structured emission — registry-wide invariant", () => {
   it("reports audit counts for canonical structured phases", () => {
     assert.ok(phases.length >= 10, `expected many structured phases, got ${phases.length}`);
     assert.ok(required.length >= 10);
-    // At least one explicit non-emission structured phase (M6 patch refinement).
-    assert.ok(exempt.length >= 1);
+    // slide-refinement (the only non-emission structured phase) was removed;
+    // any future exempt phase must still declare emission "none".
     assert.ok(
       exempt.every((p) => p.contractName == null || p.emission === "none"),
     );

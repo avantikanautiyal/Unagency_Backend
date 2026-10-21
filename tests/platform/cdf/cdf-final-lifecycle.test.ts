@@ -120,8 +120,8 @@ describe("CDF Final lifecycle (framework)", () => {
     if (!briefed.ok) return;
     session = briefed.value.session;
 
-    // Advance through platform + size via select_route cards
-    for (const label of ["Instagram", "Feed Post"]) {
+    // Advance through size via its select_route card
+    for (const label of ["Use Platform Size"]) {
       const sel = applyCdfTransition({
         action: "select_route",
         sessionId: session.sessionId,
@@ -152,7 +152,7 @@ describe("CDF Final lifecycle (framework)", () => {
       artifactKey: SOCIAL_MEDIA_ARTIFACT_KEYS.routes,
       role: "selected",
     });
-    saveCdfSession({ ...session, phaseId: "output", phaseIndex: 3 });
+    saveCdfSession({ ...session, phaseId: "output", phaseIndex: 2 });
 
     const output = createArtifact({
       organizationId: "org_final",
@@ -229,7 +229,7 @@ describe("CDF Final lifecycle (framework)", () => {
         sessionId,
         serviceId: "social-media",
         phaseId: "final",
-        phaseIndex: 4,
+        phaseIndex: 3,
       }),
     );
     session = upsertSessionArtifactRef(session, {
@@ -332,7 +332,7 @@ describe("CDF Final lifecycle (framework)", () => {
         sessionId,
         serviceId: "social-media",
         phaseId: "final",
-        phaseIndex: 4,
+        phaseIndex: 3,
         status: "completed",
       }),
     );
@@ -406,7 +406,7 @@ describe("CDF Final lifecycle (framework)", () => {
         sessionId,
         serviceId: "social-media",
         phaseId: "final",
-        phaseIndex: 4,
+        phaseIndex: 3,
       }),
     );
     session = upsertSessionArtifactRef(session, {
@@ -439,7 +439,7 @@ describe("CDF Final lifecycle (framework)", () => {
         sessionId: `cdf_final_miss_${Date.now().toString(36)}`,
         serviceId: "social-media",
         phaseId: "final",
-        phaseIndex: 4,
+        phaseIndex: 3,
         approvedArtifacts: [
           {
             artifactId: "cdfart_missing_output_ghost",

@@ -453,8 +453,6 @@ describe("CDF M8A Packaging Artifact Model", () => {
       "routes",
       "3d-direction",
       "complete-pack",
-      "views",
-      "sku-adaptations",
       "final",
     ]);
     expect(rows.find((r) => r.phaseId === "final")!.artifactKey).toBeNull();

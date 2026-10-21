@@ -168,7 +168,7 @@ describe("Logo system deliverable composition (generic)", () => {
     assert.ok(phase);
     const deliverable = resolveCdfStageDeliverable(phase!, config!);
     assert.equal(deliverable.kind, "logo_system");
-    assert.match(deliverable.mustProduce, /logo-system|system presentation/i);
+    assert.match(deliverable.mustProduce, /usage-guidelines|logo-system|system presentation/i);
     assert.match(deliverable.mustNotProduce, /isolated logo|new unrelated/i);
   });
 

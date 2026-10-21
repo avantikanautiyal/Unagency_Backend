@@ -139,15 +139,9 @@ function startSocialToRoutes() {
   if (!briefed.ok) throw new Error("brief");
   session = briefed.value.session;
 
-  for (const phaseId of ["platform", "size-reference"] as const) {
-    const key =
-      phaseId === "platform"
-        ? SOCIAL_MEDIA_ARTIFACT_KEYS.platform
-        : SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference;
-    const data =
-      phaseId === "platform"
-        ? fixtureSocialMediaPlatform()
-        : fixtureSocialMediaSizeReference();
+  for (const phaseId of ["size-reference"] as const) {
+    const key = SOCIAL_MEDIA_ARTIFACT_KEYS.sizeReference;
+    const data = fixtureSocialMediaSizeReference();
     const created = createArtifact({
       sessionId: session.sessionId,
       serviceId: "social-media",
@@ -173,7 +167,7 @@ function startSocialToRoutes() {
       sessionId: session.sessionId,
       action: "select_route",
       routeIndex: 0,
-      routeLabel: phaseId === "platform" ? "Instagram" : "Feed Post",
+      routeLabel: "Use Platform Size",
       expectedVersion: getCdfSession(session.sessionId)!.sessionVersion,
       artifactId: created.artifact.artifactId,
       artifactVersion: 1,

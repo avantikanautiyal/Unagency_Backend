@@ -33,15 +33,9 @@ function stub(sessionId: string, phaseId = "routes"): CdfSessionState {
     sessionVersion: 1,
     status: "active",
     brief: "Exact continuity negatives",
-    phaseIndex: 2,
+    phaseIndex: 1,
     phaseId,
     approved: [
-      {
-        phaseId: "platform",
-        approvedAt: ts,
-        selectedRouteIndex: 0,
-        selectedRouteLabel: "Instagram",
-      },
       {
         phaseId: "size-reference",
         approvedAt: ts,

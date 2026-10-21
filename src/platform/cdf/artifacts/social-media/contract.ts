@@ -34,7 +34,7 @@ export type SocialMediaPhaseContractRow = {
 /**
  * Canonical Social Media dependency graph (exact artifact versions at persist):
  *
- *   platform (config)
+ *   platform (config) — legacy only; the phase was removed
  *      ↓
  *   size-reference (config)
  *      ↓
@@ -123,6 +123,8 @@ export function assertSocialMediaContractKeyAlignment(): {
     }
   }
   for (const key of Object.values(SOCIAL_MEDIA_ARTIFACT_KEYS)) {
+    // Platform phase was removed; its key stays only so stored sessions still read.
+    if (key === SOCIAL_MEDIA_ARTIFACT_KEYS.platform) continue;
     const hit = svc.phases.some((p) => p.artifact?.artifactKey === key);
     if (!hit) {
       mismatches.push(`M9A key ${key} not present on any social-media phase`);
@@ -153,7 +155,7 @@ export const SOCIAL_MEDIA_ARTIFACT_CONTRACT = {
     artifactId: "cdfart_*",
     version: "integer >= 1",
     artifactKey: "social-media.*",
-    phaseId: "platform|size-reference|routes|output",
+    phaseId: "size-reference|routes|output",
     role: "generated|selected|approved",
   },
 } as const;

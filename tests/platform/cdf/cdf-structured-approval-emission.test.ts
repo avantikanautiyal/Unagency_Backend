@@ -23,14 +23,14 @@ const REPRESENTATIVE_STRUCTURED_APPROVAL: ReadonlyArray<{
   },
   {
     serviceId: "brand-strategy",
-    phaseId: "brand-platform",
-    artifactKey: "brand-strategy.brand-platform",
+    phaseId: "messaging",
+    artifactKey: "brand-strategy.messaging",
     contractName: CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
   },
   {
     serviceId: "ad-campaigns",
-    phaseId: "campaign-strategy",
-    artifactKey: "ad-campaigns.campaign-strategy",
+    phaseId: "headlines",
+    artifactKey: "ad-campaigns.headlines",
     contractName: CDF_STRUCTURED_APPROVAL_DOC_CONTRACT_NAME,
   },
   {

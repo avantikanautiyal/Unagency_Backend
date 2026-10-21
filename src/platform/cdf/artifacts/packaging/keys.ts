@@ -67,8 +67,6 @@ export const PACKAGING_PHASE_ARTIFACT_KEY: Record<
   routes: PACKAGING_ARTIFACT_KEYS.routes,
   "3d-direction": PACKAGING_ARTIFACT_KEYS.threeDDirection,
   "complete-pack": PACKAGING_ARTIFACT_KEYS.completePack,
-  views: PACKAGING_ARTIFACT_KEYS.views,
-  "sku-adaptations": PACKAGING_ARTIFACT_KEYS.skuAdaptations,
   final: null,
 };
 

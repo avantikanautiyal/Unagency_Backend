@@ -130,7 +130,7 @@ describe("Social Media CDF output path guards", () => {
     const session = {
       ...started.value.session,
       phaseId: "output",
-      phaseIndex: 3,
+      phaseIndex: 2,
       sessionVersion: (started.value.session.sessionVersion ?? 0) + 1,
     };
     saveCdfSession(session);
@@ -176,7 +176,7 @@ describe("Social Media CDF output path guards", () => {
     const session = {
       ...started.value.session,
       phaseId: "output",
-      phaseIndex: 3,
+      phaseIndex: 2,
       sessionVersion: (started.value.session.sessionVersion ?? 0) + 1,
     };
     saveCdfSession(session);

@@ -95,6 +95,7 @@ Hard rules (the renderer checks these and rejects slides that break them):
 - Each slide is exactly one <section class="slide"> … </section>. The theme already sizes .slide to ${SLIDE_WIDTH_PX}×${SLIDE_HEIGHT_PX}px with position:relative and overflow:hidden; do not change that.
 - Nothing may overflow the slide or its own box. Size text so it fits with room to spare. Minimum font size 22px; body copy 28px or larger; headlines 56px or larger.
 - No <script>, no external URLs, no <iframe>, no web fonts other than the allowed families. Use only these image sources: {{LOGO}} for the brand logo (only if a logo is available) and {{IMAGE_n}} (n = slide number) for the slides that have a generated photo. Use those images with object-fit: cover inside a sized box.
+- The PPTX is editable, so every word must be real HTML text (h1–h6, p, li, span, div): never SVG <text>, CSS content strings or text inside images. Draw chart and diagram shapes in SVG/CSS, but put their labels and numbers in HTML elements positioned over or beside them. Keep text horizontal (no rotate/skew/scale on text) and do not use gradient-filled or outlined text.
 - Use only the content provided. You may shorten, restructure and re-group the copy and turn it into visual elements, but never invent statistics, numbers, client names, quotes or claims.
 - Do not render speaker notes on the slide.
 

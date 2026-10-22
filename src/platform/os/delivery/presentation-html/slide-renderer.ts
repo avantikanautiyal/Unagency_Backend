@@ -7,6 +7,7 @@
  */
 
 import PptxGenJS from "pptxgenjs";
+import { extractEditableSlides, type EditableSlideLayers } from "./slide-editable-pptx";
 import {
   SLIDE_HEIGHT_PX,
   SLIDE_WIDTH_PX,
@@ -33,6 +34,8 @@ export type RenderedDeck = {
   /** JPEG per slide (app previews). */
   readonly slideJpegs: readonly Buffer[];
   readonly defects: readonly RenderedSlideDefect[];
+  /** Native text/picture/shape layers per slide (editable PPTX); null → image slide. */
+  readonly editableLayers?: readonly (EditableSlideLayers | null)[];
 };
 
 const FONT_ORIGINS = ["https://fonts.googleapis.com/", "https://fonts.gstatic.com/"];
@@ -195,6 +198,8 @@ async function launchBrowser(): Promise<import("puppeteer").Browser> {
 export async function renderDesignedDeck(input: {
   readonly html: string;
   readonly expectedSlides: number;
+  /** Also lift text/pictures/shapes out for an editable PPTX. */
+  readonly editable?: boolean;
 }): Promise<RenderedDeck> {
   const browser = await launchBrowser();
   try {
@@ -243,7 +248,20 @@ export async function renderDesignedDeck(input: {
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
       }),
     );
-    return { pdf, slidePngs, slideJpegs, defects: audit.defects };
+    // Last: extraction changes the page (hides what it lifts out).
+    let editableLayers: (EditableSlideLayers | null)[] | undefined;
+    if (input.editable) {
+      try {
+        editableLayers = await extractEditableSlides(page);
+      } catch (err) {
+        console.warn(
+          `[presentation-html] editable PPTX extraction failed; slides stay images: ${
+            err instanceof Error ? err.message.split("\n")[0] : String(err)
+          }`,
+        );
+      }
+    }
+    return { pdf, slidePngs, slideJpegs, defects: audit.defects, ...(editableLayers ? { editableLayers } : {}) };
   } finally {
     await browser.close().catch(() => undefined);
   }

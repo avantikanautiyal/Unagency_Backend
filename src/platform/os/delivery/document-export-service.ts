@@ -27,6 +27,10 @@ import {
   type RenderedSlideDefect,
   type SlideImageAsset,
 } from "./presentation-html/slide-renderer";
+import {
+  buildEditableDeckPptx,
+  presentationPptxMode,
+} from "./presentation-html/slide-editable-pptx";
 
 export type PresentationSlideLayout =
   | "title_hero"
@@ -577,6 +581,7 @@ async function buildHtmlDesignedPresentation(
     const logo = toAsset(options?.logo);
     const placeholderColor = options?.brandColors?.[0];
     const expectedSlides = plan.slides.length + 1;
+    const pptxMode = presentationPptxMode();
     const render = (d: DesignedDeck) =>
       renderDesignedDeck({
         html: buildDeckDocument({
@@ -586,6 +591,7 @@ async function buildHtmlDesignedPresentation(
           ...(placeholderColor ? { placeholderColor } : {}),
         }),
         expectedSlides,
+        editable: pptxMode === "editable",
       });
 
     let current = deck;
@@ -610,12 +616,27 @@ async function buildHtmlDesignedPresentation(
       return null;
     }
 
-    const pptx = await buildImageDeckPptx({
+    const deckMeta = {
       title: plan.title,
       ...(options?.brandName ? { author: options.brandName } : {}),
       slidePngs: rendered.slidePngs,
       notes: [plan.subtitle, ...plan.slides.map((s) => s.notes)],
-    });
+    };
+    // Editable: native text / pictures / shapes over a background image per
+    // slide. Any failure falls back to the picture-per-slide deck.
+    let pptx: Buffer | null = null;
+    if (rendered.editableLayers) {
+      const layers = rendered.editableLayers;
+      pptx = await buildEditableDeckPptx({ ...deckMeta, layers }).catch((err: unknown) => {
+        console.warn(
+          `[presentation-html] editable PPTX failed; using image slides: ${
+            err instanceof Error ? err.message.split("\n")[0] : String(err)
+          }`,
+        );
+        return null;
+      });
+    }
+    pptx ??= await buildImageDeckPptx(deckMeta);
     const issues: string[] = [];
     const pdfPageCount = countPdfPages(rendered.pdf);
     if (rendered.pdf.subarray(0, 5).toString("latin1") !== "%PDF-") {

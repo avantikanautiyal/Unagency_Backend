@@ -477,7 +477,8 @@ describe("CdfWebsiteSitemap structured contract + credit/Anthropic fixes", () =>
   });
 
   it("11 — failover stops when a provider satisfies the contract", async () => {
-    // Websites keep the routed primary; failover goes to a different vendor.
+    // Websites keep the routed primary; failover follows the declared website
+    // order (Sonnet 5.5 → GPT-5.5 → Opus 5.5), even within one vendor.
     const { report, dispatcher } = await runSitemapScript({
       steps: [
         { kind: "structured", structured: [{ id: "home" }] },
@@ -487,7 +488,6 @@ describe("CdfWebsiteSitemap structured contract + credit/Anthropic fixes", () =>
     });
     assert.equal(report.success, true);
     assert.equal(dispatcher.capturedProviders.length, 2);
-    assert.notEqual(dispatcher.capturedProviders[0], dispatcher.capturedProviders[1]);
     const out = report.artifacts.runtime?.response?.output as
       | { structured?: unknown; structuredOutputValid?: boolean }
       | undefined;

@@ -316,7 +316,8 @@ describe("provider circuit + CdfWebsiteSitemap failover", () => {
     });
     const engine = createDirectExecutionEngine({ runtime, toolRuntime });
 
-    for (const providerId of ["provider.openai", "provider.anthropic"] as const) {
+    // Website failover = Sonnet 5.5 → GPT-5.5 → Opus 5.5, then Gemini.
+    for (const providerId of ["provider.openai", "provider.anthropic", "provider.gemini"] as const) {
       const trip = await engine.run({
         requestId: `req_trip_${providerId}`,
         rawPrompt: "trip",
@@ -536,15 +537,20 @@ describe("provider circuit + CdfWebsiteSitemap failover", () => {
     );
   });
 
-  it("13b — websiteTextFailoverChain reaches Gemini (not stuck on Anthropic×2)", async () => {
+  it("13b — websiteTextFailoverChain runs Sonnet 5.5 → Opus 5.5, then reaches Gemini", async () => {
     const { report, dispatcher } = await runSitemap({
       steps: [
         { kind: "http_error", message: "HTTP 500 openai" },
-        { kind: "http_error", message: "HTTP 500 anthropic" },
+        { kind: "http_error", message: "HTTP 500 sonnet" },
+        { kind: "http_error", message: "HTTP 500 opus" },
         { kind: "structured", structured: VALID_SITEMAP },
       ],
     });
     assert.equal(report.success, true);
+    assert.deepEqual(
+      report.artifacts.runtime?.attemptHistory?.slice(0, 3).map((a) => a.modelId),
+      ["gpt-5.5", "claude-sonnet-5-5", "claude-opus-5-5"],
+    );
     assert.ok(dispatcher.capturedProviders.includes("provider.gemini"));
     assert.equal(report.artifacts.runtime?.finalProviderId, "provider.gemini");
   });

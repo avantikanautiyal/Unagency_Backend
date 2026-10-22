@@ -1,10 +1,10 @@
 /**
  * Build the final email HTML from the design the client approved.
  *
- * The emailer flow approves a designed email as an IMAGE (email-design /
- * responsive stages) before the final stage writes the HTML. The HTML step
- * used to see only the copy and brief, so it invented its own layout and the
- * delivered file looked nothing like the approved design.
+ * The emailer flow approves the designed email as IMAGES first (Responsive:
+ * a desktop view and a mobile view), then the Email Design stage writes the
+ * HTML. That HTML step used to see only the copy and brief, so it invented its
+ * own layout and the delivered file looked nothing like the approved design.
  *
  * Here Claude is shown the approved design image(s) and rebuilds the HTML to
  * match them section by section. Photographic art in the design (product
@@ -23,6 +23,8 @@ import type { EmailPlan } from "./email-generation";
 const PUBLIC_BUCKET = "prakriadirect";
 const PUBLIC_BUCKET_REGION = "ap-south-1";
 const MAX_DESIGNS = 2;
+/** Image stage holding the email's desktop + mobile views (one page set). */
+const EMAIL_VIEWS_PHASE_ID = "responsive";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CROPS = 6;
 
@@ -33,6 +35,8 @@ export type ApprovedEmailDesign = {
   readonly height: number;
   readonly phaseId?: string;
   readonly artifactId: string;
+  /** "Desktop" / "Mobile" when the image is one view of the email-views set. */
+  readonly view?: string;
 };
 
 export type EmailDesignMatchConfig = {
@@ -128,6 +132,41 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/** Creation time encoded in "exec_<n>_<ms>" ids (views are generated in page order). */
+function executionOrderKey(id: string | undefined): number {
+  const m = /_(\d{10,})$/.exec(id ?? "");
+  return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+type ViewRef = { artifactId: string; version: number; phaseId: string; generationExecutionId?: string };
+
+/**
+ * Desktop then mobile view of the approved email-views set: the approved pin
+ * plus the most recent other view of the same stage, each at its latest version.
+ */
+export function emailViewRefs(generated: readonly ViewRef[], approved: ViewRef): ViewRef[] {
+  const latest = new Map<string, ViewRef & { order: number }>();
+  for (const ref of [...generated, approved]) {
+    if (ref.phaseId !== EMAIL_VIEWS_PHASE_ID) continue;
+    if (!Number.isInteger(ref.version) || ref.version < 1) continue;
+    const order = executionOrderKey(ref.generationExecutionId);
+    const prev = latest.get(ref.artifactId);
+    if (!prev || ref.version > prev.version) {
+      latest.set(ref.artifactId, { ...ref, order: Math.min(order, prev?.order ?? order) });
+    } else {
+      prev.order = Math.min(prev.order, order);
+    }
+  }
+  const anchor = latest.get(approved.artifactId);
+  if (!anchor) return [];
+  const other = [...latest.values()]
+    .filter((r) => r.artifactId !== approved.artifactId)
+    .sort((a, b) => b.order - a.order)[0];
+  return (other ? [anchor, other] : [anchor])
+    .sort((a, b) => a.order - b.order)
+    .map(({ artifactId, version, phaseId }) => ({ artifactId, version, phaseId }));
+}
+
 /**
  * Approved image stages of this CDF project, most recent stage first.
  * Sources: upstream visuals already bound to the request, then the session's
@@ -175,6 +214,12 @@ export async function loadApprovedEmailDesigns(input: {
       const prev = latestByPhase.get(ref.phaseId);
       if (!prev || ref.version > prev.version) latestByPhase.set(ref.phaseId, ref);
     }
+    // The views stage is one page set: Approve pins only one view, so the
+    // other view is read from the stage's generated pins.
+    const views = latestByPhase.has(EMAIL_VIEWS_PHASE_ID)
+      ? emailViewRefs(session?.generatedArtifacts ?? [], latestByPhase.get(EMAIL_VIEWS_PHASE_ID)!)
+      : [];
+    views.forEach((r) => push(r.artifactId, r.version, r.phaseId));
     [...latestByPhase.values()]
       .sort((a, b) => (order.get(b.phaseId) ?? -1) - (order.get(a.phaseId) ?? -1))
       .forEach((r) => push(r.artifactId, r.version, r.phaseId));
@@ -196,6 +241,8 @@ export async function loadApprovedEmailDesigns(input: {
   if (!resolver) return [];
 
   const designs: ApprovedEmailDesign[] = [];
+  const viewCount = refs.filter((r) => r.phaseId === EMAIL_VIEWS_PHASE_ID).length;
+  let viewIndex = 0;
   for (const ref of refs) {
     if (designs.length >= MAX_DESIGNS) break;
     try {
@@ -218,6 +265,9 @@ export async function loadApprovedEmailDesigns(input: {
         height,
         artifactId: ref.artifactId,
         ...(ref.phaseId ? { phaseId: ref.phaseId } : {}),
+        ...(ref.phaseId === EMAIL_VIEWS_PHASE_ID && viewCount === 2
+          ? { view: viewIndex++ === 0 ? "Desktop" : "Mobile" }
+          : {}),
       });
     } catch {
       // unreadable stage — try the next one
@@ -230,10 +280,13 @@ export async function loadApprovedEmailDesigns(input: {
 
 const SYSTEM_PROMPT = `You are a senior email developer. You turn an approved email design (a picture) into send-ready HTML that looks the same when opened in an inbox.
 
+The approved design is the specification. The HTML must look exactly like it — a viewer comparing the two side by side should see the same email. Do not improve, restyle, add or drop anything.
+
 Match the approved design exactly:
 - Same sections in the same order, same background colours for each band, same layout (e.g. text left / image right in the hero, icon rows, pill buttons), same type hierarchy, weights, alignment and colours. Sample colours from the picture as hex.
 - Use the copy the design shows. Where the design's text is garbled or unreadable (AI-generated lettering), use the matching line from the provided copy instead — never reproduce misspellings.
-- If the picture shows a desktop layout and phone mock-ups, the desktop layout is the email at 600px; the phone mock-ups show how it stacks on mobile — reproduce that with a @media (max-width: 600px) block that stacks columns.
+- Same proportions: match each band's height, image sizes, paddings and gaps to the picture (measure them in pixels; the desktop view's email column is 600px wide), and the same divider lines, borders, corner radii and button shapes.
+- A DESKTOP VIEW image is the email at 600px. A MOBILE VIEW image (often shown inside a phone frame — ignore the frame and any background around it) is how the same email reflows on a phone — reproduce it with a @media (max-width: 600px) block (stack columns, resize type and images as the mobile view shows). Without a mobile view: if the picture shows a desktop layout and phone mock-ups, the phone mock-ups show the stacking.
 
 Email-safe rules:
 - Table-based layout, inline CSS on every element, max width 600px, a <style> block only for the mobile media query. No <script>, no web fonts beyond a font stack, no CSS grid/flex for structure, no background images for essential content.
@@ -331,7 +384,7 @@ export async function matchEmailToApprovedDesign(input: {
   designs.forEach((d, i) => {
     content.push({
       type: "text",
-      text: `APPROVED DESIGN IMAGE ${i + 1}${d.phaseId ? ` (stage: ${d.phaseId})` : ""} — ${d.width}×${d.height}px. Crop coordinates refer to this image's pixels.`,
+      text: `APPROVED DESIGN IMAGE ${i + 1}${d.view ? ` — ${d.view.toUpperCase()} VIEW` : d.phaseId ? ` (stage: ${d.phaseId})` : ""} — ${d.width}×${d.height}px. Crop coordinates refer to this image's pixels.`,
     });
     content.push({
       type: "image",

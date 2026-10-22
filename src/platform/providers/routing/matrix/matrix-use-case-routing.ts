@@ -78,9 +78,10 @@ export const TEXT_USE_CASE_PREFERENCES: Record<
     },
   ],
   website: [
-    // GPT-5.5 first: a complete multi-page site takes it ~1.5–3 min, while
-    // Claude Opus 5.5 ran past the 5-min provider timeout (5 min lost before
-    // failover on every build). Opus stays as the first failover.
+    // Sonnet 5.5 first: near-Opus design quality and fast enough for the
+    // 5-min provider timeout. GPT-5.5 (~1.5–3 min per site) next; Opus 5.5
+    // last because a complete site ran past that timeout.
+    { providerId: "provider.anthropic", modelId: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
     { providerId: "provider.openai", modelId: "gpt-5.5", label: "Codex / GPT-5.5" },
     { providerId: "provider.anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
     { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },

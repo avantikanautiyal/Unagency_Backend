@@ -72,13 +72,14 @@ describe("service-matrix-routing", () => {
     ).toBe("website");
   });
 
-  it("prefers GPT-5.5 first for website generation, Claude Opus 5.5 as failover", () => {
+  it("website order: Sonnet 5.5, then GPT-5.5, then Opus 5.5", () => {
     // Opus ran past the 5-min provider timeout on full multi-page sites.
     const prefs = TEXT_USE_CASE_PREFERENCES.website;
-    expect(prefs[0]?.providerId).toBe("provider.openai");
-    expect(prefs[0]?.modelId).toBe("gpt-5.5");
-    expect(prefs[1]?.providerId).toBe("provider.anthropic");
-    expect(prefs[1]?.modelId).toBe("claude-opus-5-5");
+    expect(prefs.slice(0, 3).map((p) => `${p.providerId}/${p.modelId}`)).toEqual([
+      "provider.anthropic/claude-sonnet-5-5",
+      "provider.openai/gpt-5.5",
+      "provider.anthropic/claude-opus-5-5",
+    ]);
   });
 });
 

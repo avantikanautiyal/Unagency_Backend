@@ -1924,14 +1924,25 @@ async function runWebsitePageRelevanceGate(input: {
       brandName: ctx.brandName,
     });
     if (!relevance2.ok) {
-      // After one retry: only hard-fail on empty output or off-topic clones.
-      // Soft anchor/palette misses should not block a complete WebProject.
-      const fatal = relevance2.reasons.some(
-        (r) =>
-          r === "empty_website" ||
-          r === "brand_missing" ||
-          r.startsWith("off_topic:")
-      );
+      // After one retry, a complete WebProject is delivered unless it is empty
+      // or clearly another site (off-topic markers AND no brand). A lone
+      // brand_missing / off_topic hit is too weak to discard a finished site —
+      // it was misparsing the brand and failing every build.
+      const reasons = relevance2.reasons;
+      const fatal =
+        reasons.includes("empty_website") ||
+        (reasons.includes("brand_missing") &&
+          reasons.some((r) => r.startsWith("off_topic:")));
+      if (!fatal) {
+        console.warn(
+          JSON.stringify({
+            scope: "website.relevance",
+            event: "delivered_with_warnings",
+            requestId: input.providerRequest.requestId,
+            reasons,
+          }),
+        );
+      }
       if (fatal) {
         return failPresentationOffBrief(
           second.value,

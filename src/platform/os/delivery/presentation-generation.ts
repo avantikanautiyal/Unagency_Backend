@@ -145,6 +145,21 @@ export function extractUserBriefFromMegaprompt(prompt: string): string {
   return mergeStructuredMegapromptContext(raw, text);
 }
 
+/**
+ * Keep only the name from a "Brand: X — must appear in …" style line.
+ * Our own prompt blocks append instructions after the name; without this the
+ * whole sentence became the "brand" and relevance gates failed brand_missing.
+ */
+export function cleanExtractedBrandName(raw: string): string {
+  return raw
+    .split(/\s+[—–-]\s+|\s*[(,;|]\s*/)[0]!
+    .replace(/\*\*/g, "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/[.:]+$/, "")
+    .trim();
+}
+
 export function extractBrandNameFromMegaprompt(prompt: string): string | undefined {
   const patterns = [
     /Brand name:\s*([^\n]+)/i,
@@ -153,9 +168,9 @@ export function extractBrandNameFromMegaprompt(prompt: string): string | undefin
   ];
   for (const pattern of patterns) {
     const match = prompt.match(pattern);
-    const name = match?.[1]?.trim();
+    const name = match?.[1] ? cleanExtractedBrandName(match[1]) : "";
     if (name && name.length >= 2 && !/^n\/a$/i.test(name)) {
-      return name.replace(/^["']|["']$/g, "");
+      return name;
     }
   }
   return undefined;

@@ -11,9 +11,9 @@ import {
 } from "../../../src/platform/cdf";
 
 describe("CDF 2.0 canonical contract — backend consumer", () => {
-  it("resolves the same 19 services as the canonical registry", () => {
+  it("resolves the same 20 services as the canonical registry", () => {
     const ids = listCdfCanonicalServiceIds();
-    expect(ids).toHaveLength(19);
+    expect(ids).toHaveLength(20);
     for (const id of ids) {
       expect(resolveCdfServiceConfig(id)?.serviceId).toBe(id);
     }

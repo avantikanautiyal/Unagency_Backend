@@ -5,6 +5,7 @@
 
 import {
   extractAnchorTokens,
+  cleanExtractedBrandName,
   extractBrandNameFromMegaprompt,
   extractUserBriefFromMegaprompt,
 } from "./presentation-generation";
@@ -294,7 +295,7 @@ export function extractWebsiteBrandName(prompt: string): string | undefined {
   ];
   for (const pattern of patterns) {
     const match = prompt.match(pattern);
-    const name = match?.[1]?.trim().replace(/\*\*/g, "");
+    const name = match?.[1] ? cleanExtractedBrandName(match[1]) : "";
     if (name && name.length >= 2) return name;
   }
   return undefined;
@@ -334,10 +335,17 @@ export function websiteContextFromMetadata(
     metaBrief ||
     extractUserBriefFromMegaprompt(priorPrompt) ||
     priorPrompt.trim();
+  // Declared brand first: the prompt also carries our own "Brand: X — …"
+  // instruction lines, so parsing it is only a last resort.
+  const declaredBrand =
+    (typeof metadata?.requiredBrandName === "string" &&
+      metadata.requiredBrandName.trim()) ||
+    undefined;
   const brandName =
+    declaredBrand ||
     extractWebsiteBrandName(userBrief) ||
-    extractWebsiteBrandName(priorPrompt) ||
     (typeof metadata?.brandName === "string" && metadata.brandName.trim()) ||
+    extractWebsiteBrandName(priorPrompt) ||
     undefined;
   const exampleDeliverable =
     typeof metadata?.exampleDeliverable === "string"

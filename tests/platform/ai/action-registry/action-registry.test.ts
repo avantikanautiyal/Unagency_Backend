@@ -297,9 +297,9 @@ describe("Phase 14 Action Registry / Capability Contract", () => {
     ).toBe(true);
   });
 
-  it("25 — all 19 CDF services have expected action coverage", () => {
+  it("25 — all 20 CDF services have expected action coverage", () => {
     const ids = listCdfCanonicalServiceIds();
-    expect(ids).toHaveLength(19);
+    expect(ids).toHaveLength(20);
     for (const serviceId of ids) {
       const phases = listAllActionDefinitions().filter(
         (a) => a.metadata.serviceId === serviceId,

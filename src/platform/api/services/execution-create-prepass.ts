@@ -1060,7 +1060,7 @@ export async function runCreatePrepass(
     inheritsApprovedLogo ||
     workingMetadata?.skipVaultLogoBind === true ||
     (typeof workingMetadata?.cdfVisualIntent === "string" &&
-      /^(pack_3d|pack_flat|environment_3d|merch_mockup|merch_artwork|product_mockup|posm|illustration|storyboard_frame|ui_screen)$/i.test(
+      /^(pack_3d|pack_flat|environment_3d|merch_mockup|product_mockup|posm|illustration|storyboard_frame|ui_screen)$/i.test(
         workingMetadata.cdfVisualIntent.trim()
       ));
   if (brandIdForLogo && prompt.trim() && !skipVaultLogoBind) {
@@ -1710,8 +1710,15 @@ export async function runCreatePrepass(
 
   // Staged visual continuation: keep the model that made the creative being
   // continued. Another model redraws the approved design in its own style.
+  // Websites are written by a text/code model; never inherit the image model
+  // that drew the selected UI route (it fails text.generate every build).
+  const isWebsiteDeliverable =
+    outputKindSlug === "deferred_website" ||
+    outputKindSlug === "website" ||
+    workingMetadata?.cdfPhaseId === "complete-website";
   if (
     isCdfPhaseRun &&
+    !isWebsiteDeliverable &&
     isImageGenerationCapability(capabilityIdRaw) &&
     !isGenerationFanoutLeafMetadata(workingMetadata) &&
     workingMetadata?.allowsModelGenerationFanout !== true

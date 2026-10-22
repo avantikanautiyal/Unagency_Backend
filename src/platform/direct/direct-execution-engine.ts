@@ -468,16 +468,22 @@ function websiteTextFailoverChain(
     primaryProvider ? [primaryProvider] : []
   );
 
-  for (const pref of TEXT_USE_CASE_PREFERENCES.website) {
-    const key = `${pref.providerId}::${pref.modelId}`;
-    if (key === primaryKey) continue;
-    // Prefer a different vendor first when the primary circuit may be open.
+  const prefs = TEXT_USE_CASE_PREFERENCES.website;
+  // The declared top three (Sonnet → GPT → Opus) always run in order, even
+  // when two share a vendor.
+  for (const pref of prefs.slice(0, 3)) {
+    if (`${pref.providerId}::${pref.modelId}` === primaryKey) continue;
+    seenProviders.add(pref.providerId);
+    out.push({ providerId: pref.providerId, modelId: pref.modelId });
+  }
+  // Beyond those, prefer a different vendor when the primary circuit may be open.
+  for (const pref of prefs.slice(3)) {
+    if (out.length >= 3) break;
+    if (`${pref.providerId}::${pref.modelId}` === primaryKey) continue;
     if (seenProviders.has(pref.providerId)) continue;
     seenProviders.add(pref.providerId);
     out.push({ providerId: pref.providerId, modelId: pref.modelId });
-    if (out.length >= 3) break;
   }
-  // If we still have room, allow a second model on a new provider only.
   return out;
 }
 

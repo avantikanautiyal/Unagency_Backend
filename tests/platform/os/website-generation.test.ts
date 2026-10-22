@@ -1,6 +1,7 @@
 import {
   buildWebsiteRelevanceRetrySuffix,
   defaultWebStackForSubtype,
+  buildWebsiteNonNegotiablesBlock,
   extractWebsiteBrandName,
   isCompleteWebsiteHtml,
   isStrongHtmlStaticDesign,
@@ -8,6 +9,7 @@ import {
   recoverWebsitePagePlan,
   resolveWebStack,
   validateWebsitePageRelevance,
+  websiteContextFromMetadata,
   websiteOutputNeedsDesignRetry,
 } from "../../../src/platform/os/delivery/website-generation";
 
@@ -15,6 +17,44 @@ describe("website-generation (WebProject)", () => {
   it("extracts DiVastra from structured brief", () => {
     const brief = "Create a landing page for **DiVastra**, a fashion brand.";
     expect(extractWebsiteBrandName(brief)).toBe("DiVastra");
+  });
+
+  it("reads the brand, not the instruction, from our own non-negotiables line", () => {
+    const brief =
+      "Create a landing page for DiVastra, an ethnic wear brand celebrating Banarasi silk.";
+    const prompt = `## Task\nBuild the complete website\n\n${buildWebsiteNonNegotiablesBlock({
+      userBrief: brief,
+      brandName: "DiVastra",
+    })}`;
+    expect(extractWebsiteBrandName(prompt)).toBe("DiVastra");
+    const ctx = websiteContextFromMetadata({ websiteUserBrief: brief }, prompt);
+    expect(ctx.brandName).toBe("DiVastra");
+    const result = validateWebsitePageRelevance({
+      data: {
+        title: "DiVastra Complete Website",
+        summary: "Ethnic wear",
+        stack: "html-static",
+        entry: "index.html",
+        files: [
+          {
+            path: "index.html",
+            content: `<html><body><h1>DiVastra</h1>${"<p>Banarasi silk</p>".repeat(60)}</body></html>`,
+          },
+        ],
+      },
+      userBrief: brief,
+      brandName: ctx.brandName,
+    });
+    expect(result.reasons).not.toContain("brand_missing");
+    expect(result.ok).toBe(true);
+  });
+
+  it("prefers requiredBrandName metadata over parsing the prompt", () => {
+    const ctx = websiteContextFromMetadata(
+      { websiteUserBrief: "A site for an ethnic wear label.", requiredBrandName: "DiVastra" },
+      "Brand: Something else — must appear in title.",
+    );
+    expect(ctx.brandName).toBe("DiVastra");
   });
 
   it("builds relevance retry suffix from reasons (not a relevance object)", () => {

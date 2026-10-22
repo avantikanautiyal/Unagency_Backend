@@ -2,6 +2,7 @@ import { PNG } from "pngjs";
 import * as jpeg from "jpeg-js";
 import {
   cropDesign,
+  emailViewRefs,
   matchEmailToApprovedDesign,
   parseDesignMatchResponse,
   type ApprovedEmailDesign,
@@ -76,5 +77,36 @@ describe("email design match", () => {
       },
     });
     expect(result).toBeUndefined();
+  });
+});
+
+describe("emailViewRefs", () => {
+  const pin = (artifactId: string, version: number, ms: number, phaseId = "responsive") => ({
+    artifactId,
+    version,
+    phaseId,
+    generationExecutionId: `exec_1_${ms}`,
+  });
+
+  it("returns desktop then mobile at their latest versions, whichever view was approved", () => {
+    const generated = [
+      pin("cdfart_desktop", 1, 1792695100000),
+      pin("cdfart_mobile", 1, 1792695200000),
+      pin("cdfart_mobile", 2, 1792695900000),
+      pin("cdfart_copy", 1, 1792695000000, "full-copy"),
+    ];
+    expect(emailViewRefs(generated, pin("cdfart_desktop", 1, 1792695100000))).toEqual([
+      { artifactId: "cdfart_desktop", version: 1, phaseId: "responsive" },
+      { artifactId: "cdfart_mobile", version: 2, phaseId: "responsive" },
+    ]);
+    expect(emailViewRefs(generated, pin("cdfart_mobile", 2, 1792695900000))[0]?.artifactId).toBe(
+      "cdfart_desktop",
+    );
+  });
+
+  it("returns only the approved view when the other is missing", () => {
+    expect(emailViewRefs([], pin("cdfart_desktop", 1, 1792695100000))).toEqual([
+      { artifactId: "cdfart_desktop", version: 1, phaseId: "responsive" },
+    ]);
   });
 });

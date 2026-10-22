@@ -567,3 +567,45 @@ export const abortMultipartUpload = asyncHandler(
     return new ApiResponse(200, data, "Multipart aborted");
   }
 );
+
+/**
+ * GET /assets/download?url=&name= — streams one of our stored files back as an
+ * attachment so the web app can save it to the computer (S3 has no CORS rule
+ * for the web origin, so the browser cannot fetch it directly).
+ */
+export const downloadStoredFile = asyncHandler(
+  async (req: RequestUser, res: Response) => {
+    const url = typeof req.query.url === "string" ? req.query.url.trim() : "";
+    const name = typeof req.query.name === "string" ? req.query.name : undefined;
+    if (!url) throw new ApiError("url is required", 400);
+    const { openProxiedDownload, attachmentDisposition, DownloadProxyError } = await import(
+      "../services/file-download-proxy"
+    );
+    let file: Awaited<ReturnType<typeof openProxiedDownload>>;
+    try {
+      file = await openProxiedDownload({ url, name });
+    } catch (err) {
+      if (err instanceof DownloadProxyError) throw new ApiError(err.message, err.status);
+      throw new ApiError("File fetch failed", 502);
+    }
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("Content-Disposition", attachmentDisposition(file.fileName));
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.setHeader("Cache-Control", "private, no-store");
+    if (file.contentLength) res.setHeader("Content-Length", String(file.contentLength));
+    const { Readable } = await import("node:stream");
+    const { pipeline } = await import("node:stream/promises");
+    try {
+      await pipeline(
+        Readable.fromWeb(file.body as import("node:stream/web").ReadableStream<Uint8Array>),
+        res,
+      );
+    } catch (err) {
+      // Headers are already sent — the browser sees a cut-off download.
+      console.warn(
+        `[assets.download] stream aborted | ${err instanceof Error ? err.message : String(err)}`,
+      );
+      res.destroy();
+    }
+  }
+);

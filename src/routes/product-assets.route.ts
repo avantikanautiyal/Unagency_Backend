@@ -12,6 +12,7 @@ import {
   exportProductAssetMedia,
   exportProductText,
   composePagesPdf,
+  downloadStoredFile,
   importProductAsset,
   initiateMultipartUpload,
   listProductAssets,
@@ -68,6 +69,8 @@ router.delete(
   abortMultipartUpload
 );
 
+// Any signed-in user (staff too) — before /:assetId so "download" is not an id.
+router.get("/download", downloadStoredFile);
 router.get("/:assetId", VerifyRole(["customer"]), getProductAsset);
 router.patch("/:assetId", VerifyRole(["customer"]), updateProductAssetMeta);
 router.get("/:assetId/media", VerifyRole(["customer"]), getProductAssetMedia);

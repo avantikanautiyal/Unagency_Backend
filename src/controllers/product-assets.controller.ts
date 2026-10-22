@@ -135,8 +135,9 @@ export const importProductAsset = asyncHandler(
     const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
     const renderedFileId = str(body.renderedFileId);
     const artifactId = str(body.artifactId);
-    if (!renderedFileId && !artifactId) {
-      throw new ApiError("renderedFileId or artifactId is required", 400);
+    const vaultAssetId = str(body.vaultAssetId);
+    if (!renderedFileId && !artifactId && !vaultAssetId) {
+      throw new ApiError("renderedFileId, vaultAssetId or artifactId is required", 400);
     }
     const userId = String(req.user!.userId);
     const organizationId = await resolveCustomerOrganizationId(
@@ -156,6 +157,25 @@ export const importProductAsset = asyncHandler(
       } catch (err) {
         throw new ApiError(err instanceof Error ? err.message : "Rendered file not found", 404);
       }
+    } else if (vaultAssetId) {
+      // Approved CDF media (e.g. the final video) already lives as a MediaFile.
+      const { createMediaFileVaultAssetResolver } = await import("../platform/cdf/rendering");
+      const { getProductAssetBlobStorage } = await import("../services/product-asset-storage");
+      const { getEnterpriseApiRuntime } = await import(
+        "../platform/api/runtime/bootstrap-enterprise-api"
+      );
+      const MediaFile = (await import("../models/mediaFile.model")).default;
+      const product = getProductAssetBlobStorage();
+      const primary =
+        getEnterpriseApiRuntime()?.platform.durableStores?.asyncMedia?.blobStorage ?? product;
+      const got = await createMediaFileVaultAssetResolver({
+        blobStorage: primary,
+        fallbackBlobStorage: product !== primary ? product : undefined,
+      }).resolve({ vaultAssetId, organizationId });
+      if (!got) throw new ApiError("Vault asset not found", 404);
+      const doc = await MediaFile.findById(vaultAssetId).select("mimeType").lean().exec();
+      bytes = Buffer.from(got);
+      mimeType = (doc as { mimeType?: string } | null)?.mimeType || "application/octet-stream";
     } else {
       const { getEnterpriseApiRuntime } = await import(
         "../platform/api/runtime/bootstrap-enterprise-api"

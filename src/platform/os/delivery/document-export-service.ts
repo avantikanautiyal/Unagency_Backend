@@ -544,7 +544,7 @@ function defectsBySlide(
 }
 
 /**
- * Model-designed deck: Claude writes each slide as HTML/CSS, Chrome renders
+ * Model-designed deck: Claude (or GPT / Gemini as fallbacks) writes each slide as HTML/CSS, Chrome renders
  * and checks it. Returns null when the path is unavailable or the result
  * does not pass, so the caller can fall back to the template renderer.
  */
@@ -652,7 +652,7 @@ async function buildHtmlDesignedPresentation(
       return null;
     }
     console.log(
-      `[presentation-html] designed deck "${plan.title}" | slides=${expectedSlides} | model=${config.model} | ms=${Date.now() - started}`
+      `[presentation-html] designed deck "${plan.title}" | slides=${expectedSlides} | designer=${current.designedBy ?? "anthropic"} | ms=${Date.now() - started}`
     );
     return {
       pdf: rendered.pdf,

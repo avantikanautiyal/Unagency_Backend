@@ -1,10 +1,13 @@
 /**
  * Model-designed presentation slides.
  *
- * Instead of filling a fixed template, Claude designs every slide as a
+ * Instead of filling a fixed template, a model designs every slide as a
  * self-contained HTML/CSS composition on a 1920×1080 canvas, sharing one
  * deck-level theme so the deck stays consistent. The renderer then paints
- * the HTML in headless Chrome (PDF, PNG previews, image-based PPTX).
+ * the HTML in headless Chrome (PDF, PNG previews, editable PPTX).
+ *
+ * Claude designs; GPT and then Gemini take over when it fails, so a deck
+ * only falls back to the template renderer when all three are down.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -40,6 +43,8 @@ export type DesignedDeck = {
   readonly fonts: readonly string[];
   /** One `<section class="slide">…</section>` per rendered slide, in order. */
   readonly slides: readonly string[];
+  /** Provider that designed it; repairs go to it first so the style stays one hand. */
+  readonly designedBy?: DesignerProviderId;
 };
 
 export type SlideDesignBrief = {
@@ -154,17 +159,38 @@ function client(): Anthropic {
   return cachedClient;
 }
 
-export function slideDesignerAvailable(env = process.env): boolean {
-  if ((env.PRESENTATION_RENDERER ?? "").trim().toLowerCase() === "template") return false;
-  if ((env.ANTHROPIC_ENABLED ?? "true").trim().toLowerCase() === "false") return false;
-  return Boolean(env.ANTHROPIC_API_KEY?.trim() || env.ANTHROPIC_AUTH_TOKEN?.trim());
+/** Who can design a deck, in fallback order. */
+export type DesignerProviderId = "anthropic" | "openai" | "gemini";
+
+type DesignerCall = (user: string, config: SlideDesignerConfig, signal?: AbortSignal) => Promise<string>;
+
+const enabled = (flag: string | undefined) => (flag ?? "true").trim().toLowerCase() !== "false";
+
+/**
+ * Providers that can run, in order. Claude designs; GPT and Gemini step in
+ * when it fails (billing, outage, timeout, unusable answer) so a deck never
+ * drops to the template renderer just because one vendor is down.
+ * PRESENTATION_DESIGN_PROVIDERS reorders or trims the list.
+ */
+export function designerProviders(env = process.env): DesignerProviderId[] {
+  const available: Record<DesignerProviderId, boolean> = {
+    anthropic: enabled(env.ANTHROPIC_ENABLED) && Boolean(env.ANTHROPIC_API_KEY?.trim() || env.ANTHROPIC_AUTH_TOKEN?.trim()),
+    openai: enabled(env.OPENAI_ENABLED) && Boolean(env.OPENAI_API_KEY?.trim()),
+    gemini: enabled(env.GEMINI_ENABLED) && Boolean((env.GEMINI_API_KEY || env.GOOGLE_API_KEY)?.trim()),
+  };
+  const order = (env.PRESENTATION_DESIGN_PROVIDERS ?? "anthropic,openai,gemini")
+    .split(",")
+    .map((p) => p.trim().toLowerCase())
+    .filter((p): p is DesignerProviderId => p === "anthropic" || p === "openai" || p === "gemini");
+  return [...new Set(order)].filter((p) => available[p]);
 }
 
-async function callDesigner(
-  messages: Anthropic.Beta.BetaMessageParam[],
-  config: SlideDesignerConfig,
-  signal?: AbortSignal,
-): Promise<string> {
+export function slideDesignerAvailable(env = process.env): boolean {
+  if ((env.PRESENTATION_RENDERER ?? "").trim().toLowerCase() === "template") return false;
+  return designerProviders(env).length > 0;
+}
+
+const callAnthropic: DesignerCall = async (user, config, signal) => {
   const stream = client().beta.messages.stream(
     {
       model: config.model,
@@ -174,7 +200,7 @@ async function callDesigner(
       output_config: { effort: config.effort },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      messages,
+      messages: [{ role: "user", content: user }],
     },
     { timeout: config.timeoutMs, ...(signal ? { signal } : {}) },
   );
@@ -188,6 +214,142 @@ async function callDesigner(
   return message.content
     .map((block) => (block.type === "text" ? block.text : ""))
     .join("");
+};
+
+/** Abort on the caller's signal or after the timeout, whichever comes first. */
+function deadline(timeoutMs: number, signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+/**
+ * Read a server-sent-events body, handing each JSON `data:` payload to onEvent.
+ * Streamed so a several-minute generation never hits fetch's 5-minute
+ * wait-for-headers limit.
+ */
+async function readSse(res: Response, onEvent: (data: unknown) => void): Promise<void> {
+  if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    buffer += decoder.decode(chunk, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      onEvent(JSON.parse(data));
+    }
+  }
+}
+
+const callOpenAi: DesignerCall = async (user, config, signal) => {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    signal: deadline(config.timeoutMs, signal),
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY!.trim()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: process.env.PRESENTATION_DESIGN_OPENAI_MODEL?.trim() || "gpt-5.5",
+      stream: true,
+      max_completion_tokens: 64_000,
+      reasoning_effort: "medium",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: user },
+      ],
+    }),
+  });
+  let text = "";
+  let finish: string | null = null;
+  await readSse(res, (data) => {
+    const choice = (data as { choices?: { delta?: { content?: string }; finish_reason?: string | null }[] }).choices?.[0];
+    text += choice?.delta?.content ?? "";
+    finish = choice?.finish_reason ?? finish;
+  });
+  if (finish === "length") throw new Error("Slide designer ran out of output tokens");
+  if (finish === "content_filter") throw new Error("Slide designer declined the request");
+  return text;
+};
+
+const callGemini: DesignerCall = async (user, config, signal) => {
+  const model = process.env.PRESENTATION_DESIGN_GEMINI_MODEL?.trim() || "gemini-pro-latest";
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+    {
+      method: "POST",
+      signal: deadline(config.timeoutMs, signal),
+      headers: {
+        "x-goog-api-key": (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)!.trim(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text: user }] }],
+        generationConfig: { maxOutputTokens: 65_536 },
+      }),
+    },
+  );
+  let text = "";
+  let finish: string | undefined;
+  await readSse(res, (data) => {
+    const cand = (data as {
+      candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+    }).candidates?.[0];
+    for (const part of cand?.content?.parts ?? []) if (part.text && !part.thought) text += part.text;
+    finish = cand?.finishReason ?? finish;
+  });
+  if (finish === "MAX_TOKENS") throw new Error("Slide designer ran out of output tokens");
+  if (finish === "SAFETY" || finish === "RECITATION" || finish === "PROHIBITED_CONTENT") {
+    throw new Error("Slide designer declined the request");
+  }
+  return text;
+};
+
+const DESIGNER_CALLS: Record<DesignerProviderId, DesignerCall> = {
+  anthropic: callAnthropic,
+  openai: callOpenAi,
+  gemini: callGemini,
+};
+
+/**
+ * Run `use` on each provider in turn until one succeeds. `use` covers the
+ * call and reading the answer, so an unusable answer also moves on.
+ */
+async function withDesignerFallback<T>(
+  label: string,
+  user: string,
+  config: SlideDesignerConfig,
+  use: (raw: string) => T,
+  options: { readonly signal?: AbortSignal; readonly prefer?: DesignerProviderId } = {},
+): Promise<{ readonly value: T; readonly provider: DesignerProviderId }> {
+  const providers = designerProviders();
+  if (options.prefer && providers.includes(options.prefer)) {
+    providers.splice(providers.indexOf(options.prefer), 1);
+    providers.unshift(options.prefer);
+  }
+  if (!providers.length) throw new Error("No slide designer provider is configured");
+  const failures: string[] = [];
+  for (const provider of providers) {
+    if (options.signal?.aborted) break;
+    const started = Date.now();
+    try {
+      const value = use(await DESIGNER_CALLS[provider](user, config, options.signal));
+      if (failures.length) {
+        console.warn(`[presentation-html] ${label} done by fallback provider ${provider} after: ${failures.join(" | ")}`);
+      }
+      return { value, provider };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message.split("\n")[0]! : String(err);
+      failures.push(`${provider}: ${reason.slice(0, 200)} (${Math.round((Date.now() - started) / 1000)}s)`);
+      console.warn(`[presentation-html] ${label} failed on ${provider}; trying next provider: ${reason.slice(0, 300)}`);
+    }
+  }
+  throw new Error(`All slide designer providers failed — ${failures.join(" | ")}`);
 }
 
 /** Parse the marker-delimited response into theme + slides. */
@@ -224,17 +386,14 @@ export async function designPresentationSlides(
   config: SlideDesignerConfig = slideDesignerConfigFromEnv(),
   signal?: AbortSignal,
 ): Promise<DesignedDeck> {
-  const raw = await callDesigner(
-    [
-      {
-        role: "user",
-        content: `${briefForPrompt(brief)}\n\nCONTENT:\n${contentForPrompt(brief)}\n\nDesign the full deck now.`,
-      },
-    ],
+  const { value, provider } = await withDesignerFallback(
+    "deck design",
+    `${briefForPrompt(brief)}\n\nCONTENT:\n${contentForPrompt(brief)}\n\nDesign the full deck now.`,
     config,
-    signal,
+    (raw) => parseDesignedDeck(raw, brief.plan.slides.length + 1),
+    signal ? { signal } : {},
   );
-  return parseDesignedDeck(raw, brief.plan.slides.length + 1);
+  return { ...value, designedBy: provider };
 }
 
 /**
@@ -251,29 +410,29 @@ export async function repairPresentationSlides(
   const problems = indices
     .map((i) => `SLIDE ${i + 1}:\n${(repair.defects.get(i) ?? []).map((d) => `  - ${d}`).join("\n")}\n<<<CURRENT>>>\n${repair.deck.slides[i]}`)
     .join("\n\n");
-  const raw = await callDesigner(
+  const { value: fixed } = await withDesignerFallback(
+    "slide repair",
     [
-      {
-        role: "user",
-        content: [
-          briefForPrompt(brief),
-          `THEME CSS IN USE:\n${repair.deck.themeCss}`,
-          `The renderer found these defects. Redesign only these slides so they pass, keeping their content and the deck's visual system:\n\n${problems}`,
-          `Reply with only the fixed slides, each as:\n<<<SLIDE n>>>\n<section class="slide">…</section>`,
-        ].join("\n\n"),
-      },
-    ],
+      briefForPrompt(brief),
+      `THEME CSS IN USE:\n${repair.deck.themeCss}`,
+      `The renderer found these defects. Redesign only these slides so they pass, keeping their content and the deck's visual system:\n\n${problems}`,
+      `Reply with only the fixed slides, each as:\n<<<SLIDE n>>>\n<section class="slide">…</section>`,
+    ].join("\n\n"),
     config,
-    signal,
+    (raw) => {
+      const out = new Map<number, string>();
+      const re = /<<<SLIDE (\d+)>>>\s*([\s\S]*?)(?=<<<SLIDE \d+>>>|$)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(raw))) {
+        const n = Number(m[1]) - 1;
+        const html = (m[2] ?? "").trim();
+        if (repair.defects.has(n) && /<section[^>]*class="[^"]*\bslide\b/.test(html)) out.set(n, html);
+      }
+      if (!out.size) throw new Error("Slide repair returned no usable slides");
+      return out;
+    },
+    { ...(signal ? { signal } : {}), ...(repair.deck.designedBy ? { prefer: repair.deck.designedBy } : {}) },
   );
-  const fixed = new Map<number, string>();
-  const re = /<<<SLIDE (\d+)>>>\s*([\s\S]*?)(?=<<<SLIDE \d+>>>|$)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw))) {
-    const n = Number(m[1]) - 1;
-    const html = (m[2] ?? "").trim();
-    if (repair.defects.has(n) && /<section[^>]*class="[^"]*\bslide\b/.test(html)) fixed.set(n, html);
-  }
   return {
     ...repair.deck,
     slides: repair.deck.slides.map((s, i) => fixed.get(i) ?? s),

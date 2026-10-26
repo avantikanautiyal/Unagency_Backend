@@ -83,8 +83,10 @@ export async function applyCdfRefineTargetPrepass(
     generationFanoutTargetId?: string;
   }[] = [];
   try {
-    const { getCdfSession } = await import("../../cdf");
-    pins = (getCdfSession(sessionId)?.generatedArtifacts ?? []).filter(
+    // Mongo-backed: the in-memory copy is empty after a restart or on
+    // another worker, which silently dropped the refine target.
+    const { ensureCdfSessionLoaded } = await import("../../cdf/session-store");
+    pins = ((await ensureCdfSessionLoaded(sessionId))?.generatedArtifacts ?? []).filter(
       (p) =>
         p.phaseId === phaseId &&
         (!artifactKey || p.artifactKey === artifactKey) &&

@@ -187,8 +187,12 @@ export function promptGuidanceForReferenceRole(
       );
     case "product_reference":
       return (
-        "REFERENCE ROLE = product_reference: The attached image is the product to depict " +
-        "faithfully (form, labeling cues) within the creative."
+        "REFERENCE ROLE = product_reference: The attached image is the client's actual " +
+        "product / object. Show THAT exact item — same type, shape, proportions, material, " +
+        "colour, finish, stones, patterns, engravings, labels and every design detail. " +
+        "Never replace it with a different or invented product, never add other products, " +
+        "and never redesign it. Only the scene, styling, lighting, angle and composition " +
+        "may change, as the brief asks."
       );
     case "subject_reference":
       return (

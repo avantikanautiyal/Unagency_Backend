@@ -176,6 +176,26 @@ export const importProductAsset = asyncHandler(
       const doc = await MediaFile.findById(vaultAssetId).select("mimeType").lean().exec();
       bytes = Buffer.from(got);
       mimeType = (doc as { mimeType?: string } | null)?.mimeType || "application/octet-stream";
+      // The user downloaded a converted copy (e.g. PNG master as PDF/JPG) —
+      // the vault keeps that same format, converted here, not re-uploaded.
+      const format = str(body.format)?.toLowerCase().replace(/^jpeg$/, "jpg");
+      const sourceExt = (mimeType.split("/")[1] || "").split(/[+;]/)[0].replace(/^jpeg$/, "jpg");
+      if (format && format !== sourceExt) {
+        // The download just made this exact copy — re-converting a
+        // print-size master here ran past the proxy timeout ("couldn't reach").
+        const exported = await productAssetService
+          .readExportedCopy({ assetId: vaultAssetId, format })
+          .catch(() => null);
+        if (exported) {
+          bytes = exported.bytes;
+          mimeType = exported.contentType;
+        } else {
+          const { convertMediaBytes } = await import("../services/product-asset-service");
+          const converted = await convertMediaBytes({ bytes, sourceMime: mimeType, format });
+          bytes = converted.bytes;
+          mimeType = converted.contentType;
+        }
+      }
     } else {
       const { getEnterpriseApiRuntime } = await import(
         "../platform/api/runtime/bootstrap-enterprise-api"
@@ -204,7 +224,8 @@ export const importProductAsset = asyncHandler(
       tag: "product_asset",
       trustedSource: true,
     });
-    await dispatchClientNotification({
+    // Notifications (push / email) must not hold the save's response.
+    void dispatchClientNotification({
       eventKey: "SAVED_TO_VAULT",
       userId,
       variables: { "Asset Name": str(body.name) || dto.name },
@@ -212,7 +233,7 @@ export const importProductAsset = asyncHandler(
       entityType: "asset",
       entityId: dto.id,
       dedupeKey: dto.id,
-    });
+    }).catch(() => undefined);
     const name = str(body.name);
     if (name) {
       try {

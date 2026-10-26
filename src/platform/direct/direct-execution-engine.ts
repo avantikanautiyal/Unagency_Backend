@@ -927,6 +927,24 @@ function toProviderExecutionRequest(
   };
 }
 
+
+/** True when an attached image is the client's product (see product-asset-input-bridge). */
+function metadataCarriesProductReference(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (!metadata) return false;
+  const refs = [
+    metadata.image,
+    ...(Array.isArray(metadata.assets) ? metadata.assets : []),
+  ];
+  return refs.some(
+    (ref) =>
+      Boolean(ref) &&
+      typeof ref === "object" &&
+      (ref as Record<string, unknown>).semanticReferenceRole === "product_reference",
+  );
+}
+
 export class DirectExecutionEngine implements IDirectExecutionEngine {
   private readonly nowIso: () => string;
   private readonly clockMs: () => number;
@@ -1463,6 +1481,27 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       );
       if (refCapable.length > 0) {
         uniqueCandidates = refCapable;
+      }
+      // A photographed product must be reproduced, not reinterpreted. Ideogram
+      // and Recraft only take references as style hints (or drop them), so a
+      // run routed there invented its own product. Keep only providers that
+      // edit from the attached image; never fall back to one that cannot.
+      if (metadataCarriesProductReference(stampedMetadata)) {
+        const faithful = uniqueCandidates.filter((c) =>
+          providerSupportsReferenceImageEdit(c.providerId)
+        );
+        if (faithful.length === 0) {
+          return failure(
+            new ValidationError(
+              "The attached product photo can't be used right now — no image provider that reproduces an attached product is available. Please try again shortly.",
+              {
+                reason: "PRODUCT_REFERENCE_PROVIDER_UNAVAILABLE",
+                candidateProviderIds: uniqueCandidates.map((c) => c.providerId),
+              },
+            ),
+          );
+        }
+        uniqueCandidates = faithful;
       }
     }
 

@@ -2,6 +2,7 @@
  * OpenAI wire → canonical response mapping helpers.
  */
 
+import { trimTransparentPng } from "../../image/common/trim-transparent-png";
 import type {
   ProviderAdapterRequest,
   ProviderWirePayload,
@@ -223,7 +224,9 @@ export function mapOpenAIResponseToCanonical(
       "b64" in first ||
       "base64" in first
     ) {
-      const mediaOutputs = mapOpenAIImageDataToOutputs(raw);
+      const mediaOutputs = mapOpenAIImageDataToOutputs(
+        request.metadata?.imageTrimTransparent === true ? trimTransparentImageData(raw) : raw,
+      );
       Object.assign(output, attachMediaOutputs(output, mediaOutputs));
     }
   }
@@ -277,4 +280,14 @@ function mapFinishReason(finish: string): CanonicalFinishReason {
 
 function numberOrUndef(v: unknown): number | undefined {
   return typeof v === "number" ? v : undefined;
+}
+
+/** Crop transparent cut-outs (b64 PNG outputs) to their visible artwork. */
+function trimTransparentImageData(raw: Record<string, unknown>): Record<string, unknown> {
+  const data = (raw.data as Array<Record<string, unknown>>).map((item) => {
+    const b64 = typeof item.b64_json === "string" ? item.b64_json : undefined;
+    if (!b64) return item;
+    return { ...item, b64_json: trimTransparentPng(Buffer.from(b64, "base64")).toString("base64") };
+  });
+  return { ...raw, data };
 }

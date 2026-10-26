@@ -11,6 +11,11 @@ import { ApiError } from "../utils/apiError";
 import { productAssetService } from "./product-asset-service";
 import type { InputAssetReference } from "../platform/providers/common/input-asset-validator";
 import {
+  classifyAttachmentRoles,
+  type AttachmentForClassification,
+  type AttachmentRole,
+} from "./attachment-role-classifier";
+import {
   resolveCanonicalReferenceRoleWithSource,
   type MultimodalReferenceRole,
 } from "../platform/ai/multimodal-context/reference-role";
@@ -156,6 +161,115 @@ function withPreservedOrAuthoritativeRole(
 }
 
 /**
+ * A photo the user attached (or picked from the vault) is the thing the
+ * creative is about — the exact product/object to show — unless a vision
+ * check says it is the logo or a style example. Left role-less it was a vague
+ * "supporting reference" (or a style hint on some providers) and the model
+ * drew its own object. Logos filed in the vault and brand documents keep
+ * their meaning.
+ */
+function withUserSubjectRole(
+  rec: Record<string, unknown>,
+  classified: AttachmentRole | undefined,
+): Record<string, unknown> {
+  if (rec.semanticReferenceRole) return rec;
+  const mime = String(rec.mimeType ?? "").toLowerCase();
+  if (!mime.startsWith("image/")) return rec;
+  const folder = String(rec.folder ?? "").trim().toLowerCase();
+  const tags = Array.isArray(rec.tags) ? rec.tags.map(String) : [];
+  if (folder === "logos" || classified === "logo") {
+    return {
+      ...rec,
+      semanticReferenceRole: "identity_mark",
+      referenceRoleResolutionSource:
+        folder === "logos" ? "vault_logo_folder" : "vision_attachment_role",
+      ...(rec.brandAssetRole ? {} : { brandAssetRole: "logo" }),
+    };
+  }
+  if (tags.includes("brand-document")) return rec;
+  if (classified === "style_reference") {
+    return {
+      ...rec,
+      semanticReferenceRole: "style_reference",
+      referenceRoleResolutionSource: "vision_attachment_role",
+    };
+  }
+  return {
+    ...rec,
+    semanticReferenceRole: "product_reference",
+    referenceRoleResolutionSource: classified
+      ? "vision_attachment_role"
+      : "user_attached_subject",
+  };
+}
+
+/** Images whose role is still open after explicit roles, logo binds and vault filing. */
+function needsVisionRole(rec: Record<string, unknown>): boolean {
+  if (rec.semanticReferenceRole) return false;
+  if (!String(rec.mimeType ?? "").toLowerCase().startsWith("image/")) return false;
+  if (String(rec.folder ?? "").trim().toLowerCase() === "logos") return false;
+  const tags = Array.isArray(rec.tags) ? rec.tags.map(String) : [];
+  return !tags.includes("brand-document");
+}
+
+const visionInFlight = new Map<string, Promise<Map<string, AttachmentRole>>>();
+
+/**
+ * Vision verdict per asset: cached on the asset when known, else one batched
+ * call (parallel option runs of one step share it) whose answers are saved.
+ */
+async function resolveAttachmentRoles(
+  recs: readonly Record<string, unknown>[],
+  brief: string,
+): Promise<Map<string, AttachmentRole>> {
+  const roles = new Map<string, AttachmentRole>();
+  const pending: AttachmentForClassification[] = [];
+  for (const rec of recs) {
+    if (!needsVisionRole(rec)) continue;
+    const id = assetRecordId(rec);
+    if (!id) continue;
+    const cached = String(rec.attachmentRole ?? "");
+    if (cached === "logo" || cached === "product" || cached === "style_reference") {
+      roles.set(id, cached);
+      continue;
+    }
+    if (typeof rec.url === "string" && rec.url.startsWith("data:image/")) {
+      pending.push({
+        assetId: id,
+        dataUrl: rec.url,
+        ...(typeof rec.filename === "string" ? { fileName: rec.filename } : {}),
+      });
+    }
+  }
+  if (pending.length === 0) return roles;
+
+  const key = pending.map((p) => p.assetId).sort().join(",");
+  let run = visionInFlight.get(key);
+  if (!run) {
+    run = classifyAttachmentRoles({ brief, attachments: pending }).then((found) => {
+      for (const [assetId, role] of found) {
+        void productAssetService
+          .rememberAttachmentRole(assetId, role)
+          .catch(() => undefined);
+      }
+      console.info(
+        JSON.stringify({
+          scope: "product_asset_input_bridge",
+          event: "attachment_roles_classified",
+          roles: Object.fromEntries(found),
+          requested: pending.length,
+        }),
+      );
+      return found;
+    });
+    visionInFlight.set(key, run);
+    void run.finally(() => visionInFlight.delete(key));
+  }
+  for (const [assetId, role] of await run) roles.set(assetId, role);
+  return roles;
+}
+
+/**
  * Attach resolved `assets` / `audio` / `image` onto execution metadata
  * so providers see bytes (or URLs), not only opaque ProductAsset id strings.
  */
@@ -163,6 +277,8 @@ export async function attachProductAssetsToExecutionMetadata(input: {
   readonly userId: string;
   readonly organizationId: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
+  /** The brief, so the vision check can tell "in this style" from "this product". */
+  readonly brief?: string;
 }): Promise<Record<string, unknown>> {
   const meta: Record<string, unknown> = { ...(input.metadata ?? {}) };
   const rawIds = meta.assetIds;
@@ -192,9 +308,14 @@ export async function attachProductAssetsToExecutionMetadata(input: {
 
   const logoIds = metadataLogoAssetIds(meta);
   const existingAssets = Array.isArray(meta.assets) ? [...meta.assets] : [];
-  const stampedResolved = resolved.assets.map((a) =>
+  const withRoles = resolved.assets.map((a) =>
     withPreservedOrAuthoritativeRole(a, meta, logoIds),
   );
+  const visionRoles = await resolveAttachmentRoles(withRoles, input.brief ?? "");
+  const stampedResolved = withRoles.map((rec) => {
+    const id = assetRecordId(rec);
+    return withUserSubjectRole(rec, id ? visionRoles.get(id) : undefined);
+  });
   meta.assets = [
     ...existingAssets.map((a) =>
       a && typeof a === "object"

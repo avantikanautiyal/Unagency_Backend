@@ -240,21 +240,16 @@ export class CreativeProjectService {
             updatedAt: -1,
           })
         : null) ||
-      (await Projects.findOne({
-        userId: userOid,
-        origin: "ai_creative",
-        title: sameTitleFilter(title),
-        ...(sessionId
-          ? {
-              $or: [
-                { sessionId },
-                { sessionId: { $exists: false } },
-                { sessionId: null },
-                { sessionId: "" },
-              ],
-            }
-          : {}),
-      }).sort({ updatedAt: -1 }));
+      // Title match is the legacy (pre-session) join only. A run with its own
+      // session is a new project: matching by title took over an older
+      // same-named project, so the new one never appeared in Recent Projects.
+      (sessionId
+        ? null
+        : await Projects.findOne({
+            userId: userOid,
+            origin: "ai_creative",
+            title: sameTitleFilter(title),
+          }).sort({ updatedAt: -1 }));
 
     if (existing) {
       // Drop orphans created when refine previously inserted a second project.

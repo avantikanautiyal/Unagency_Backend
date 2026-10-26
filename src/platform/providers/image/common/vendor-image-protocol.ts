@@ -297,31 +297,86 @@ function humanStage(phaseId: string | undefined): string {
 }
 
 /**
+ * True when this request is one of several alternative options (model fanout,
+ * "3 routes"), where varying within the approved design is wanted. Parts of
+ * one deliverable (brochure pages) and single follow-on stages are not options.
+ */
+export function requestIsOneOfSeveralOptions(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (!metadata || metadata.cdfPageDocumentPart === true) return false;
+  if (typeof metadata.generationFanoutTargetId === "string" && metadata.generationFanoutTargetId) {
+    return true;
+  }
+  const count = metadata.creativeOptionCount;
+  return typeof count === "number" && count > 1;
+}
+
+/**
+ * True when this request edits a creative the user asked to refine. The
+ * refine instruction must win over "reproduce exactly" — otherwise the model
+ * faithfully redraws the approved image and ignores the change.
+ */
+export function requestIsRefinement(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (!metadata) return false;
+  if (metadata.cdfRefineSource === true) return true;
+  return typeof metadata.refinePrompt === "string" && metadata.refinePrompt.trim().length > 0;
+}
+
+/**
  * Tell the model what each attached image is, in attachment order. Only
  * emitted when an upstream creative is attached (otherwise role guidance
  * already covers a lone logo / reference).
+ *
+ * Approved stages are sign-offs, not inspiration: a follow-on stage (3D pack →
+ * flat 2D pack, master → adaptation) must reproduce them exactly. Only a set
+ * of alternative options may vary — and even then never the artwork or copy.
  */
 export function describeReferenceImages(
   refs: readonly ReferenceImagePayload[],
+  options: {
+    readonly oneOfSeveralOptions?: boolean;
+    /** Refine run: apply the requested change on top of the approved design. */
+    readonly refinement?: boolean;
+  } = {},
 ): string {
   const hasUpstream = refs.some((ref) => continuityRank(ref) <= 1);
   if (!hasUpstream || refs.length === 0) return "";
+  const authority = refs.findIndex((ref) => continuityRank(ref) <= 1) + 1;
   const lines = refs.map((ref, i) => {
     const n = i + 1;
     if (ref.relationshipLabel === USER_SELECTED_RELATIONSHIP) {
-      return `Image ${n}: the creative the user selected to continue from — keep its exact design (form, layout, colours, typography, artwork and brand placement).`;
+      return `Image ${n}: the creative the user selected to continue from — its design is approved.`;
     }
     if (ref.relationshipLabel === UPSTREAM_STAGE_RELATIONSHIP) {
-      return `Image ${n}: the approved ${humanStage(ref.upstreamPhaseId)} stage output — this is the established design; stay consistent with it (same form, layout, colours, typography, artwork and brand placement).`;
+      return `Image ${n}: the approved ${humanStage(ref.upstreamPhaseId)} stage output — signed off by the client.`;
     }
     if (ref.semanticReferenceRole === "identity_mark") {
       return `Image ${n}: the brand logo — reproduce it exactly as provided; do not redraw, restyle or reinterpret it.`;
     }
+    if (ref.semanticReferenceRole === "product_reference") {
+      return `Image ${n}: the client's actual product, photographed — the item this creative is about.`;
+    }
     return `Image ${n}: supporting reference.`;
   });
+  const productImages = refs
+    .map((ref, i) => (ref.semanticReferenceRole === "product_reference" ? i + 1 : 0))
+    .filter(Boolean);
   return [
     "REFERENCE IMAGES (in the order attached):",
     ...lines,
-    "Build this stage on the approved design above — adapt it to this stage's deliverable. When several options are requested, explore different directions (angle, composition, styling, presentation) within that design; never invent an unrelated design.",
+    ...(productImages.length
+      ? [
+          `PRODUCT AUTHORITY: the product shown must be exactly the item in Image ${productImages.join(" / Image ")} — same type, shape, material, colour and every design detail. Never substitute another product, even if an approved image shows a different one.`,
+        ]
+      : []),
+    `DESIGN AUTHORITY: Image ${authority} is the approved design. Reproduce it exactly — the same artwork, illustrations and characters, every word of on-pack/on-page copy, colours, typography, graphic devices, and the logo and its placement. If approved images differ, Image ${authority} wins. Where the written brief differs from the approved images, follow the images.`,
+    options.refinement
+      ? "REFINEMENT: the user asked for a specific change to this design. Apply that change fully and visibly — it overrides the approved images and the brief wherever they conflict. Keep everything the change does not touch exactly as it is."
+      : options.oneOfSeveralOptions
+      ? "Several options are being made: vary only the presentation (angle, framing, staging, background) — never the approved artwork, copy or colours."
+      : "Change only what this stage's deliverable requires (e.g. unfold the approved 3D pack into its flat panels, re-lay the design for a new size, extend it onto panels the earlier view did not show — in the same design). Do not redesign, restyle, or add artwork or copy beyond what the deliverable needs.",
   ].join("\n");
 }

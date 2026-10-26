@@ -19,6 +19,8 @@ import {
   extractReferenceImages,
   orderReferencesForContinuity,
   describeReferenceImages,
+  requestIsOneOfSeveralOptions,
+  requestIsRefinement,
   referenceImageToDataUrl,
 } from "../../image/common/vendor-image-protocol";
 import { normalizeOpenAiCompletionTokenParams } from "./openai-completion-params";
@@ -261,7 +263,14 @@ function applyOpenAiImageBody(
       basePrompt,
       references: refs,
     });
-    const described = describeReferenceImages(refs);
+    const described = describeReferenceImages(refs, {
+      oneOfSeveralOptions: requestIsOneOfSeveralOptions(
+        request.metadata as Readonly<Record<string, unknown>> | undefined,
+      ),
+      refinement: requestIsRefinement(
+        request.metadata as Readonly<Record<string, unknown>> | undefined,
+      ),
+    });
     body.prompt = fitOpenAiImagePrompt(
       described ? `${rolePrompt}\n\n${described}` : rolePrompt,
       request.requestId,
@@ -293,6 +302,12 @@ function applyOpenAiImageBody(
           ? "high"
           : "medium"
         : "high";
+  }
+  // Print-ready cut-outs (merchandise artwork): real alpha, so PNG only.
+  if (request.metadata?.imageBackground === "transparent") {
+    body.background = "transparent";
+    body.output_format = "png";
+    delete body.output_compression;
   }
 }
 

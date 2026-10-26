@@ -787,35 +787,7 @@ export class ProductAssetService {
       "base64",
     );
 
-    const { canExportRasterAsPdf, wrapRasterImageAsPdf } = await import(
-      "../platform/media/delivery/raster-pdf-export"
-    );
-    const { canConvertRasterFormat, convertRasterImage } = await import(
-      "../platform/media/delivery/image-format-converter"
-    );
-    const { canExportExtendedFormat, exportExtendedFormat } = await import(
-      "../platform/media/delivery/format-exporters"
-    );
-    let converted: { bytes: Buffer; contentType: string } | undefined;
-    if (format === "pdf" && canExportRasterAsPdf(sourceMime)) {
-      const r = await wrapRasterImageAsPdf({ bytes, sourceMime });
-      if (!r.ok) throw new ApiError(r.error.message, 422);
-      converted = { bytes: Buffer.from(r.value.bytes), contentType: r.value.contentType };
-    } else if (
-      (format === "png" || format === "jpg") &&
-      canConvertRasterFormat({ sourceMime, requestedFormat: format })
-    ) {
-      const r = convertRasterImage({ bytes, sourceMime, targetFormat: format });
-      if (!r.ok) throw new ApiError(r.error.message, 422);
-      converted = { bytes: Buffer.from(r.value.bytes), contentType: r.value.contentType };
-    } else if (canExportExtendedFormat(sourceMime, format)) {
-      const r = await exportExtendedFormat({ bytes, sourceMime, requested: format });
-      if (!r.ok) throw new ApiError(r.error.message, 422);
-      converted = r.value;
-    }
-    if (!converted) {
-      throw new ApiError(`This file can't be downloaded as ${format.toUpperCase()}`, 400);
-    }
+    const converted = await convertMediaBytes({ bytes, sourceMime, format });
 
     const exportKey = `${doc.storageKey}.export.${format}`;
     const put = await this.storage.put(exportKey, converted.bytes, converted.contentType);
@@ -834,6 +806,31 @@ export class ProductAssetService {
       contentType: converted.contentType,
       disposition: "attachment",
     };
+  }
+
+  /**
+   * The converted copy a download already produced (`exportMedia`), so a
+   * Vault save of that same download reuses it instead of converting the
+   * (often print-resolution) source again. Null when it was never exported.
+   */
+  async readExportedCopy(input: {
+    assetId: string;
+    format: string;
+  }): Promise<{ bytes: Buffer; contentType: string } | null> {
+    if (!mongoose.isValidObjectId(input.assetId)) return null;
+    const doc = await MediaFile.findById(input.assetId).select("storageKey").lean().exec();
+    const storageKey = (doc as { storageKey?: string } | null)?.storageKey;
+    if (!storageKey) return null;
+    const format = input.format.trim().toLowerCase().replace(/^jpeg$/, "jpg");
+    const got = await this.storage.get(`${storageKey}.export.${format}`);
+    if (!got.ok || !got.value) return null;
+    const raw = got.value.data;
+    const bytes = Buffer.from(
+      raw.startsWith("data:") ? raw.slice(raw.indexOf(",") + 1) : raw,
+      "base64",
+    );
+    if (bytes.length === 0) return null;
+    return { bytes, contentType: got.value.contentType || "application/octet-stream" };
   }
 
   /**
@@ -960,8 +957,24 @@ export class ProductAssetService {
     organizationId: string;
     mimeType: string;
     filename?: string;
+    /** Vault filing — lets callers tell logos and brand documents from subjects. */
+    folder?: string;
+    tags?: string[];
+    /** Cached vision verdict (logo / product / style_reference), when classified. */
+    attachmentRole?: string;
   }> {
     const doc = await this.requireOwnedAsset(input.userId, input.assetId);
+    const cachedRole = (doc.mediaMeta as Record<string, unknown> | undefined)
+      ?.attachmentRole;
+    const filing = {
+      ...(doc.folder ? { folder: String(doc.folder) } : {}),
+      ...(Array.isArray(doc.tags) && doc.tags.length
+        ? { tags: doc.tags.map(String) }
+        : {}),
+      ...(typeof cachedRole === "string" && cachedRole
+        ? { attachmentRole: cachedRole }
+        : {}),
+    };
     const orgId = doc.organizationId?.toString() || "";
     if (orgId && orgId !== input.organizationId) {
       throw new ApiError("Asset does not belong to organization", 403);
@@ -975,6 +988,7 @@ export class ProductAssetService {
           organizationId: input.organizationId,
           mimeType,
           filename,
+          ...filing,
         };
       }
       throw new ApiError("Asset has no durable storage key", 404);
@@ -1005,7 +1019,17 @@ export class ProductAssetService {
       organizationId: input.organizationId,
       mimeType: contentType,
       filename,
+      ...filing,
     };
+  }
+
+  /** Cache the vision verdict for an attached image (best-effort). */
+  async rememberAttachmentRole(assetId: string, role: string): Promise<void> {
+    if (!mongoose.isValidObjectId(assetId)) return;
+    await MediaFile.updateOne(
+      { _id: new mongoose.Types.ObjectId(assetId) },
+      { $set: { "mediaMeta.attachmentRole": role } },
+    );
   }
 
   async delete(input: {
@@ -1582,4 +1606,45 @@ export const productAssetService = new ProductAssetService();
 /** @deprecated — size validation moved to upload-pipeline; kept for call-site compat */
 export function validateUploadMimeCategory(mime: string): MediaCategory {
   return inferMediaCategory(mime);
+}
+
+/**
+ * Converts stored media bytes to a requested download format (raster → PDF,
+ * PNG ↔ JPG, extended exporters). Throws when the pair is not supported.
+ */
+export async function convertMediaBytes(input: {
+  bytes: Buffer;
+  sourceMime: string;
+  format: string;
+}): Promise<{ bytes: Buffer; contentType: string }> {
+  const format = input.format.trim().toLowerCase().replace(/^jpeg$/, "jpg");
+  const { bytes, sourceMime } = input;
+  const { canExportRasterAsPdf, wrapRasterImageAsPdf } = await import(
+    "../platform/media/delivery/raster-pdf-export"
+  );
+  const { canConvertRasterFormat, convertRasterImage } = await import(
+    "../platform/media/delivery/image-format-converter"
+  );
+  const { canExportExtendedFormat, exportExtendedFormat } = await import(
+    "../platform/media/delivery/format-exporters"
+  );
+  if (format === "pdf" && canExportRasterAsPdf(sourceMime)) {
+    const r = await wrapRasterImageAsPdf({ bytes, sourceMime });
+    if (!r.ok) throw new ApiError(r.error.message, 422);
+    return { bytes: Buffer.from(r.value.bytes), contentType: r.value.contentType };
+  }
+  if (
+    (format === "png" || format === "jpg") &&
+    canConvertRasterFormat({ sourceMime, requestedFormat: format })
+  ) {
+    const r = convertRasterImage({ bytes, sourceMime, targetFormat: format });
+    if (!r.ok) throw new ApiError(r.error.message, 422);
+    return { bytes: Buffer.from(r.value.bytes), contentType: r.value.contentType };
+  }
+  if (canExportExtendedFormat(sourceMime, format)) {
+    const r = await exportExtendedFormat({ bytes, sourceMime, requested: format });
+    if (!r.ok) throw new ApiError(r.error.message, 422);
+    return r.value;
+  }
+  throw new ApiError(`This file can't be downloaded as ${format.toUpperCase()}`, 400);
 }

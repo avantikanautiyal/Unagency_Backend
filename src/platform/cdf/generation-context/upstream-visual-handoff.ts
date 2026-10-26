@@ -12,7 +12,7 @@
 
 import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
-import { getCdfSession } from "../session-store";
+import { ensureCdfSessionLoaded } from "../session-store";
 import { resolveUpstreamArtifactsForPhase } from "./resolve-dependencies";
 import { resolveCdfCanonicalService } from "../canonical";
 import {
@@ -35,11 +35,14 @@ export const CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE =
   "CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE";
 
 /**
- * Services whose image stages also receive every earlier approved image stage
- * (not only the declared direct dependency), so later stages cannot drift
- * from the established design. Rolled out service by service.
+ * Every image stage also receives the earlier approved image stages (not only
+ * the declared direct dependency), so later stages cannot drift from the
+ * established design. Video is excluded: providers open on the first image,
+ * and storyboard frames are handed over by the animation planner instead.
  */
-const FULL_VISUAL_LINEAGE_SERVICES: ReadonlySet<string> = new Set(["packaging"]);
+function receivesFullVisualLineage(modality: string | undefined): boolean {
+  return modality !== "video";
+}
 /** Upstream creatives per request; the brand logo is attached separately. */
 const MAX_UPSTREAM_VISUALS = 4;
 
@@ -225,7 +228,14 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
     return success({ metadata: meta, attachedCount: 0 });
   }
 
-  const session = getCdfSession(sessionId);
+  // From Mongo after a restart — a cold in-memory cache must not silently drop
+  // the approved stages and let the model redesign from text alone.
+  let session: CdfSessionState | undefined;
+  try {
+    session = await ensureCdfSessionLoaded(sessionId);
+  } catch {
+    session = undefined;
+  }
   if (!session) {
     return success({ metadata: meta, attachedCount: 0 });
   }
@@ -257,7 +267,19 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
   let nextMeta: Record<string, unknown> = meta;
   let attachedCount = 0;
 
-  for (const u of resolved.upstream) {
+  // The most recent approved stage leads: providers and the reference
+  // description treat the first upstream image as the design authority
+  // (3D direction before dieline for the 2D pack, master before brief).
+  const phaseOrder = new Map(
+    (resolveCdfCanonicalService(
+      readString(meta, "cdfServiceId") || readString(meta, "serviceId") || session.serviceId,
+    )?.phases ?? []).map((p, i) => [p.phaseId, i]),
+  );
+  const upstreamLatestFirst = [...resolved.upstream].sort(
+    (a, b) => (phaseOrder.get(b.phaseId) ?? -1) - (phaseOrder.get(a.phaseId) ?? -1),
+  );
+
+  for (const u of upstreamLatestFirst) {
     logUpstreamVisual("declared", {
       executionId: readString(meta, "executionId") ?? null,
       cdfSessionId: sessionId,
@@ -433,7 +455,7 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
   // Optional evidence — a stage that cannot be loaded is skipped, never fatal.
   const lineageServiceId =
     readString(meta, "cdfServiceId") || readString(meta, "serviceId") || session.serviceId;
-  if (FULL_VISUAL_LINEAGE_SERVICES.has(lineageServiceId)) {
+  if (receivesFullVisualLineage(modality)) {
     const loader = createArtifactContextLoader();
     const projectId = input.projectId ?? session.projectId;
     for (const ref of earlierApprovedRefs(session, lineageServiceId, phaseId)) {

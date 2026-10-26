@@ -1160,6 +1160,7 @@ export async function runCreatePrepass(
         userId: principal.userId,
         organizationId: trustedOrganizationId,
         metadata: workingMetadata,
+        brief: prompt,
       });
       workingMetadata = applyDirectPassthroughMetadata(workingMetadata);
     } catch (err) {

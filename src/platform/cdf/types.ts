@@ -25,6 +25,8 @@ export type CdfRouteCard = {
   label: string;
   title: string;
   desc: string;
+  /** Hidden combined option of a multi-pick gate (see canonical CdfStaticRouteCard). */
+  combines?: string[];
 };
 
 export type CdfFlowPhase = {

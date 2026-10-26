@@ -11,12 +11,21 @@ import type {
 import {
   applyProviderReferenceAdaptations,
   describeReferenceImages,
+  requestIsOneOfSeveralOptions,
+  requestIsRefinement,
   extractPrompt,
   extractReferenceImages,
   orderReferencesForContinuity,
 } from "../common/vendor-image-protocol";
 import { buildProviderReferenceRoleObservability } from "../../../ai/multimodal-context/reference-role";
-import { resolvePayloadAspectRatio } from "../common/image-aspect-ratio";
+import {
+  nearestSupportedAspectRatio,
+  readAspectRatioFromPayload,
+  resolvePayloadAspectRatio,
+} from "../common/image-aspect-ratio";
+
+/** Ratios Gemini image models accept in generationConfig.imageConfig. */
+const GEMINI_IMAGE_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import {
@@ -58,6 +67,12 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
   }): VendorImageWirePlan {
     const basePrompt = extractPrompt(input.request.payload);
     const aspectRatio = resolvePayloadAspectRatio(input.request.payload);
+    // Prompt text alone is ignored by Gemini when a reference image is attached
+    // (it copies the reference's shape) — an explicit ratio goes on the wire.
+    const wireAspectRatio = nearestSupportedAspectRatio(
+      readAspectRatioFromPayload(input.request.payload),
+      GEMINI_IMAGE_ASPECT_RATIOS,
+    );
     const references = orderReferencesForContinuity(
       extractReferenceImages(
         input.request.payload,
@@ -90,7 +105,16 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
         ? "The attached image is the existing result to modify — preserve unchanged elements unless the instruction explicitly changes them."
         : "",
       rolePrompt,
-      isArtifactEdit ? "" : describeReferenceImages(sentReferences),
+      isArtifactEdit
+        ? ""
+        : describeReferenceImages(sentReferences, {
+            oneOfSeveralOptions: requestIsOneOfSeveralOptions(
+              input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+            ),
+            refinement: requestIsRefinement(
+              input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+            ),
+          }),
     ]
       .filter(Boolean)
       .join(" ");
@@ -123,6 +147,7 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
           ],
           generationConfig: {
             responseModalities: ["TEXT", "IMAGE"],
+            ...(wireAspectRatio ? { imageConfig: { aspectRatio: wireAspectRatio } } : {}),
           },
         },
       },

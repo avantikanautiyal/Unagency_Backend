@@ -280,32 +280,47 @@ async function composeStoryboardShots(
   }
 
   const clips: Buffer[] = [];
+  // Providers often return shorter clips than asked (Luma: ~5 s for a 6 s
+  // shot). Crossfade offsets must use the real length — an offset past the
+  // end of a clip makes xfade end the film there, dropping every later shot.
+  const actualSec: number[] = [];
   for (let i = 0; i < raw.length; i++) {
-    clips.push(
-      await normalizeShotClip({
-        bytes: raw[i]!,
-        durationSec: shotPlan.shots[i]!.durationSec,
-        width: shotPlan.width,
-        height: shotPlan.height,
-      }),
+    const clip = await normalizeShotClip({
+      bytes: raw[i]!,
+      durationSec: shotPlan.shots[i]!.durationSec,
+      width: shotPlan.width,
+      height: shotPlan.height,
+    });
+    clips.push(clip);
+    const probed = await probeMp4DurationSec(clip);
+    actualSec.push(
+      probed && probed > 0
+        ? Math.min(probed, shotPlan.shots[i]!.durationSec)
+        : shotPlan.shots[i]!.durationSec,
     );
   }
   let composedBytes: Buffer;
   try {
-    composedBytes = await crossfadeShotClips({
-      clips,
-      durationsSec: shotPlan.shots.map((s) => s.durationSec),
-    });
+    composedBytes = await crossfadeShotClips({ clips, durationsSec: actualSec });
   } catch (err) {
     console.warn(
       `[storyboard-video] crossfade join failed, using plain join: ${err instanceof Error ? err.message : String(err)}`,
     );
     composedBytes = await concatMp4Videos({ clips });
   }
+  // Never ship a silently truncated film: well short of the shots' total ⇒ plain join.
+  const expectedSec = actualSec.reduce((sum, s) => sum + s, 0);
+  const composedSec = await probeMp4DurationSec(composedBytes);
+  if (composedSec != null && clips.length > 1 && composedSec < expectedSec * 0.8) {
+    console.warn(
+      `[storyboard-video] crossfade output ${composedSec.toFixed(1)}s < expected ${expectedSec.toFixed(1)}s, using plain join`,
+    );
+    composedBytes = await concatMp4Videos({ clips });
+  }
   return success({
     composedBytes,
     segmentCount: clips.length,
-    targetDurationSec: shotPlan.shots.reduce((sum, s) => sum + s.durationSec, 0),
+    targetDurationSec: Math.round(expectedSec),
   });
 }
 

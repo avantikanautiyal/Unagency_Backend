@@ -240,8 +240,8 @@ export async function applyGenerationContinuationVisualPrepass(input: {
       typeof meta.cdfSessionId === "string" ? meta.cdfSessionId.trim() : "";
     if (sessionId) {
       try {
-        const { getCdfSession } = await import("../../cdf");
-        const session = getCdfSession(sessionId);
+        const { ensureCdfSessionLoaded } = await import("../../cdf/session-store");
+        const session = await ensureCdfSessionLoaded(sessionId);
         const list = session?.generationContinuations ?? [];
         if (list.length > 0) {
           continuation = list[list.length - 1];

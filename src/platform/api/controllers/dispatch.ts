@@ -906,6 +906,48 @@ export async function dispatchController(
           );
         }
       }
+      // A project exists from the moment its brief is in — not only once the
+      // first generation returns — so Recent Projects shows it on every client.
+      if (
+        transitioned.ok &&
+        body.action === "submit_brief" &&
+        transitioned.value.session.brief
+      ) {
+        const projectUserId = principal?.userId ?? principal?.principalId;
+        if (projectUserId) {
+          try {
+            const { creativeProjectService } = await import(
+              "../../../services/creative-project-service"
+            );
+            const started = transitioned.value.session;
+            await creativeProjectService.upsert({
+              userId: String(projectUserId),
+              orgId: tenant.organizationId,
+              title: transitioned.value.config.service,
+              description: started.brief,
+              status: "initiated",
+              service: transitioned.value.config.outputMapService,
+              subtype: body.subtype ? String(body.subtype) : undefined,
+              platform: body.platform ? String(body.platform) : undefined,
+              format: body.format ? String(body.format) : undefined,
+              category: body.category ? String(body.category) : undefined,
+              sessionId: started.sessionId,
+              preserveTitle: true,
+              resumeStep: "generating",
+              prompt: started.brief,
+              creationMode: started.productMode,
+            });
+          } catch (err) {
+            console.warn(
+              JSON.stringify({
+                scope: "cdf.project_on_brief",
+                sessionId: transitioned.value.session.sessionId,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          }
+        }
+      }
       void import("../../../notifications/client-cdf-notifications").then(
         ({ notifyCdfTransition }) =>
           notifyCdfTransition({

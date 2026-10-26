@@ -18,6 +18,10 @@ import {
   extractPrompt,
   extractReferenceImages,
 } from "../common/vendor-image-protocol";
+import {
+  nearestSupportedAspectRatio,
+  readAspectRatioFromPayload,
+} from "../common/image-aspect-ratio";
 import { buildProviderReferenceRoleObservability } from "../../../ai/multimodal-context/reference-role";
 import { adaptCanonicalReferenceForProvider } from "../common/adapt-provider-reference";
 import type { VerifiedImageProviderSpec } from "../configs/verified-image-provider-specs";
@@ -34,6 +38,12 @@ function extensionForMime(mimeType: string): string {
   if (mime.includes("svg")) return "svg";
   return "png";
 }
+
+/** Ideogram v3 aspect_ratio values ("WxH"). */
+const IDEOGRAM_ASPECT_RATIOS = [
+  "1:3", "3:1", "1:2", "2:1", "9:16", "16:9", "10:16", "16:10",
+  "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "1:1",
+];
 
 export class IdeogramImageProtocol implements IVendorImageProtocol {
   readonly vendor = "ideogram";
@@ -62,6 +72,11 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
       references,
       vendor: this.vendor,
     });
+    const ratio = nearestSupportedAspectRatio(
+      readAspectRatioFromPayload(input.request.payload),
+      IDEOGRAM_ASPECT_RATIOS,
+    );
+    const aspectField: Record<string, string> = ratio ? { aspect_ratio: ratio.replace(":", "x") } : {};
     const reference = references[0];
     const base64 = reference?.base64?.trim();
     const role = reference?.semanticReferenceRole;
@@ -81,6 +96,7 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
             fields: {
               prompt,
               rendering_speed: "DEFAULT",
+              ...aspectField,
             },
             files: [
               {
@@ -116,6 +132,7 @@ export class IdeogramImageProtocol implements IVendorImageProtocol {
         body: {
           prompt,
           rendering_speed: "DEFAULT",
+          ...aspectField,
         },
       },
       ...(adaptations.length ? { referenceAdaptation: adaptations } : {}),

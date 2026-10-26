@@ -7,6 +7,10 @@
  * supports style transfer; identity roles are prompt-only.
  */
 
+import {
+  nearestSupportedAspectRatio,
+  readAspectRatioFromPayload,
+} from "../common/image-aspect-ratio";
 import type {
   IVendorImageProtocol,
   VendorImageNormalizedResult,
@@ -25,6 +29,21 @@ import {
   attachMediaOutputs,
   mapOpenAIImageDataToOutputs,
 } from "../../common/media-output";
+
+/** Recraft v3 sizes keyed by their ratio. */
+const RECRAFT_SIZES: Readonly<Record<string, string>> = {
+  "1:1": "1024x1024",
+  "4:3": "1365x1024",
+  "3:4": "1024x1365",
+  "3:2": "1536x1024",
+  "2:3": "1024x1536",
+  "16:9": "1820x1024",
+  "9:16": "1024x1820",
+  "5:4": "1280x1024",
+  "4:5": "1024x1280",
+  "1:2": "1024x2048",
+  "2:1": "2048x1024",
+};
 
 export class RecraftImageProtocol implements IVendorImageProtocol {
   readonly vendor = "recraft";
@@ -67,6 +86,11 @@ export class RecraftImageProtocol implements IVendorImageProtocol {
       model: input.spec.wireModelId,
       n: 1,
     };
+    const ratio = nearestSupportedAspectRatio(
+      readAspectRatioFromPayload(input.request.payload ?? {}),
+      Object.keys(RECRAFT_SIZES),
+    );
+    if (ratio) body.size = RECRAFT_SIZES[ratio];
     if (styleUrls.length > 0) {
       body.style_reference_urls = styleUrls;
     }

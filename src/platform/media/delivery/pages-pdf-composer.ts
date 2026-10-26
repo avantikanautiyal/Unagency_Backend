@@ -1,10 +1,12 @@
 /**
  * Compose designed page images into one screen-quality PDF.
  *
- *   pages       — one page per image, in reading order (sized to the image).
- *   bi-fold     — printer spreads: outside [4 | 1], inside [2 | 3].
- *   tri-fold /
- *   z-fold      — printer spreads: outside [5 | 6 | 1], inside [2 | 3 | 4].
+ *   pages / bi-fold / tri-fold / z-fold
+ *               — one designed page per PDF page, in reading order. Every PDF
+ *                 page has page 1's size; a page image of another shape is
+ *                 cropped to it (near match) or centred on white (far off).
+ *                 Folds are not imposed as printer spreads — the client wants
+ *                 to read the brochure page by page.
  *   storyboard  — landscape sheets, 4 frames per sheet with scene notes.
  */
 
@@ -17,15 +19,6 @@ export type PagesPdfPage = {
   readonly caption?: string;
 };
 
-/** Panels per printed sheet, as 1-based page numbers (left → right). */
-export function sheetsForLayout(layout: PagesPdfLayout, pageCount: number): number[][] {
-  if (layout === "bi-fold" && pageCount === 4) return [[4, 1], [2, 3]];
-  if ((layout === "tri-fold" || layout === "z-fold") && pageCount === 6) {
-    return [[5, 6, 1], [2, 3, 4]];
-  }
-  return Array.from({ length: pageCount }, (_, i) => [i + 1]);
-}
-
 type OpenedImage = { readonly width: number; readonly height: number };
 
 /** pdfkit's openImage exists at runtime but is missing from its typings. */
@@ -35,6 +28,9 @@ function openImage(doc: PDFKit.PDFDocument, bytes: Buffer): OpenedImage {
 
 /** Screen-quality panel height in PDF points. */
 const PANEL_HEIGHT = 700;
+
+/** Up to ~12% shape difference is cropped to fit; beyond that it is letterboxed. */
+const MAX_CROP_LOG_RATIO = 0.12;
 
 export async function composePagesPdf(input: {
   readonly title: string;
@@ -52,17 +48,21 @@ export async function composePagesPdf(input: {
       if (input.layout === "storyboard") {
         drawStoryboard(doc, input.pages);
       } else {
-        for (const sheet of sheetsForLayout(input.layout, input.pages.length)) {
-          const images = sheet.map((n) => openImage(doc, input.pages[n - 1]!.bytes));
-          // Every panel scaled to the same height; panels sit edge to edge.
-          const widths = images.map((img) => (img.width / img.height) * PANEL_HEIGHT);
-          const sheetWidth = widths.reduce((a, b) => a + b, 0);
-          doc.addPage({ size: [sheetWidth, PANEL_HEIGHT], margin: 0 });
-          let x = 0;
-          images.forEach((img, i) => {
-            doc.image(img as never, x, 0, { width: widths[i]!, height: PANEL_HEIGHT });
-            x += widths[i]!;
-          });
+        const images = input.pages.map((p) => openImage(doc, p.bytes));
+        const aspect = images[0]!.width / images[0]!.height;
+        const pageW = aspect * PANEL_HEIGHT;
+        for (const img of images) {
+          doc.addPage({ size: [pageW, PANEL_HEIGHT], margin: 0 });
+          const off = Math.abs(Math.log(img.width / img.height / aspect));
+          if (off < MAX_CROP_LOG_RATIO) {
+            doc.save();
+            doc.rect(0, 0, pageW, PANEL_HEIGHT).clip();
+            doc.image(img as never, 0, 0, { cover: [pageW, PANEL_HEIGHT], align: "center", valign: "center" });
+            doc.restore();
+          } else {
+            doc.rect(0, 0, pageW, PANEL_HEIGHT).fill("#ffffff");
+            doc.image(img as never, 0, 0, { fit: [pageW, PANEL_HEIGHT], align: "center", valign: "center" });
+          }
         }
       }
       doc.end();

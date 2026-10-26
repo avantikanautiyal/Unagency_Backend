@@ -140,3 +140,31 @@ export function resolvePayloadAspectRatio(
   if (direct) return direct;
   return extractAspectRatioFromPrompt(promptTextFromPayload(payload));
 }
+
+/**
+ * Closest ratio a provider supports (e.g. "3:4" for an A-series "1:1.414"),
+ * compared on width/height. Undefined when the ratio is unparseable.
+ */
+export function nearestSupportedAspectRatio(
+  aspectRatio: string | undefined,
+  supported: readonly string[]
+): string | undefined {
+  const parse = (r: string): number | null => {
+    const [w, h] = r.split(":").map(Number);
+    return w! > 0 && h! > 0 ? w! / h! : null;
+  };
+  const target = aspectRatio ? parse(aspectRatio.trim()) : null;
+  if (target == null) return undefined;
+  let best: string | undefined;
+  let bestDiff = Infinity;
+  for (const candidate of supported) {
+    const value = parse(candidate);
+    if (value == null) continue;
+    const diff = Math.abs(Math.log(value / target));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = candidate;
+    }
+  }
+  return best;
+}

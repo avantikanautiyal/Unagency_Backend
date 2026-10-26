@@ -129,6 +129,7 @@ function routesFor(version: "v1" | "v2"): RouteDefinition[] {
     v(version, "GET", "/cdf/sessions/:sessionId", "cdf", "Get CDF session state", ["execution:read"], true, POLL),
     v(version, "POST", "/cdf/transition", "cdf", "Apply CDF stage transition", ["execution:create"]),
     v(version, "POST", "/cdf/brief-gate", "cdf", "Classify typed message as brief vs conversation", ["execution:create"]),
+    v(version, "POST", "/cdf/final-turn", "cdf", "Classify a message typed on the final step (refine, button, size, new project, question)", ["execution:create"]),
     v(
       version,
       "GET",

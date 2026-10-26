@@ -42,7 +42,8 @@ describe("CDF execution certification harness", () => {
     const registry = countCdfCanonicalPhases();
     const rows = buildFullExecutionCertificationMatrix();
     assert.equal(rows.length, registry);
-    assert.equal(registry, 94);
+    // 94 before Presentation's Final step was removed (Oct 2026).
+    assert.equal(registry, 93);
   });
 
   it("runFullExecutionCertification produces summary with counts", () => {

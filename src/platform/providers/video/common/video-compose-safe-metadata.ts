@@ -71,6 +71,12 @@ export function readVideoShotPlan(
             ...(typeof r.panelKey === "string" && r.panelKey ? { panelKey: r.panelKey } : {}),
             ...(typeof r.endPanelKey === "string" && r.endPanelKey ? { endPanelKey: r.endPanelKey } : {}),
             ...(r.fresh === true ? { fresh: true } : {}),
+            ...(typeof r.voiceover === "string" && r.voiceover.trim()
+              ? { voiceover: r.voiceover.slice(0, 400) }
+              : {}),
+            ...(typeof r.onScreenText === "string" && r.onScreenText.trim()
+              ? { onScreenText: r.onScreenText.slice(0, 160) }
+              : {}),
           };
         })
         .filter((s): s is NonNullable<typeof s> => s != null)
@@ -79,7 +85,15 @@ export function readVideoShotPlan(
   const width = Number(rec.width);
   const height = Number(rec.height);
   if (shots.length < 2 || !(width > 0) || !(height > 0)) return undefined;
-  return { shots, width, height };
+  return {
+    shots,
+    width,
+    height,
+    ...(typeof rec.music === "string" && rec.music.trim() ? { music: rec.music.slice(0, 900) } : {}),
+    ...(typeof rec.voiceStyle === "string" && rec.voiceStyle.trim()
+      ? { voiceStyle: rec.voiceStyle.slice(0, 120) }
+      : {}),
+  };
 }
 
 export function resolveVideoTargetDurationSec(

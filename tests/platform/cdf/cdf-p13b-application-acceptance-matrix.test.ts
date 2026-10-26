@@ -790,6 +790,11 @@ describe("Phase 13B CDF Application E2E Acceptance Matrix", () => {
     const inv = inventoryCdfApplicationServices();
     for (const svc of inv) {
       const finals = svc.phases.filter((p) => p.phaseId === "final");
+      // Presentation ends on Full Deck (no Final step).
+      if (svc.serviceId === "presentation") {
+        expect(finals.length).toBe(0);
+        continue;
+      }
       expect(finals.length).toBe(1);
       expect(finals[0]!.isDeterministic).toBe(true);
       expect(finals[0]!.generationModality).toBe("materialize");

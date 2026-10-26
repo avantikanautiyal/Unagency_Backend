@@ -450,7 +450,6 @@ describe("Phase 18 Canonical Benchmarking", () => {
       "presentation.slide_content_to_design_routes",
       "presentation.design_routes_to_full_deck",
       "presentation.slide_refinement",
-      "presentation.final_materialization",
     ];
     for (const id of ids) {
       expect(getBenchmarkCase(id)).toBeDefined();
@@ -467,14 +466,9 @@ describe("Phase 18 Canonical Benchmarking", () => {
     expect(
       resolveAction("cdf.phase.presentation.full-deck.generate").ok,
     ).toBe(true);
-    const finalMat = resolveAction(
-      "cdf.phase.presentation.final.materialize",
-    );
-    if (!finalMat.ok) {
-      // Fallback identity if phase naming differs — catalog still documents intent
-      const alt = resolveAction("cdf.phase.presentation.final.configure");
-      expect(alt.ok || finalMat.ok).toBe(true);
-    }
+    // Presentation ends on Full Deck (no Final step): no final action exists.
+    expect(getBenchmarkCase("presentation.final_materialization")).toBeUndefined();
+    expect(resolveAction("cdf.phase.presentation.final.materialize").ok).toBe(false);
 
     const critical = getBenchmarkCase(
       "presentation.slide_content_to_design_routes",

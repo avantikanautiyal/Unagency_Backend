@@ -172,27 +172,6 @@ function classAPresentationCases(): BenchmarkCase[] {
       fixtureRefs: ["GOLDEN_LEGACY_SLIDE_CONTENT"],
       metadata: { continuity: "refinement", refine: true },
     },
-    {
-      ...base,
-      caseId: "presentation.final_materialization",
-      phaseId: "final",
-      actionId: "cdf.phase.presentation.final.materialize",
-      actionVersion: v,
-      mode: "MULTI",
-      supportedScenarios: ["LEGACY_BASELINE", "CANONICAL_GENERATION", "CANONICAL_WITH_QA"],
-      unsupportedScenarios: ["CANONICAL_WITH_REPAIR"],
-      unsupportedReason: "Materialize path is non-LLM; repair N/A",
-      expectedContext: {
-        cdfContext: true,
-        upstreamArtifact: true,
-        outputContract: true,
-      },
-      expectedOutputContract: {
-        kind: "export_result",
-      },
-      fixtureRefs: ["GOLDEN_LEGACY_DESIGN_SYSTEM"],
-      metadata: { continuity: "final/materialization" },
-    },
   ];
 }
 

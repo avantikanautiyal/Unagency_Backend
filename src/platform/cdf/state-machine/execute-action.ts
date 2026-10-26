@@ -974,6 +974,12 @@ export function prepareTransition(
 
   if (req.action === "reopen_for_refine") {
     const onFinal = currentPhase(config, existing)?.type === "final";
+    // A completed project that ends on its deliverable (no Final step, e.g.
+    // the presentation's Full Deck) reopens that last step itself.
+    const onCompletedLastStep =
+      !onFinal &&
+      existing.status === "completed" &&
+      existing.phaseIndex === config.phases.length - 1;
     const refinable = (p: CdfFlowPhase) =>
       (p.type === "output" ||
         p.type === "mockup" ||
@@ -983,17 +989,22 @@ export function prepareTransition(
       canonicalPhaseFor(existing.serviceId, p.id)?.refinement.enabled !== false;
     const candidates = config.phases
       .map((p, index) => ({ p, index }))
-      .filter(({ p, index }) => index < existing.phaseIndex && refinable(p));
+      .filter(
+        ({ p, index }) =>
+          (index < existing.phaseIndex ||
+            (onCompletedLastStep && index === existing.phaseIndex)) &&
+          refinable(p),
+      );
     const requested = req.phaseId?.trim();
     const target = requested
       ? candidates.find(({ p }) => p.id === requested)
       : ([...candidates].reverse().find(({ p }) => p.type !== "text-approval") ??
         candidates[candidates.length - 1]);
-    if (!onFinal || !target) {
+    if ((!onFinal && !onCompletedLastStep) || !target) {
       return failure(
         cdfError(
           "ACTION_NOT_ALLOWED",
-          "reopen_for_refine is only valid on the final step with an approved refinable phase",
+          "reopen_for_refine is only valid on the final step (or a completed last step) with an approved refinable phase",
           { phaseId: existing.phaseId },
         ),
       );

@@ -13,12 +13,16 @@ import {
 } from "../../../ai/canonical-model-request";
 import type { IBlobStorage } from "../../../persistence/interfaces/persistence";
 import {
+  buildMusicPrompt,
   buildShotPrompt,
   findScriptScenes,
+  findScriptTone,
   findStyleNote,
   imageBytesToPng,
   panelIndexForShot,
   splitStoryboardPanels,
+  voiceStyleFromAudio,
+  voiceoverFromAudio,
   type ScriptScene,
   type VideoShot,
   type VideoShotPlan,
@@ -184,6 +188,8 @@ function scenesFromFrames(
     MIN_FRAME_SHOT_SEC,
     scriptTotal > 0 ? Math.round(scriptTotal / frames.length) : DEFAULT_FRAME_SHOT_SEC,
   );
+  // A script scene spread over several frames is spoken / captioned once, on its first frame.
+  const voiced = new Set<number>();
   return frames.map((f, i) => {
     const byScene = f.scene != null ? scriptScenes.find((s) => s.index === f.scene) : undefined;
     const scene =
@@ -191,12 +197,16 @@ function scenesFromFrames(
       (scriptScenes.length
         ? scriptScenes[Math.min(scriptScenes.length - 1, Math.floor((i * scriptScenes.length) / frames.length))]
         : undefined);
+    const firstOfScene = scene != null && !voiced.has(scene.index);
+    if (scene) voiced.add(scene.index);
     return {
       index: i + 1,
       title: f.title ?? scene?.title ?? "",
       startSec: i * per,
       endSec: (i + 1) * per,
       visual: f.visual ?? scene?.visual ?? f.title ?? "",
+      ...(firstOfScene && scene?.audio ? { audio: scene.audio } : {}),
+      ...(firstOfScene && scene?.onScreenText ? { onScreenText: scene.onScreenText } : {}),
     };
   });
 }
@@ -370,7 +380,10 @@ export async function prepareStoryboardVideoSubmission(input: {
   };
   const shots: VideoShot[] = scenes.map((scene, i) => {
     const panel = panelFor(scene, i);
+    const voiceover = voiceoverFromAudio(scene.audio);
     return {
+      ...(voiceover ? { voiceover } : {}),
+      ...(scene.onScreenText ? { onScreenText: scene.onScreenText } : {}),
       prompt: buildShotPrompt(scene, styleNote, scenes.length, {
         changeRequest,
         isLast: i === scenes.length - 1,
@@ -396,8 +409,16 @@ export async function prepareStoryboardVideoSubmission(input: {
     }
   }
   const firstEndPanel = !previewOnly && scenes.length > 1 ? panelFor(scenes[1]!, 1) : -1;
-  const plan: VideoShotPlan = { shots, ...size };
   const totalSec = shots.reduce((sum, s) => sum + s.durationSec, 0);
+  const voiceStyle = scenes.map((s) => voiceStyleFromAudio(s.audio)).find(Boolean);
+  // Soundtrack (music bed, voiceover) and on-screen text are added after the shots are stitched.
+  const music = buildMusicPrompt({
+    scenes,
+    tone: findScriptTone(cmr ?? meta),
+    totalSec,
+    ...(freshShots ? { fallback: `Fits this brief: ${(session?.brief ?? "").slice(0, 300)}` } : {}),
+  });
+  const plan: VideoShotPlan = { shots, ...size, music, ...(voiceStyle ? { voiceStyle } : {}) };
   const firstPanel = panelFor(scenes[0]!, 0);
   // An unsplit sheet must never become the opening frame: drop it, keep other inputs.
   const allAssets = input.assets ?? meta.assets;

@@ -100,6 +100,7 @@ import {
   isVideoGenerationCapability,
 } from "../providers/common/resolve-execution-modality";
 import { sanitizeExecutionFeatures } from "../providers/adapters/capabilities/feature-catalog";
+import { approvedDesignFidelityApplies } from "../providers/image/common/approved-design-fidelity";
 import type {
   IDirectExecutionEngine,
   DirectExecutionReport,
@@ -197,6 +198,8 @@ function presentationReExecute(
 }
 /** Default text/image direct-path budget. */
 const DEFAULT_DIRECT_TIMEOUT_MS = 120_000;
+/** Render + vision check + one corrective redraw + recheck (approved-design-fidelity). */
+const FIDELITY_CHECKED_TIMEOUT_MS = 300_000;
 /**
  * Web Tech builds a full HTML document via structured output — often exceeds 2 minutes.
  * Keep below mobile poll window (~5+ min) but long enough for luxury landing pages.
@@ -349,6 +352,7 @@ function resolveDirectTimeoutMs(
   if (isPresentationDirectCreate(metadata)) return PRESENTATION_DIRECT_TIMEOUT_MS;
   if (isDocumentDirectCreate(metadata)) return DOCUMENT_DIRECT_TIMEOUT_MS;
   if (isEmailDirectCreate(metadata)) return DOCUMENT_DIRECT_TIMEOUT_MS;
+  if (approvedDesignFidelityApplies(metadata)) return FIDELITY_CHECKED_TIMEOUT_MS;
   return DEFAULT_DIRECT_TIMEOUT_MS;
 }
 

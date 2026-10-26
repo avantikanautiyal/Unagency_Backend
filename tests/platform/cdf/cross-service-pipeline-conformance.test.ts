@@ -58,24 +58,24 @@ describe("CDF cross-service pipeline conformance", () => {
     resetCdfArtifactEngineForTests();
   });
 
-  it("locks registry baseline: 20 services × 94 phases", () => {
+  it("locks registry baseline: 20 services × 93 phases", () => {
     const ids = listCdfCanonicalServiceIds();
     assert.equal(ids.length, 20);
-    assert.equal(countCdfCanonicalPhases(), 94);
+    assert.equal(countCdfCanonicalPhases(), 93);
     const rows = buildFullConformanceMatrix();
-    assert.equal(rows.length, 94);
+    assert.equal(rows.length, 93);
     const summary = summarizeConformanceMatrix(rows);
-    assert.equal(summary.registryPhaseCount, 94);
-    assert.equal(summary.totalPhases, 94);
+    assert.equal(summary.registryPhaseCount, 93);
+    assert.equal(summary.totalPhases, 93);
   });
 
-  it("achieves 94/94 CONFORMANT with 0 PARTIAL and 0 BLOCKED", () => {
+  it("achieves 93/93 CONFORMANT with 0 PARTIAL and 0 BLOCKED", () => {
     assert.equal(isGenericCanonicalCompletionAvailable(), true);
     const rows = buildFullConformanceMatrix();
     const summary = summarizeConformanceMatrix(rows);
     assert.equal(
       summary.byStatus.CONFORMANT,
-      94,
+      93,
       JSON.stringify(summary.byStatus),
     );
     assert.equal(summary.byStatus.PARTIAL, 0);

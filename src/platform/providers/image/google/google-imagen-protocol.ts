@@ -13,6 +13,7 @@ import {
   describeReferenceImages,
   requestIsOneOfSeveralOptions,
   requestIsRefinement,
+  requestIsNewViewpoint,
   extractPrompt,
   extractReferenceImages,
   orderReferencesForContinuity,
@@ -112,6 +113,9 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
               input.request.metadata as Readonly<Record<string, unknown>> | undefined,
             ),
             refinement: requestIsRefinement(
+              input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+            ),
+            newViewpoint: requestIsNewViewpoint(
               input.request.metadata as Readonly<Record<string, unknown>> | undefined,
             ),
           }),

@@ -1,8 +1,13 @@
 import { PNG } from "pngjs";
 import {
+  buildMusicPrompt,
   detectPanels,
+  musicCueFromAudio,
   parseScriptScenes,
+  voiceStyleFromAudio,
+  voiceoverFromAudio,
 } from "../../../../src/platform/providers/video/common/storyboard-shot-plan";
+import { wrapOverlayText } from "../../../../src/platform/providers/video/common/video-soundtrack";
 import { prepareStoryboardVideoSubmission } from "../../../../src/platform/providers/video/common/storyboard-video-submission";
 
 const DURATION_SCRIPT = `# COSMO
@@ -218,5 +223,60 @@ describe("direct video shot planner", () => {
   it("rejects plans with fewer than two usable shots", () => {
     expect(parsePlannedShots('{"shots":[{"title":"A","visual":""},{"visual":"ok"}]}', 4)).toBeNull();
     expect(parsePlannedShots("not json", 4)).toBeNull();
+  });
+});
+
+describe("script audio + on-screen text", () => {
+  const script = `# Meet Cosmo
+**Tone:** upbeat
+
+## SCENE 1: MEET COSMO
+**Duration:** 0:00 - 0:05
+### VISUAL
+Cosmo materializes.
+### AUDIO
+Upbeat electronic music intro. Voiceover (warm, clear, confident): "Meet Cosmo — your AI automation partner."
+### ON-SCREEN TEXT
+"Meet Your AI Automation Partner" ---
+
+## SCENE 2: POWER
+**Duration:** 0:05 - 0:10
+### VISUAL
+Robot gestures.
+### AUDIO
+Music: driving synth beat
+VO: We automate your business strategy.
+### ON-SCREEN TEXT
+None
+`;
+
+  it("keeps each scene's audio and cleaned on-screen text", () => {
+    const [one, two] = parseScriptScenes(script);
+    expect(one!.visual).toBe("Cosmo materializes.");
+    expect(one!.onScreenText).toBe("Meet Your AI Automation Partner");
+    expect(two!.onScreenText).toBeUndefined();
+    expect(two!.audio).toBe("Music: driving synth beat VO: We automate your business strategy.");
+  });
+
+  it("speaks only the voiceover words, never the music notes", () => {
+    const [one, two] = parseScriptScenes(script);
+    expect(voiceoverFromAudio(one!.audio)).toBe("Meet Cosmo — your AI automation partner.");
+    expect(voiceoverFromAudio(two!.audio)).toBe("We automate your business strategy.");
+    expect(voiceStyleFromAudio(one!.audio)).toBe("warm, clear, confident");
+    expect(musicCueFromAudio(one!.audio)).toBe("Upbeat electronic music intro.");
+    expect(musicCueFromAudio(two!.audio)).toBe("Music: driving synth beat");
+    expect(voiceoverFromAudio("Ambient hum only.")).toBe("");
+  });
+
+  it("builds an instrumental music brief from the cues", () => {
+    const prompt = buildMusicPrompt({ scenes: parseScriptScenes(script), tone: "upbeat", totalSec: 10 });
+    expect(prompt).toContain("No vocals");
+    expect(prompt).toContain("Upbeat electronic music intro. → Music: driving synth beat");
+    expect(prompt).not.toContain("automate");
+  });
+
+  it("wraps overlay copy to at most three lines", () => {
+    expect(wrapOverlayText("one two three four", 9)).toEqual(["one two", "three", "four"]);
+    expect(wrapOverlayText("a b c d e f g h", 1)).toEqual(["a", "b", "c…"]);
   });
 });

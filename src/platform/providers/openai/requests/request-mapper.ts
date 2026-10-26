@@ -21,6 +21,7 @@ import {
   describeReferenceImages,
   requestIsOneOfSeveralOptions,
   requestIsRefinement,
+  requestIsNewViewpoint,
   referenceImageToDataUrl,
 } from "../../image/common/vendor-image-protocol";
 import { normalizeOpenAiCompletionTokenParams } from "./openai-completion-params";
@@ -268,6 +269,9 @@ function applyOpenAiImageBody(
         request.metadata as Readonly<Record<string, unknown>> | undefined,
       ),
       refinement: requestIsRefinement(
+        request.metadata as Readonly<Record<string, unknown>> | undefined,
+      ),
+      newViewpoint: requestIsNewViewpoint(
         request.metadata as Readonly<Record<string, unknown>> | undefined,
       ),
     });

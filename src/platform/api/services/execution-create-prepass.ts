@@ -218,8 +218,9 @@ export function resolveClientRoutingPin(
 }
 
 /**
- * Model pin for a staged image run, from the image run it continues
- * (parentExecutionId) in the same CDF session. Skipped when the caller already
+ * Model pin for a staged image run, from the image run it continues in the
+ * same CDF session: the selected/refined creative (cdfContinuationExecutionId)
+ * when there is one, else parentExecutionId. Skipped when the caller already
  * pinned a model, or the parent was not an image generation.
  */
 async function resolveUpstreamVisualModelPin(
@@ -229,10 +230,15 @@ async function resolveUpstreamVisualModelPin(
 ): Promise<{ providerId: string; modelId: string; executionId: string } | undefined> {
   const existing = resolveClientRoutingPin(req, metadata);
   if (existing.providerId || existing.modelId) return undefined;
+  // "Generate Angles" continues the approved 3D while parentExecutionId is the
+  // later flat pack — the 3D's model must redraw it.
   const parentId =
-    typeof metadata?.parentExecutionId === "string"
+    (typeof metadata?.cdfContinuationExecutionId === "string"
+      ? metadata.cdfContinuationExecutionId.trim()
+      : "") ||
+    (typeof metadata?.parentExecutionId === "string"
       ? metadata.parentExecutionId.trim()
-      : "";
+      : "");
   if (!parentId || !host.loadExecutionCreateMetadata) return undefined;
   let parent: Readonly<Record<string, unknown>> | undefined;
   try {
@@ -1722,7 +1728,10 @@ export async function runCreatePrepass(
     !isWebsiteDeliverable &&
     isImageGenerationCapability(capabilityIdRaw) &&
     !isGenerationFanoutLeafMetadata(workingMetadata) &&
-    workingMetadata?.allowsModelGenerationFanout !== true
+    // A single-leaf re-render (size adaptation, pack angle) of a fanout phase
+    // still carries the phase's fanout flag — it is one run, not a fanout.
+    (workingMetadata?.allowsModelGenerationFanout !== true ||
+      workingMetadata?.cdfSingleLeaf === true)
   ) {
     const inheritedPin = await resolveUpstreamVisualModelPin(
       host,

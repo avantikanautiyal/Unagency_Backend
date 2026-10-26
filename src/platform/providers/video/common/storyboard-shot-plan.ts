@@ -16,6 +16,10 @@ export type ScriptScene = {
   readonly startSec: number;
   readonly endSec: number;
   readonly visual: string;
+  /** The scene's AUDIO block (voiceover, music, sound), as written. */
+  readonly audio?: string;
+  /** The scene's ON-SCREEN TEXT, cleaned; absent when "None". */
+  readonly onScreenText?: string;
 };
 
 export type VideoShot = {
@@ -27,12 +31,20 @@ export type VideoShot = {
   readonly endPanelKey?: string;
   /** Planned from the brief (no storyboard): generate from text, not the previous clip's last frame. */
   readonly fresh?: boolean;
+  /** Spoken words for this shot (script VO / dialogue), voiced after the film is stitched. */
+  readonly voiceover?: string;
+  /** Text drawn over this shot after stitching (video models garble text). */
+  readonly onScreenText?: string;
 };
 
 export type VideoShotPlan = {
   readonly shots: readonly VideoShot[];
   readonly width: number;
   readonly height: number;
+  /** Prompt for the background music bed under the whole film. */
+  readonly music?: string;
+  /** Voice direction from the script ("warm, clear, confident"). */
+  readonly voiceStyle?: string;
 };
 
 /** Video model prompts stay short; MiniMax truncates around 2000 chars. */
@@ -100,6 +112,8 @@ export function parseScriptScenes(script: string): ScriptScene[] {
   });
   return heads.map((h, i) => {
     const body = lines.slice(h.line + 1, heads[i + 1]?.line ?? lines.length);
+    const audio = cleanMarkdown(sectionLines(body, AUDIO_HEADING).join(" "));
+    const onScreenText = cleanOnScreenText(sectionLines(body, ON_SCREEN_TEXT_HEADING).join("\n"));
     // Prefer the VISUAL block; fall back to the whole scene body.
     const visualStart = body.findIndex((l) => /^\s*(?:#+\s*)?\**\s*visual\s*:?\s*\**\s*:?\s*$/i.test(l) || /^\s*(?:#+\s*)?\**visual\**\s*:/i.test(l));
     let visualLines = body;
@@ -109,8 +123,86 @@ export function parseScriptScenes(script: string): ScriptScene[] {
       const inline = body[visualStart]!.replace(/^\s*(?:#+\s*)?\**\s*visual\s*\**\s*:?\s*\**/i, "");
       visualLines = [inline, ...(stop >= 0 ? rest.slice(0, stop) : rest)];
     }
-    return { ...h.scene, visual: cleanMarkdown(visualLines.join(" ")) };
+    return {
+      ...h.scene,
+      visual: cleanMarkdown(visualLines.join(" ")),
+      ...(audio ? { audio } : {}),
+      ...(onScreenText ? { onScreenText } : {}),
+    };
   });
+}
+
+const AUDIO_HEADING = /^\s*(?:#+\s*)?\**\s*(?:audio|sound|vo|voice ?over)\s*\**\s*:?/i;
+const ON_SCREEN_TEXT_HEADING = /^\s*(?:#+\s*)?\**\s*(?:on-?screen text|text overlay|super|supers|caption)\s*\**\s*:?/i;
+/**
+ * Where a scene sub-block ends: any markdown heading, or a VISUAL / AUDIO /
+ * ON-SCREEN TEXT style label. "Music:" or "VO:" lines live inside AUDIO.
+ */
+const BLOCK_HEADING =
+  /^\s*(?:#+\s|\**\s*(?:visual|audio|on-?screen text|text overlay|supers?|caption|animation notes|transition)\s*\**\s*:?\s*\**\s*(?::|$))/i;
+
+/** Lines of one scene sub-block ("### AUDIO" … next heading), inline text after the heading included. */
+function sectionLines(body: readonly string[], heading: RegExp): string[] {
+  const start = body.findIndex((l) => heading.test(l));
+  if (start < 0) return [];
+  const rest = body.slice(start + 1);
+  const stop = rest.findIndex((l) => BLOCK_HEADING.test(l) || /^\s*---\s*$/.test(l));
+  const inline = body[start]!.replace(heading, "").replace(/^\s*\**\s*:?\s*/, "");
+  return [inline, ...(stop >= 0 ? rest.slice(0, stop) : rest)].filter((l) => l.trim());
+}
+
+/** On-screen copy without markdown, wrapping quotes, trailing "---" rules or "None". */
+export function cleanOnScreenText(text: string): string {
+  const cleaned = text
+    .split(/\r?\n/)
+    .map((l) =>
+      l
+        .replace(/\*\*/g, "")
+        .replace(/^\s*[-*•]\s+/, "")
+        .replace(/\s*-{3,}\s*$/, "")
+        .trim()
+        .replace(/^["“”']+|["“”']+$/g, "")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!cleaned || /^(none|n\/a|no text|-)\.?$/i.test(cleaned)) return "";
+  return cleaned.slice(0, 160);
+}
+
+/**
+ * The words to speak from a scene's AUDIO block: quoted voiceover / dialogue,
+ * else the text after a "VO:" / "Voiceover:" label. Music and SFX notes are
+ * never spoken.
+ */
+export function voiceoverFromAudio(audio: string | undefined): string {
+  if (!audio) return "";
+  const quoted = [...audio.matchAll(/["“]([^"“”]{2,400})["”]/g)].map((m) => m[1]!.trim());
+  if (quoted.length) return quoted.join(" ").slice(0, 400);
+  const labelled = /\b(?:vo|v\.o\.|voice ?over|narrator|dialogue)\b[^:]*:\s*(.+?)(?:\s+(?:music|sfx|sound)\b|$)/i.exec(audio);
+  const words = labelled?.[1]?.trim() ?? "";
+  return /^(none|n\/a|-)\.?$/i.test(words) ? "" : words.slice(0, 400);
+}
+
+/** Voice direction in brackets after the VO label: 'Voiceover (warm, clear, confident): …'. */
+export function voiceStyleFromAudio(audio: string | undefined): string {
+  if (!audio) return "";
+  return /\b(?:vo|voice ?over|narrator)\s*\(([^)]{2,120})\)/i.exec(audio)?.[1]?.trim() ?? "";
+}
+
+/** Music / sound cues of a scene with the spoken words removed. */
+export function musicCueFromAudio(audio: string | undefined): string {
+  if (!audio) return "";
+  return audio
+    .replace(/["“][^"“”]*["”]/g, " ")
+    // An unquoted "VO: words" runs up to the next music / SFX cue.
+    .replace(/\b(?:vo|v\.o\.|voice ?over|narrator|dialogue)\b(?:\s*\([^)]*\))?\s*:[^]*?(?=\b(?:music|sfx|sound)\b|$)/gi, " ")
+    .replace(/\b(?:vo|v\.o\.|voice ?over|narrator|dialogue)\b(?:\s*\([^)]*\))?\s*:?/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s.,;:—–-]+|[\s,;:—–-]+$/g, "")
+    .trim()
+    .slice(0, 200);
 }
 
 /** Every string inside a value (depth-limited). */
@@ -163,6 +255,38 @@ export function findStyleNote(source: unknown): string {
     if (note) return note.slice(0, STYLE_NOTE_MAX_CHARS);
   }
   return "";
+}
+
+/** The script's "**Tone:**" line (sets the music bed's mood). */
+export function findScriptTone(source: unknown): string {
+  const strings: string[] = [];
+  collectStrings(source, strings);
+  for (const s of strings) {
+    const text = s.includes("\\n") ? s.replace(/\\n/g, "\n") : s;
+    const tone = /\*\*tone:\*\*\s*(.+)/i.exec(text)?.[1];
+    if (tone) return cleanMarkdown(tone).slice(0, 160);
+  }
+  return "";
+}
+
+/**
+ * Background music brief for the whole film: the script's music cues in scene
+ * order plus its tone. Always instrumental — the voiceover carries the words.
+ */
+export function buildMusicPrompt(input: {
+  readonly scenes: readonly ScriptScene[];
+  readonly tone?: string;
+  readonly totalSec: number;
+  readonly fallback?: string;
+}): string {
+  const cues = [...new Set(input.scenes.map((s) => musicCueFromAudio(s.audio)).filter(Boolean))].slice(0, 4);
+  const lines = [
+    `Instrumental background music for a ${Math.round(input.totalSec)}-second commercial video. No vocals, no lyrics.`,
+    cues.length ? `Music direction by scene: ${cues.join(" → ")}` : input.fallback ?? "",
+    input.tone ? `Mood: ${input.tone}` : "",
+    "Clean modern mix that sits under a voiceover, with a clear ending on the final beat.",
+  ];
+  return lines.filter(Boolean).join(" ").slice(0, 900);
 }
 
 export function buildShotPrompt(

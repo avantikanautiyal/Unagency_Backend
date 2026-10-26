@@ -477,13 +477,13 @@ describe("CDF M1B state machine", () => {
       expect.arrayContaining(["slide", "element"]),
     );
 
-    // Runtime path: design-routes → full-deck → final
+    // Runtime path: design-routes → full-deck, which is the last step
     const designIdx = cfg!.phases.findIndex((p) => p.id === "design-routes");
     const fullIdx = cfg!.phases.findIndex((p) => p.id === "full-deck");
-    const finalIdx = cfg!.phases.findIndex((p) => p.id === "final");
     expect(designIdx).toBeGreaterThanOrEqual(0);
     expect(fullIdx).toBe(designIdx + 1);
-    expect(finalIdx).toBe(fullIdx + 1);
+    expect(fullIdx).toBe(cfg!.phases.length - 1);
+    expect(cfg!.phases.some((p) => p.id === "final")).toBe(false);
   });
 
   describe("invariants", () => {

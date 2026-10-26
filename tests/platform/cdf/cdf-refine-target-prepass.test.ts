@@ -119,6 +119,42 @@ describe("CDF refine target prepass", () => {
     expect(structured.cdfRefineSource).toBeUndefined();
   });
 
+  it("option-set refine with nothing selected: each fanout leaf refines its own option", async () => {
+    const option = (artifactId: string, exec: string, target: string) => ({
+      ...mockupPin(artifactId, exec),
+      generationFanoutTargetId: target,
+    });
+    saveCdfSession(
+      session([
+        option("cdfart_opt0", "exec_0", "fanout_0_google"),
+        option("cdfart_opt1", "exec_1", "fanout_1_google"),
+        option("cdfart_opt2", "exec_2", "fanout_2_openai"),
+      ]),
+    );
+    const leaf = (target: string) =>
+      applyCdfRefineTargetPrepass(
+        refineMeta({
+          refinePrompt: "lighter mode",
+          generationFanoutLeaf: true,
+          generationFanoutTargetId: target,
+        }),
+      );
+    expect((await leaf("fanout_1_google")).cdfContinuationVisualArtifactId).toBe("cdfart_opt1");
+    expect((await leaf("fanout_2_openai")).cdfContinuationExecutionId).toBe("exec_2");
+    // A slot that made nothing last time regenerates from the brief.
+    expect((await leaf("fanout_3_flux")).cdfRefineSource).toBeUndefined();
+  });
+
+  it("a fanout leaf of a first generation (no refine) is unchanged", async () => {
+    saveCdfSession(
+      session([{ ...mockupPin("cdfart_opt0", "exec_0"), generationFanoutTargetId: "fanout_0_google" }]),
+    );
+    const out = await applyCdfRefineTargetPrepass(
+      refineMeta({ generationFanoutLeaf: true, generationFanoutTargetId: "fanout_0_google" }),
+    );
+    expect(out.cdfRefineSource).toBeUndefined();
+  });
+
   it("explicit client-selected source is respected", async () => {
     saveCdfSession(session([mockupPin("cdfart_v1_mockup", "exec_v1")]));
     const out = await applyCdfRefineTargetPrepass(

@@ -259,10 +259,8 @@ describe("Phase 19 Production Hardening", () => {
       expect(design.action.deterministic).toBe(true);
     }
 
-    const finalMat = resolveAction("cdf.phase.presentation.final.materialize");
-    expect(finalMat.ok || resolveAction("cdf.phase.presentation.final.configure").ok).toBe(
-      true,
-    );
+    // Presentation ends on Full Deck (no Final step).
+    expect(resolveAction("cdf.phase.presentation.final.materialize").ok).toBe(false);
 
     // Audit matrix present
     expect(CDF_GENERATION_PATH_AUDIT.length).toBeGreaterThan(0);

@@ -54,6 +54,9 @@ const RETRYABLE_METADATA_KEYS = [
   "cdfContinuationVisualArtifactId",
   "cdfContinuationExecutionId",
   "cdfContinuationIsDiagnosticRaw",
+  // Final-step re-renders of an approved creative (size adaptation, pack angle).
+  "cdfSingleLeaf",
+  "cdfPackAngle",
   "parentExecutionId",
   "assetIds",
   "logoAssetId",

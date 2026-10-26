@@ -43,16 +43,18 @@ export async function applyCdfRefineTargetPrepass(
   if (!sessionId || !phaseId) return meta;
   // The client already named the exact creative being refined.
   if (meta.cdfRefineSource === true) return meta;
-  // Parallel option leaves regenerate siblings, never refine one of them.
+  if (!isCdfVisualRefineRun(meta)) return meta;
+  // A refine of an option set with no option selected refines every option:
+  // each fanout leaf takes the option its own slot made last time.
+  const fanoutTargetId = text(meta.generationFanoutTargetId);
+  if (fanoutTargetId) return bindOwnPreviousOption(meta, sessionId, phaseId, fanoutTargetId);
   if (
     meta.generationFanoutLeaf === true ||
-    text(meta.generationFanoutTargetId) ||
     text(meta.creativeOptionTargetId) ||
     meta.creativeOptionLeaf === true
   ) {
     return meta;
   }
-  if (!isCdfVisualRefineRun(meta)) return meta;
 
   let artifactKey = text(meta.cdfArtifactKey);
   try {
@@ -112,17 +114,6 @@ export async function applyCdfRefineTargetPrepass(
   const executionId = pin.generationExecutionId?.trim() || refineFrom;
   if (!executionId) return meta;
 
-  const continuation: CdfGenerationContinuationSelection = {
-    selectionKind: "generation_continuation",
-    sourcePhaseId: phaseId,
-    sourceArtifactKey: pin.artifactKey,
-    selectedAt: new Date().toISOString(),
-    executionId,
-    visualArtifactId: pin.artifactId,
-    visualArtifactVersion: pin.version,
-    isDiagnosticRaw: false,
-  };
-
   console.info(
     JSON.stringify({
       scope: "cdf.refine_target",
@@ -137,6 +128,31 @@ export async function applyCdfRefineTargetPrepass(
     }),
   );
 
+  return withRefineTarget(meta, pin, executionId);
+}
+
+type RefinePin = {
+  artifactId: string;
+  version: number;
+  artifactKey: string;
+  generationExecutionId?: string;
+};
+
+function withRefineTarget(
+  meta: Record<string, unknown>,
+  pin: RefinePin & { phaseId: string },
+  executionId: string,
+): Record<string, unknown> {
+  const continuation: CdfGenerationContinuationSelection = {
+    selectionKind: "generation_continuation",
+    sourcePhaseId: pin.phaseId,
+    sourceArtifactKey: pin.artifactKey,
+    selectedAt: new Date().toISOString(),
+    executionId,
+    visualArtifactId: pin.artifactId,
+    visualArtifactVersion: pin.version,
+    isDiagnosticRaw: false,
+  };
   const {
     cdfContinuationRawArtifactIds: _raw,
     cdfContinuationFanoutTargetId: _fanout,
@@ -152,4 +168,51 @@ export async function applyCdfRefineTargetPrepass(
     cdfRefineTargetArtifactId: pin.artifactId,
     cdfRefineTargetArtifactVersion: pin.version,
   };
+}
+
+/**
+ * Fanout leaf of an option-set refine with no option selected: refine the
+ * option this slot (same provider, same position) produced last. With no such
+ * option the leaf regenerates from the brief and the refine note, as before.
+ */
+async function bindOwnPreviousOption(
+  meta: Record<string, unknown>,
+  sessionId: string,
+  phaseId: string,
+  fanoutTargetId: string,
+): Promise<Record<string, unknown>> {
+  let pin: (RefinePin & { phaseId: string }) | undefined;
+  try {
+    const { ensureCdfSessionLoaded } = await import("../../cdf/session-store");
+    const pins = (await ensureCdfSessionLoaded(sessionId))?.generatedArtifacts ?? [];
+    pin = pins
+      .filter(
+        (p) =>
+          p.phaseId === phaseId &&
+          p.generationFanoutTargetId === fanoutTargetId &&
+          typeof p.artifactId === "string" &&
+          p.artifactId.startsWith("cdfart_") &&
+          Number.isInteger(p.version) &&
+          p.version >= 1,
+      )
+      .at(-1);
+  } catch {
+    return meta;
+  }
+  const executionId = pin?.generationExecutionId?.trim();
+  if (!pin || !executionId) return meta;
+  console.info(
+    JSON.stringify({
+      scope: "cdf.refine_target",
+      event: "refine_target_bound",
+      sessionId,
+      phaseId,
+      artifactId: pin.artifactId,
+      artifactVersion: pin.version,
+      executionId,
+      fanoutTargetId,
+      ts: new Date().toISOString(),
+    }),
+  );
+  return withRefineTarget(meta, pin, executionId);
 }

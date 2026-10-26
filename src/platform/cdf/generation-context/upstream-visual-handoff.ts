@@ -46,11 +46,17 @@ function receivesFullVisualLineage(modality: string | undefined): boolean {
 /** Upstream creatives per request; the brand logo is attached separately. */
 const MAX_UPSTREAM_VISUALS = 4;
 
-/** Earlier approved stages of this project, most recent stage first. */
+/**
+ * Earlier approved stages of this project, most recent stage first. A final
+ * step re-render of an approved stage (pack angles, size adaptations) also
+ * gets the stages approved after it — the 2D pack shows every panel the 3D
+ * view hides.
+ */
 function earlierApprovedRefs(
   session: CdfSessionState,
   serviceId: string,
   phaseId: string,
+  includeLaterStages = false,
 ): CdfSessionArtifactRef[] {
   const phases = resolveCdfCanonicalService(serviceId)?.phases ?? [];
   const order = new Map(phases.map((p, i) => [p.phaseId, i]));
@@ -59,7 +65,8 @@ function earlierApprovedRefs(
   const latestByPhase = new Map<string, CdfSessionArtifactRef>();
   for (const ref of session.approvedArtifacts ?? []) {
     const idx = order.get(ref.phaseId);
-    if (idx === undefined || idx >= current) continue;
+    if (idx === undefined || idx === current) continue;
+    if (idx > current && !includeLaterStages) continue;
     if (!Number.isInteger(ref.version) || ref.version < 1) continue;
     const prev = latestByPhase.get(ref.phaseId);
     if (!prev || ref.version > prev.version) latestByPhase.set(ref.phaseId, ref);
@@ -458,7 +465,8 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
   if (receivesFullVisualLineage(modality)) {
     const loader = createArtifactContextLoader();
     const projectId = input.projectId ?? session.projectId;
-    for (const ref of earlierApprovedRefs(session, lineageServiceId, phaseId)) {
+    const rerender = meta.cdfSingleLeaf === true;
+    for (const ref of earlierApprovedRefs(session, lineageServiceId, phaseId, rerender)) {
       if (attachedCount >= MAX_UPSTREAM_VISUALS) break;
       if (assetAlreadyBoundForArtifact(nextMeta, ref.artifactId)) continue;
       try {

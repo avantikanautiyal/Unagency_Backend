@@ -34,6 +34,12 @@ import {
   resolveVideoTargetDurationSec,
   shouldComposeVideoTowardTarget,
 } from "./video-compose-safe-metadata";
+import {
+  finishFilmWithSoundtrack,
+  generateSoundtrackAssets,
+  type SoundtrackAssets,
+  type SoundtrackReport,
+} from "./video-soundtrack";
 
 export type VideoTargetComposeInput = {
   readonly executionId: string;
@@ -122,6 +128,7 @@ export async function composeVideoTowardTargetDuration(
     composedBytes: Buffer;
     segmentCount: number;
     targetDurationSec: number;
+    soundtrack?: SoundtrackReport;
   }>
 > {
   const shotPlan = readVideoShotPlan(input.payload);
@@ -200,127 +207,209 @@ export async function composeVideoTowardTargetDuration(
   });
 }
 
+/** Shots rendered at once per film (provider concurrency limits; env VIDEO_SHOT_CONCURRENCY). */
+function shotConcurrency(): number {
+  const n = Number(process.env.VIDEO_SHOT_CONCURRENCY);
+  return Number.isFinite(n) && n >= 1 ? Math.min(12, Math.floor(n)) : 4;
+}
+
+/** Run at most `limit` tasks at a time. */
+function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  return async (task) => {
+    if (active >= limit) await new Promise<void>((r) => queue.push(r));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      queue.shift()?.();
+    }
+  };
+}
+
+async function optionalBlob(blobStorage: IBlobStorage, key: string | undefined): Promise<Buffer | null> {
+  if (!key) return null;
+  try {
+    return await downloadBlobBytes(blobStorage, key);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Storyboard shot-by-shot: the first clip (already generated from shot 1's
  * panel) plus one clip per remaining shot, each opening on its own storyboard
  * panel (or the previous shot's last frame when a panel is unavailable), each
  * trimmed to its scene length, then stitched in script order.
+ *
+ * Shots that open on their own panel (or are fresh text-to-video) do not need
+ * the previous clip, so they render in parallel; only a shot without a panel
+ * waits for its predecessor's last frame. The voiceover and music render
+ * alongside, then the script's sound and on-screen text are laid over the film.
  */
 async function composeStoryboardShots(
   input: VideoTargetComposeInput,
   shotPlan: import("./storyboard-shot-plan").VideoShotPlan,
 ): Promise<
-  Result<{ composedBytes: Buffer; segmentCount: number; targetDurationSec: number }>
+  Result<{
+    composedBytes: Buffer;
+    segmentCount: number;
+    targetDurationSec: number;
+    soundtrack?: SoundtrackReport;
+  }>
 > {
-  const token: CancellationToken = { cancelled: false, reason: undefined };
-  const raw: Buffer[] = [await downloadBlobBytes(input.blobStorage, input.artifactStorageKey)];
-  for (let index = 1; index < shotPlan.shots.length; index++) {
+  // Mutable: a failed shot stops the other shots' polling.
+  const token: { cancelled: boolean; reason?: string } = { cancelled: false };
+  const wantsSoundtrack =
+    process.env.VIDEO_SOUNDTRACK_ENABLED !== "false" &&
+    (Boolean(shotPlan.music) || shotPlan.shots.some((s) => s.voiceover || s.onScreenText));
+  const soundtrackAssets = wantsSoundtrack
+    ? generateSoundtrackAssets(shotPlan).catch(
+        (err): SoundtrackAssets => ({
+          voiceovers: [],
+          music: null,
+          errors: [`soundtrack: ${err instanceof Error ? err.message : String(err)}`],
+        }),
+      )
+    : null;
+
+  const limit = limiter(shotConcurrency());
+  const rawClips: Promise<Buffer>[] = [downloadBlobBytes(input.blobStorage, input.artifactStorageKey)];
+  const renderShot = async (index: number): Promise<Buffer> => {
     const shot = shotPlan.shots[index]!;
-    let frame: Buffer | null = null;
-    if (shot.panelKey) {
-      try {
-        frame = await downloadBlobBytes(input.blobStorage, shot.panelKey);
-      } catch {
-        frame = null;
-      }
-    }
-    if (!frame && !shot.fresh) frame = await extractLastFramePng({ videoBytes: raw[index - 1]! });
-    let endFrame: Buffer | null = null;
-    if (shot.endPanelKey) {
-      try {
-        endFrame = await downloadBlobBytes(input.blobStorage, shot.endPanelKey);
-      } catch {
-        endFrame = null;
-      }
-    }
-    const payload: Record<string, unknown> = {
-      ...input.payload,
-      prompt: shot.prompt,
-      duration: shot.durationSec,
-      videoSegmentIndex: index,
-      videoSegmentCount: shotPlan.shots.length,
-      videoUseEndFrame: Boolean(frame && endFrame),
-      assets: [
-        ...(frame
-          ? [
-              {
-                url: `data:image/png;base64,${frame.toString("base64")}`,
-                mimeType: "image/png",
-                role: "subject_reference",
-              },
-            ]
-          : []),
-        ...(frame && endFrame
-          ? [
-              {
-                url: `data:image/png;base64,${endFrame.toString("base64")}`,
-                mimeType: "image/png",
-                role: "end_frame",
-              },
-            ]
-          : []),
-      ],
-    };
-    delete payload.image;
-    delete payload.imageUrls;
-    delete payload.videoShotPlan;
+    let frame = await optionalBlob(input.blobStorage, shot.panelKey);
+    // Wait for the previous clip only when this shot has nothing else to open on.
+    if (!frame && !shot.fresh) frame = await extractLastFramePng({ videoBytes: await rawClips[index - 1]! });
+    const endFrame = await optionalBlob(input.blobStorage, shot.endPanelKey);
+    return limit(async () => {
+      const payload: Record<string, unknown> = {
+        ...input.payload,
+        prompt: shot.prompt,
+        duration: shot.durationSec,
+        videoSegmentIndex: index,
+        videoSegmentCount: shotPlan.shots.length,
+        videoUseEndFrame: Boolean(frame && endFrame),
+        assets: [
+          ...(frame
+            ? [
+                {
+                  url: `data:image/png;base64,${frame.toString("base64")}`,
+                  mimeType: "image/png",
+                  role: "subject_reference",
+                },
+              ]
+            : []),
+          ...(frame && endFrame
+            ? [
+                {
+                  url: `data:image/png;base64,${endFrame.toString("base64")}`,
+                  mimeType: "image/png",
+                  role: "end_frame",
+                },
+              ]
+            : []),
+        ],
+      };
+      delete payload.image;
+      delete payload.imageUrls;
+      delete payload.videoShotPlan;
 
-    const request = input.buildRequest(payload);
-    const submit = await input.dispatcher.submitAsync(
-      request,
-      token,
-      `${input.executionId}:shot:${index}`,
-    );
-    if (!submit.ok) return submit;
-    const jobId = submit.value.providerJobId;
-    if (!jobId) return failure(new ValidationError("shot submit missing providerJobId"));
-    const terminal = await pollUntilTerminal(input.dispatcher, request, jobId, token);
-    if (!terminal.ok) return terminal;
-    raw.push(await fetchUrlBytes(terminal.value.videoUrl));
-  }
+      const request = input.buildRequest(payload);
+      const submit = await input.dispatcher.submitAsync(
+        request,
+        token,
+        `${input.executionId}:shot:${index}`,
+      );
+      if (!submit.ok) throw submit.error;
+      const jobId = submit.value.providerJobId;
+      if (!jobId) throw new ValidationError("shot submit missing providerJobId");
+      const terminal = await pollUntilTerminal(input.dispatcher, request, jobId, token);
+      if (!terminal.ok) throw terminal.error;
+      return fetchUrlBytes(terminal.value.videoUrl);
+    });
+  };
+  for (let index = 1; index < shotPlan.shots.length; index++) rawClips.push(renderShot(index));
 
-  const clips: Buffer[] = [];
   // Providers often return shorter clips than asked (Luma: ~5 s for a 6 s
   // shot). Crossfade offsets must use the real length — an offset past the
   // end of a clip makes xfade end the film there, dropping every later shot.
-  const actualSec: number[] = [];
-  for (let i = 0; i < raw.length; i++) {
+  // Each clip is normalized as soon as it arrives, while later shots render.
+  const normalized = rawClips.map(async (rawClip, i) => {
     const clip = await normalizeShotClip({
-      bytes: raw[i]!,
+      bytes: await rawClip,
       durationSec: shotPlan.shots[i]!.durationSec,
       width: shotPlan.width,
       height: shotPlan.height,
     });
-    clips.push(clip);
     const probed = await probeMp4DurationSec(clip);
-    actualSec.push(
-      probed && probed > 0
-        ? Math.min(probed, shotPlan.shots[i]!.durationSec)
-        : shotPlan.shots[i]!.durationSec,
-    );
+    const sec =
+      probed && probed > 0 ? Math.min(probed, shotPlan.shots[i]!.durationSec) : shotPlan.shots[i]!.durationSec;
+    return { clip, sec };
+  });
+  let settled: { clip: Buffer; sec: number }[];
+  try {
+    settled = await Promise.all(normalized);
+  } catch (err) {
+    token.cancelled = true;
+    return failure(new ValidationError(err instanceof Error ? err.message : String(err)));
   }
+  const clips = settled.map((s) => s.clip);
+  const actualSec = settled.map((s) => s.sec);
+
+  const fadeSec = 0.3;
+  let crossfaded = true;
   let composedBytes: Buffer;
   try {
-    composedBytes = await crossfadeShotClips({ clips, durationsSec: actualSec });
+    composedBytes = await crossfadeShotClips({ clips, durationsSec: actualSec, fadeSec });
   } catch (err) {
     console.warn(
       `[storyboard-video] crossfade join failed, using plain join: ${err instanceof Error ? err.message : String(err)}`,
     );
     composedBytes = await concatMp4Videos({ clips });
+    crossfaded = false;
   }
   // Never ship a silently truncated film: well short of the shots' total ⇒ plain join.
   const expectedSec = actualSec.reduce((sum, s) => sum + s, 0);
   const composedSec = await probeMp4DurationSec(composedBytes);
-  if (composedSec != null && clips.length > 1 && composedSec < expectedSec * 0.8) {
+  if (crossfaded && composedSec != null && clips.length > 1 && composedSec < expectedSec * 0.8) {
     console.warn(
       `[storyboard-video] crossfade output ${composedSec.toFixed(1)}s < expected ${expectedSec.toFixed(1)}s, using plain join`,
     );
     composedBytes = await concatMp4Videos({ clips });
+    crossfaded = false;
+  }
+
+  let soundtrack: SoundtrackReport | undefined;
+  if (soundtrackAssets) {
+    // Each crossfade overlaps the next shot by fadeSec.
+    let at = 0;
+    const shotWindows = actualSec.map((sec) => {
+      const win = { startSec: at, endSec: at + sec };
+      at += sec - (crossfaded ? fadeSec : 0);
+      return win;
+    });
+    try {
+      const finished = await finishFilmWithSoundtrack({
+        video: composedBytes,
+        plan: shotPlan,
+        shotWindows,
+        assets: await soundtrackAssets,
+      });
+      composedBytes = finished.bytes;
+      soundtrack = finished.report;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[storyboard-video] soundtrack / text pass failed, keeping the silent film: ${message}`);
+      soundtrack = { voiceoverShots: 0, music: false, textOverlays: 0, errors: [message.slice(0, 400)] };
+    }
   }
   return success({
     composedBytes,
     segmentCount: clips.length,
     targetDurationSec: Math.round(expectedSec),
+    ...(soundtrack ? { soundtrack } : {}),
   });
 }
 
@@ -488,6 +577,7 @@ export async function maybeComposeVideoAfterIngest(input: {
       videoComposeFailed: false,
       videoComposeSegmentCount: composed.value.segmentCount,
       videoComposeDurationSec: composed.value.targetDurationSec,
+      ...(composed.value.soundtrack ? { videoSoundtrack: composed.value.soundtrack } : {}),
     });
     return success({
       composed: true,

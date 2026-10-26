@@ -87,8 +87,12 @@ describe("Phase 13C CDF Service Dependency Contracts", () => {
           expect(c.deterministicPhases).toContain(p.phaseId);
         }
       }
-      // Every service has a materialize final
-      expect(c.deterministicPhases).toContain("final");
+      // Every service but Presentation (ends on Full Deck) has a materialize final
+      if (c.serviceId === "presentation") {
+        expect(c.deterministicPhases).not.toContain("final");
+      } else {
+        expect(c.deterministicPhases).toContain("final");
+      }
     }
   });
 
@@ -113,7 +117,7 @@ describe("Phase 13C CDF Service Dependency Contracts", () => {
       ]),
     );
     expect(c.deterministicPhases).toEqual(
-      expect.arrayContaining(["source", "design-routes", "final"]),
+      expect.arrayContaining(["source", "design-routes"]),
     );
     const storyToSlides = c.contentDependentEdges.find(
       (e) => e.fromPhaseId === "storyline" && e.toPhaseId === "slide-content",

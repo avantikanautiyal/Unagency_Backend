@@ -13,6 +13,11 @@ import type {
 } from "../registry/in-memory-provider-runtime-registry";
 import { CapabilityError, ProviderError } from "../../../core/errors";
 import type { StreamingChunk } from "../contracts/streaming";
+import { isImageGenerationCapability } from "../../common/resolve-execution-modality";
+import {
+  approvedDesignFidelityApplies,
+  dispatchWithApprovedDesignFidelity,
+} from "../../image/common/approved-design-fidelity";
 
 export interface IModelCapabilityResolver {
   supportsModelCapability(
@@ -73,6 +78,19 @@ export class MultiProviderDispatcher implements IProviderDispatcher {
       request.capabilityId
     );
     if (!modelCheck.ok) return modelCheck;
+
+    // Packaging follow-on renders are checked against the approved creatives
+    // and redrawn once when they differ (any image provider).
+    if (
+      isImageGenerationCapability(String(request.capabilityId)) &&
+      approvedDesignFidelityApplies(request.metadata)
+    ) {
+      return dispatchWithApprovedDesignFidelity(
+        request,
+        (next) => entry.dispatcher.dispatch(next, token),
+        () => token.cancelled,
+      );
+    }
 
     return entry.dispatcher.dispatch(request, token);
   }

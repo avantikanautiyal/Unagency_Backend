@@ -277,6 +277,11 @@ function continuityRank(ref: ReferenceImagePayload): number {
   return 2;
 }
 
+/** An approved creative of this project (selected or signed-off stage), not a logo/product/style ref. */
+export function isApprovedDesignReference(ref: ReferenceImagePayload): boolean {
+  return continuityRank(ref) <= 1;
+}
+
 /**
  * Order references so the creative being continued comes first and the brand
  * mark last. Vendors that weight (or only read) the first image used to get
@@ -325,6 +330,13 @@ export function requestIsRefinement(
   return typeof metadata.refinePrompt === "string" && metadata.refinePrompt.trim().length > 0;
 }
 
+/** "Generate Angles": the approved pack re-rendered from another viewpoint. */
+export function requestIsNewViewpoint(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  return typeof metadata?.cdfPackAngle === "string" && metadata.cdfPackAngle.trim().length > 0;
+}
+
 /**
  * Tell the model what each attached image is, in attachment order. Only
  * emitted when an upstream creative is attached (otherwise role guidance
@@ -340,6 +352,8 @@ export function describeReferenceImages(
     readonly oneOfSeveralOptions?: boolean;
     /** Refine run: apply the requested change on top of the approved design. */
     readonly refinement?: boolean;
+    /** Same approved pack, new camera angle (wins over refinement). */
+    readonly newViewpoint?: boolean;
   } = {},
 ): string {
   const hasUpstream = refs.some((ref) => continuityRank(ref) <= 1);
@@ -373,7 +387,9 @@ export function describeReferenceImages(
         ]
       : []),
     `DESIGN AUTHORITY: Image ${authority} is the approved design. Reproduce it exactly — the same artwork, illustrations and characters, every word of on-pack/on-page copy, colours, typography, graphic devices, and the logo and its placement. If approved images differ, Image ${authority} wins. Where the written brief differs from the approved images, follow the images.`,
-    options.refinement
+    options.newViewpoint
+      ? "NEW VIEWPOINT: this is the same approved physical pack seen from another angle. Take its shape, proportions, construction, material and finish from the approved 3D pack; take the artwork of every panel — every word, its order and line breaks, logo placement, colour bands and patterns — from the approved flat 2D pack sheet, panel by panel. Change only the camera viewpoint; never invent, move or reword anything on any panel."
+      : options.refinement
       ? "REFINEMENT: the user asked for a specific change to this design. Apply that change fully and visibly — it overrides the approved images and the brief wherever they conflict. Keep everything the change does not touch exactly as it is."
       : options.oneOfSeveralOptions
       ? "Several options are being made: vary only the presentation (angle, framing, staging, background) — never the approved artwork, copy or colours."

@@ -5,10 +5,13 @@
 
 import {
   applyCdfTransition,
+  getCdfSession,
+  saveCdfSession,
   resetCdfSessionsForTests,
   resetCdfRequirementEngineForTests,
   resetCdfArtifactEngineForTests,
 } from "../../../src/platform/cdf";
+import type { CdfSessionState } from "../../../src/platform/cdf/types";
 import { bindMinimalGeneratedForApprove } from "./helpers/bind-minimal-generated-for-approve";
 
 function startAtFinal(): string {
@@ -103,6 +106,55 @@ describe("CDF reopen_for_refine", () => {
       action: "submit_brief",
       brief: "Create a mango drink post about everyday energy",
     });
+    const res = applyCdfTransition({ sessionId, action: "reopen_for_refine" });
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe("CDF reopen_for_refine — service without a Final step", () => {
+  beforeEach(() => {
+    resetCdfSessionsForTests();
+    resetCdfRequirementEngineForTests();
+    resetCdfArtifactEngineForTests();
+  });
+
+  function completedOnFullDeck(): string {
+    const started = applyCdfTransition({
+      action: "start",
+      serviceId: "presentation",
+      productMode: "ai",
+    });
+    if (!started.ok) throw new Error("start failed");
+    const session = started.value.session;
+    saveCdfSession({
+      ...session,
+      status: "completed",
+      // Runtime index (contract-only `select` excluded).
+      phaseIndex: 4,
+      phaseId: "full-deck",
+      approved: [
+        { phaseId: "full-deck", approvedAt: new Date().toISOString(), executionId: "exec_deck" },
+      ],
+    } as CdfSessionState);
+    return session.sessionId;
+  }
+
+  it("reopens the completed Full Deck itself for refinement", () => {
+    const sessionId = completedOnFullDeck();
+    const reopened = applyCdfTransition({ sessionId, action: "reopen_for_refine" });
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+    expect(reopened.value.session.phaseId).toBe("full-deck");
+    expect(reopened.value.session.status).toBe("active");
+    expect(
+      reopened.value.session.approved.some((a) => a.phaseId === "full-deck"),
+    ).toBe(false);
+  });
+
+  it("is rejected on an unfinished last step", () => {
+    const sessionId = completedOnFullDeck();
+    const session = getCdfSession(sessionId)!;
+    saveCdfSession({ ...session, status: "active" });
     const res = applyCdfTransition({ sessionId, action: "reopen_for_refine" });
     expect(res.ok).toBe(false);
   });

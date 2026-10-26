@@ -738,6 +738,29 @@ export async function dispatchController(
     );
   }
 
+  if (routeId.includes("_cdf_final-turn") && request.method === "POST" && tenant) {
+    const { classifyCdfFinalTurn } = await import("../../cdf/final-turn");
+    const turns = Array.isArray(body.recentTurns) ? body.recentTurns : [];
+    return success(
+      await classifyCdfFinalTurn({
+        request: {
+          text: String(body.text ?? ""),
+          finalActions: Array.isArray(body.finalActions)
+            ? body.finalActions.map(String).slice(0, 12)
+            : [],
+          deliverableLabel:
+            typeof body.deliverableLabel === "string" ? body.deliverableLabel : undefined,
+          recentTurns: turns.slice(-6).map((t: unknown) => {
+            const rec = (t ?? {}) as Record<string, unknown>;
+            return { from: rec.from === "user" ? "user" : "ai", text: String(rec.text ?? "") } as const;
+          }),
+        },
+        organizationId: tenant.organizationId,
+        integration: getEnterpriseApiRuntime()?.platform.integrationEngine,
+      }),
+    );
+  }
+
   if (routeId.includes("_cdf_") && tenant) {
     const {
       getCdfSessionResult,

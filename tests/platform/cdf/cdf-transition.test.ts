@@ -252,7 +252,8 @@ describe("CDF Wave 2 services", () => {
     expect(structure.ok).toBe(true);
     if (!structure.ok) return;
     expect(structure.value.session.phaseId).toBe("ui-routes");
-    expect(structure.value.ui.showSendToStudio).toBe(false);
+    // Send to Studio is offered after every step.
+    expect(structure.value.ui.showSendToStudio).toBe(true);
 
     // Canonical session requires exact X@V on select_route for ui-routes.
     const uiRoutes = bindMinimalGeneratedForApprove(sessionId)!;

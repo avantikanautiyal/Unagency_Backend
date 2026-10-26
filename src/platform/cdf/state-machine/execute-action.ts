@@ -20,7 +20,6 @@ import { resolveCdfPostBriefStart } from "../brief-start";
 import { resolveCdfServiceConfig } from "../service-configs";
 import {
   resolveVideoAdvanceAfterApproval,
-  resolveVideoStudioHandoffPhaseId,
 } from "../../../../../Unagency-frontend/packages/api/src/domain/cdf/video-subtype-deliverable-profiles";
 import {
   compareAndSwapCdfSession,
@@ -147,19 +146,6 @@ function canonicalPhaseFor(
   if (!phaseId) return undefined;
   const svc = resolveCdfCanonicalService(serviceId);
   return svc?.phases.find((p) => p.phaseId === phaseId);
-}
-
-/** Selection-only phases (approval not_applicable) complete on select. */
-function isStudioHandoffPhaseComplete(
-  session: CdfSessionState,
-  handoffId: string,
-): boolean {
-  if (isApproved(session, handoffId)) return true;
-  return (
-    canonicalPhaseFor(session.serviceId, handoffId)?.approval.mode ===
-      "not_applicable" &&
-    (session.selected ?? []).some((s) => s.phaseId === handoffId)
-  );
 }
 
 function assertActiveCanonicalPhase(
@@ -289,17 +275,10 @@ export function buildAuthoritativeUi(
     }
   }
 
-  const handoffId =
-    resolveVideoStudioHandoffPhaseId({
-      service: "video",
-      subtype: session.masters?.productSubtype,
-      defaultPhaseId: config.studioHandoffAfterPhaseId,
-    }) ?? config.studioHandoffAfterPhaseId;
+  // Send to Studio is offered after every step once the brief is in, in AI
+  // and Hybrid alike (AI users are taken to the Hybrid upsell client-side).
   const showSendToStudio =
-    session.productMode === "hybrid" &&
-    Boolean(handoffId) &&
-    isStudioHandoffPhaseComplete(session, handoffId!) &&
-    session.modeOwnership === "ai";
+    session.phaseIndex >= 0 && session.modeOwnership === "ai";
 
   if (showSendToStudio && !allowedActions.includes("handoff_studio")) {
     allowedActions.push("handoff_studio");
@@ -2501,13 +2480,9 @@ export function prepareTransition(
   }
 
   if (req.action === "handoff_studio") {
-    const handoffId = config.studioHandoffAfterPhaseId;
-    if (!handoffId || !isStudioHandoffPhaseComplete(existing, handoffId)) {
+    if (existing.phaseIndex < 0) {
       return failure(
-        cdfError(
-          "ACTION_NOT_ALLOWED",
-          `Approve phase "${handoffId ?? "studio handoff"}" before Send to Studio`,
-        ),
+        cdfError("ACTION_NOT_ALLOWED", "Submit a brief before Send to Studio"),
       );
     }
     const next = bumpSessionVersion(existing, {

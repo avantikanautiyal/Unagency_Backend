@@ -193,7 +193,7 @@ export async function normalizeShotClip(input: {
       "-movflags",
       "+faststart",
       outPath,
-    ]);
+    ], 600_000);
     return fs.readFileSync(outPath);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -248,7 +248,7 @@ export async function crossfadeShotClips(input: {
       "+faststart",
       outPath,
     );
-    await runFfmpeg(args, 300_000);
+    await runFfmpeg(args, 900_000);
     return fs.readFileSync(outPath);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

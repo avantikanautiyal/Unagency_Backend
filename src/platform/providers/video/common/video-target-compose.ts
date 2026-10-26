@@ -277,7 +277,12 @@ async function composeStoryboardShots(
 
   const limit = limiter(shotConcurrency());
   const rawClips: Promise<Buffer>[] = [downloadBlobBytes(input.blobStorage, input.artifactStorageKey)];
+  // Paid shot clips are kept, so a retried compose never pays for them twice.
+  const shotKey = (index: number) =>
+    `tenant/${input.organizationId}/executions/${input.executionId}/storyboard/shot-${index}.mp4`;
   const renderShot = async (index: number): Promise<Buffer> => {
+    const saved = await optionalBlob(input.blobStorage, shotKey(index));
+    if (saved && saved.length > 1024) return saved;
     const shot = shotPlan.shots[index]!;
     let frame = await optionalBlob(input.blobStorage, shot.panelKey);
     // Wait for the previous clip only when this shot has nothing else to open on.
@@ -327,7 +332,9 @@ async function composeStoryboardShots(
       if (!jobId) throw new ValidationError("shot submit missing providerJobId");
       const terminal = await pollUntilTerminal(input.dispatcher, request, jobId, token);
       if (!terminal.ok) throw terminal.error;
-      return fetchUrlBytes(terminal.value.videoUrl);
+      const bytes = await fetchUrlBytes(terminal.value.videoUrl);
+      await input.blobStorage.put(shotKey(index), bytes, "video/mp4").catch(() => undefined);
+      return bytes;
     });
   };
   for (let index = 1; index < shotPlan.shots.length; index++) rawClips.push(renderShot(index));
@@ -335,10 +342,14 @@ async function composeStoryboardShots(
   // Providers often return shorter clips than asked (Luma: ~5 s for a 6 s
   // shot). Crossfade offsets must use the real length — an offset past the
   // end of a clip makes xfade end the film there, dropping every later shot.
-  // Each clip is normalized as soon as it arrives, while later shots render.
+  // Re-encoding is CPU-heavy: one clip at a time (parallel 1080p encodes timed
+  // out on the server), each as soon as it arrives while later shots render.
+  const encode = limiter(1);
   const normalized = rawClips.map(async (rawClip, i) => {
+    const bytes = await rawClip;
+    return encode(async () => {
     const clip = await normalizeShotClip({
-      bytes: await rawClip,
+      bytes,
       durationSec: shotPlan.shots[i]!.durationSec,
       width: shotPlan.width,
       height: shotPlan.height,
@@ -347,6 +358,7 @@ async function composeStoryboardShots(
     const sec =
       probed && probed > 0 ? Math.min(probed, shotPlan.shots[i]!.durationSec) : shotPlan.shots[i]!.durationSec;
     return { clip, sec };
+    });
   });
   let settled: { clip: Buffer; sec: number }[];
   try {

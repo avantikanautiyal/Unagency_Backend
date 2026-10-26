@@ -222,24 +222,42 @@ export class CreativeProjectService {
     const now = new Date();
     const userOid = new mongoose.Types.ObjectId(input.userId);
 
+    // A CDF session is one project: its own row wins over every other key.
+    // Without this, a stale local execution→project mapping or refine parent
+    // took over an older project while the row created on submit_brief stayed
+    // behind as a second, dead "In Progress" entry.
+    const sessionRow = sessionId
+      ? await Projects.findOne({ userId: userOid, sessionId }).sort({
+          updatedAt: -1,
+        })
+      : null;
+    // Rows found by other keys must not belong to a different session.
+    const sameSession = (row: any) =>
+      row &&
+      (!sessionId || !row.sessionId || String(row.sessionId) === sessionId)
+        ? row
+        : null;
+
     let existing =
-      (executionId
-        ? await Projects.findOne({ userId: userOid, executionId })
-        : null) ||
-      (refineFromExecutionId
-        ? await Projects.findOne({
-            userId: userOid,
-            executionId: refineFromExecutionId,
-          })
-        : null) ||
-      (projectId && mongoose.isValidObjectId(projectId)
-        ? await Projects.findOne({ _id: projectId, userId: userOid })
-        : null) ||
-      (sessionId
-        ? await Projects.findOne({ userId: userOid, sessionId }).sort({
-            updatedAt: -1,
-          })
-        : null) ||
+      sessionRow ||
+      sameSession(
+        executionId
+          ? await Projects.findOne({ userId: userOid, executionId })
+          : null,
+      ) ||
+      sameSession(
+        refineFromExecutionId
+          ? await Projects.findOne({
+              userId: userOid,
+              executionId: refineFromExecutionId,
+            })
+          : null,
+      ) ||
+      sameSession(
+        projectId && mongoose.isValidObjectId(projectId)
+          ? await Projects.findOne({ _id: projectId, userId: userOid })
+          : null,
+      ) ||
       // Title match is the legacy (pre-session) join only. A run with its own
       // session is a new project: matching by title took over an older
       // same-named project, so the new one never appeared in Recent Projects.
@@ -258,6 +276,15 @@ export class CreativeProjectService {
           userId: userOid,
           origin: "ai_creative",
           executionId,
+          _id: { $ne: existing._id },
+        });
+      }
+      // One row per session: drop duplicates left by earlier mismatches.
+      if (sessionId) {
+        await Projects.deleteMany({
+          userId: userOid,
+          origin: "ai_creative",
+          sessionId,
           _id: { $ne: existing._id },
         });
       }

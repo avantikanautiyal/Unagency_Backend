@@ -67,7 +67,7 @@ function buildPrompt(r: CdfFinalTurnRequest): string {
     .map((t) => `${t.from === "user" ? "User" : "Assistant"}: ${t.text.slice(0, 300)}`)
     .join("\n");
   return [
-    `A creative-production assistant has finished the user's ${deliverable}: it is approved and shown on screen.`,
+    `A creative-production assistant has produced the user's ${deliverable}; it is shown on screen (approved, or awaiting approval).`,
     `Buttons available now: ${r.finalActions.length ? r.finalActions.map((a) => `"${a}"`).join(", ") : "(none)"}.`,
     "Classify the user's LATEST message. It may be in any language, mixed languages, or broken English.",
     "",

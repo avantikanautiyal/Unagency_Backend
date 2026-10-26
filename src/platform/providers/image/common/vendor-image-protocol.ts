@@ -393,6 +393,6 @@ export function describeReferenceImages(
       ? "REFINEMENT: the user asked for a specific change to this design. Apply that change fully and visibly — it overrides the approved images and the brief wherever they conflict. Keep everything the change does not touch exactly as it is."
       : options.oneOfSeveralOptions
       ? "Several options are being made: vary only the presentation (angle, framing, staging, background) — never the approved artwork, copy or colours."
-      : "Change only what this stage's deliverable requires (e.g. unfold the approved 3D pack into its flat panels, re-lay the design for a new size, extend it onto panels the earlier view did not show — in the same design). Do not redesign, restyle, or add artwork or copy beyond what the deliverable needs.",
+      : "Change only what this stage's deliverable requires (e.g. unfold or unroll the approved 3D pack into its own flat print layout — the same pack type, never an outer box it was not shown in — re-lay the design for a new size, extend it onto panels the earlier view did not show — in the same design). Do not redesign, restyle, or add artwork or copy beyond what the deliverable needs.",
   ].join("\n");
 }

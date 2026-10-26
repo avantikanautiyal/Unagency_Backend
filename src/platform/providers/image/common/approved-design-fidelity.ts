@@ -82,7 +82,8 @@ function instructionFor(kind: FidelityKind, approvedCount: number): string {
       "The LAST image is a newly generated flat 2D sheet of the same pack. Every panel the approved images show must appear on the flat sheet exactly as approved.",
       "Compare each panel visible in the approved images (front/top face and any visible side) with the matching panel of the flat sheet:",
       COMMON_CHECKS,
-      "Ignore: perspective, lighting, shadows, material texture, the flat layout itself (fold lines, flaps, glue tabs), panels the approved images do not show, and tiny rendering differences inside fine patterns.",
+      "- pack type: the flat sheet must be the SAME kind of pack as the approved 3D, unrolled or unfolded (a tube or bottle becomes one wrap rectangle; only a box becomes a carton dieline). If it shows a different pack — e.g. a carton/outer-box dieline for a tube, bottle, jar or pouch — list that FIRST as a fix.",
+      "Ignore: perspective, lighting, shadows, material texture, the details of the flat layout (fold lines, flaps, glue tabs, seal bands), panels the approved images do not show, and tiny rendering differences inside fine patterns.",
       REPLY_FORMAT,
     ].join("\n");
   }

@@ -23,7 +23,7 @@ import type { ArtifactRenderer, CdfRendererInput, CdfRendererOutput } from "../t
 import { renderError } from "../errors";
 
 export const STRUCTURED_DOCUMENT_PDF_RENDERER_ID = "structured-document-pdf";
-export const STRUCTURED_DOCUMENT_PDF_RENDERER_VERSION = "1.0.0";
+export const STRUCTURED_DOCUMENT_PDF_RENDERER_VERSION = "1.1.0";
 
 const STRUCTURED_DOCUMENT_ARTIFACT_TYPES = new Set(["structured_doc", "text_doc"]);
 
@@ -61,6 +61,22 @@ function asSections(value: unknown): { heading: string; body: string }[] {
     .filter((s) => s.body.length > 0);
 }
 
+/**
+ * extras.onlySections (newline-separated headings) = the items picked at
+ * approval, e.g. the one chosen tagline. Unmatched picks keep the full doc.
+ */
+function pickSections(
+  sections: { heading: string; body: string }[],
+  onlySections: unknown,
+): { heading: string; body: string }[] | null {
+  if (typeof onlySections !== "string" || !onlySections.trim()) return null;
+  const norm = (v: string) =>
+    v.toLowerCase().replace(/[*_"'‘’“”]/g, "").replace(/\s+/g, " ").trim();
+  const wanted = new Set(onlySections.split("\n").map(norm).filter(Boolean));
+  const kept = sections.filter((s) => wanted.has(norm(s.heading)));
+  return kept.length ? kept : null;
+}
+
 export function createStructuredDocumentPdfRenderer(): ArtifactRenderer {
   return {
     capability: {
@@ -84,8 +100,11 @@ export function createStructuredDocumentPdfRenderer(): ArtifactRenderer {
         sections?: unknown;
       };
       const title = asString(data.title) || "Document";
-      const summary = asString(data.summary);
-      const sections = asSections(data.sections);
+      const allSections = asSections(data.sections);
+      const picked = pickSections(allSections, input.options?.extras?.onlySections);
+      const sections = picked ?? allSections;
+      // The summary describes the whole shortlist ("Three tagline candidates…").
+      const summary = picked ? "" : asString(data.summary);
 
       const doc = new PDFDocument({
         size: "A4",

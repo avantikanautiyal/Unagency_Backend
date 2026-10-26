@@ -30,6 +30,8 @@ import {
 import { planDirectVideoShots } from "./direct-video-shot-planner";
 
 const DEFAULT_FRAME_SHOT_SEC = 5;
+/** Engines make ~5 s from a start frame (Luma: start/end frames only at 5 s); longer shots get padded or extended off-storyboard. */
+const MAX_FRAME_SHOT_SEC = 5;
 /** Shorter shots leave the engine no room to move from one frame to the next. */
 const MIN_FRAME_SHOT_SEC = 4;
 
@@ -184,9 +186,9 @@ function scenesFromFrames(
     scriptScenes.length > 0
       ? scriptScenes[scriptScenes.length - 1]!.endSec - scriptScenes[0]!.startSec
       : 0;
-  const per = Math.max(
-    MIN_FRAME_SHOT_SEC,
-    scriptTotal > 0 ? Math.round(scriptTotal / frames.length) : DEFAULT_FRAME_SHOT_SEC,
+  const per = Math.min(
+    MAX_FRAME_SHOT_SEC,
+    Math.max(MIN_FRAME_SHOT_SEC, scriptTotal > 0 ? Math.round(scriptTotal / frames.length) : DEFAULT_FRAME_SHOT_SEC),
   );
   // A script scene spread over several frames is spoken / captioned once, on its first frame.
   const voiced = new Set<number>();
@@ -390,7 +392,7 @@ export async function prepareStoryboardVideoSubmission(input: {
         fresh: freshShots,
       }),
       ...(freshShots ? { fresh: true } : {}),
-      durationSec: Math.max(1, scene.endSec - scene.startSec),
+      durationSec: Math.min(MAX_FRAME_SHOT_SEC, Math.max(1, scene.endSec - scene.startSec)),
       ...(panel >= 0 && panelKeys[panel] ? { panelKey: panelKeys[panel] } : {}),
     };
   });
@@ -456,7 +458,8 @@ export async function prepareStoryboardVideoSubmission(input: {
           : {}),
     payload: {
       duration: shots[0]!.durationSec,
-      videoTargetDurationSec: totalSec,
+      // A Choose Style preview is exactly one clip: never extended toward a longer target.
+      videoTargetDurationSec: previewOnly ? shots[0]!.durationSec : totalSec,
       videoSegmentIndex: 0,
       videoSegmentCount: shots.length,
       ...(firstPanel >= 0 && firstEndPanel >= 0 ? { videoUseEndFrame: true } : {}),

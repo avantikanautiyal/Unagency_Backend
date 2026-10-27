@@ -338,6 +338,45 @@ export function requestIsNewViewpoint(
 }
 
 /**
+ * What a follow-on stage does with the approved design it continues from.
+ * - placement: the approved flat artwork physically produced and shown in
+ *   place (store mockup, merch product mockup, print/OOH mockup)
+ * - detailing: the approved composition finished (final illustration)
+ * - logo_system: the approved logo laid out as a usage sheet
+ * - continuation: anything else built from an approved image (adaptations,
+ *   production creative)
+ */
+export type ApprovedStageMode = "placement" | "detailing" | "logo_system" | "continuation";
+
+const STAGE_MODE_BY_ARTIFACT_KEY: Readonly<Record<string, ApprovedStageMode>> = {
+  "store-display.store-mockup": "placement",
+  "merchandise.product-mockup": "placement",
+  "print-ooh.mockup": "placement",
+  "illustration.final-illustration": "detailing",
+  "logo.logo-system": "logo_system",
+};
+
+export function approvedStageMode(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): ApprovedStageMode {
+  const key = typeof metadata?.cdfArtifactKey === "string" ? metadata.cdfArtifactKey.trim() : "";
+  return STAGE_MODE_BY_ARTIFACT_KEY[key] ?? "continuation";
+}
+
+function stageModeLine(mode: ApprovedStageMode, authority: number): string | null {
+  if (mode === "placement") {
+    return `PLACEMENT: Image ${authority} is the approved flat print artwork (the printed panels of the unit, or the print file). This stage shows exactly that artwork physically produced and in place: every panel and graphic of Image ${authority} is the printed surface of the unit / item / site — the same artwork, every word of copy, colours and logo placement — clearly visible and facing the camera so the client recognises it at a glance. Build the setting around it (store, fixtures, products, lighting) from the brief and the brand, but put no other artwork, copy or logo on the unit, never redesign it, and never show the small panel labels of the flat sheet. Where the brief and Image ${authority} disagree about what is printed, Image ${authority} wins.`;
+  }
+  if (mode === "detailing") {
+    return `FINAL DETAILING: keep Image ${authority}'s composition exactly — the same subjects, poses, layout, perspective, framing and palette. Add only finish, detail, texture and polish; never move, add or remove elements.`;
+  }
+  if (mode === "logo_system") {
+    return `LOGO SYSTEM: every logo on the sheet is exactly the approved logo in Image ${authority} — the same mark, letterforms, proportions and colours. Show only the variants, sizes and clear-space the guidelines need; never redraw it.`;
+  }
+  return null;
+}
+
+/**
  * Tell the model what each attached image is, in attachment order. Only
  * emitted when an upstream creative is attached (otherwise role guidance
  * already covers a lone logo / reference).
@@ -354,6 +393,8 @@ export function describeReferenceImages(
     readonly refinement?: boolean;
     /** Same approved pack, new camera angle (wins over refinement). */
     readonly newViewpoint?: boolean;
+    /** What this follow-on stage does with the approved design. */
+    readonly stageMode?: ApprovedStageMode;
   } = {},
 ): string {
   const hasUpstream = refs.some((ref) => continuityRank(ref) <= 1);
@@ -378,6 +419,10 @@ export function describeReferenceImages(
   const productImages = refs
     .map((ref, i) => (ref.semanticReferenceRole === "product_reference" ? i + 1 : 0))
     .filter(Boolean);
+  const modeLine =
+    options.refinement || options.newViewpoint || options.oneOfSeveralOptions
+      ? null
+      : stageModeLine(options.stageMode ?? "continuation", authority);
   return [
     "REFERENCE IMAGES (in the order attached):",
     ...lines,
@@ -393,6 +438,8 @@ export function describeReferenceImages(
       ? "REFINEMENT: the user asked for a specific change to this design. Apply that change fully and visibly — it overrides the approved images and the brief wherever they conflict. Keep everything the change does not touch exactly as it is."
       : options.oneOfSeveralOptions
       ? "Several options are being made: vary only the presentation (angle, framing, staging, background) — never the approved artwork, copy or colours."
+      : modeLine
+      ? modeLine
       : "Change only what this stage's deliverable requires (e.g. unfold or unroll the approved 3D pack into its own flat print layout — the same pack type, never an outer box it was not shown in — re-lay the design for a new size, extend it onto panels the earlier view did not show — in the same design). Do not redesign, restyle, or add artwork or copy beyond what the deliverable needs.",
   ].join("\n");
 }

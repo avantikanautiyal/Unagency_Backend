@@ -119,6 +119,7 @@ type SessionView = {
     version: number;
     phaseId: string;
     generationExecutionId?: string;
+    generationFanoutTargetId?: string;
   }[];
   readonly approvedArtifacts?: readonly {
     artifactId: string;
@@ -152,8 +153,14 @@ function executionOrderKey(id: string | undefined): number {
 export function storyboardFramesFromSession(session: SessionView | null): StoryboardFrameRef[] {
   if (!session) return [];
   const latest = new Map<string, { version: number; order: number }>();
+  // The opening frame is chosen from 3 routes (one per engine); the routes not
+  // chosen are not frames of the film.
+  const approvedIds = new Set(
+    (session.approvedArtifacts ?? []).filter((a) => a.phaseId === "storyboard").map((a) => a.artifactId),
+  );
   for (const a of [...(session.generatedArtifacts ?? []), ...(session.approvedArtifacts ?? [])]) {
     if (a.phaseId !== "storyboard") continue;
+    if ("generationFanoutTargetId" in a && a.generationFanoutTargetId && !approvedIds.has(a.artifactId)) continue;
     const prev = latest.get(a.artifactId);
     const order = executionOrderKey(a.generationExecutionId);
     if (!prev || a.version > prev.version) {
@@ -174,42 +181,60 @@ function refinementForRun(meta: Readonly<Record<string, unknown>>, session: Sess
   return session.lastRefinePrompt.trim().slice(0, 400);
 }
 
+/** A script scene shared by several frames still gets this much screen time per frame. */
+const MIN_SPLIT_SHOT_SEC = 1.5;
+
 /**
- * One shot per approved frame. Each frame takes the script scene at the same
- * relative position; the script's total length is shared across the frames.
+ * One shot per approved frame, timed by the script: each frame belongs to a
+ * script scene (by its "Scene N", else by position — never mixed, so the
+ * order cannot scramble) and the frames of a scene share that scene's length.
+ * The scene's voiceover and on-screen text sit on its first frame and may run
+ * across all of its frames.
  */
-function scenesFromFrames(
+export function scenesFromFrames(
   frames: readonly StoryboardFrameRef[],
   scriptScenes: readonly ScriptScene[],
 ): ScriptScene[] {
-  const scriptTotal =
-    scriptScenes.length > 0
-      ? scriptScenes[scriptScenes.length - 1]!.endSec - scriptScenes[0]!.startSec
-      : 0;
-  const per = Math.min(
-    MAX_FRAME_SHOT_SEC,
-    Math.max(MIN_FRAME_SHOT_SEC, scriptTotal > 0 ? Math.round(scriptTotal / frames.length) : DEFAULT_FRAME_SHOT_SEC),
-  );
-  // A script scene spread over several frames is spoken / captioned once, on its first frame.
-  const voiced = new Set<number>();
-  return frames.map((f, i) => {
-    const byScene = f.scene != null ? scriptScenes.find((s) => s.index === f.scene) : undefined;
-    const scene =
-      byScene ??
-      (scriptScenes.length
-        ? scriptScenes[Math.min(scriptScenes.length - 1, Math.floor((i * scriptScenes.length) / frames.length))]
-        : undefined);
-    const firstOfScene = scene != null && !voiced.has(scene.index);
-    if (scene) voiced.add(scene.index);
-    return {
+  if (!scriptScenes.length) {
+    return frames.map((f, i) => ({
       index: i + 1,
-      title: f.title ?? scene?.title ?? "",
-      startSec: i * per,
-      endSec: (i + 1) * per,
-      visual: f.visual ?? scene?.visual ?? f.title ?? "",
-      ...(firstOfScene && scene?.audio ? { audio: scene.audio } : {}),
-      ...(firstOfScene && scene?.onScreenText ? { onScreenText: scene.onScreenText } : {}),
+      title: f.title ?? "",
+      startSec: i * DEFAULT_FRAME_SHOT_SEC,
+      endSec: (i + 1) * DEFAULT_FRAME_SHOT_SEC,
+      visual: f.visual ?? f.title ?? "",
+    }));
+  }
+  const byNumber = frames.every(
+    (f) => f.scene != null && scriptScenes.some((s) => s.index === f.scene),
+  );
+  const sceneOf = frames.map((f, i) =>
+    byNumber
+      ? scriptScenes.findIndex((s) => s.index === f.scene)
+      : Math.min(scriptScenes.length - 1, Math.floor((i * scriptScenes.length) / frames.length)),
+  );
+  const framesInScene = (k: number) => sceneOf.filter((s) => s === k).length;
+  const seen = new Set<number>();
+  let at = 0;
+  return frames.map((f, i) => {
+    const k = sceneOf[i]!;
+    const scene = scriptScenes[k]!;
+    const count = framesInScene(k);
+    const sceneSec = Math.max(1, scene.endSec - scene.startSec);
+    const sec = Math.min(MAX_FRAME_SHOT_SEC, Math.max(MIN_SPLIT_SHOT_SEC, sceneSec / count));
+    const first = !seen.has(k);
+    seen.add(k);
+    const out: ScriptScene = {
+      index: i + 1,
+      title: f.title ?? scene.title ?? "",
+      startSec: at,
+      endSec: at + sec,
+      visual: f.visual ?? scene.visual ?? f.title ?? "",
+      ...(first && scene.audio ? { audio: scene.audio } : {}),
+      ...(first && scene.onScreenText ? { onScreenText: scene.onScreenText } : {}),
+      ...(first && count > 1 ? { spanShots: count } : {}),
     };
+    at += sec;
+    return out;
   });
 }
 
@@ -386,6 +411,7 @@ export async function prepareStoryboardVideoSubmission(input: {
     return {
       ...(voiceover ? { voiceover } : {}),
       ...(scene.onScreenText ? { onScreenText: scene.onScreenText } : {}),
+      ...(scene.spanShots && scene.spanShots > 1 ? { spanShots: scene.spanShots } : {}),
       prompt: buildShotPrompt(scene, styleNote, scenes.length, {
         changeRequest,
         isLast: i === scenes.length - 1,

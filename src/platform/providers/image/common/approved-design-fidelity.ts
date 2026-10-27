@@ -1,34 +1,50 @@
 /**
- * Approved-design fidelity check: compare a packaging follow-on render with
- * the approved creatives it must reproduce, and redraw it once with the exact
+ * Approved-design fidelity check: compare a follow-on render with the approved
+ * creatives it must be built from, and redraw it once with the exact
  * differences when they do not match.
  *
  * Image models copy an approved design closely but not exactly — the 2D pack
- * swapped two lines of the approved 3D front panel, and pack angles invented
- * panels. A vision model sees both and names each difference as a fix.
+ * swapped two lines of the approved 3D front panel, pack angles invented
+ * panels, and a store mockup built a new store instead of placing the approved
+ * POSM panels. A vision model sees both and names each difference as a fix.
  *
- * Scope: packaging 2D Complete Pack (not a user refine — that change must
- * stand) and "Generate Angles" renders. Fails open: no key, a timeout or a bad
- * answer keeps the first render. Kill switch: CDF_FIDELITY_CHECK=off.
+ * Scope: every CDF image stage that received an approved earlier image
+ * (mockups, 2D pack, angles, final illustration, logo sheet, adaptations) —
+ * not a user refine (that change must stand) and not a set of alternative
+ * options. Fails open: no key, a timeout or a bad answer keeps the first
+ * render. When the final render still is not the approved design, the
+ * creative is kept with a short note for the client (cdfDeliveryNote).
+ * Kill switch: CDF_FIDELITY_CHECK=off.
  */
 
 import type { Result } from "../../../core/result";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import type { ProviderExecutionResponse } from "../../runtime/contracts/provider-execution-response";
+import { downscaleForVision } from "./downscale-image";
 import {
+  approvedStageMode,
   extractReferenceImages,
   isApprovedDesignReference,
   orderReferencesForContinuity,
+  requestIsOneOfSeveralOptions,
   requestIsRefinement,
   type ReferenceImagePayload,
 } from "./vendor-image-protocol";
 
 const MAX_APPROVED_IMAGES = 3;
 const MAX_DIFFERENCES = 8;
-const TIMEOUT_MS = 45_000;
+const TIMEOUT_MS = 30_000;
 
 type InlineImage = { mimeType: string; base64: string };
-type FidelityKind = { kind: "flat_pack" } | { kind: "pack_angle"; angle: string };
+type FidelityKind =
+  | { kind: "flat_pack" }
+  | { kind: "pack_angle"; angle: string }
+  | { kind: "mockup"; stage: string }
+  | { kind: "follow_on"; stage: string };
+
+/** Shown with the creative when the approved design could not be carried over. */
+export const CDF_DELIVERY_NOTE_FROM_BRIEF =
+  "We've built this one fresh from your brief — the approved version didn't quite translate to this format to the standard we hold ourselves to. If you'd like it closer to your earlier approval, just tap Refine and tell us what to keep.";
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -40,14 +56,24 @@ function fidelityKind(
   if (!metadata) return null;
   if ((process.env.CDF_FIDELITY_CHECK ?? "on").trim().toLowerCase() === "off") return null;
   if (metadata.cdfFidelityCorrection === true) return null;
-  const service = str(metadata.cdfServiceId) || str(metadata.service);
-  if (service.toLowerCase() !== "packaging") return null;
+  const phaseId = str(metadata.cdfPhaseId);
+  const service = (str(metadata.cdfServiceId) || str(metadata.service)).toLowerCase();
   const angle = str(metadata.cdfPackAngle);
-  if (angle) return { kind: "pack_angle", angle };
-  if (str(metadata.cdfPhaseId) === "complete-pack" && !requestIsRefinement(metadata)) {
-    return { kind: "flat_pack" };
-  }
-  return null;
+  if (service === "packaging" && angle) return { kind: "pack_angle", angle };
+  // The user's requested change must stand — it is not drift.
+  if (requestIsRefinement(metadata) || requestIsOneOfSeveralOptions(metadata)) return null;
+  if (service === "packaging" && phaseId === "complete-pack") return { kind: "flat_pack" };
+  const modality = str(metadata.cdfGenerationModality) || str(metadata.generationModality);
+  if (modality && modality !== "image") return null;
+  // Any other stage that actually received an approved earlier creative.
+  const continuesApproved =
+    metadata.cdfUpstreamVisualHandoffApplied === true ||
+    Boolean(str(metadata.cdfContinuationVisualArtifactId));
+  if (!phaseId || !continuesApproved) return null;
+  const stage = phaseId.replace(/[-_]+/g, " ");
+  return approvedStageMode(metadata) === "placement" || /mockup/i.test(phaseId)
+    ? { kind: "mockup", stage }
+    : { kind: "follow_on", stage };
 }
 
 /** True when this image request is checked (and may be redrawn once). */
@@ -71,6 +97,9 @@ const REPLY_FORMAT = [
 ].join("\n");
 
 function instructionFor(kind: FidelityKind, approvedCount: number): string {
+  if (kind.kind === "mockup" || kind.kind === "follow_on") {
+    return genericInstruction(kind, approvedCount);
+  }
   const approved =
     approvedCount > 1
       ? `Images 1–${approvedCount} are client-approved stages of this pack (Image 1 is the most recent authority).`
@@ -101,6 +130,47 @@ function instructionFor(kind: FidelityKind, approvedCount: number): string {
   ].join("\n");
 }
 
+const GENERIC_REPLY_FORMAT = [
+  "List ONLY real, clearly visible differences, each written as a direct fix instruction that names the surface/panel and quotes the text.",
+  'Set "approvedDesignMissing" to true only when the approved design is not recognisably in the new image at all (it was replaced by a different design).',
+  'Reply with JSON only: {"approvedDesignMissing":false,"differences":["..."]} — an empty list when the new image matches.',
+].join("\n");
+
+function genericInstruction(
+  kind: { kind: "mockup" | "follow_on"; stage: string },
+  approvedCount: number,
+): string {
+  const approved =
+    approvedCount > 1
+      ? `Images 1–${approvedCount} are client-approved earlier stages of this project (Image 1 is the most recent — the design authority).`
+      : "Image 1 is the client-approved design — the design authority.";
+  if (kind.kind === "mockup") {
+    return [
+      "You are a brand-production checker.",
+      approved,
+      `The LAST image is a newly generated ${kind.stage}: the approved design shown in place on the real item, fixture or space.`,
+      "Every printed surface / panel of the approved design must appear in the new image with exactly the approved artwork. For each surface you can see, compare it with the approved design:",
+      COMMON_CHECKS,
+      "- the imagery / illustration / photo used on each surface",
+      "- if a printed surface shows a different design, different copy or a different logo treatment than approved, list it",
+      "Ignore: the surrounding scene, room, props, products, people, camera angle, perspective, lighting, shadows, materials, and labels that sit OUTSIDE the artwork in the approved sheet (e.g. \"Header\", \"Side panel\") — those must NOT appear on the item.",
+      GENERIC_REPLY_FORMAT,
+    ].join("\n");
+  }
+  return [
+    "You are a brand-production checker.",
+    approved,
+    `The LAST image is a newly generated ${kind.stage} that must carry the approved design over exactly — only the format, size or layout this stage needs may change.`,
+    "Compare the new image with the approved design:",
+    COMMON_CHECKS,
+    "- the key imagery / illustration / characters and the overall art direction",
+    "Ignore: changes of size, aspect ratio and re-layout that the new format requires, and tiny rendering differences inside fine patterns.",
+    GENERIC_REPLY_FORMAT,
+  ].join("\n");
+}
+
+type FidelityVerdict = { differences: string[]; approvedDesignMissing: boolean };
+
 /** Parse `{"differences":[...]}`; null when unusable. */
 export function parseFidelityDifferences(raw: string): string[] | null {
   const text = raw.trim().replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "");
@@ -116,6 +186,20 @@ export function parseFidelityDifferences(raw: string): string[] | null {
     .map((d) => (typeof d === "string" ? d.trim() : ""))
     .filter(Boolean)
     .slice(0, MAX_DIFFERENCES);
+}
+
+/** Parse the checker reply including the "design replaced" flag; null when unusable. */
+function parseFidelityVerdict(raw: string): FidelityVerdict | null {
+  const differences = parseFidelityDifferences(raw);
+  if (!differences) return null;
+  let missing = false;
+  try {
+    const text = raw.trim().replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "");
+    missing = (JSON.parse(text) as { approvedDesignMissing?: unknown }).approvedDesignMissing === true;
+  } catch {
+    missing = false;
+  }
+  return { differences, approvedDesignMissing: missing };
 }
 
 async function toInline(
@@ -175,7 +259,12 @@ function geminiAttempt(instruction: string, images: readonly InlineImage[]): Att
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: instruction }] },
           contents: [{ role: "user", parts }],
-          generationConfig: { temperature: 0, responseMimeType: "application/json" },
+          // Thinking off: the check is a visual diff, and thinking added ~10–20 s.
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
       },
     );
@@ -230,26 +319,29 @@ async function findDifferences(
   kind: FidelityKind,
   approved: readonly ReferenceImagePayload[],
   candidate: { mimeType?: string; base64?: string; url?: string },
-): Promise<string[] | null> {
+): Promise<FidelityVerdict | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const images: InlineImage[] = [];
-    for (const ref of approved) {
-      const img = await toInline(ref, controller.signal);
-      if (img) images.push(img);
-    }
-    const output = await toInline(candidate, controller.signal);
+    // Fetched together — sequential downloads added seconds per image.
+    const [output, ...fetched] = await Promise.all([
+      toInline(candidate, controller.signal),
+      ...approved.map((ref) => toInline(ref, controller.signal).catch(() => null)),
+    ]);
+    // ≤1024 px JPEGs: multi-MB PNG uploads were most of the check's time.
+    const images = fetched
+      .filter((img): img is InlineImage => img != null)
+      .map((img) => downscaleForVision(img));
     if (images.length === 0 || !output) return null;
-    images.push(output);
+    images.push(downscaleForVision(output));
     const instruction = instructionFor(kind, images.length - 1);
     const attempts = [geminiAttempt(instruction, images), openAiAttempt(instruction, images)].filter(
       (a): a is Attempt => a != null,
     );
     for (const attempt of attempts) {
       try {
-        const differences = parseFidelityDifferences(await attempt(controller.signal));
-        if (differences) return differences;
+        const verdict = parseFidelityVerdict(await attempt(controller.signal));
+        if (verdict) return verdict;
       } catch (err) {
         if (controller.signal.aborted) return null;
         logFidelity("check_attempt_failed", {
@@ -316,28 +408,55 @@ export async function dispatchWithApprovedDesignFidelity(
   if (approved.length === 0 || !firstImage) return first;
 
   const executionId = str(request.context?.executionId) || request.requestId;
-  const differences = await findDifferences(kind, approved, firstImage);
+  const verdict = await findDifferences(kind, approved, firstImage);
   logFidelity("checked", {
     executionId,
     kind: kind.kind,
     approvedImages: approved.length,
-    differences,
+    differences: verdict?.differences ?? null,
+    approvedDesignMissing: verdict?.approvedDesignMissing ?? null,
   });
-  if (!differences || differences.length === 0 || isCancelled()) return first;
+  if (!verdict || isCancelled()) return first;
+  const differences = verdict.approvedDesignMissing
+    ? [
+        "The approved design is missing — it was replaced by a different design. Put the approved artwork from Image 1 onto every printed surface exactly as approved; change only what this stage needs.",
+        ...verdict.differences,
+      ].slice(0, MAX_DIFFERENCES)
+    : verdict.differences;
+  if (differences.length === 0) return first;
 
   const second = await dispatch(withFidelityCorrection(request, differences));
   const secondImage = second.ok ? firstOutputImage(second.value) : null;
   if (!second.ok || !secondImage) {
     logFidelity("correction_failed", { executionId, kind: kind.kind });
-    return first;
+    return verdict.approvedDesignMissing ? withDeliveryNote(first) : first;
   }
   const remaining = await findDifferences(kind, approved, secondImage);
-  const keepFirst = remaining !== null && remaining.length > differences.length;
+  const keepFirst =
+    remaining !== null &&
+    !verdict.approvedDesignMissing &&
+    remaining.differences.length > differences.length;
   logFidelity("corrected", {
     executionId,
     kind: kind.kind,
-    remaining,
+    remaining: remaining?.differences ?? null,
+    approvedDesignMissing: remaining?.approvedDesignMissing ?? null,
     kept: keepFirst ? "first" : "correction",
   });
-  return keepFirst ? first : second;
+  const chosen = keepFirst ? first : second;
+  // Still not the approved design after one redraw: deliver it, but say so.
+  return remaining?.approvedDesignMissing ? withDeliveryNote(chosen) : chosen;
+}
+
+function withDeliveryNote(
+  result: Result<ProviderExecutionResponse>,
+): Result<ProviderExecutionResponse> {
+  if (!result.ok) return result;
+  return {
+    ...result,
+    value: {
+      ...result.value,
+      output: { ...result.value.output, cdfDeliveryNote: CDF_DELIVERY_NOTE_FROM_BRIEF },
+    },
+  };
 }

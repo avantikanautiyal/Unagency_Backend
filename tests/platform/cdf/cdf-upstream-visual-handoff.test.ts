@@ -183,7 +183,7 @@ describe("CDF upstream visual artifact handoff (generic)", () => {
     assert.ok(extracted.length >= 1);
   });
 
-  it("K — artifact exists but media cannot resolve → fail closed", async () => {
+  it("K — artifact exists but media cannot resolve → generate from brief, flagged for the delivery note", async () => {
     const seeded = await seedApprovedStoryboardSession();
     setDefaultVaultAssetResolver(createMemoryVaultAssetResolver({}));
     const handoff = await applyUpstreamVisualArtifactHandoff({
@@ -196,12 +196,10 @@ describe("CDF upstream visual artifact handoff (generic)", () => {
       organizationId: "org_handoff",
       projectId: "proj_handoff",
     });
-    assert.equal(handoff.ok, false);
-    if (handoff.ok) return;
-    assert.equal(
-      (handoff.error as { metadata?: { reason?: string } }).metadata?.reason,
-      CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE,
-    );
+    assert.equal(handoff.ok, true);
+    if (!handoff.ok) return;
+    assert.equal(handoff.value.attachedCount, 0);
+    assert.equal(handoff.value.metadata.cdfApprovedDesignFallback, true);
   });
 
   it("I — exact X@V only (does not substitute newer version)", async () => {

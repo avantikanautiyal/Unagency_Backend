@@ -280,3 +280,48 @@ None
     expect(wrapOverlayText("a b c d e f g h", 1)).toEqual(["a", "b", "c…"]);
   });
 });
+
+describe("video follows the approved script (Oct 27 2026)", () => {
+  const {
+    cleanOnScreenText,
+  } = jest.requireActual("../../../../src/platform/providers/video/common/storyboard-shot-plan");
+  const {
+    scenesFromFrames,
+    storyboardFramesFromSession,
+  } = jest.requireActual("../../../../src/platform/providers/video/common/storyboard-video-submission");
+
+  it("never prints a stage direction as on-screen text; quoted copy wins", () => {
+    expect(cleanOnScreenText("DiVastra logo with mandala emblem (final 1 second)")).toBe("");
+    expect(cleanOnScreenText('Logo with tagline "Heritage, worn every day"')).toBe("Heritage, worn every day");
+    expect(cleanOnScreenText("Threads That Connect Us")).toBe("Threads That Connect Us");
+  });
+
+  it("times frames by the script: a 10 s two-scene script stays 10 s across 5 frames, in order", () => {
+    const script = [
+      { index: 1, title: "A", startSec: 0, endSec: 5, visual: "a", audio: "Music: sitar", onScreenText: "One" },
+      { index: 2, title: "B", startSec: 5, endSec: 10, visual: "b", onScreenText: "Two" },
+    ];
+    // Frame numbers that do not exist in the script must not mix number and position matching.
+    const frames = [1, 2, 3, 4, 5].map((n) => ({ artifactId: `f${n}`, artifactVersion: 1, scene: n }));
+    const shots = scenesFromFrames(frames, script);
+    const total = shots.reduce((sum: number, s: { startSec: number; endSec: number }) => sum + (s.endSec - s.startSec), 0);
+    expect(total).toBeCloseTo(10, 5);
+    expect(shots.map((s: { onScreenText?: string }) => s.onScreenText ?? "")).toEqual(["One", "", "", "Two", ""]);
+    expect(shots[0].spanShots).toBe(3);
+    expect(shots[3].spanShots).toBe(2);
+    expect(shots[0].audio).toBe("Music: sitar");
+  });
+
+  it("leaves the opening-frame routes that were not chosen out of the film", () => {
+    const frames = storyboardFramesFromSession({
+      generatedArtifacts: [
+        { artifactId: "r0", version: 1, phaseId: "storyboard", generationExecutionId: "exec_1_1792617169864", generationFanoutTargetId: "fanout_0_google" },
+        { artifactId: "r1", version: 1, phaseId: "storyboard", generationExecutionId: "exec_2_1792617169865", generationFanoutTargetId: "fanout_1_google" },
+        { artifactId: "r2", version: 1, phaseId: "storyboard", generationExecutionId: "exec_3_1792617169866", generationFanoutTargetId: "fanout_2_openai" },
+        { artifactId: "p2", version: 1, phaseId: "storyboard", generationExecutionId: "exec_9_1792617269000" },
+      ],
+      approvedArtifacts: [{ artifactId: "r1", version: 1, phaseId: "storyboard", generationExecutionId: "exec_2_1792617169865" }],
+    });
+    expect(frames.map((f: { artifactId: string }) => f.artifactId)).toEqual(["r1", "p2"]);
+  });
+});

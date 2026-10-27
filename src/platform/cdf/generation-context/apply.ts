@@ -869,7 +869,10 @@ function applyEnabled(
     const requiredVisualUpstream = upstream.filter(
       (u) => u.required && Boolean(extractVaultAssetIdFromArtifactData(u.data)),
     );
-    if (requiredVisualUpstream.length > 0) {
+    // The handoff could not load the approved image and chose the brief
+    // fallback (the user is told on the result) — do not block here.
+    const briefFallback = input.metadata?.cdfApprovedDesignFallback === true;
+    if (requiredVisualUpstream.length > 0 && !briefFallback) {
       const hasUpstreamVisualBytes = multimodalContext.items.some((item) => {
         if (item.modality !== "image") return false;
         const hasBytes = Boolean(

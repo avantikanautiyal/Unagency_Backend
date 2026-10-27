@@ -16,6 +16,7 @@ import {
 } from "../../image/common/image-aspect-ratio";
 import {
   applyReferenceRolePromptGuidance,
+  approvedStageMode,
   extractReferenceImages,
   orderReferencesForContinuity,
   describeReferenceImages,
@@ -274,9 +275,14 @@ function applyOpenAiImageBody(
       newViewpoint: requestIsNewViewpoint(
         request.metadata as Readonly<Record<string, unknown>> | undefined,
       ),
+      stageMode: approvedStageMode(
+        request.metadata as Readonly<Record<string, unknown>> | undefined,
+      ),
     });
+    // Reference roles lead: at the end of a long brief the model read the
+    // approved design as loose inspiration (store mockup ignored the POSM sheet).
     body.prompt = fitOpenAiImagePrompt(
-      described ? `${rolePrompt}\n\n${described}` : rolePrompt,
+      described ? `${described}\n\n${rolePrompt}` : rolePrompt,
       request.requestId,
     );
   } else {

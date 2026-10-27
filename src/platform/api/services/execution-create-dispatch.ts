@@ -3,6 +3,7 @@
  * sync distributed/integration/stub run, materialization, finalize.
  */
 
+import { CDF_DELIVERY_NOTE_FROM_BRIEF } from "../../providers/image/common/approved-design-fidelity";
 import { failure, success, type Result } from "../../core/result";
 import { CREATIVE_SCORE_RELEASE_GATE } from "../../os/evaluation/creative-score/creative-score-dimensions";
 import { ValidationError } from "../../core/errors";
@@ -1137,7 +1138,10 @@ export async function runCreateDispatch(
       mediaArtifactIds = materialized.value;
       result = {
         kind: "artifact",
-        data: { artifactIds: [...materialized.value] },
+        data: {
+          artifactIds: [...materialized.value],
+          ...cdfDeliveryNoteStamp(runtimeOutputForMedia, workingMetadata),
+        },
       };
       logOsExecutionEvent("execution.sync_image.materialized", {
         requestId: correlationId,
@@ -2268,7 +2272,10 @@ export async function runCreateDispatch(
             mediaArtifactIds = materialized.value;
             result = {
               kind: "artifact",
-              data: { artifactIds: [...materialized.value] },
+              data: {
+                artifactIds: [...materialized.value],
+                ...cdfDeliveryNoteStamp(runtimeOutputForMedia, workingMetadata),
+              },
             };
           }
         }
@@ -3191,6 +3198,7 @@ async function finalizeDeferredDistributedJob(input: {
             }
           : {}),
         ...structuralStamps,
+        ...cdfDeliveryNoteStamp(undefined, meta),
       };
       if (Object.keys(cdfAttachMeta).length > 0) {
         // Stamp execution metadata for integrity/evidence — not only result.data.
@@ -3753,4 +3761,22 @@ async function markExecutionFailedFromBackground(input: {
       });
     }
   }
+}
+
+/**
+ * The approved design could not be carried into this stage (handoff fell back
+ * to the brief, or the render still was not the approved design after the
+ * fidelity redraw): the client sees a short note with the creative.
+ */
+function cdfDeliveryNoteStamp(
+  runtimeOutput: Readonly<Record<string, unknown>> | undefined,
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): { cdfDeliveryNote?: string } {
+  const fromOutput = runtimeOutput?.cdfDeliveryNote;
+  if (typeof fromOutput === "string" && fromOutput.trim()) {
+    return { cdfDeliveryNote: fromOutput.trim() };
+  }
+  return metadata?.cdfApprovedDesignFallback === true
+    ? { cdfDeliveryNote: CDF_DELIVERY_NOTE_FROM_BRIEF }
+    : {};
 }

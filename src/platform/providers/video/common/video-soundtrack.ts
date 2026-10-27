@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { VideoShotPlan } from "./storyboard-shot-plan";
+import { renderTextCards } from "./video-text-cards";
 
 const TTS_TIMEOUT_MS = 45_000;
 const MUSIC_TIMEOUT_MS = 180_000;
@@ -183,7 +184,7 @@ async function elevenLabsMusic(input: { key: string; prompt: string; totalSec: n
 }
 
 function errorText(err: unknown): string {
-  return (err instanceof Error ? err.message : String(err)).slice(0, 200);
+  return (err instanceof Error ? err.message : String(err)).slice(-400);
 }
 
 /**
@@ -249,25 +250,6 @@ export async function generateSoundtrackAssets(plan: VideoShotPlan): Promise<Sou
   };
 }
 
-/** Bold sans font file for drawtext (no fontconfig lookup on servers without fonts). */
-function resolveFontFile(): string | null {
-  const candidates: string[] = [];
-  if (process.env.VIDEO_TEXT_FONT_FILE?.trim()) candidates.push(process.env.VIDEO_TEXT_FONT_FILE.trim());
-  try {
-    candidates.push(require.resolve("pdfjs-dist/standard_fonts/LiberationSans-Bold.ttf"));
-  } catch {
-    // pdfjs-dist missing — fall through to system fonts.
-  }
-  candidates.push(
-    "/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-  );
-  return candidates.find((f) => fs.existsSync(f)) ?? null;
-}
-
 /** Greedy word wrap; at most 3 lines (the rest is dropped with an ellipsis). */
 export function wrapOverlayText(text: string, maxChars: number): string[] {
   const lines: string[] = [];
@@ -287,19 +269,146 @@ export function wrapOverlayText(text: string, maxChars: number): string[] {
   return lines;
 }
 
-/** A path inside a single-quoted filtergraph value (quotes cannot be escaped there). */
-function escapeFilterPath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/'/g, "");
+type Window = { readonly startSec: number; readonly endSec: number };
+
+/** Where shot i's voiceover / text may play: its own window, or its whole scene's. */
+function spanWindow(plan: VideoShotPlan, windows: readonly Window[], i: number): Window | null {
+  const own = windows[i];
+  if (!own) return null;
+  const span = Math.max(1, plan.shots[i]?.spanShots ?? 1);
+  const last = windows[Math.min(windows.length - 1, i + span - 1)] ?? own;
+  return { startSec: own.startSec, endSec: last.endSec };
+}
+
+type AudioPart = {
+  readonly inputs: string[];
+  readonly filters: string[];
+  readonly out: string | null;
+  readonly voiceoverShots: number;
+  readonly music: boolean;
+};
+
+/** Music bed + voiceover lines, as ffmpeg inputs and filters starting at `firstInput`. */
+async function buildAudioPart(input: {
+  readonly dir: string;
+  readonly plan: VideoShotPlan;
+  readonly windows: readonly Window[];
+  readonly assets: SoundtrackAssets;
+  readonly totalSec: number;
+  readonly firstInput: number;
+  readonly errors: string[];
+}): Promise<AudioPart> {
+  const { dir, totalSec } = input;
+  const inputs: string[] = [];
+  const filters: string[] = [];
+  let index = input.firstInput;
+  let musicLabel: string | null = null;
+  if (input.assets.music) {
+    const musicPath = path.join(dir, "music.mp3");
+    fs.writeFileSync(musicPath, input.assets.music);
+    // Loop a bed shorter than the film; trimmed to the film below.
+    inputs.push("-stream_loop", "-1", "-i", musicPath);
+    const fadeOut = Math.max(0, totalSec - 1.5).toFixed(2);
+    filters.push(
+      `[${index}:a]atrim=0:${totalSec.toFixed(2)},asetpts=PTS-STARTPTS,afade=t=in:d=0.6,afade=t=out:st=${fadeOut}:d=1.5,volume=${MUSIC_VOLUME}[music]`,
+    );
+    musicLabel = "[music]";
+    index += 1;
+  }
+  const voLabels: string[] = [];
+  let cursor = 0;
+  for (let i = 0; i < input.assets.voiceovers.length; i++) {
+    const bytes = input.assets.voiceovers[i];
+    const win = spanWindow(input.plan, input.windows, i);
+    if (!bytes || !win) continue;
+    const file = path.join(dir, `vo_${i}.mp3`);
+    fs.writeFileSync(file, bytes);
+    const voSec = (await probeSec(file)) ?? 0;
+    // Never talk over the previous line; fit the line to its scene when a light speed-up allows.
+    const start = Math.max(win.startSec + VO_LEAD_IN_SEC, cursor);
+    const room = Math.max(0.5, win.endSec - start - 0.1);
+    const tempo = voSec > room ? Math.min(MAX_VO_TEMPO, voSec / room) : 1;
+    if (start >= totalSec - 0.3) {
+      input.errors.push(`voiceover ${i + 1}: no room left in the film`);
+      continue;
+    }
+    inputs.push("-i", file);
+    const delayMs = Math.round(start * 1000);
+    filters.push(
+      `[${index}:a]aresample=44100,${tempo > 1.001 ? `atempo=${tempo.toFixed(3)},` : ""}adelay=${delayMs}|${delayMs}[vo${i}]`,
+    );
+    voLabels.push(`[vo${i}]`);
+    cursor = start + voSec / tempo + 0.15;
+    index += 1;
+  }
+  const T = totalSec.toFixed(2);
+  let out: string | null = null;
+  if (voLabels.length) {
+    filters.push(`${voLabels.join("")}amix=inputs=${voLabels.length}:normalize=0:duration=longest,apad,atrim=0:${T}[voice]`);
+    if (musicLabel) {
+      // Duck the music while the voice speaks.
+      filters.push("[voice]asplit=2[voiceA][voiceB]");
+      filters.push(`${musicLabel}[voiceA]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=500[ducked]`);
+      filters.push("[ducked][voiceB]amix=inputs=2:normalize=0:duration=first[aout]");
+    } else {
+      filters.push("[voice]anull[aout]");
+    }
+    out = "[aout]";
+  } else if (musicLabel) {
+    out = musicLabel;
+  }
+  return { inputs, filters, out, voiceoverShots: voLabels.length, music: Boolean(musicLabel) };
+}
+
+type TextPart = { readonly inputs: string[]; readonly filters: string[]; readonly out: string | null; readonly count: number };
+
+/** Text cards (transparent PNGs) faded in and out over their windows, starting at `firstInput`. */
+function buildTextPart(input: {
+  readonly dir: string;
+  readonly cards: readonly (Buffer | null)[];
+  readonly plan: VideoShotPlan;
+  readonly windows: readonly Window[];
+  readonly totalSec: number;
+  readonly firstInput: number;
+}): TextPart {
+  const inputs: string[] = [];
+  const filters: string[] = [];
+  let index = input.firstInput;
+  let base = "[0:v]";
+  let count = 0;
+  input.cards.forEach((card, i) => {
+    const win = spanWindow(input.plan, input.windows, i);
+    if (!card || !win) return;
+    const isLast = i + Math.max(1, input.plan.shots[i]?.spanShots ?? 1) >= input.cards.length;
+    const start = win.startSec + 0.4;
+    const end = isLast ? input.totalSec : win.endSec - 0.2;
+    const dur = end - start;
+    if (dur < 0.8) return;
+    const file = path.join(input.dir, `text_${i}.png`);
+    fs.writeFileSync(file, card);
+    inputs.push("-loop", "1", "-framerate", "25", "-t", dur.toFixed(2), "-i", file);
+    const fadeOut = Math.max(0, dur - TEXT_FADE_SEC).toFixed(2);
+    filters.push(
+      `[${index}:v]scale=${input.plan.width}:${input.plan.height},format=rgba,fade=t=in:st=0:d=${TEXT_FADE_SEC}:alpha=1,fade=t=out:st=${fadeOut}:d=${TEXT_FADE_SEC}:alpha=1,setpts=PTS-STARTPTS+${start.toFixed(2)}/TB[card${i}]`,
+      `${base}[card${i}]overlay=0:0:eof_action=pass:enable='between(t,${start.toFixed(2)},${end.toFixed(2)})'[v${i}]`,
+    );
+    base = `[v${i}]`;
+    index += 1;
+    count += 1;
+  });
+  return { inputs, filters, out: count ? base : null, count };
 }
 
 /**
  * Overlay text and mix the soundtrack onto the stitched film. `shotWindows`
  * are each shot's [start, end) seconds on the stitched film's timeline.
+ * Sound never depends on the text: if the combined pass fails, the film is
+ * finished again with sound only.
  */
 export async function finishFilmWithSoundtrack(input: {
   readonly video: Buffer;
   readonly plan: VideoShotPlan;
-  readonly shotWindows: readonly { readonly startSec: number; readonly endSec: number }[];
+  readonly shotWindows: readonly Window[];
   readonly assets: SoundtrackAssets;
 }): Promise<{ bytes: Buffer; report: SoundtrackReport }> {
   const errors = [...input.assets.errors];
@@ -309,154 +418,75 @@ export async function finishFilmWithSoundtrack(input: {
     fs.writeFileSync(videoPath, input.video);
     const totalSec =
       (await probeSec(videoPath)) ?? input.shotWindows[input.shotWindows.length - 1]?.endSec ?? 0;
-
-    // ── on-screen text ──
-    const videoFilters: string[] = [];
-    let textOverlays = 0;
-    const texts = input.plan.shots.map((s) => s.onScreenText?.trim() ?? "");
-    const font = texts.some(Boolean) ? resolveFontFile() : null;
-    if (texts.some(Boolean) && !font) errors.push("on-screen text: no font file available");
-    if (font) {
-      const { width, height } = input.plan;
-      const fontSize = Math.round(Math.min(width, height) * 0.055);
-      const lineGap = Math.round(fontSize * 1.45);
-      const maxChars = Math.max(14, Math.floor((width * 0.8) / (fontSize * 0.55)));
-      texts.forEach((text, i) => {
-        const win = input.shotWindows[i];
-        if (!text || !win) return;
-        const isLast = i === texts.length - 1;
-        const start = win.startSec + 0.4;
-        const end = isLast ? totalSec : win.endSec - 0.2;
-        if (end - start < 0.8) return;
-        const lines = wrapOverlayText(text, maxChars);
-        const blockTop = Math.round(height * 0.86 - lines.length * lineGap);
-        lines.forEach((line, li) => {
-          const file = path.join(dir, `text_${i}_${li}.txt`);
-          fs.writeFileSync(file, line, "utf8");
-          const s = start.toFixed(2);
-          const e = end.toFixed(2);
-          const alpha = `if(lt(t,${s}+${TEXT_FADE_SEC}),(t-${s})/${TEXT_FADE_SEC},if(gt(t,${e}-${TEXT_FADE_SEC}),(${e}-t)/${TEXT_FADE_SEC},1))`;
-          videoFilters.push(
-            [
-              `drawtext=fontfile='${escapeFilterPath(font)}'`,
-              `textfile='${escapeFilterPath(file)}'`,
-              `fontsize=${fontSize}`,
-              "fontcolor=white",
-              "box=1",
-              "boxcolor=black@0.45",
-              `boxborderw=${Math.round(fontSize * 0.3)}`,
-              "x=(w-text_w)/2",
-              `y=${blockTop + li * lineGap}`,
-              `alpha='${alpha}'`,
-              `enable='between(t,${s},${e})'`,
-            ].join(":"),
-          );
-        });
-        textOverlays += 1;
-      });
-    }
-
-    // ── soundtrack ──
-    const args: string[] = ["-y", "-i", videoPath];
-    let inputIndex = 1;
-    const audioFilters: string[] = [];
-    let musicLabel: string | null = null;
-    if (input.assets.music) {
-      const musicPath = path.join(dir, "music.mp3");
-      fs.writeFileSync(musicPath, input.assets.music);
-      // Loop a bed shorter than the film; trimmed to the film below.
-      args.push("-stream_loop", "-1", "-i", musicPath);
-      const fadeOut = Math.max(0, totalSec - 1.5).toFixed(2);
-      audioFilters.push(
-        `[${inputIndex}:a]atrim=0:${totalSec.toFixed(2)},asetpts=PTS-STARTPTS,afade=t=in:d=0.6,afade=t=out:st=${fadeOut}:d=1.5,volume=${MUSIC_VOLUME}[music]`,
-      );
-      musicLabel = "[music]";
-      inputIndex += 1;
-    }
-    const voLabels: string[] = [];
-    let voiceoverShots = 0;
-    let cursor = 0;
-    for (let i = 0; i < input.assets.voiceovers.length; i++) {
-      const bytes = input.assets.voiceovers[i];
-      const win = input.shotWindows[i];
-      if (!bytes || !win) continue;
-      const file = path.join(dir, `vo_${i}.mp3`);
-      fs.writeFileSync(file, bytes);
-      const voSec = (await probeSec(file)) ?? 0;
-      // Never talk over the previous line; fit the line to its shot when a light speed-up allows.
-      const start = Math.max(win.startSec + VO_LEAD_IN_SEC, cursor);
-      const room = Math.max(0.5, win.endSec - start - 0.1);
-      const tempo = voSec > room ? Math.min(MAX_VO_TEMPO, voSec / room) : 1;
-      const spoken = voSec / tempo;
-      if (start >= totalSec - 0.3) {
-        errors.push(`voiceover ${i + 1}: no room left in the film`);
-        continue;
-      }
-      args.push("-i", file);
-      const delayMs = Math.round(start * 1000);
-      audioFilters.push(
-        `[${inputIndex}:a]aresample=44100,${tempo > 1.001 ? `atempo=${tempo.toFixed(3)},` : ""}adelay=${delayMs}|${delayMs}[vo${i}]`,
-      );
-      voLabels.push(`[vo${i}]`);
-      cursor = start + spoken + 0.15;
-      inputIndex += 1;
-      voiceoverShots += 1;
-    }
-
-    let audioOut: string | null = null;
     const T = totalSec.toFixed(2);
-    if (voLabels.length) {
-      audioFilters.push(
-        `${voLabels.join("")}amix=inputs=${voLabels.length}:normalize=0:duration=longest,apad,atrim=0:${T}[voice]`,
-      );
-      if (musicLabel) {
-        // Duck the music while the voice speaks.
-        audioFilters.push("[voice]asplit=2[voiceA][voiceB]");
-        audioFilters.push(
-          `${musicLabel}[voiceA]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=500[ducked]`,
-        );
-        audioFilters.push(`[ducked][voiceB]amix=inputs=2:normalize=0:duration=first[aout]`);
-      } else {
-        audioFilters.push("[voice]anull[aout]");
+
+    const texts = input.plan.shots.map((s) => s.onScreenText?.trim() ?? "");
+    let cards: (Buffer | null)[] = texts.map(() => null);
+    if (texts.some(Boolean)) {
+      try {
+        cards = await renderTextCards(texts, input.plan.width, input.plan.height);
+      } catch (err) {
+        errors.push(`on-screen text: ${errorText(err)}`);
       }
-      audioOut = "[aout]";
-    } else if (musicLabel) {
-      audioOut = musicLabel;
     }
 
-    if (!videoFilters.length && !audioOut) {
+    const run = async (withText: boolean) => {
+      const audio = await buildAudioPart({
+        dir,
+        plan: input.plan,
+        windows: input.shotWindows,
+        assets: input.assets,
+        totalSec,
+        firstInput: 1,
+        errors: withText ? errors : [],
+      });
+      const text = withText
+        ? buildTextPart({
+            dir,
+            cards,
+            plan: input.plan,
+            windows: input.shotWindows,
+            totalSec,
+            firstInput: 1 + audio.inputs.filter((a) => a === "-i").length,
+          })
+        : { inputs: [], filters: [], out: null, count: 0 };
+      if (!text.out && !audio.out) return null;
+      const outPath = path.join(dir, withText ? "out.mp4" : "out-sound.mp4");
+      const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", videoPath, ...audio.inputs, ...text.inputs];
+      args.push("-filter_complex", [...text.filters, ...audio.filters].join(";"));
+      args.push("-map", text.out ?? "0:v");
+      if (audio.out) args.push("-map", audio.out);
+      if (text.out) args.push("-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p");
+      else args.push("-c:v", "copy");
+      if (audio.out) args.push("-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2");
+      args.push("-t", T, "-movflags", "+faststart", outPath);
+      await runFfmpeg(args);
       return {
-        bytes: input.video,
-        report: { voiceoverShots: 0, music: false, textOverlays: 0, errors },
+        bytes: fs.readFileSync(outPath),
+        report: {
+          voiceoverShots: audio.voiceoverShots,
+          ...(input.assets.voiceProvider && audio.voiceoverShots ? { voiceProvider: input.assets.voiceProvider } : {}),
+          music: audio.music,
+          textOverlays: text.count,
+          errors,
+        } satisfies SoundtrackReport,
       };
-    }
-
-    const graph = [
-      ...(videoFilters.length ? [`[0:v]${videoFilters.join(",")}[vout]`] : []),
-      ...audioFilters,
-    ];
-    const outPath = path.join(dir, "out.mp4");
-    args.push("-filter_complex", graph.join(";"));
-    args.push("-map", videoFilters.length ? "[vout]" : "0:v");
-    if (audioOut) args.push("-map", audioOut);
-    if (videoFilters.length) {
-      args.push("-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p");
-    } else {
-      args.push("-c:v", "copy");
-    }
-    if (audioOut) args.push("-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2");
-    args.push("-t", T, "-movflags", "+faststart", outPath);
-    await runFfmpeg(args);
-    return {
-      bytes: fs.readFileSync(outPath),
-      report: {
-        voiceoverShots,
-        ...(input.assets.voiceProvider ? { voiceProvider: input.assets.voiceProvider } : {}),
-        music: Boolean(musicLabel),
-        textOverlays,
-        errors,
-      },
     };
+
+    let finished: Awaited<ReturnType<typeof run>> = null;
+    try {
+      finished = await run(cards.some(Boolean));
+    } catch (err) {
+      errors.push(`text + sound pass: ${errorText(err)}`);
+      if (cards.some(Boolean)) {
+        try {
+          finished = await run(false);
+        } catch (err2) {
+          errors.push(`sound-only pass: ${errorText(err2)}`);
+        }
+      }
+    }
+    return finished ?? { bytes: input.video, report: { voiceoverShots: 0, music: false, textOverlays: 0, errors } };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

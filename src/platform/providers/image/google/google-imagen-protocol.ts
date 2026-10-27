@@ -10,6 +10,7 @@ import type {
 } from "../common/vendor-image-protocol";
 import {
   applyProviderReferenceAdaptations,
+  approvedStageMode,
   describeReferenceImages,
   requestIsOneOfSeveralOptions,
   requestIsRefinement,
@@ -100,12 +101,12 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
     const sentReferences = (isArtifactEdit ? references.slice(0, 1) : references)
       .filter((ref) => Boolean(ref.base64))
       .slice(0, MAX_GEMINI_REFERENCE_IMAGES);
+    // Reference roles lead the prompt so a long brief cannot bury the approved design.
     const promptWithFormat = [
       aspectRatio ? `Generate a ${aspectRatio} aspect ratio image.` : "Generate an image.",
       isArtifactEdit && reference
         ? "The attached image is the existing result to modify — preserve unchanged elements unless the instruction explicitly changes them."
         : "",
-      rolePrompt,
       isArtifactEdit
         ? ""
         : describeReferenceImages(sentReferences, {
@@ -118,7 +119,11 @@ export class GoogleImagenProtocol implements IVendorImageProtocol {
             newViewpoint: requestIsNewViewpoint(
               input.request.metadata as Readonly<Record<string, unknown>> | undefined,
             ),
+            stageMode: approvedStageMode(
+              input.request.metadata as Readonly<Record<string, unknown>> | undefined,
+            ),
           }),
+      rolePrompt,
     ]
       .filter(Boolean)
       .join(" ");

@@ -10,8 +10,7 @@
  * approved/selected dependency pins (e.g. IMAGE → VIDEO after approve).
  */
 
-import { failure, success, type Result } from "../../core/result";
-import { ValidationError } from "../../core/errors";
+import { success, type Result } from "../../core/result";
 import { ensureCdfSessionLoaded } from "../session-store";
 import { resolveUpstreamArtifactsForPhase } from "./resolve-dependencies";
 import { resolveCdfCanonicalService } from "../canonical";
@@ -383,24 +382,10 @@ export async function applyUpstreamVisualArtifactHandoff(input: {
         resolverStatus: "failed",
         reason: bytes.reason,
       });
+      // Product decision (Oct 27 2026): never leave the user with an error.
+      // Generate from the brief and tell them so (cdfDeliveryNote on the result).
       if (u.required || needsMedia || isVisualType) {
-        return failure(
-          new ValidationError(
-            `Upstream ArtifactVersion ${u.artifactId}@${u.version} could not be resolved into the visual representation required by phase "${phaseId}"`,
-            {
-              reason: CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE,
-              artifactId: u.artifactId,
-              artifactVersion: u.version,
-              artifactKey: u.artifactKey,
-              sourcePhase: u.phaseId,
-              targetPhase: phaseId,
-              requiredRepresentation: "image_asset",
-              actualRepresentation: "unresolved",
-              resolverStage: "vault_bytes",
-              failureReason: bytes.reason,
-            },
-          ),
-        );
+        nextMeta = { ...nextMeta, cdfApprovedDesignFallback: true };
       }
       continue;
     }

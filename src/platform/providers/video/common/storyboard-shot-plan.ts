@@ -20,6 +20,8 @@ export type ScriptScene = {
   readonly audio?: string;
   /** The scene's ON-SCREEN TEXT, cleaned; absent when "None". */
   readonly onScreenText?: string;
+  /** Shots this scene's voiceover / text may run across (a scene drawn as several frames). */
+  readonly spanShots?: number;
 };
 
 export type VideoShot = {
@@ -35,6 +37,8 @@ export type VideoShot = {
   readonly voiceover?: string;
   /** Text drawn over this shot after stitching (video models garble text). */
   readonly onScreenText?: string;
+  /** This shot's voiceover / text may run across this many shots (one script scene, several frames). */
+  readonly spanShots?: number;
 };
 
 export type VideoShotPlan = {
@@ -151,10 +155,25 @@ function sectionLines(body: readonly string[], heading: RegExp): string[] {
   return [inline, ...(stop >= 0 ? rest.slice(0, stop) : rest)].filter((l) => l.trim());
 }
 
-/** On-screen copy without markdown, wrapping quotes, trailing "---" rules or "None". */
+/**
+ * A line that tells the editor what to show rather than words to print:
+ * "DiVastra logo with mandala emblem (final 1 second)".
+ */
+const STAGE_DIRECTION =
+  /\b(?:logo|emblem|wordmark|monogram|end ?card|end ?frame|pack ?shot|appears?|animates?|fades? (?:in|out)|reveals?|slides? in|on screen|visual of)\b/i;
+
+/**
+ * On-screen copy without markdown, wrapping quotes, trailing "---" rules,
+ * timing notes in brackets, stage directions or "None". Quoted copy wins:
+ * 'Logo with tagline "Woven with love"' prints only "Woven with love".
+ */
 export function cleanOnScreenText(text: string): string {
+  const quoted = [...text.matchAll(/["“]([^"“”\n]{2,160})["”]/g)].map((m) => m[1]!.trim()).filter(Boolean);
+  if (quoted.length) return quoted.join("\n").slice(0, 160);
   const cleaned = text
+    .replace(/\([^)]*\)/g, " ")
     .split(/\r?\n/)
+    .filter((l) => !STAGE_DIRECTION.test(l))
     .map((l) =>
       l
         .replace(/\*\*/g, "")

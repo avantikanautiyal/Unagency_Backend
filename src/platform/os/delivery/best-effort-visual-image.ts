@@ -182,20 +182,12 @@ export async function generateBestEffortVisualImage(input: {
     if (!imageRouter || !registry) return undefined;
 
     const referenceCapable = new Set(listReferenceImageProviderIds());
-    let preferredProviderId: string | undefined;
-    if (hasReferenceLogo) {
-      for (const providerId of referenceCapable) {
-        if (registry.resolveAvailable(asProviderId(providerId))?.dispatcher) {
-          preferredProviderId = providerId;
-          break;
-        }
-      }
-    }
-
+    // No provider pin here: the router rejects a provider without a model
+    // (every slide photo failed whenever a logo was bound). A logo-bound
+    // request moves to a reference-capable provider + model just below.
     const routed = imageRouter.resolve({
       prompt,
       capabilityId: "image.generate",
-      ...(preferredProviderId ? { preferredProviderId } : {}),
     });
     if (!routed.ok) {
       console.warn(

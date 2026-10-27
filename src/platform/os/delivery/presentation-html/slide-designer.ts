@@ -380,20 +380,204 @@ export function parseDesignedDeck(raw: string, expectedSlides: number): Designed
   return { themeCss: themeMatch[1]!.trim(), fonts, slides };
 }
 
+/**
+ * Slides per parallel design call after the first (system) call. One call
+ * writing a whole deck took ~30 s per slide (15 slides ≈ 7.5 min); batches
+ * run side by side. 0 turns the split off (one call for the whole deck).
+ */
+export function designBatchSize(env = process.env): number {
+  const raw = (env.PRESENTATION_DESIGN_BATCH_SIZE ?? "").trim();
+  const n = Number(raw);
+  return raw && Number.isInteger(n) && n >= 0 ? n : 3;
+}
+
+/** Most batch calls in flight per deck (decks themselves also run in parallel). */
+function designConcurrency(env = process.env): number {
+  const n = Number(env.PRESENTATION_DESIGN_CONCURRENCY);
+  return Number.isInteger(n) && n > 0 ? n : 5;
+}
+
+/** Slides the first call designs as the reference look (cover + first content slide). */
+const SYSTEM_SLIDES = 2;
+
 /** Design every slide of the deck (cover + one per plan slide). */
 export async function designPresentationSlides(
   brief: SlideDesignBrief,
   config: SlideDesignerConfig = slideDesignerConfigFromEnv(),
   signal?: AbortSignal,
 ): Promise<DesignedDeck> {
+  const total = brief.plan.slides.length + 1;
+  const batch = designBatchSize();
+  // Split only when it pays: at least two batches after the system call.
+  if (batch > 0 && total - SYSTEM_SLIDES > batch) {
+    try {
+      return await designDeckInParts(brief, config, batch, signal);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      console.warn(
+        `[presentation-html] parallel deck design failed; designing in one call: ${
+          err instanceof Error ? err.message.split("\n")[0] : String(err)
+        }`,
+      );
+    }
+  }
   const { value, provider } = await withDesignerFallback(
     "deck design",
     `${briefForPrompt(brief)}\n\nCONTENT:\n${contentForPrompt(brief)}\n\nDesign the full deck now.`,
     config,
-    (raw) => parseDesignedDeck(raw, brief.plan.slides.length + 1),
+    (raw) => parseDesignedDeck(raw, total),
     signal ? { signal } : {},
   );
   return { ...value, designedBy: provider };
+}
+
+type DeckSystem = {
+  readonly fonts: readonly string[];
+  readonly themeCss: string;
+  /** One line per slide: composition, dominant element, visual device. */
+  readonly layoutPlan: string;
+  /** Slides 1..SYSTEM_SLIDES, the look every batch matches. */
+  readonly slides: readonly string[];
+};
+
+/** Parse the system call: fonts, theme, layout plan and the first slides. */
+export function parseDeckSystem(raw: string, systemSlides: number): DeckSystem {
+  const text = raw.replace(/^```[a-z]*\n?|```\s*$/gim, "");
+  const fontsMatch = text.match(/<<<FONTS>>>\s*([\s\S]*?)<<<THEME>>>/);
+  const themeMatch = text.match(/<<<THEME>>>\s*([\s\S]*?)<<<PLAN>>>/);
+  const planMatch = text.match(/<<<PLAN>>>\s*([\s\S]*?)<<<SLIDE 1>>>/);
+  if (!themeMatch || !planMatch) throw new Error("Deck system response has no theme or plan block");
+  const slides = parseSlideBlocks(text);
+  const out: string[] = [];
+  for (let n = 1; n <= systemSlides; n += 1) {
+    const html = slides.get(n);
+    if (!html) throw new Error(`Deck system response is missing slide ${n}`);
+    out.push(html);
+  }
+  const allowed = new Set<string>(DESIGN_FONT_FAMILIES);
+  const fonts = (fontsMatch?.[1] ?? "")
+    .split(/[,\n]/)
+    .map((f) => f.trim().replace(/^["']|["']$/g, ""))
+    .filter((f) => allowed.has(f))
+    .slice(0, 3);
+  return { fonts, themeCss: themeMatch[1]!.trim(), layoutPlan: planMatch[1]!.trim(), slides: out };
+}
+
+/** `<<<SLIDE n>>>` blocks that hold a `<section class="slide">`, by 1-based number. */
+function parseSlideBlocks(text: string): Map<number, string> {
+  const out = new Map<number, string>();
+  const re = /<<<SLIDE (\d+)>>>\s*([\s\S]*?)(?=<<<SLIDE \d+>>>|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const html = (m[2] ?? "").trim();
+    if (/<section[^>]*class="[^"]*\bslide\b/.test(html)) out.set(Number(m[1]), html);
+  }
+  return out;
+}
+
+/** Move a slide's own `<style>` blocks out of its markup (they join the theme). */
+export function splitSlideStyles(html: string): { html: string; css: string } {
+  const css: string[] = [];
+  const stripped = html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_m, body: string) => {
+    css.push(body.trim());
+    return "";
+  });
+  return { html: stripped, css: css.filter(Boolean).join("\n") };
+}
+
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/**
+ * Same design, faster: one call sets the deck system (fonts, theme, a layout
+ * plan for every slide, and the first slides as the reference look); the
+ * remaining slides are then designed in parallel batches that all get that
+ * system, so the deck stays one hand.
+ */
+async function designDeckInParts(
+  brief: SlideDesignBrief,
+  config: SlideDesignerConfig,
+  batchSize: number,
+  signal?: AbortSignal,
+): Promise<DesignedDeck> {
+  const total = brief.plan.slides.length + 1;
+  const started = Date.now();
+  const context = `${briefForPrompt(brief)}\n\nCONTENT:\n${contentForPrompt(brief)}`;
+  const { value: system, provider } = await withDesignerFallback(
+    "deck system",
+    [
+      context,
+      `This deck is designed in parts that run in parallel. In this first part, set up the deck's visual system and design slides 1–${SYSTEM_SLIDES} only.`,
+      `Output exactly this, with no other text and no markdown fences:
+<<<FONTS>>>
+Family One, Family Two
+<<<THEME>>>
+(CSS for the whole deck, including every reusable class the other slides will need: type scale, colours, grids, stat blocks, chart / diagram / timeline parts, rules, page numbers, section markers, logo placement)
+<<<PLAN>>>
+(one line for EACH of the ${total} slides: "n: composition — dominant element — visual device". Consecutive slides use different compositions.)
+${Array.from({ length: SYSTEM_SLIDES }, (_, i) => `<<<SLIDE ${i + 1}>>>\n<section class="slide">…</section>`).join("\n")}`,
+    ].join("\n\n"),
+    config,
+    (raw) => parseDeckSystem(raw, SYSTEM_SLIDES),
+    signal ? { signal } : {},
+  );
+  const systemMs = Date.now() - started;
+
+  const batches: number[][] = [];
+  for (let n = SYSTEM_SLIDES + 1; n <= total; n += batchSize) {
+    batches.push(Array.from({ length: Math.min(batchSize, total - n + 1) }, (_, i) => n + i));
+  }
+  const reference = system.slides.map((html, i) => `<<<SLIDE ${i + 1}>>>\n${html}`).join("\n");
+  const results = await mapLimit(batches, designConcurrency(), async (numbers) => {
+    const range = `${numbers[0]}–${numbers[numbers.length - 1]}`;
+    const { value } = await withDesignerFallback(
+      `slides ${range}`,
+      [
+        context,
+        `THEME CSS IN USE (already loaded for every slide):\n${system.themeCss}`,
+        `LAYOUT PLAN FOR THE WHOLE DECK:\n${system.layoutPlan}`,
+        `ALREADY DESIGNED — match this look exactly (same type, spacing, devices, logo placement):\n${reference}`,
+        `Design only slides ${range} now, each following its plan line and reusing the theme's classes. Do not redefine theme classes. If a slide needs extra CSS, put it in one <style> as the first child of its section, give that section the extra class "s<n>" (n = its slide number) and start every selector with ".slide.s<n>".`,
+        `Reply with only these slides, each as:\n<<<SLIDE n>>>\n<section class="slide">…</section>`,
+      ].join("\n\n"),
+      config,
+      (raw) => {
+        const found = parseSlideBlocks(raw.replace(/^```[a-z]*\n?|```\s*$/gim, ""));
+        const missing = numbers.filter((n) => !found.has(n));
+        if (missing.length) throw new Error(`Slide batch is missing slide(s) ${missing.join(", ")}`);
+        return numbers.map((n) => found.get(n)!);
+      },
+      // The provider that set the system designs the rest, so the style stays one hand.
+      { ...(signal ? { signal } : {}), prefer: provider },
+    );
+    return value;
+  });
+
+  const extraCss: string[] = [];
+  const later = results.flat().map((html) => {
+    const split = splitSlideStyles(html);
+    if (split.css) extraCss.push(split.css);
+    return split.html;
+  });
+  console.log(
+    `[presentation-html] deck designed in parts | slides=${total} | batches=${batches.length}x${batchSize} | systemMs=${systemMs} | totalMs=${Date.now() - started}`,
+  );
+  return {
+    fonts: system.fonts,
+    themeCss: [system.themeCss, ...extraCss].join("\n"),
+    slides: [...system.slides, ...later],
+    designedBy: provider,
+  };
 }
 
 /**

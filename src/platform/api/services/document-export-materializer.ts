@@ -169,12 +169,13 @@ export function resolvePresentationExportOptions(
       : {}),
     ...(resolveSlideImage
       ? {
-          resolveSlideImage: (cue, _slide) => {
+          resolveSlideImage: (cue, _slide, signal) => {
             const key = cue.trim();
             let pending = slideImageCache.get(key);
             if (!pending) {
               pending = resolveSlideImage(
-                `Presentation slide artwork — imagery only, no words, letters, captions or slide text: ${key}`
+                `Presentation slide artwork — imagery only, no words, letters, captions or slide text: ${key}`,
+                signal
               );
               slideImageCache.set(key, pending);
             }

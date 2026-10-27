@@ -165,8 +165,11 @@ export async function generateBestEffortVisualImage(input: {
   readonly deps?: BestEffortVisualImageDeps;
   /** Optional service/platform metadata so Spec can shape the soft-path prompt. */
   readonly productionMetadata?: Readonly<Record<string, unknown>>;
+  /** Once aborted, no further provider attempt starts (a running one finishes). */
+  readonly signal?: AbortSignal;
 }): Promise<VisualImageBytes | undefined> {
   try {
+    if (input.signal?.aborted) return undefined;
     const hasReferenceLogo = Boolean(input.referenceLogo?.base64?.trim());
     const prompt = buildImagePrompt({
       prompt: input.prompt,
@@ -258,6 +261,7 @@ export async function generateBestEffortVisualImage(input: {
         : {};
 
     for (const attempt of attempts) {
+      if (input.signal?.aborted) return undefined;
       const entry = registry.resolveAvailable(asProviderId(attempt.providerId));
       if (!entry?.dispatcher) continue;
       const request: ProviderExecutionRequest = {
@@ -363,16 +367,18 @@ export function createSlideImageResolver(
   referenceLogo?: VisualImageBytes
 ):
   | ((
-      cue: string
+      cue: string,
+      signal?: AbortSignal
     ) => Promise<SlideImageResolveResult | undefined>)
   | undefined {
   if (!deps?.imageRouter || !deps?.registry) return undefined;
-  return async (cue: string) => {
+  return async (cue: string, signal?: AbortSignal) => {
     const image = await generateBestEffortVisualImage({
       prompt: cue,
       brandColors,
       referenceLogo,
       deps,
+      ...(signal ? { signal } : {}),
     });
     if (!image) return undefined;
     return {

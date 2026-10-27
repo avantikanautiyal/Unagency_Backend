@@ -100,13 +100,16 @@ export type PresentationExportOptions = {
    */
   readonly resolveSlideImage?: (
     cue: string,
-    slide: PresentationSlide
+    slide: PresentationSlide,
+    /** Set once the deck no longer needs the photo: skip work not yet started. */
+    signal?: AbortSignal
   ) => Promise<PresentationSlideImage | undefined>;
 };
 
 /** Image generations per deck — the rest use designed no-image layouts. */
 const MAX_SLIDE_IMAGES = 5;
-const SLIDE_IMAGE_CONCURRENCY = 3;
+/** All at once: a queued photo was the usual late one (and was paid for, then dropped). */
+const SLIDE_IMAGE_CONCURRENCY = MAX_SLIDE_IMAGES;
 const SLIDE_IMAGE_PRIORITY: Record<PresentationSlideLayout, number> = {
   title_hero: 0,
   section_divider: 1,
@@ -133,16 +136,38 @@ async function resolveSlideImagesSafe(
   slides: readonly PresentationSlide[],
   resolve?: PresentationExportOptions["resolveSlideImage"]
 ): Promise<(PresentationSlideImage | undefined)[]> {
-  const out: (PresentationSlideImage | undefined)[] = slides.map(() => undefined);
-  if (!resolve) return out;
+  const run = startSlideImages(slides, resolve);
+  await run.done;
+  return run.images;
+}
+
+/**
+ * Start the slide photos; `images` fills in as each one lands, so a caller
+ * can stop waiting and use whatever is ready.
+ */
+function startSlideImages(
+  slides: readonly PresentationSlide[],
+  resolve?: PresentationExportOptions["resolveSlideImage"]
+): {
+  readonly images: (PresentationSlideImage | undefined)[];
+  readonly wanted: number;
+  readonly done: Promise<void>;
+  /** Skip photos and provider retries not yet started (running requests finish). */
+  readonly stop: () => void;
+} {
+  const images: (PresentationSlideImage | undefined)[] = slides.map(() => undefined);
+  const controller = new AbortController();
+  const stop = () => controller.abort();
+  if (!resolve) return { images, wanted: 0, done: Promise.resolve(), stop };
   const chosen = selectSlideImageSlots(slides).map((index) => ({
     slide: slides[index]!,
     index,
     cue: slides[index]!.visualCue!.trim(),
   }));
-  await mapWithConcurrency(chosen, SLIDE_IMAGE_CONCURRENCY, async ({ slide, index, cue }) => {
+  const done = mapWithConcurrency(chosen, SLIDE_IMAGE_CONCURRENCY, async ({ slide, index, cue }) => {
+    if (controller.signal.aborted) return;
     try {
-      out[index] = await resolve(cue, slide);
+      images[index] = await resolve(cue, slide, controller.signal);
     } catch (err) {
       console.warn(
         `[presentation-export] slide image failed: ${
@@ -150,8 +175,18 @@ async function resolveSlideImagesSafe(
         }`
       );
     }
-  });
-  return out;
+  }).then(() => undefined);
+  return { images, wanted: chosen.length, done, stop };
+}
+
+/**
+ * How long a designed deck waits for photos still being made once its
+ * slides are designed. Photos are optional: a late one becomes the
+ * brand-tinted block instead of delaying the deck.
+ */
+function slideImageGraceMs(env = process.env): number {
+  const n = Number(env.PRESENTATION_IMAGE_GRACE_MS);
+  return Number.isFinite(n) && n >= 0 ? n : 15_000;
 }
 
 const LAYOUTS = new Set<string>([
@@ -569,10 +604,28 @@ async function buildHtmlDesignedPresentation(
   };
   try {
     // Photos and slide design run side by side; slots are fixed up front.
-    const [deck, slideImages] = await Promise.all([
-      designPresentationSlides(brief, config),
-      resolveSlideImagesSafe(plan.slides, options?.resolveSlideImage),
+    const photos = startSlideImages(plan.slides, options?.resolveSlideImage);
+    const deck = await designPresentationSlides(brief, config);
+    const designMs = Date.now() - started;
+    let graceTimer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      photos.done,
+      new Promise<void>((r) => {
+        graceTimer = setTimeout(r, slideImageGraceMs());
+      }),
     ]);
+    clearTimeout(graceTimer);
+    const imageWaitMs = Date.now() - started - designMs;
+    const slideImages = [...photos.images];
+    const photosReady = slideImages.filter(Boolean).length;
+    if (photosReady < photos.wanted) {
+      // The deck goes ahead without them: start no further photo work.
+      photos.stop();
+      console.warn(
+        `[presentation-html] using ${photosReady}/${photos.wanted} photos; the rest were not ready ${imageWaitMs} ms after design — stopped their remaining attempts`
+      );
+    }
+    const renderStarted = Date.now();
     const images = new Map<number, SlideImageAsset>();
     slideImages.forEach((img, i) => {
       const asset = toAsset(img);
@@ -652,7 +705,7 @@ async function buildHtmlDesignedPresentation(
       return null;
     }
     console.log(
-      `[presentation-html] designed deck "${plan.title}" | slides=${expectedSlides} | designer=${current.designedBy ?? "anthropic"} | ms=${Date.now() - started}`
+      `[presentation-html] designed deck "${plan.title}" | slides=${expectedSlides} | designer=${current.designedBy ?? "anthropic"} | ms=${Date.now() - started} | designMs=${designMs} | photoWaitMs=${imageWaitMs} | photos=${photosReady}/${photos.wanted} | renderMs=${Date.now() - renderStarted}`
     );
     return {
       pdf: rendered.pdf,

@@ -126,7 +126,7 @@ describe("video fanout planning", () => {
     const live = plan.targets.filter((t) => t.availability === "selected");
     assert.deepEqual(
       live.map((t) => t.providerId).sort(),
-      ["provider.luma", "provider.minimax", "provider.seedance"],
+      ["provider.higgsfield", "provider.minimax", "provider.seedance"],
     );
   });
 });

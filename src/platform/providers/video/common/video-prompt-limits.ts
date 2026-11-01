@@ -6,6 +6,8 @@ export const VIDEO_PROMPT_CHAR_LIMITS: Readonly<Record<string, number>> = {
   kling: 2500,
   minimax: 3000,
   luma: 6000,
+  // Kling 3.0 Turbo image-to-video limit (text-to-video allows 3,072).
+  higgsfield: 2500,
 };
 
 export function truncateVideoPrompt(prompt: string, vendorId: string): string {

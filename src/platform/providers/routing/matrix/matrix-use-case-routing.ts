@@ -187,9 +187,15 @@ export const MINIMAX_VIDEO_PREF: MatrixProviderPref = {
   label: "Hailuo AI",
 };
 
-/** Active LIVE video engines — Luma, Seedance, MiniMax (Kling paused: no credits). */
+export const HIGGSFIELD_VIDEO_PREF: MatrixProviderPref = {
+  providerId: "provider.higgsfield",
+  modelId: "higgsfield-video",
+  label: "Higgsfield",
+};
+
+/** Active LIVE video engines — Higgsfield, Seedance, MiniMax. */
 export const ACTIVE_VIDEO_PROVIDER_PREFERENCES: readonly MatrixProviderPref[] = [
-  LUMA_VIDEO_PREF,
+  HIGGSFIELD_VIDEO_PREF,
   SEEDANCE_VIDEO_PREF,
   MINIMAX_VIDEO_PREF,
 ];
@@ -199,45 +205,45 @@ export const VIDEO_USE_CASE_PREFERENCES: Record<
   readonly MatrixProviderPref[]
 > = {
   commercial_ad: [
-    LUMA_VIDEO_PREF,
     SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
   filmmaking: [
-    LUMA_VIDEO_PREF,
     SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
   cinematic: [
-    LUMA_VIDEO_PREF,
     SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
   product: [
     SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
-    LUMA_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
   short_form: [
     MINIMAX_VIDEO_PREF,
-    LUMA_VIDEO_PREF,
     SEEDANCE_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
-  fast: [MINIMAX_VIDEO_PREF, LUMA_VIDEO_PREF, SEEDANCE_VIDEO_PREF],
+  fast: [MINIMAX_VIDEO_PREF, SEEDANCE_VIDEO_PREF, HIGGSFIELD_VIDEO_PREF],
   marketing: [
-    LUMA_VIDEO_PREF,
     SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
   fashion: [
     SEEDANCE_VIDEO_PREF,
-    LUMA_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
   general: [
-    LUMA_VIDEO_PREF,
     SEEDANCE_VIDEO_PREF,
     MINIMAX_VIDEO_PREF,
+    HIGGSFIELD_VIDEO_PREF,
   ],
 };
 

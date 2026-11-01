@@ -21,6 +21,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   runway: "Runway",
   kling: "Kling",
   luma: "Luma",
+  higgsfield: "Higgsfield",
   pixverse: "Pixverse",
   elevenlabs: "ElevenLabs",
   cartesia: "Cartesia",
@@ -68,6 +69,7 @@ function inferVendorFromModel(model: string): string | null {
   if (bare.includes("runway")) return "runway";
   if (bare.includes("kling")) return "kling";
   if (bare.includes("luma")) return "luma";
+  if (bare.includes("higgsfield")) return "higgsfield";
   if (bare.includes("pixverse")) return "pixverse";
   return null;
 }

@@ -169,6 +169,7 @@ const PROVIDER_ID_TO_VENDOR: Record<string, string> = {
   "provider.runway": "runway",
   "provider.kling": "kling",
   "provider.luma": "luma",
+  "provider.higgsfield": "higgsfield",
   "provider.pixverse": "pixverse",
   "provider.groq": "groq",
   "provider.deepseek": "deepseek",
@@ -262,6 +263,7 @@ function inferVendorFromModel(model: string): string | null {
   if (bare.includes("runway")) return "runway";
   if (bare.includes("kling")) return "kling";
   if (bare.includes("luma")) return "luma";
+  if (bare.includes("higgsfield")) return "higgsfield";
   if (bare.includes("pixverse")) return "pixverse";
   if (bare.includes("seedance")) return "minimax";
   return null;

@@ -36,7 +36,7 @@ export const GENERATION_FANOUT_PROVIDER_FAMILIES = [
 ] as const;
 
 export const VIDEO_GENERATION_FANOUT_PROVIDER_FAMILIES = [
-  "provider.luma",
+  "provider.higgsfield",
   "provider.seedance",
   "provider.minimax",
 ] as const;
@@ -105,6 +105,7 @@ export const INTRA_PROVIDER_IMAGE_MODEL_FALLBACKS: Readonly<
 export const INTRA_PROVIDER_VIDEO_MODEL_FALLBACKS: Readonly<
   Record<string, readonly string[]>
 > = {
+  "provider.higgsfield": [],
   "provider.luma": [],
   "provider.seedance": [],
   "provider.minimax": [],

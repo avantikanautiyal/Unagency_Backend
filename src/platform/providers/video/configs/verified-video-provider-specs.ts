@@ -1,6 +1,6 @@
 /**
  * Verified video provider configs — LIVE only when vendorApiVerified=true.
- * Pika / Higgsfield remain inventory-backed but LIVE blocked.
+ * Pika remains inventory-backed but LIVE blocked.
  */
 
 import type { IVendorVideoProtocol } from "../common/vendor-video-protocol";
@@ -11,6 +11,7 @@ import { PixverseVideoProtocol } from "../pixverse/pixverse-video-protocol";
 import { KlingVideoProtocol } from "../kling/kling-video-protocol";
 import { GoogleVeoVideoProtocol } from "../google-veo/google-veo-video-protocol";
 import { SeedanceVideoProtocol } from "../seedance/seedance-video-protocol";
+import { HiggsfieldVideoProtocol } from "../higgsfield/higgsfield-video-protocol";
 
 export interface VerifiedVideoProviderSpec {
   readonly canonicalProviderId: string;
@@ -148,26 +149,21 @@ export const PIKA_VIDEO_SPEC: VerifiedVideoProviderSpec = {
   },
 };
 
-/** Platform API exists but catalog "Higgsfield Video" wire model_id not verified on official docs. */
 export const HIGGSFIELD_VIDEO_SPEC: VerifiedVideoProviderSpec = {
   canonicalProviderId: "provider.higgsfield",
   vendor: "higgsfield",
   displayName: "Higgsfield",
-  baseUrl: "https://platform.higgsfield.ai",
+  baseUrl: "https://api.higgsfield.ai",
   credentialEnvVar: "HIGGSFIELD_API_KEY",
   secretEnvVar: "HIGGSFIELD_API_KEY_SECRET",
   enableEnvVar: "HIGGSFIELD_ENABLED",
   liveSmokeEnvVar: "RUN_LIVE_HIGGSFIELD_VIDEO_SMOKE",
-  vendorApiVerified: false,
-  blockedReason:
-    "API_CONTRACT_UNVERIFIED — platform queue API documented but video model_id for catalog label unverified",
+  vendorApiVerified: true,
   inventoryModelId: "higgsfield-video",
-  wireModelId: "unverified",
-  supportsTextToVideo: false,
-  supportsImageToVideo: false,
-  createProtocol: () => {
-    throw new Error("Higgsfield video model wire ID unverified");
-  },
+  wireModelId: "kling-video/v3.0-turbo",
+  supportsTextToVideo: true,
+  supportsImageToVideo: true,
+  createProtocol: () => new HiggsfieldVideoProtocol(),
 };
 
 export const HEYGEN_VIDEO_SPEC: VerifiedVideoProviderSpec = {

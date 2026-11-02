@@ -125,6 +125,9 @@ function logoChoiceLabel(candidate: {
 function continuitySlotCheckApplies(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): boolean {
+  // Text-only calls that never place a logo (e.g. the client page planner)
+  // must not be blocked by a missing/ambiguous vault logo.
+  if (metadata?.skipVaultLogoBind === true) return false;
   const action = productActionFromMetadata(metadata)?.toLowerCase();
   if (!action) return true;
   return !new Set([
@@ -132,6 +135,7 @@ function continuitySlotCheckApplies(
     "refine_brief",
     "refine_question",
     "brand_brief_extract",
+    "page_document_plan",
   ]).has(action);
 }
 

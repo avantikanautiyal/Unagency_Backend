@@ -324,6 +324,7 @@ export class ApiGatewayEngine implements IApiGateway {
     start: number,
     details?: Record<string, unknown>
   ): ApiResponse {
+    logApiErrorResponse(request, status, code, message);
     return {
       status,
       headers: {
@@ -356,6 +357,44 @@ function extractCredential(request: ApiRequest): Result<AuthCredential> {
     return success({ scheme: "jwt", token });
   }
   return failure(new AuthorizationError("unsupported authorization scheme"));
+}
+
+/**
+ * Error responses were returned to the client but never logged, so a failing
+ * request left no trace on the server. Auth noise (401/403) is skipped.
+ */
+function logApiErrorResponse(
+  request: ApiRequest,
+  status: number,
+  code: string,
+  message: string
+): void {
+  if (status === 401 || status === 403) return;
+  try {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const meta = (body.metadata ?? {}) as Record<string, unknown>;
+    const pick = (v: unknown) => (typeof v === "string" ? v.slice(0, 120) : undefined);
+    console.error(
+      JSON.stringify({
+        event: "api_error_response",
+        method: request.method,
+        path: request.path.split("?")[0],
+        status,
+        code,
+        message: String(message ?? "").slice(0, 1000),
+        requestId: request.requestId,
+        capabilityId: pick(body.capabilityId),
+        providerId: pick(body.providerId) ?? pick(meta.preferredProviderId),
+        modelId: pick(body.modelId) ?? pick(meta.preferredModelId),
+        cdfSessionId: pick(meta.cdfSessionId),
+        cdfPhaseId: pick(meta.cdfPhaseId),
+        fanoutTargetId: pick(meta.generationFanoutTargetId),
+        ts: new Date().toISOString(),
+      })
+    );
+  } catch {
+    /* logging must never affect the response */
+  }
 }
 
 function statusForError(code: string): number {

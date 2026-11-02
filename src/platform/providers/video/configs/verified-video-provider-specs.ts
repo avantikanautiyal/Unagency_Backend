@@ -160,7 +160,7 @@ export const HIGGSFIELD_VIDEO_SPEC: VerifiedVideoProviderSpec = {
   liveSmokeEnvVar: "RUN_LIVE_HIGGSFIELD_VIDEO_SMOKE",
   vendorApiVerified: true,
   inventoryModelId: "higgsfield-video",
-  wireModelId: "kling-video/v3.0-turbo",
+  wireModelId: "kling-video/v3.0/pro",
   supportsTextToVideo: true,
   supportsImageToVideo: true,
   createProtocol: () => new HiggsfieldVideoProtocol(),

@@ -2,7 +2,7 @@
  * Higgsfield platform API — https://docs.higgsfield.ai/docs/models/kling-3.md
  * Base: https://api.higgsfield.ai
  * Auth: Authorization: Key {key_id}:{key_secret}
- * Submit: POST /kling-video/v3.0-turbo/{text-to-video|image-to-video}
+ * Submit: POST /kling-video/v3.0/pro/{text-to-video|image-to-video} (Kling 3.0 Pro)
  * Poll: GET /requests/{id}/status
  * States: queued | in_progress | completed | failed | nsfw | canceled
  */
@@ -24,7 +24,7 @@ import { truncateVideoPrompt } from "../common/video-prompt-limits";
 
 /** Inventory ids map to the endpoint prefix; the workflow suffix depends on image input. */
 const WIRE_MODELS: Record<string, string> = {
-  "higgsfield-video": "kling-video/v3.0-turbo",
+  "higgsfield-video": "kling-video/v3.0/pro",
 };
 
 /** Text-to-video only; image-to-video takes its shape from the input image. */
@@ -49,11 +49,6 @@ function normalizeDuration(raw: unknown): number {
   return Math.min(15, Math.max(3, Math.round(n)));
 }
 
-/** Unset requests render at 1080p, the same default as Luma. */
-function normalizeResolution(raw: unknown): "720p" | "1080p" {
-  const s = typeof raw === "string" ? raw.toLowerCase() : "";
-  return s.includes("720") ? "720p" : "1080p";
-}
 
 export class HiggsfieldVideoProtocol implements IVendorVideoProtocol {
   readonly vendorId = "higgsfield";
@@ -95,13 +90,17 @@ export class HiggsfieldVideoProtocol implements IVendorVideoProtocol {
     const body: Record<string, unknown> = {
       prompt: truncateVideoPrompt(promptRaw, "higgsfield"),
       duration: normalizeDuration(request.payload.duration),
-      resolution: normalizeResolution(request.payload.resolution),
+      // Pro has no resolution field. Our own soundtrack is laid over later.
+      sound: "off",
     };
 
-    // This model has no end-frame field, so only the opening frame is sent.
-    const startFrame = imageUrls.find((u) => /^https?:\/\//i.test(u));
+    const frames = imageUrls.filter((u) => /^https?:\/\//i.test(u));
+    const startFrame = frames[0];
     if (startFrame) {
       body.image_url = startFrame;
+      if (request.payload.videoUseEndFrame === true && frames[1]) {
+        body.last_image_url = frames[1];
+      }
     } else {
       const ratio =
         typeof request.payload.aspectRatio === "string"

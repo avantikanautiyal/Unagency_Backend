@@ -14,7 +14,7 @@ function request(payload: Record<string, unknown>) {
   } as never;
 }
 
-describe("higgsfield-video-protocol (Kling 3.0 Turbo)", () => {
+describe("higgsfield-video-protocol (Kling 3.0 Pro)", () => {
   const protocol = new HiggsfieldVideoProtocol();
   const wire = protocol.resolveWireModel("higgsfield/higgsfield-video")!;
 
@@ -38,12 +38,12 @@ describe("higgsfield-video-protocol (Kling 3.0 Turbo)", () => {
     );
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
-    expect(plan.value.path).toBe("/kling-video/v3.0-turbo/text-to-video");
+    expect(plan.value.path).toBe("/kling-video/v3.0/pro/text-to-video");
     expect(plan.value.headers).toEqual({ "Idempotency-Key": "idem" });
     expect(plan.value.body).toEqual({
       prompt: "A shot",
       duration: 15,
-      resolution: "1080p",
+      sound: "off",
       aspect_ratio: "9:16",
     });
   });
@@ -57,11 +57,11 @@ describe("higgsfield-video-protocol (Kling 3.0 Turbo)", () => {
     );
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
-    expect(plan.value.path).toBe("/kling-video/v3.0-turbo/image-to-video");
+    expect(plan.value.path).toBe("/kling-video/v3.0/pro/image-to-video");
     expect(plan.value.body).toEqual({
       prompt: "A shot",
       duration: 5,
-      resolution: "1080p",
+      sound: "off",
       image_url: "https://cdn.example.com/a.png",
     });
   });

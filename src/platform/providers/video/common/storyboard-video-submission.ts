@@ -127,7 +127,29 @@ type SessionView = {
     phaseId: string;
     generationExecutionId?: string;
   }[];
+  readonly selected?: readonly {
+    phaseId: string;
+    routeTitle?: string;
+    routeDesc?: string;
+    selectedRouteLabel?: string;
+  }[];
 };
+
+/**
+ * Direct path brief: the client's brief plus the text route they picked
+ * (Video "Other" goes routes → animation with no script), so the film follows it.
+ */
+export function directVideoBrief(session: SessionView | null): string {
+  const brief = session?.brief?.trim() ?? "";
+  const picked = [...(session?.selected ?? [])]
+    .reverse()
+    .find((row) => row.phaseId === "script-routes");
+  const title = (picked?.routeTitle ?? picked?.selectedRouteLabel ?? "").trim();
+  const desc = (picked?.routeDesc ?? "").trim();
+  if (!title && !desc) return brief;
+  const direction = [title, desc].filter(Boolean).join(" — ");
+  return [brief, `Chosen creative direction (follow it): ${direction}`].filter(Boolean).join("\n\n");
+}
 
 async function loadSessionView(meta: Readonly<Record<string, unknown>>): Promise<SessionView | null> {
   const sessionId = typeof meta.cdfSessionId === "string" ? meta.cdfSessionId.trim() : "";
@@ -318,7 +340,7 @@ export async function prepareStoryboardVideoSubmission(input: {
   // Direct path (no script, no frames): plan fresh shots from the client's brief.
   let freshShots = false;
   if (scenes.length < 2 && session && frameRefs.length < 2) {
-    const brief = session.brief?.trim() ?? "";
+    const brief = directVideoBrief(session);
     const targetSec = directTargetSec(meta);
     const shotCount = Math.min(MAX_DIRECT_SHOTS, Math.max(1, Math.round(targetSec / DEFAULT_FRAME_SHOT_SEC)));
     const planned =

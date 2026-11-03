@@ -379,6 +379,20 @@ function mapProjectRoute(project: {
   return "Human Only";
 }
 
+/**
+ * Older Print & OOH projects were filed under the "Performance Marketing"
+ * category. Their title ("Print & OOH · Posters") keeps the real service.
+ */
+function resolveServiceLabel(title: string | null | undefined, categoryTitle: string): string {
+  const prefix = String(title ?? "")
+    .replace(/^Live brief ·\s*/i, "")
+    .split("·")[0]
+    .trim()
+    .toLowerCase();
+  if (prefix === "print & ooh" || prefix === "print and ooh") return "Print & OOH";
+  return categoryTitle || "Creative";
+}
+
 function mapRequirementRoute(creationMode?: string | null): string {
   const mode = String(creationMode ?? "").toLowerCase().trim();
   if (mode.includes("hybrid")) return "Hybrid";
@@ -758,7 +772,7 @@ export async function buildAdminOrganizationDetail(input: {
         requestId: projectId,
         rawProjectId: projectId,
         brand: project.title || "Untitled project",
-        service: categoryTitle || "Creative",
+        service: resolveServiceLabel(project.title, categoryTitle),
         status: mapProjectStatusLabel(project.status),
         priority: "Normal",
         assignedTo: designerByProject.get(projectId) ?? "Unassigned",
@@ -796,7 +810,7 @@ export async function buildAdminOrganizationDetail(input: {
           String(req.title ?? "")
             .replace(/^Live brief ·\s*/i, "")
             .trim() || "Untitled brief",
-        service: categoryTitle || "Creative",
+        service: resolveServiceLabel(req.title, categoryTitle),
         status,
         priority: "Normal",
         // No designer task yet — CS owns the request until a resource is assigned.

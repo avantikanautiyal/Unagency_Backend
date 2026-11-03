@@ -14,7 +14,7 @@ const SERVICE_TO_CATEGORY: Record<string, string> = {
   website: "Website",
   branding: "Logo",
   packaging: "Packaging",
-  print: "Performance Marketing",
+  print: "Print & OOH",
   video: "Video",
   presentations: "Brand Identity",
   email: "Email Marketing",

@@ -379,6 +379,27 @@ function mapProjectRoute(project: {
   return "Human Only";
 }
 
+/** Title prefixes written by the client app ("<Service> · <subtype>"). */
+const SERVICE_LABEL_BY_TITLE_PREFIX: Record<string, string> = {
+  "print & ooh": "Print & OOH",
+  "print and ooh": "Print & OOH",
+  "pos / in-store": "Store Display",
+  "store display": "Store Display",
+  "packaging design": "Packaging",
+  "branding & logo": "Logo",
+  "web tech": "Website",
+  "presentation": "Presentation",
+  "presentations": "Presentation",
+  "emailers": "Email Marketing",
+  "merchandise": "Merchandise",
+  "illustration": "Illustration",
+  "brand strategy": "Brand Strategy",
+  "ad campaigns": "Ad Campaigns",
+  "event branding": "Event Branding",
+  "videos": "Video",
+  "production": "Photography",
+};
+
 /**
  * Older Print & OOH projects were filed under the "Performance Marketing"
  * category. Their title ("Print & OOH · Posters") keeps the real service.
@@ -389,7 +410,8 @@ function resolveServiceLabel(title: string | null | undefined, categoryTitle: st
     .split("·")[0]
     .trim()
     .toLowerCase();
-  if (prefix === "print & ooh" || prefix === "print and ooh") return "Print & OOH";
+  const fromTitle = SERVICE_LABEL_BY_TITLE_PREFIX[prefix];
+  if (fromTitle) return fromTitle;
   return categoryTitle || "Creative";
 }
 
@@ -593,6 +615,29 @@ export async function buildAdminOrganizationDetail(input: {
       : Promise.resolve([]),
   ]);
 
+  const brandIdsForRows = [
+    ...new Set(
+      [
+        ...projects.map((project) => (project as { brandId?: unknown }).brandId),
+        ...servicingRequirements.map((req) => req.brandId),
+      ]
+        .map((value) => (value ? String(value) : ""))
+        .filter((value) => mongoose.isValidObjectId(value))
+    ),
+  ];
+  const brandRows = brandIdsForRows.length
+    ? await Brands.find({ _id: { $in: brandIdsForRows } }).select("name").lean()
+    : [];
+  const brandNameById = new Map(
+    brandRows.map((brand) => [String(brand._id), String(brand.name ?? "").trim()])
+  );
+  const fallbackBrandName =
+    brands.length === 1 ? String(brands[0].name ?? "").trim() : "";
+  const resolveBrandName = (brandId: unknown): string => {
+    const name = brandId ? brandNameById.get(String(brandId)) : "";
+    return name || fallbackBrandName || "—";
+  };
+
   const categoryTitleById = new Map(
     categoryRows.map((category) => [String(category._id), category.title ?? ""])
   );
@@ -771,7 +816,7 @@ export async function buildAdminOrganizationDetail(input: {
       return {
         requestId: projectId,
         rawProjectId: projectId,
-        brand: project.title || "Untitled project",
+        brand: resolveBrandName((project as { brandId?: unknown }).brandId),
         service: resolveServiceLabel(project.title, categoryTitle),
         status: mapProjectStatusLabel(project.status),
         priority: "Normal",
@@ -806,10 +851,7 @@ export async function buildAdminOrganizationDetail(input: {
       return {
         requestId: reqId,
         rawProjectId: reqId,
-        brand:
-          String(req.title ?? "")
-            .replace(/^Live brief ·\s*/i, "")
-            .trim() || "Untitled brief",
+        brand: resolveBrandName(req.brandId),
         service: resolveServiceLabel(req.title, categoryTitle),
         status,
         priority: "Normal",

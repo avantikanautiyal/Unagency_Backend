@@ -8,6 +8,11 @@ import MediaFile from "../models/mediaFile.model";
 import { RequestUser } from "../types/user";
 import mongoose from "mongoose";
 import { ApiError } from "../utils/apiError";
+import {
+  BUSINESS_UPGRADE_FIELDS,
+  ensureExplorerWorkspace,
+  isExplorerAccountType,
+} from "../services/explorer-workspace-service";
 
 import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
@@ -20,6 +25,19 @@ const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 //TESTED OK
 const createOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
+    // Just Exploring — silent personal workspace + hidden generic brand.
+    // No business details, no "Set Up Brand" notification, idempotent.
+    if (isExplorerAccountType(req.body?.accountType)) {
+      const { organization, genericBrandId } = await ensureExplorerWorkspace(
+        String(req.user!.userId)
+      );
+      return new ApiResponse(
+        200,
+        { ...organization.toObject(), genericBrandId },
+        "Workspace ready"
+      );
+    }
+
     const {
       companyName,
       companyType,
@@ -40,25 +58,41 @@ const createOrganization = asyncHandler(
       return new ApiResponse(400, null, "All required fields must be provided");
     }
 
-    const isExist = await Organizations.exists({ owner: req.user?.userId });
-    if (isExist) {
-      return new ApiResponse(409, null, "Organization already exists");
+    const existing = await Organizations.findOne({ owner: req.user?.userId });
+    let organization: InstanceType<typeof Organizations> | null = null;
+    if (existing) {
+      // An explorer setting up their business upgrades the personal workspace
+      // in place (one owned organisation per user); work made while exploring stays.
+      if (!isExplorerAccountType(existing.accountType)) {
+        return new ApiResponse(409, null, "Organization already exists");
+      }
+      const patch: Record<string, unknown> = {};
+      for (const key of BUSINESS_UPGRADE_FIELDS) {
+        if (req.body?.[key] !== undefined) patch[key] = req.body[key];
+      }
+      if (!patch.accountType || isExplorerAccountType(patch.accountType)) {
+        patch.accountType = "business";
+      }
+      existing.set(patch);
+      organization = await existing.save();
+    } else {
+      organization = await Organizations.create(
+        new Organization({
+          ...req.body,
+          owner: req?.user?.userId,
+        })
+      );
     }
 
-    const organization = await Organizations.create(
-      new Organization({
-        ...req.body,
-        owner: req?.user?.userId,
-      })
-    );
-
     if (organization) {
-      await Teams.create({
-        Organization: organization._id,
-        role: "owner",
-        invitationStatus: "accepted",
-        userId: req?.user?.userId,
-      });
+      if (!existing) {
+        await Teams.create({
+          Organization: organization._id,
+          role: "owner",
+          invitationStatus: "accepted",
+          userId: req?.user?.userId,
+        });
+      }
 
       await dispatchClientNotification({
         eventKey: "ORGANISATION_CREATED",

@@ -60,6 +60,7 @@ export async function resolveProductBrandId(input: {
   const latest = await Brands.findOne({
     organizationId: new mongoose.Types.ObjectId(input.organizationId),
     status: { $ne: "archived" },
+    isGeneric: { $ne: true },
   })
     .sort({ updatedAt: -1 })
     .select("_id")
@@ -94,6 +95,7 @@ export async function mergePreferencesIntoProductBrand(input: {
       status: { $ne: "archived" },
     });
     if (!doc) return { updated: false, brandId, reason: "brand_not_found" };
+    if (doc.isGeneric === true) return { updated: false, brandId, reason: "generic_brand" };
 
     const gp = {
       ...((doc.guidelinesProfile ?? {}) as Record<string, unknown>),

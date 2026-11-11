@@ -265,6 +265,11 @@ export function resolveConversationalTurn(
   } else if (
     priorPendingLogo &&
     !logoFollowUp &&
+    // A tapped logo (vaultLogoChoice) already answers the question. Without
+    // this, a project step prompt containing "use" ("Do NOT use a document
+    // title…") asked the same logo question a second time.
+    !explicitLogoChoice &&
+    logoSpec?.mode !== "USE_EXISTING" &&
     /\b(use|pick|choose|select)\b/i.test(visibleMessage)
   ) {
     clarification = buildLogoSelectionClarification({

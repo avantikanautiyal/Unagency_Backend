@@ -5,6 +5,8 @@
 
 import {
   applyProductionSpecInstructToMetadata,
+  isRouteExplorationMetadata,
+  withProductionAspectRatio,
   type ProductionInstructBundle,
 } from "../../config/format-production-spec";
 import {
@@ -108,9 +110,30 @@ export function resolveCanonicalAssemblyEnrichments(
     { force: true, projection: "provider_technical" },
   );
 
-  const productionSpec = applied.bundle
-    ? enrichmentFromBundle(applied.bundle)
-    : undefined;
+  // Route exploration phases (the options a user picks from) carry no
+  // production block; the final deliverable phase does. Keep the canvas
+  // shape through metadata.aspectRatio.
+  const routeExploration = isRouteExplorationMetadata(metadata);
+  // Stamped onto the returned metadata (applied.metadata may be frozen).
+  const routeStamps: Record<string, unknown> =
+    routeExploration && applied.bundle
+      ? {
+          productionSpecPromptOmitted: "route_exploration",
+          ...(() => {
+            const withAspect = withProductionAspectRatio(
+              { ...applied.metadata },
+              applied.bundle!.promptBlock.text,
+            );
+            return typeof withAspect.aspectRatio === "string"
+              ? { aspectRatio: withAspect.aspectRatio }
+              : {};
+          })(),
+        }
+      : {};
+  const productionSpec =
+    applied.bundle && !routeExploration
+      ? enrichmentFromBundle(applied.bundle)
+      : undefined;
 
   let outputRequirements: CanonicalOutputRequirementsEnrichment | undefined;
   const serviceRaw = readString(applied.metadata, "service");
@@ -194,6 +217,8 @@ export function resolveCanonicalAssemblyEnrichments(
   return {
     productionSpec,
     outputRequirements,
-    metadata: applied.metadata,
+    metadata: Object.keys(routeStamps).length
+      ? { ...applied.metadata, ...routeStamps }
+      : applied.metadata,
   };
 }

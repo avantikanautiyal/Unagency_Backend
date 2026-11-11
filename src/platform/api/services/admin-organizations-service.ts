@@ -550,7 +550,7 @@ export async function buildAdminOrganizationDetail(input: {
       Users.findById(customerUserId)
         .select("_id name email relationship_manager createdAt")
         .lean(),
-      Brands.find({ organizationId: org._id, status: { $ne: "archived" } })
+      Brands.find({ organizationId: org._id, status: { $ne: "archived" }, isGeneric: { $ne: true } })
         .select("name")
         .lean(),
       MediaFile.countDocuments(brandUploadFileCountFilter(org._id as mongoose.Types.ObjectId)),

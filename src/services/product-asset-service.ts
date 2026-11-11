@@ -951,12 +951,20 @@ export class ProductAssetService {
     userId: string;
     assetId: string;
     organizationId: string;
+    /**
+     * Skip downloading the file when the stored type says it won't be used
+     * (e.g. a ZIP on a visual job). Returns identity and filing only.
+     */
+    skipBytesForMimeType?: (mimeType: string) => boolean;
   }): Promise<{
     storageRef?: string;
     url?: string;
     organizationId: string;
     mimeType: string;
     filename?: string;
+    sizeBytes?: number;
+    /** True when bytes were deliberately not loaded (skipBytesForMimeType). */
+    bytesSkipped?: boolean;
     /** Vault filing — lets callers tell logos and brand documents from subjects. */
     folder?: string;
     tags?: string[];
@@ -992,6 +1000,17 @@ export class ProductAssetService {
         };
       }
       throw new ApiError("Asset has no durable storage key", 404);
+    }
+    if (input.skipBytesForMimeType?.(mimeType)) {
+      return {
+        storageRef: doc.storageKey,
+        organizationId: input.organizationId,
+        mimeType,
+        filename,
+        ...(typeof doc.sizeBytes === "number" ? { sizeBytes: doc.sizeBytes } : {}),
+        bytesSkipped: true,
+        ...filing,
+      };
     }
     const got = await this.storage.get(doc.storageKey);
     if (!got.ok || !got.value) {

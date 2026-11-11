@@ -1624,6 +1624,22 @@ export class ExecutionApiService implements IExecutionApiService {
           ? { ...ingestOut.metadataStamps }
           : {};
       if (!attach && Object.keys(structuralStamps).length === 0) {
+        // Re-ingest of an execution that already succeeded hit its own earlier
+        // save (same idempotency key). The creative exists — never turn a
+        // finished step into a failure on reopen.
+        const { isIdempotencyConflictOnlyBlock } = await import(
+          "./execution-cdf-canonical-ingest"
+        );
+        if (isIdempotencyConflictOnlyBlock(ingestOut)) {
+          console.warn(
+            JSON.stringify({
+              scope: "execution.async_canonical_hydrate",
+              event: "idempotency_conflict_kept_succeeded",
+              executionId: resource.executionId,
+            }),
+          );
+          return resource;
+        }
         if (ingestOut.productCompletionBlocked) {
           const failed: ExecutionResource = {
             ...resource,
@@ -1974,7 +1990,20 @@ export class ExecutionApiService implements IExecutionApiService {
                 }
               }
             }
-            if (ingestOut.productCompletionBlocked) {
+            const { isIdempotencyConflictOnlyBlock } = await import(
+              "./execution-cdf-canonical-ingest"
+            );
+            if (isIdempotencyConflictOnlyBlock(ingestOut)) {
+              // Re-ingest hit this execution's own earlier save — keep the
+              // provider result; never fail a finished step on poll/reopen.
+              console.warn(
+                JSON.stringify({
+                  scope: "execution.poll_hydrate",
+                  event: "idempotency_conflict_kept_succeeded",
+                  executionId: resource.executionId,
+                }),
+              );
+            } else if (ingestOut.productCompletionBlocked) {
               nextStatus = "failed";
               nextError =
                 ingestOut.productCompletionBlockReason ||
@@ -2071,8 +2100,33 @@ export class ExecutionApiService implements IExecutionApiService {
               status: "skipped",
               errorCode: msg,
             });
-            nextStatus = "failed";
-            nextError = `Canonical CDF completion ingest failed: ${msg}`;
+            const { executionHasGeneratedMedia, canonicalSaveFailedStamps } =
+              await import("./execution-cdf-canonical-ingest");
+            if (
+              nextStatus === "succeeded" &&
+              executionHasGeneratedMedia(mediaArtifactIds)
+            ) {
+              // The creative exists — keep it; the save failure is a note.
+              if (
+                nextResult &&
+                nextResult.data != null &&
+                typeof nextResult.data === "object" &&
+                !Array.isArray(nextResult.data)
+              ) {
+                nextResult = {
+                  ...nextResult,
+                  data: {
+                    ...(nextResult.data as Record<string, unknown>),
+                    ...canonicalSaveFailedStamps(
+                      `ingest_exception: ${msg.slice(0, 160)}`,
+                    ),
+                  },
+                };
+              }
+            } else {
+              nextStatus = "failed";
+              nextError = `Canonical CDF completion ingest failed: ${msg}`;
+            }
           }
         }
         // Durable state authority: a canonical-completion write (including an

@@ -4,6 +4,7 @@
  * Never rewrites the brief; never invents brand truth.
  */
 
+import { isGenericBrandId } from "../../../services/explorer-workspace-service";
 import type { BrandMemorySlotKey } from "./brand-memory-slots";
 import {
   defaultBrandMemoryStore,
@@ -264,6 +265,7 @@ export async function runProductIntelligenceUx(input: {
   const rollout = input.rollout ?? resolveProductUxRollout();
   if (rollout === "off") return null;
   if (!input.brandId.trim()) return null;
+  if (await isGenericBrandId(input.brandId)) return null;
 
   const prompts: ContinuityUxPrompt[] = [];
   const slot = await evaluateSlotAwareness(input);

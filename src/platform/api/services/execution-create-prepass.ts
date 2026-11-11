@@ -4,6 +4,10 @@
  */
 
 import {
+  GENERIC_BRAND_NAME,
+  isGenericBrandId,
+} from "../../../services/explorer-workspace-service";
+import {
   parseProviderPinPolicy,
   providerPinMetadataStamps,
 } from "../../providers/routing/provider-pin-policy";
@@ -687,6 +691,22 @@ export async function runCreatePrepass(
     typeof workingMetadata?.brandId === "string"
       ? workingMetadata.brandId.trim()
       : "";
+
+  // Just Exploring: the hidden generic brand owns the work (vault / projects)
+  // but is never brand identity — drop its placeholder name from metadata.
+  if (brandIdForUx && workingMetadata && (await isGenericBrandId(brandIdForUx))) {
+    const genericName = GENERIC_BRAND_NAME.toLowerCase();
+    const stripped: Record<string, unknown> = { ...workingMetadata };
+    let changed = false;
+    for (const key of ["brandName", "canonicalBrandName"]) {
+      const v = stripped[key];
+      if (typeof v === "string" && v.trim().toLowerCase() === genericName) {
+        delete stripped[key];
+        changed = true;
+      }
+    }
+    if (changed) workingMetadata = applyDirectPassthroughMetadata(stripped);
+  }
 
   if (brandIdForUx && prompt.trim()) {
     try {
@@ -2341,6 +2361,20 @@ export async function runCreatePrepass(
     // Production Spec instruct must never block generation.
   }
 
+  // Attached documents (PDF/Word) never go to providers as files; their text
+  // informs the brief. Canonical (CDF) prompts already carry it in MULTIMODAL
+  // CONTEXT — append the section only when the excerpt is not in the prompt.
+  {
+    const section =
+      typeof workingMetadata?.attachedDocumentsSection === "string"
+        ? workingMetadata.attachedDocumentsSection
+        : "";
+    if (section && !promptAlreadyCarriesDocumentText(providerPromptAfterSpec, workingMetadata)) {
+      providerPromptAfterSpec = `${providerPromptAfterSpec.trimEnd()}\n\n${section}`;
+      req = { ...req, prompt: providerPromptAfterSpec, metadata: workingMetadata };
+    }
+  }
+
   // Phase 5 — R/H pre-gen hold (blocks spend when enforce rollout is active).
   try {
     const {
@@ -2628,5 +2662,25 @@ export async function runCreatePrepass(
       correlationId,
       now,
     },
+  });
+}
+
+/** True when the canonical prompt already includes an attached document's text. */
+function promptAlreadyCarriesDocumentText(
+  prompt: string,
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (prompt.includes("===== ATTACHED DOCUMENTS =====")) return true;
+  const attachments = Array.isArray(metadata?.multimodalAttachments)
+    ? (metadata!.multimodalAttachments as unknown[])
+    : [];
+  return attachments.some((a) => {
+    const text =
+      a && typeof a === "object"
+        ? (a as Record<string, unknown>).extractedText
+        : undefined;
+    if (typeof text !== "string") return false;
+    const probe = text.trim().slice(0, 60);
+    return probe.length > 0 && prompt.includes(probe);
   });
 }

@@ -3,6 +3,7 @@
  */
 
 import type { ProviderAdapterRequest } from "../adapters/contracts/adapter-io";
+import { logDroppedReference, screenReferenceImage } from "./reference-image-guard";
 
 export function extractVisionImageRefs(
   request: ProviderAdapterRequest
@@ -10,30 +11,52 @@ export function extractVisionImageRefs(
   const refs: Array<{ url?: string; storageRef?: string; mimeType?: string; base64?: string }> =
     [];
 
+  const consider = (rec: Record<string, unknown>) => {
+    const url = typeof rec.url === "string" ? rec.url : undefined;
+    const storageRef = typeof rec.storageRef === "string" ? rec.storageRef : undefined;
+    const base64 = typeof rec.base64 === "string" ? rec.base64 : undefined;
+    const declared = typeof rec.mimeType === "string" ? rec.mimeType : undefined;
+    if (!url && !base64) {
+      // storageRef-only: trust only a declared image type.
+      if (storageRef && (!declared || declared.toLowerCase().startsWith("image/"))) {
+        refs.push({ storageRef, mimeType: declared ?? "image/png" });
+      } else if (storageRef) {
+        logDroppedReference({ where: "extractVisionImageRefs", reason: "not_an_image", detectedMimeType: declared });
+      }
+      return;
+    }
+    // Vision models accept images only — a PDF/Word/ZIP fails with HTTP 400.
+    const screened = screenReferenceImage({ mimeType: declared, url, base64 });
+    if (!screened.ok) {
+      logDroppedReference({
+        where: "extractVisionImageRefs",
+        reason: screened.reason,
+        detectedMimeType: screened.detectedMimeType,
+        assetId: typeof rec.assetId === "string" ? rec.assetId : undefined,
+      });
+      return;
+    }
+    const isDataUrl = Boolean(url?.startsWith("data:"));
+    refs.push({
+      url: isDataUrl && screened.base64
+        ? `data:${screened.mimeType};base64,${screened.base64}`
+        : url,
+      storageRef,
+      mimeType: screened.mimeType,
+      base64,
+    });
+  };
+
   const assets = request.input.assets;
   if (Array.isArray(assets)) {
     for (const a of assets) {
-      if (a && typeof a === "object") {
-        const rec = a as Record<string, unknown>;
-        refs.push({
-          url: typeof rec.url === "string" ? rec.url : undefined,
-          storageRef: typeof rec.storageRef === "string" ? rec.storageRef : undefined,
-          mimeType: typeof rec.mimeType === "string" ? rec.mimeType : "image/png",
-          base64: typeof rec.base64 === "string" ? rec.base64 : undefined,
-        });
-      }
+      if (a && typeof a === "object") consider(a as Record<string, unknown>);
     }
   }
 
   const image = request.input.image;
   if (image && typeof image === "object") {
-    const rec = image as Record<string, unknown>;
-    refs.push({
-      url: typeof rec.url === "string" ? rec.url : undefined,
-      storageRef: typeof rec.storageRef === "string" ? rec.storageRef : undefined,
-      mimeType: typeof rec.mimeType === "string" ? rec.mimeType : "image/png",
-      base64: typeof rec.base64 === "string" ? rec.base64 : undefined,
-    });
+    consider(image as Record<string, unknown>);
   }
 
   return refs;

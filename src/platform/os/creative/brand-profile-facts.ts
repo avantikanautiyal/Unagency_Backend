@@ -30,11 +30,12 @@ export async function resolveBrandProfileContext(input: {
     status: { $ne: "archived" },
   })
     .select(
-      "name positioning voice industry targetAudience colors guidelines guidelinesProfile logoAssetId"
+      "name positioning voice industry targetAudience colors guidelines guidelinesProfile logoAssetId isGeneric"
     )
     .lean();
 
-  if (!doc) return { facts: [] };
+  // Explorer generic brand: no brand identity — generation stays generic.
+  if (!doc || doc.isGeneric === true) return { facts: [] };
 
   const gp = (doc.guidelinesProfile ?? {}) as Record<string, unknown>;
   const facts: BrandContextFact[] = [];

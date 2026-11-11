@@ -161,7 +161,8 @@ describe("Social Media CDF output path guards", () => {
     expect(String(result.error.message)).toMatch(/direct_routes_/i);
   });
 
-  it("blocks Social Media output approve when CREATIVE_QA release gate is blocked", () => {
+  // User rule (Nov 12 2026): creative QA is advisory — it never blocks approve.
+  it("CREATIVE_QA release gate never blocks Social Media output approve", () => {
     process.env.CREATIVE_QA = "on";
     const started = applyCdfTransition({
       action: "start",
@@ -193,10 +194,11 @@ describe("Social Media CDF output path guards", () => {
       executionId: "exec_sm_fail_qa",
       expectedVersion: session.sessionVersion,
     });
-    expect(approved.ok).toBe(false);
-    if (approved.ok) throw new Error("expected fail");
-    expect(String(approved.error.message)).toMatch(
-      /creative QA|release gate|blocked/i,
-    );
+    if (!approved.ok) {
+      expect(String(approved.error.message)).not.toMatch(/creative QA|release gate/i);
+      expect(
+        String((approved.error as { metadata?: { reason?: string } }).metadata?.reason ?? ""),
+      ).not.toBe("CDF_QUALITY_RELEASE_BLOCKED");
+    }
   });
 });

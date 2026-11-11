@@ -275,6 +275,7 @@ export class ProductSearchService {
         ],
       };
       if (brandId) brandFilter._id = brandId;
+      brandFilter.isGeneric = { $ne: true };
       tasks.push(
         Brands.find(brandFilter)
           .limit(perKindLimit)
@@ -627,6 +628,7 @@ export class ProductSearchService {
       const brands = await Brands.find({
         organizationId,
         status: "active",
+        isGeneric: { $ne: true },
         name: rx,
       })
         .limit(limit)

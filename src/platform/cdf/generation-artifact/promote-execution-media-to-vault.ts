@@ -139,7 +139,63 @@ export async function resolveExecutionMediaBlob(input: {
   return { ok: false, reason: "execution_media_artifact_not_found" };
 }
 
+/**
+ * Promotions in flight, keyed by org + media artifact. Parallel polls of one
+ * execution used to create one vault row each (up to 8 for one image).
+ */
+const promotionsInFlight = new Map<string, Promise<PromoteExecutionMediaToVaultResult>>();
+
+/**
+ * Promote execution media to a vault asset — idempotent per image.
+ *
+ * Re-ingesting the same execution (reopen, poll hydrate) must yield the same
+ * vaultAssetId, or the canonical ingest sees a "different payload" under the
+ * same idempotency key and fails a step that had already succeeded.
+ */
 export async function promoteExecutionMediaArtifactToVaultAsset(input: {
+  mediaArtifactId: string;
+  organizationId: string;
+  executionId: string;
+  userId?: string;
+  asyncMedia: AsyncMediaPlatform;
+}): Promise<PromoteExecutionMediaToVaultResult> {
+  const key = `${input.organizationId}:${input.mediaArtifactId.trim()}`;
+  const inFlight = promotionsInFlight.get(key);
+  if (inFlight) return inFlight;
+  const run = promoteOnce(input);
+  promotionsInFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    promotionsInFlight.delete(key);
+  }
+}
+
+/** Earliest existing preview row for this stored image, if any. */
+async function findExistingPreviewAsset(input: {
+  readonly storageKey: string;
+  readonly organizationId: string;
+}): Promise<string | undefined> {
+  if (!mongoose.isValidObjectId(input.organizationId)) return undefined;
+  try {
+    const row = await MediaFile.findOne(
+      {
+        organizationId: new mongoose.Types.ObjectId(input.organizationId),
+        status: "active",
+        storageKey: input.storageKey,
+        tag: "cdf-canonical-preview",
+      },
+      { _id: 1 },
+    )
+      .sort({ createdAt: 1 })
+      .lean<{ _id: mongoose.Types.ObjectId }>();
+    return row?._id ? String(row._id) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function promoteOnce(input: {
   mediaArtifactId: string;
   organizationId: string;
   executionId: string;
@@ -203,6 +259,37 @@ export async function promoteExecutionMediaArtifactToVaultAsset(input: {
     }
   } catch {
     // optional
+  }
+
+  // Same stored image already promoted → reuse that vault asset.
+  if (mongoose.connection.readyState === 1) {
+    const existingId = await findExistingPreviewAsset({
+      storageKey,
+      organizationId: input.organizationId,
+    });
+    if (existingId) {
+      return {
+        ok: true,
+        vaultAssetId: existingId,
+        storageKey,
+        mediaArtifactId,
+        mimeType: mimeType ?? "image/png",
+      };
+    }
+  } else {
+    const g = globalThis as typeof globalThis & {
+      __cdfVaultPromoteMap?: Map<string, string>;
+    };
+    const mapped = g.__cdfVaultPromoteMap?.get(mediaArtifactId);
+    if (mapped) {
+      return {
+        ok: true,
+        vaultAssetId: mapped,
+        storageKey,
+        mediaArtifactId,
+        mimeType: mimeType ?? "image/png",
+      };
+    }
   }
 
   const vaultObjectId = new mongoose.Types.ObjectId();

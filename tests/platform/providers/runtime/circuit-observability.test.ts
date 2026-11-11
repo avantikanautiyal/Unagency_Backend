@@ -513,24 +513,23 @@ describe("circuit observability + failure accounting", () => {
     });
     const engine = createDirectExecutionEngine({ runtime, toolRuntime });
 
-    for (const providerId of [
-      "provider.openai",
-      "provider.anthropic",
-      "provider.gemini",
-    ] as const) {
-      const trip = await engine.run({
-        requestId: `req_trip_${providerId}`,
-        rawPrompt: "trip",
-        organizationId: asOrganizationId("org_obs"),
-        correlationId: `corr_trip_${providerId}`,
-        metadata: sitemapMetadata({
-          preferredProviderId: providerId,
-          preferredModelId: "x",
-          failoverChain: [],
-        }),
-      });
-      assert.equal(trip.ok, true);
-      assert.equal(runtime.canDispatchToProvider(providerId), false);
+    // Breakers are per model: trip exactly the models the next run will use.
+    const trip = await engine.run({
+      requestId: "req_trip_all_obs",
+      rawPrompt: "trip",
+      organizationId: asOrganizationId("org_obs"),
+      correlationId: "corr_trip_all_obs",
+      metadata: sitemapMetadata({
+        failoverChain: [
+          { providerId: "provider.anthropic", modelId: "claude-sonnet-4-5" },
+          { providerId: "provider.gemini", modelId: "gemini-pro-latest" },
+        ],
+      }),
+    });
+    assert.equal(trip.ok, true);
+    assert.ok(captured.length > 0);
+    for (const providerId of new Set(captured)) {
+      assert.equal(runtime.canDispatchToProvider(String(providerId)), false);
     }
 
     const before = captured.length;

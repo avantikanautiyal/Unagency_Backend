@@ -35,7 +35,11 @@ export interface IProviderRuntime {
    * Whether the per-provider circuit breaker currently permits dispatch.
    * Used by Direct failover to skip OPEN providers before calling execute.
    */
-  canDispatchToProvider(providerId: string): boolean;
+  /**
+   * With `modelId`: whether that model's breaker allows dispatch. Without it:
+   * false when any breaker of the provider is open.
+   */
+  canDispatchToProvider(providerId: string, modelId?: string): boolean;
 
   /** Observability — in-memory breaker snapshots (not Redis-backed). */
   getCircuitBreakerSnapshots(): readonly CircuitBreakerState[];

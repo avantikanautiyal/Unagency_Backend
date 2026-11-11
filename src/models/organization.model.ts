@@ -20,6 +20,13 @@ export interface IOrganization {
   businessSize?: string;
   /** Business logo (MediaFile in this organisation). Display only. */
   logoAssetId?: mongoose.Types.ObjectId;
+  /**
+   * Account type picked at onboarding ("What best describes you?").
+   * "exploring" = personal workspace created silently for Just Exploring users —
+   * no business details, no brand setup prompts. Upgraded in place to a real
+   * business when the user later completes Set up your business.
+   */
+  accountType?: string;
 }
 
 const OrganizationSchema = new Schema<IOrganization>(
@@ -42,6 +49,7 @@ const OrganizationSchema = new Schema<IOrganization>(
     businessAge: { type: String, default: "" },
     businessSize: { type: String, default: "" },
     logoAssetId: { type: Schema.Types.ObjectId, ref: "MediaFile" },
+    accountType: { type: String, default: "" },
   },
   { collection: "organizations", timestamps: true }
 );
@@ -67,6 +75,7 @@ export class Organization {
   about?: string;
   businessAge?: string;
   businessSize?: string;
+  accountType?: string;
   constructor(data: any) {
     this.owner = data.owner;
     this.companyName = data.companyName || '';
@@ -84,6 +93,7 @@ export class Organization {
     this.about = data.about || '';
     this.businessAge = data.businessAge || '';
     this.businessSize = data.businessSize || '';
+    this.accountType = data.accountType || '';
 
   }
 }

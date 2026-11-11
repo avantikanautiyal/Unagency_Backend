@@ -47,13 +47,17 @@ async function onboardingAbandoned(): Promise<void> {
 }
 
 async function brandSetupAbandoned(): Promise<void> {
-  const orgs = await Organizations.find({ createdAt: { $lte: ago(DAY), $gte: ago(7 * DAY) } })
+  // Explorers chose not to set up a brand — never nudge them to.
+  const orgs = await Organizations.find({
+    createdAt: { $lte: ago(DAY), $gte: ago(7 * DAY) },
+    accountType: { $ne: "exploring" },
+  })
     .select("_id owner")
     .limit(BATCH)
     .lean();
   if (!orgs.length) return;
   const withBrand = new Set(
-    (await Brands.distinct("organizationId", { organizationId: { $in: orgs.map((o) => o._id) } })).map(String)
+    (await Brands.distinct("organizationId", { organizationId: { $in: orgs.map((o) => o._id) }, isGeneric: { $ne: true } })).map(String)
   );
   for (const org of orgs) {
     if (!org.owner || withBrand.has(String(org._id))) continue;

@@ -25,6 +25,7 @@ import {
 
 export interface CircuitBreakerDependencies {
   readonly providerId: ProviderId;
+  readonly modelId?: string;
   readonly config?: CircuitBreakerConfig;
   readonly nowIso?: () => string;
   readonly nowMs?: () => number;
@@ -32,6 +33,7 @@ export interface CircuitBreakerDependencies {
 
 export class CircuitBreaker implements ICircuitBreaker {
   readonly providerId: ProviderId;
+  readonly modelId?: string;
   private readonly config: CircuitBreakerConfig;
   private readonly nowIso: () => string;
   private readonly nowMs: () => number;
@@ -47,6 +49,7 @@ export class CircuitBreaker implements ICircuitBreaker {
 
   constructor(deps: CircuitBreakerDependencies) {
     this.providerId = deps.providerId;
+    this.modelId = deps.modelId;
     this.config = deps.config ?? DEFAULT_CIRCUIT_BREAKER_CONFIG;
     this.nowIso = deps.nowIso ?? (() => new Date().toISOString());
     this.nowMs = deps.nowMs ?? (() => Date.now());
@@ -171,6 +174,7 @@ export class CircuitBreaker implements ICircuitBreaker {
   snapshot(): CircuitBreakerState {
     return {
       providerId: this.providerId,
+      ...(this.modelId ? { modelId: this.modelId } : {}),
       state: this._state,
       failureCount: this.failureCount,
       successCount: this.successCount,
@@ -211,7 +215,7 @@ export class CircuitBreaker implements ICircuitBreaker {
       event,
       scope: "provider.circuit",
       provider: String(this.providerId),
-      model: ctx?.model,
+      model: ctx?.model ?? this.modelId,
       capability: ctx?.capability,
       failureCategory: ctx?.failureCategory,
       httpStatus: ctx?.httpStatus,
@@ -241,20 +245,32 @@ export class CircuitBreakerRegistry implements ICircuitBreakerRegistry {
     private readonly nowMs?: () => number
   ) {}
 
-  forProvider(providerId: ProviderId): ICircuitBreaker {
-    const key = String(providerId);
+  forProvider(providerId: ProviderId, modelId?: string): ICircuitBreaker {
+    const model = modelId?.trim() || undefined;
+    const key = model ? `${String(providerId)}::${model}` : String(providerId);
     const existing = this.breakers.get(key);
     if (existing) {
       return existing;
     }
     const breaker = new CircuitBreaker({
       providerId,
+      ...(model ? { modelId: model } : {}),
       config: this.config,
       nowIso: this.nowIso,
       nowMs: this.nowMs,
     });
     this.breakers.set(key, breaker);
     return breaker;
+  }
+
+  canDispatchAnyModel(providerId: ProviderId): boolean {
+    let allowed = true;
+    for (const breaker of this.breakers.values()) {
+      if (String(breaker.providerId) !== String(providerId)) continue;
+      // Evaluate every breaker so elapsed cooldowns move to half-open.
+      if (!breaker.canDispatch()) allowed = false;
+    }
+    return allowed;
   }
 
   snapshots(): readonly CircuitBreakerState[] {

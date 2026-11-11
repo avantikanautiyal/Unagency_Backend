@@ -374,6 +374,7 @@ async function materializeOneProject(input: {
     : (input.previewHtml ?? "");
   let previewHtml = rawPreviewHtml;
   let qualityReport: WebsiteQualityReport | undefined;
+  let previewIncomplete = false;
   if (rawPreviewHtml.trim()) {
     const qa = await evaluateWebsitePreview({
       html: rawPreviewHtml,
@@ -384,13 +385,19 @@ async function materializeOneProject(input: {
     const broken = qa.report.issues.filter(
       (i) => i.severity === "blocking" && BROKEN_PAGE_ISSUES.has(i.id)
     );
-    if (broken.length && input.failOnBrokenPreview) {
-      return failure(
-        new ValidationError(
-          `Website preview for "${project.title}" failed QA: ${broken
-            .map((i) => i.detail)
-            .join("; ")}`
-        )
+    // Never fail the website over preview QA: keep it and tell the user the
+    // preview may be incomplete (details stay in qualityReport + logs).
+    if (broken.length) {
+      previewIncomplete = true;
+      console.warn(
+        JSON.stringify({
+          scope: "website_export",
+          event: "preview_qa_incomplete_kept",
+          executionId: input.executionId,
+          title: project.title,
+          issues: broken.map((i) => i.id),
+          primaryRoute: input.failOnBrokenPreview === true,
+        }),
       );
     }
   }
@@ -440,9 +447,15 @@ async function materializeOneProject(input: {
       downloadFormats,
       ...(project.description ? { description: project.description } : {}),
       ...(qualityReport ? { qualityReport } : {}),
+      ...(previewIncomplete
+        ? { previewIncomplete: true, previewNote: WEBSITE_PREVIEW_INCOMPLETE_NOTE }
+        : {}),
     },
   });
 }
+
+/** Shown on a website route whose preview did not pass QA. */
+export const WEBSITE_PREVIEW_INCOMPLETE_NOTE = "Preview may be incomplete";
 
 /**
  * The same website content with its code removed, so the static preview is

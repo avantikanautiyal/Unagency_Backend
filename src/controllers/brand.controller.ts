@@ -20,6 +20,7 @@ export const listBrands = asyncHandler(async (req: RequestUser) => {
     status: (req.query.status as "active" | "archived" | "all" | undefined) ||
       "active",
     q: req.query.q as string | undefined,
+    includeGeneric: String(req.query.includeGeneric ?? "") === "true",
   });
   return new ApiResponse(200, data, "Brands fetched");
 });

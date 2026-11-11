@@ -13,6 +13,8 @@ export type CircuitState = "closed" | "open" | "half_open";
 
 export interface CircuitBreakerState {
   readonly providerId: ProviderId;
+  /** Set when the breaker guards one model (provider + model scope). */
+  readonly modelId?: string;
   readonly state: CircuitState;
   readonly failureCount: number;
   readonly successCount: number;

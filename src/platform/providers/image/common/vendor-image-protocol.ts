@@ -12,6 +12,10 @@ import {
   type MultimodalReferenceRole,
 } from "../../../ai/multimodal-context/reference-role";
 import { adaptCanonicalReferenceForProvider } from "./adapt-provider-reference";
+import {
+  logDroppedReference,
+  screenReferenceImage,
+} from "../../common/reference-image-guard";
 
 export interface VendorImageAuthContext {
   readonly apiKey?: string;
@@ -96,37 +100,50 @@ export function extractReferenceImages(
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const rec = candidate as Record<string, unknown>;
-    const mimeType =
-      typeof rec.mimeType === "string" && rec.mimeType.startsWith("image/")
+    const declaredMime =
+      typeof rec.mimeType === "string"
         ? rec.mimeType
-        : typeof rec.mime_type === "string" && rec.mime_type.startsWith("image/")
+        : typeof rec.mime_type === "string"
           ? rec.mime_type
           : undefined;
     const url = typeof rec.url === "string" ? rec.url.trim() : "";
-    let resolved: ReferenceImagePayload | undefined;
-    if (url.startsWith("data:")) {
-      const match = url.match(/^data:([^;]+);base64,(.+)$/i);
-      if (match?.[1] && match[2]) {
-        resolved = { mimeType: mimeType ?? match[1], base64: match[2], url };
-      }
-    } else {
-      const b64 =
-        typeof rec.base64 === "string"
-          ? rec.base64
-          : typeof rec.data === "string" && !String(rec.data).startsWith("http")
-            ? rec.data
-            : undefined;
-      if (b64 && (mimeType || url.startsWith("http"))) {
-        resolved = {
-          mimeType: mimeType ?? "image/png",
-          base64: b64,
-          url: url || undefined,
-        };
-      } else if (url.startsWith("http") && (mimeType || !rec.mimeType)) {
-        resolved = { mimeType: mimeType ?? "image/png", url };
-      }
+    const b64 =
+      typeof rec.base64 === "string"
+        ? rec.base64
+        : typeof rec.data === "string" && !String(rec.data).startsWith("http")
+          ? rec.data
+          : undefined;
+    // Only http(s) and data: URLs are fetchable references; base64 without a
+    // URL needs a declared type (unchanged rule).
+    const usableUrl = url.startsWith("data:") || url.startsWith("http") ? url : "";
+    if (!usableUrl && !(b64 && declaredMime)) continue;
+    // Real images only — a PDF/Word/ZIP here fails with HTTP 400 at every
+    // provider and trips the provider circuit breaker for everyone.
+    const screened = screenReferenceImage({
+      mimeType: declaredMime,
+      url: usableUrl || undefined,
+      base64: b64,
+    });
+    if (!screened.ok) {
+      logDroppedReference({
+        where: "extractReferenceImages",
+        reason: screened.reason,
+        detectedMimeType: screened.detectedMimeType,
+        assetId: typeof rec.assetId === "string" ? rec.assetId : undefined,
+      });
+      continue;
     }
-    if (!resolved) continue;
+    const resolved: ReferenceImagePayload = usableUrl.startsWith("data:")
+      ? {
+          mimeType: screened.mimeType,
+          base64: screened.base64,
+          url: `data:${screened.mimeType};base64,${screened.base64}`,
+        }
+      : {
+          mimeType: screened.mimeType,
+          ...(screened.base64 ? { base64: screened.base64 } : {}),
+          ...(usableUrl ? { url: usableUrl } : {}),
+        };
     const key = resolved.base64?.slice(0, 64) || resolved.url || "";
     if (!key || seen.has(key)) continue;
     seen.add(key);

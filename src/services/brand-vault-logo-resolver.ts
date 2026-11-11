@@ -4,6 +4,7 @@
  */
 
 import mongoose from "mongoose";
+import { isGenericBrandId } from "./explorer-workspace-service";
 import MediaFile from "../models/mediaFile.model";
 import type { KnowledgeResolveResult } from "../platform/os/creative/knowledge-resolver";
 import type { BrandContextAssetRef } from "../platform/os/creative/brand-context-packet";
@@ -189,6 +190,10 @@ export async function resolveBrandVaultLogos(input: {
     !mongoose.isValidObjectId(input.organizationId) ||
     !mongoose.isValidObjectId(input.brandId)
   ) {
+    return { candidates: [], needsChoice: false };
+  }
+  // Explorer generic brand: never ask "which vault logo?" — the brief/attachments decide.
+  if (await isGenericBrandId(input.brandId)) {
     return { candidates: [], needsChoice: false };
   }
 

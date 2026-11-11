@@ -12,6 +12,7 @@
  * - Confirmed brandId is never overwritten by later extract / AI output.
  */
 
+import { isGenericBrandId } from "../../../services/explorer-workspace-service";
 import mongoose from "mongoose";
 import Brands from "../../../models/brand.model";
 import { isKnownColorSurfaceForm } from "../../../services/brand-color-extraction";
@@ -548,6 +549,7 @@ export async function listActiveBrandsForOrganization(
   const docs = await Brands.find({
     organizationId: new mongoose.Types.ObjectId(orgId),
     status: "active",
+    isGeneric: { $ne: true },
   })
     .select({ _id: 1, name: 1 })
     .limit(200)
@@ -683,6 +685,8 @@ export async function runBrandMismatchCheck(input: {
 }): Promise<BrandMismatchCheckResult | null> {
   const selectedBrandId = input.brandId.trim();
   if (!selectedBrandId || !input.brief.trim()) return null;
+  // Explorers have no real brand to mismatch against.
+  if (await isGenericBrandId(selectedBrandId)) return null;
 
   const listBrands = input.listBrands ?? listActiveBrandsForOrganization;
   let brands: readonly TenantBrandRef[] = [];

@@ -28,6 +28,15 @@ export interface ICircuitBreaker {
 }
 
 export interface ICircuitBreakerRegistry {
-  forProvider(providerId: ProviderId): ICircuitBreaker;
+  /**
+   * Breaker for one provider model when `modelId` is given (one model's
+   * failures never block the provider's other models), else provider-wide.
+   */
+  forProvider(providerId: ProviderId, modelId?: string): ICircuitBreaker;
+  /**
+   * False when any breaker of this provider is denying dispatch — for callers
+   * that do not know the model.
+   */
+  canDispatchAnyModel?(providerId: ProviderId): boolean;
   snapshots(): readonly CircuitBreakerState[];
 }

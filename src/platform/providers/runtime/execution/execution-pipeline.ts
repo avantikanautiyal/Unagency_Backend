@@ -131,6 +131,50 @@ export function clearQuotaExhaustedProviders(): void {
   quotaExhaustedUntil.clear();
 }
 
+/** HTTP statuses that mean "this request is wrong", not "provider is down". */
+const CALLER_INPUT_HTTP_STATUSES = new Set([400, 413, 415, 422]);
+
+/**
+ * Failures caused by the request itself. They never trip the circuit breaker.
+ * Auth (401/403), timeouts (408), rate limits (429) and 5xx still count.
+ */
+export function isCallerInputFailureForCircuit(input: {
+  readonly failureCategory?: string;
+  readonly httpStatus?: number;
+  readonly message?: string;
+}): boolean {
+  const category = input.failureCategory ?? "";
+  // Model answered (HTTP 200) but without an image — a response outcome, not
+  // an outage; failover handles it.
+  if ((input.message ?? "").toLowerCase().includes("replied without an image")) {
+    return true;
+  }
+  if (
+    category === "authentication" ||
+    category === "timeout" ||
+    category === "rate_limit" ||
+    category === "quota" ||
+    category === "network" ||
+    category === "http_5xx" ||
+    category === "unavailable" ||
+    category === "provider_internal"
+  ) {
+    return false;
+  }
+  if (
+    category === "invalid_request" ||
+    category === "content_policy" ||
+    category === "invalid_asset"
+  ) {
+    return true;
+  }
+  if (typeof input.httpStatus === "number") {
+    return CALLER_INPUT_HTTP_STATUSES.has(input.httpStatus);
+  }
+  const m = (input.message ?? "").toLowerCase();
+  return /\bhttp\s*(400|413|415|422)\b/.test(m);
+}
+
 export class ExecutionPipeline {
   constructor(private readonly deps: ExecutionPipelineDependencies) {}
 
@@ -170,7 +214,9 @@ export class ExecutionPipeline {
     this.transition(session, "reserved");
     await this.publish(ProviderExecutionEventTypes.SESSION_RESERVED, session);
 
-    const breaker = this.deps.circuitBreakers.forProvider(providerId);
+    // One breaker per provider model: a failing model (or a bad request to it)
+    // must not block the provider's other models for every user.
+    const breaker = this.deps.circuitBreakers.forProvider(providerId, request.modelId);
     const circuitCtxBase: CircuitOutcomeContext = {
       model: ids.model,
       capability: ids.capability,
@@ -295,6 +341,18 @@ export class ExecutionPipeline {
             providerCode.includes("insufficient_quota")
           );
         const isQuotaExhaustion = failureCategory === "quota";
+        // Our own bad request (unsupported file, invalid parameter, safety
+        // rejection) — retrying elsewhere or later will not change it, and it
+        // says nothing about provider health. Counting these opened the
+        // breaker for every user after one bad upload.
+        const isCallerInputFailure =
+          !isTransientRateLimit &&
+          !isQuotaExhaustion &&
+          isCallerInputFailureForCircuit({
+            failureCategory,
+            httpStatus: enriched.httpStatus,
+            message: msg,
+          });
         // Structured-contract mismatches never reach here as HTTP failures
         // (HTTP succeeded → recordSuccess). Keep that invariant.
         const outcomeCtx: CircuitOutcomeContext = {
@@ -326,6 +384,15 @@ export class ExecutionPipeline {
               ...outcomeCtx,
               failureCategory: "quota",
               reason: "credit_quota_exhausted_non_tripping",
+              circuitCounted: false,
+            });
+          }
+        } else if (isCallerInputFailure) {
+          const concrete = breaker as CircuitBreaker;
+          if (typeof concrete.observeNonTrippingFailure === "function") {
+            concrete.observeNonTrippingFailure({
+              ...outcomeCtx,
+              reason: "caller_input_non_tripping",
               circuitCounted: false,
             });
           }

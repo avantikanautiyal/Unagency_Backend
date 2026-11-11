@@ -42,8 +42,9 @@ async function loadEntries(
     organizationId: new mongoose.Types.ObjectId(organizationId),
     status: { $ne: "archived" },
   })
-    .select("guidelinesProfile")
+    .select("guidelinesProfile isGeneric")
     .lean();
+  if (doc?.isGeneric === true) return [];
   const gp = (doc?.guidelinesProfile ?? {}) as Record<string, unknown>;
   const mem = gp[MEMORY_KEY] as PersistedMemoryV0 | undefined;
   return Array.isArray(mem?.entries) ? [...mem.entries] : [];
@@ -61,6 +62,7 @@ async function saveEntries(
     {
       _id: new mongoose.Types.ObjectId(brandId),
       organizationId: new mongoose.Types.ObjectId(organizationId),
+      isGeneric: { $ne: true },
     },
     {
       $set: {

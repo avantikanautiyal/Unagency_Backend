@@ -317,19 +317,22 @@ describe("provider circuit + CdfWebsiteSitemap failover", () => {
     const engine = createDirectExecutionEngine({ runtime, toolRuntime });
 
     // Website failover = Sonnet 5.5 → GPT-5.5 → Opus 5.5, then Gemini.
-    for (const providerId of ["provider.openai", "provider.anthropic", "provider.gemini"] as const) {
-      const trip = await engine.run({
-        requestId: `req_trip_${providerId}`,
-        rawPrompt: "trip",
-        organizationId: asOrganizationId("org_circuit_test"),
-        correlationId: `corr_trip_${providerId}`,
-        metadata: sitemapMetadata({
-          preferredProviderId: providerId,
-          preferredModelId: "x",
-          failoverChain: [],
-        }),
-      });
-      assert.equal(trip.ok, true);
+    // Breakers are per model: trip exactly the models the next run will use.
+    const sameRoute = sitemapMetadata({
+      failoverChain: [
+        { providerId: "provider.anthropic", modelId: "claude-sonnet-4-6" },
+      ],
+    });
+    const trip = await engine.run({
+      requestId: "req_trip_all",
+      rawPrompt: "trip",
+      organizationId: asOrganizationId("org_circuit_test"),
+      correlationId: "corr_trip_all",
+      metadata: sameRoute,
+    });
+    assert.equal(trip.ok, true);
+    assert.ok(captured.length > 0);
+    for (const providerId of new Set(captured)) {
       assert.equal(runtime.canDispatchToProvider(providerId), false);
     }
 

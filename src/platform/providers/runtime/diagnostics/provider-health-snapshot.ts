@@ -9,6 +9,8 @@ import type { PerformanceFailureCategory } from "../../routing/performance/contr
 
 export interface ProviderHealthSnapshot {
   readonly provider: string;
+  /** Present for model-scoped breakers. */
+  readonly model?: string;
   readonly circuitState: CircuitState;
   readonly failureCount: number;
   readonly failureThreshold: number;
@@ -39,6 +41,7 @@ export function buildProviderHealthSnapshots(
     }
     return {
       provider: String(snap.providerId),
+      ...(snap.modelId ? { model: snap.modelId } : {}),
       circuitState: snap.state,
       failureCount: snap.failureCount,
       failureThreshold: snap.failureThreshold ?? 5,

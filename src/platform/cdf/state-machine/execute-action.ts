@@ -2007,20 +2007,19 @@ export function prepareTransition(
       );
     }
 
-    // Existing CREATIVE_QA / governance release gate: do not advance when blocked.
+    // CREATIVE_QA / governance release gate is advisory: the user's approval
+    // always wins. A low score is recorded internally, never shown, never blocks.
     if (phaseContract?.requiresCanonicalCreate && creativeQaBlocksRelease()) {
       const gate = getExecutionReleaseGate(req.executionId);
       if (gate?.blocked) {
-        return failure(
-          cdfError(
-            "APPROVAL_INVALID",
-            gate.reason ??
-              "Cannot approve — creative QA / contract release gate blocked this output",
-            {
-              reason: "CDF_QUALITY_RELEASE_BLOCKED",
-              creativeScore: gate.creativeScore,
-            },
-          ),
+        console.info(
+          JSON.stringify({
+            scope: "cdf.approve",
+            event: "creative_qa_gate_advisory_approved",
+            executionId: req.executionId,
+            phaseId: phase.id,
+            creativeScore: gate.creativeScore ?? null,
+          }),
         );
       }
     }

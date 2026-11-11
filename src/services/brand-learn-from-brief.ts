@@ -5,6 +5,7 @@
  * is available; English/heuristic fallback only when offline (BRAND_EXTRACT_LLM).
  */
 
+import { isGenericBrandId } from "./explorer-workspace-service";
 import { brandService } from "./brand-service";
 import {
   extractBrandPreferencesFromPrompt,
@@ -88,6 +89,9 @@ export async function learnBrandKnowledgeFromBrief(
 ): Promise<LearnBrandFromBriefResult> {
   const brandId = input.brandId?.trim();
   if (!brandId) return { updated: false, reason: "missing_brand_id" };
+  if (await isGenericBrandId(brandId)) {
+    return { updated: false, brandId, reason: "generic_brand" };
+  }
 
   const promptParts = [
     ...(input.prompts ?? []).map((p) => p.trim()).filter(Boolean),
@@ -159,6 +163,9 @@ export async function learnBrandKnowledgeFromPromptUntrusted(input: {
   readonly preExtracted?: ProductBrandPreferences;
   readonly integration?: IDirectExecutionEngine;
 }): Promise<LearnBrandFromBriefResult> {
+  if (await isGenericBrandId(input.brandId)) {
+    return { updated: false, brandId: input.brandId, reason: "generic_brand" };
+  }
   let preferences: EnrichedBrandPreferences;
   if (input.preExtracted) {
     preferences = { ...input.preExtracted, extractionSource: "pre_extracted" };

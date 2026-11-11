@@ -301,7 +301,9 @@ export function tryIngestContractCanonicalCompletion(input: {
       return {
         kind: "ingest_failed",
         family: "generic",
-        fallbackReason: err.code,
+        // err.code is the inherited generic "VALIDATION_ERROR"; the specific
+        // reason (e.g. GENERATION_ARTIFACT_IDEMPOTENCY_CONFLICT) is here.
+        fallbackReason: err.generationArtifactCode,
         message: err.message,
         legacyCompatible: false,
       };

@@ -643,23 +643,126 @@ function isCircuitOpenFailureMessage(message: string | undefined): boolean {
 export function userFacingCircuitOpenMessage(input: {
   readonly candidateCount: number;
   readonly eligibleRemaining?: number;
+  /** Time until the soonest-blocking breaker re-opens for a test call. */
+  readonly retryAfterMs?: number;
 }): string {
+  const wait = waitPhrase(input.retryAfterMs);
   if (
     input.candidateCount > 1 &&
     (input.eligibleRemaining === undefined || input.eligibleRemaining > 0)
   ) {
-    return "AI providers are temporarily cooling down after recent failures. Wait about 30 seconds, then retry — we will try alternate models automatically.";
+    return `AI providers are temporarily cooling down after recent failures. Wait ${wait}, then retry — we will try alternate models automatically.`;
   }
   if (input.candidateCount > 1 && input.eligibleRemaining === 0) {
-    return "All eligible AI providers are temporarily unavailable. Please retry shortly.";
+    return allProvidersCoolingDownMessage(input.retryAfterMs);
   }
-  return "The selected provider is temporarily cooling down after recent failures. Wait about 30 seconds, then retry.";
+  return `The selected provider is temporarily cooling down after recent failures. Wait ${wait}, then retry.`;
 }
 
 export const ALL_PROVIDERS_COOLING_DOWN_CODE = "ALL_PROVIDERS_COOLING_DOWN";
 
-export function allProvidersCoolingDownMessage(): string {
-  return "All eligible AI providers are temporarily unavailable. Please retry shortly.";
+/** "about 25 seconds" — rounded up to 5 s; 30 s when unknown. */
+function waitPhrase(retryAfterMs?: number): string {
+  if (typeof retryAfterMs !== "number" || !Number.isFinite(retryAfterMs) || retryAfterMs <= 0) {
+    return "about 30 seconds";
+  }
+  const seconds = Math.max(5, Math.ceil(retryAfterMs / 5_000) * 5);
+  return seconds >= 120
+    ? `about ${Math.ceil(seconds / 60)} minutes`
+    : `about ${seconds} seconds`;
+}
+
+export function allProvidersCoolingDownMessage(retryAfterMs?: number): string {
+  return `All eligible AI providers are temporarily unavailable. Please retry in ${waitPhrase(retryAfterMs)}.`;
+}
+
+/**
+ * A provider rejected an attached file because it is not an image (PDF,
+ * Word, ZIP…). Matches the vendor wording only when the named type is a
+ * non-image, so it fails identically on every engine.
+ */
+export function isReferenceFileRejection(message: string | undefined): boolean {
+  const m = (message ?? "").toLowerCase();
+  if (!m) return false;
+  const nonImageType = /(application|text|audio|video|font|model)\/[a-z0-9.+-]+/;
+  if (/unsupported mime type/.test(m) && nonImageType.test(m)) return true;
+  return (
+    /expected a base64-encoded data url with an image mime type/.test(m) &&
+    nonImageType.test(m)
+  );
+}
+
+export const REFERENCE_FILE_REJECTED_MESSAGE =
+  "One of the attached files isn't an image, so it can't be used as a visual reference. Remove it or attach a PNG or JPEG, then retry.";
+
+function logReferenceFileStop(
+  requestId: string,
+  candidate: { readonly providerId: string; readonly modelId: string },
+): void {
+  // eslint-disable-next-line no-console
+  console.warn(
+    JSON.stringify({
+      scope: "provider.failover",
+      event: "stop_on_non_image_reference",
+      providerId: String(candidate.providerId),
+      modelId: String(candidate.modelId),
+      requestId,
+    }),
+  );
+}
+
+/** Model id the runtime's per-model breaker is keyed by. */
+function breakerModelId(candidate: {
+  readonly providerId: string;
+  readonly modelId: string;
+}): string {
+  return resolveExecutableModelId(
+    String(candidate.providerId),
+    String(candidate.modelId),
+  );
+}
+
+function findCandidateBreakerSnapshot<
+  T extends { readonly providerId: unknown; readonly modelId?: string },
+>(
+  snaps: readonly T[],
+  candidate: { readonly providerId: string; readonly modelId: string },
+): T | undefined {
+  const model = breakerModelId(candidate);
+  return (
+    snaps.find(
+      (s) => String(s.providerId) === String(candidate.providerId) && s.modelId === model,
+    ) ??
+    snaps.find(
+      (s) => String(s.providerId) === String(candidate.providerId) && !s.modelId,
+    )
+  );
+}
+
+/** Longest remaining cooldown among these candidates' open breakers (ms). */
+function candidatesOpenCooldownMs(
+  snaps: readonly {
+    readonly providerId: unknown;
+    readonly modelId?: string;
+    readonly state: string;
+    readonly openedAtMs?: number;
+    readonly openedAt?: string;
+    readonly resetTimeoutMs?: number;
+  }[],
+  candidates: readonly { readonly providerId: string; readonly modelId: string }[],
+): number {
+  let max = 0;
+  for (const c of candidates) {
+    const s = findCandidateBreakerSnapshot(snaps, c);
+    if (!s || s.state !== "open") continue;
+    const openedMs = s.openedAtMs ?? (s.openedAt ? Date.parse(s.openedAt) : NaN);
+    const reset = s.resetTimeoutMs ?? 30_000;
+    const remaining = Number.isFinite(openedMs)
+      ? Math.max(0, reset - (Date.now() - openedMs))
+      : reset;
+    max = Math.max(max, remaining);
+  }
+  return max;
 }
 
 export function userFacingProviderFailureMessage(input: {
@@ -667,7 +770,11 @@ export function userFacingProviderFailureMessage(input: {
   readonly candidateCount: number;
   readonly eligibleRemaining?: number;
   readonly originalMessage?: string;
+  readonly retryAfterMs?: number;
 }): string {
+  if (isReferenceFileRejection(input.originalMessage)) {
+    return REFERENCE_FILE_REJECTED_MESSAGE;
+  }
   switch (input.category) {
     case "quota":
       return "Provider quota or credits are exhausted. Check billing for this provider, then retry.";
@@ -686,6 +793,7 @@ export function userFacingProviderFailureMessage(input: {
       return userFacingCircuitOpenMessage({
         candidateCount: input.candidateCount,
         eligibleRemaining: input.eligibleRemaining,
+        retryAfterMs: input.retryAfterMs,
       });
     default: {
       if (
@@ -1562,7 +1670,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
     let lastFailureMessage = "Provider execution failed";
     // Provider-wide circuit breaker (cooling) vs per-model rate-limit skip
     // vs provider-wide credit/quota skip for the rest of this execution.
+    // Keyed `${providerId}::${executable modelId}` — breakers are per model.
     const circuitOpenProviders = new Set<string>();
+    const circuitKey = (c: { readonly providerId: string; readonly modelId: string }) =>
+      `${String(c.providerId)}::${breakerModelId(c)}`;
     const rateLimitedCandidateKeys = new Set<string>();
     const quotaExhaustedProviders = new Set<string>();
     // A deck whose slide expansion failed gets one more try on a strong model
@@ -1574,15 +1685,16 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       const candidateKey = `${candidate.providerId}::${candidate.modelId}`;
       const runtimeCircuitOpen = !this.deps.runtime.canDispatchToProvider(
         candidate.providerId,
+        breakerModelId(candidate),
       );
       if (
-        circuitOpenProviders.has(candidate.providerId) ||
+        circuitOpenProviders.has(circuitKey(candidate)) ||
         runtimeCircuitOpen ||
         rateLimitedCandidateKeys.has(candidateKey) ||
         quotaExhaustedProviders.has(candidate.providerId)
       ) {
         if (runtimeCircuitOpen) {
-          circuitOpenProviders.add(candidate.providerId);
+          circuitOpenProviders.add(circuitKey(candidate));
         }
         const now = this.nowIso();
         const skipReason = quotaExhaustedProviders.has(candidate.providerId)
@@ -1823,9 +1935,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         continue;
       }
       const attemptResult = result;
-      const circuitBeforeSnap = this.deps.runtime
-        .getCircuitBreakerSnapshots()
-        .find((s) => String(s.providerId) === candidate.providerId);
+      const circuitBeforeSnap = findCandidateBreakerSnapshot(
+        this.deps.runtime.getCircuitBreakerSnapshots(),
+        candidate,
+      );
       const circuitStateBefore = circuitBeforeSnap?.state ?? "closed";
       const pushAttempt = (entry: {
         readonly success: boolean;
@@ -1836,9 +1949,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         readonly httpStatus?: number;
         readonly providerErrorCode?: string;
       }) => {
-        const circuitAfterSnap = this.deps.runtime
-          .getCircuitBreakerSnapshots()
-          .find((s) => String(s.providerId) === candidate.providerId);
+        const circuitAfterSnap = findCandidateBreakerSnapshot(
+          this.deps.runtime.getCircuitBreakerSnapshots(),
+          candidate,
+        );
         attemptHistory.push({
           attemptId: `direct_attempt_${candidateIndex}`,
           positionInRoute: candidateIndex,
@@ -1902,9 +2016,15 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
               ? errMeta.httpStatus
               : undefined,
         });
+        if (isReferenceFileRejection(lastFailureMessage)) {
+          // A non-image file was sent as an image: every engine rejects it the
+          // same way, so trying the rest only multiplies the failure.
+          logReferenceFileStop(request.requestId, candidate);
+          break;
+        }
         if (isCircuitOpenFailureMessage(lastFailureMessage)) {
           // Local skip state for subsequent candidates of THIS execution only.
-          circuitOpenProviders.add(candidate.providerId);
+          circuitOpenProviders.add(circuitKey(candidate));
         } else if (
           isQuotaExhaustionFailure({
             failureCategory: failCat,
@@ -1949,8 +2069,12 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
           httpStatus: attemptResult.value.error?.httpStatus,
           providerErrorCode: attemptResult.value.error?.providerErrorCode,
         });
+        if (isReferenceFileRejection(lastFailureMessage)) {
+          logReferenceFileStop(request.requestId, candidate);
+          break;
+        }
         if (isCircuitOpenFailureMessage(lastFailureMessage)) {
-          circuitOpenProviders.add(candidate.providerId);
+          circuitOpenProviders.add(circuitKey(candidate));
         } else if (
           isQuotaExhaustionFailure({
             failureCategory: failCat,
@@ -1978,7 +2102,7 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
                   i > candidateIndex &&
                   DECK_RETRY_PROVIDERS.has(c.providerId) &&
                   !quotaExhaustedProviders.has(c.providerId) &&
-                  !circuitOpenProviders.has(c.providerId),
+                  !circuitOpenProviders.has(circuitKey(c)),
               );
           if (retryIndex < 0) break;
           presentationExpansionRetryUsed = true;
@@ -2233,14 +2357,10 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       const allCircuitOpen = attemptHistory.every(
         (a) => a.failureCategory === "circuit_open",
       );
-      const snaps = this.deps.runtime.getCircuitBreakerSnapshots();
-      const maxCooldown = snaps.reduce((max, s) => {
-        if (s.state !== "open") return max;
-        const openedMs = s.openedAtMs ?? (s.openedAt ? Date.parse(s.openedAt) : NaN);
-        const reset = s.resetTimeoutMs ?? 30_000;
-        if (!Number.isFinite(openedMs)) return Math.max(max, reset);
-        return Math.max(max, Math.max(0, reset - (Date.now() - openedMs)));
-      }, 0);
+      const maxCooldown = candidatesOpenCooldownMs(
+        this.deps.runtime.getCircuitBreakerSnapshots(),
+        uniqueCandidates,
+      );
       const retryAfterMs = allCircuitOpen ? Math.max(maxCooldown, 1_000) : undefined;
       result = success({
         requestId: `${request.requestId}_rt`,
@@ -2252,7 +2372,7 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
             ? ALL_PROVIDERS_COOLING_DOWN_CODE
             : last.errorCode ?? "PROVIDER_ERROR",
           message: allCircuitOpen
-            ? allProvidersCoolingDownMessage()
+            ? allProvidersCoolingDownMessage(retryAfterMs)
             : lastFailureMessage,
           failureCategory: allCircuitOpen
             ? "circuit_open"
@@ -2279,7 +2399,7 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
         ).length,
       });
       if (allCircuitOpen) {
-        lastFailureMessage = allProvidersCoolingDownMessage();
+        lastFailureMessage = allProvidersCoolingDownMessage(retryAfterMs);
       }
     }
 
@@ -2321,32 +2441,30 @@ export class DirectExecutionEngine implements IDirectExecutionEngine {
       // Circuit-open copy is only for genuine circuit_open category.
       const eligibleRemaining = uniqueCandidates.filter(
         (c) =>
-          !circuitOpenProviders.has(c.providerId) &&
+          !circuitOpenProviders.has(circuitKey(c)) &&
           !quotaExhaustedProviders.has(c.providerId) &&
-          this.deps.runtime.canDispatchToProvider(c.providerId) &&
+          this.deps.runtime.canDispatchToProvider(c.providerId, breakerModelId(c)) &&
           !rateLimitedCandidateKeys.has(`${c.providerId}::${c.modelId}`),
       ).length;
       const allCoolingDown =
         category === "circuit_open" &&
         uniqueCandidates.length > 1 &&
         eligibleRemaining === 0;
+      const candidateCooldownMs = candidatesOpenCooldownMs(
+        this.deps.runtime.getCircuitBreakerSnapshots(),
+        uniqueCandidates,
+      );
       lastFailureMessage = allCoolingDown
-        ? allProvidersCoolingDownMessage()
+        ? allProvidersCoolingDownMessage(candidateCooldownMs)
         : userFacingProviderFailureMessage({
             category,
             candidateCount: uniqueCandidates.length,
             eligibleRemaining,
             originalMessage: lastFailureMessage,
+            retryAfterMs: candidateCooldownMs,
           });
       if (result?.ok && result.value.error) {
-        const snaps = this.deps.runtime.getCircuitBreakerSnapshots();
-        const maxCooldown = snaps.reduce((max, s) => {
-          if (s.state !== "open") return max;
-          const openedMs = s.openedAtMs ?? (s.openedAt ? Date.parse(s.openedAt) : NaN);
-          const reset = s.resetTimeoutMs ?? 30_000;
-          if (!Number.isFinite(openedMs)) return Math.max(max, reset);
-          return Math.max(max, Math.max(0, reset - (Date.now() - openedMs)));
-        }, 0);
+        const maxCooldown = candidateCooldownMs;
         result = success({
           ...result.value,
           error: {

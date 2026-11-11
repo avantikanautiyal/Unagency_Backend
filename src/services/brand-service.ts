@@ -85,6 +85,8 @@ export type BrandDto = {
   guidelinesProfile: IBrandGuidelinesProfile;
   memberUserIds: string[];
   archivedAt?: string;
+  /** Hidden explorer brand — clients never list it as a selectable brand. */
+  isGeneric?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -107,6 +109,7 @@ export function toBrandDto(doc: IBrand): BrandDto {
     guidelinesProfile: (doc.guidelinesProfile ?? {}) as IBrandGuidelinesProfile,
     memberUserIds: (doc.memberUserIds ?? []).map((id) => id.toString()),
     archivedAt: doc.archivedAt ? doc.archivedAt.toISOString() : undefined,
+    ...(doc.isGeneric ? { isGeneric: true } : {}),
     createdAt: doc.createdAt?.toISOString?.() ?? new Date().toISOString(),
     updatedAt: doc.updatedAt?.toISOString?.() ?? new Date().toISOString(),
   };
@@ -200,6 +203,7 @@ async function assertUniqueBrandNameIndustry(input: {
   const filter: Record<string, unknown> = {
     organizationId: new mongoose.Types.ObjectId(input.organizationId),
     status: "active",
+    isGeneric: { $ne: true },
     name: normalizedMatch(input.name),
     industry: industry
       ? normalizedMatch(industry)
@@ -250,9 +254,11 @@ export class BrandService {
       await this.assertAssetInOrg(input.logoAssetId, organizationId);
     }
 
+    // The hidden explorer brand never counts toward the plan brand limit.
     const activeCount = await Brands.countDocuments({
       organizationId: new mongoose.Types.ObjectId(organizationId),
       status: "active",
+      isGeneric: { $ne: true },
     });
     const { assertBrandLimit } = await import("../billing/entitlement-service");
     await assertBrandLimit(input.userId, organizationId, activeCount);
@@ -302,6 +308,8 @@ export class BrandService {
     organizationId?: string;
     status?: BrandStatus | "all";
     q?: string;
+    /** Include the hidden explorer brand (vault views only). */
+    includeGeneric?: boolean;
   }): Promise<BrandDto[]> {
     let organizationId: string;
     try {
@@ -319,6 +327,7 @@ export class BrandService {
     const filter: Record<string, unknown> = {
       organizationId: new mongoose.Types.ObjectId(organizationId),
     };
+    if (!input.includeGeneric) filter.isGeneric = { $ne: true };
     if (input.status && input.status !== "all") {
       filter.status = input.status;
     } else if (!input.status) {

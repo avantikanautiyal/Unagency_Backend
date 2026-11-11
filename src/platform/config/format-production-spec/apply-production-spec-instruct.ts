@@ -262,6 +262,54 @@ export function applyProductionSpecInstructToMetadata(
 /**
  * Ensure a provider-facing prompt includes the Spec block for this metadata.
  */
+/** Route / direction exploration actions (legacy fan-out and planning). */
+const ROUTE_EXPLORATION_ACTIONS = new Set([
+  "route_visual",
+  "route_visual_refine",
+  "visual_direction",
+]);
+
+/**
+ * Route / direction exploration: the creative options a user picks from
+ * (legacy route_visual fan-out, visual direction, CDF "...routes" /
+ * "...-options" phases). These prompts stay free of the production block —
+ * placement, export and release-gate rules belong to the final deliverable.
+ */
+export function isRouteExplorationMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  if (!metadata) return false;
+  const action =
+    typeof metadata.productAction === "string"
+      ? metadata.productAction.trim().toLowerCase()
+      : "";
+  if (ROUTE_EXPLORATION_ACTIONS.has(action)) return true;
+  const phase =
+    typeof metadata.cdfPhaseId === "string" ? metadata.cdfPhaseId.trim().toLowerCase() : "";
+  return /(^|-)routes$/.test(phase) || /-options$/.test(phase);
+}
+
+/** "aspect 4:5" from a production block's Canvas line. */
+export function aspectRatioFromProductionBlock(text: string | undefined): string | undefined {
+  const m = (text ?? "").match(/aspect(?:\s*ratio)?[\s:]+(\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?)/i);
+  return m?.[1]?.replace(/\s+/g, "");
+}
+
+/**
+ * Keep the canvas shape when the block is left out: the image models read the
+ * aspect ratio from metadata (payload) when the prompt no longer states it.
+ */
+export function withProductionAspectRatio(
+  metadata: Record<string, unknown>,
+  blockText: string | undefined,
+): Record<string, unknown> {
+  if (typeof metadata.aspectRatio === "string" && metadata.aspectRatio.trim()) {
+    return metadata;
+  }
+  const aspect = aspectRatioFromProductionBlock(blockText);
+  return aspect ? { ...metadata, aspectRatio: aspect } : metadata;
+}
+
 export function ensureProviderPromptHasProductionSpec(input: {
   readonly prompt: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
@@ -289,6 +337,17 @@ export function ensureProviderPromptHasProductionSpec(input: {
   }
 
   const before = input.prompt.trim();
+  if (isRouteExplorationMetadata(input.metadata)) {
+    return {
+      prompt: before,
+      metadata: {
+        ...withProductionAspectRatio(applied.metadata, blockText),
+        productionSpecPromptOmitted: "route_exploration",
+      },
+      injected: false,
+      productionRuleId: applied.bundle?.binding.productionRuleId,
+    };
+  }
   const after = appendProductionPromptBlockToText(before, blockText);
   return {
     prompt: after,

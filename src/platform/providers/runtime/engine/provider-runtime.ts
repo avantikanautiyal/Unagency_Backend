@@ -211,10 +211,16 @@ export class ProviderRuntime implements IProviderRuntime {
     );
   }
 
-  canDispatchToProvider(providerId: string): boolean {
-    return this.deps.circuitBreakers
-      .forProvider(asProviderId(providerId))
-      .canDispatch();
+  canDispatchToProvider(providerId: string, modelId?: string): boolean {
+    const registry = this.deps.circuitBreakers;
+    const id = asProviderId(providerId);
+    if (modelId?.trim()) {
+      return registry.forProvider(id, modelId).canDispatch();
+    }
+    if (typeof registry.canDispatchAnyModel === "function") {
+      return registry.canDispatchAnyModel(id);
+    }
+    return registry.forProvider(id).canDispatch();
   }
 
   getCircuitBreakerSnapshots() {

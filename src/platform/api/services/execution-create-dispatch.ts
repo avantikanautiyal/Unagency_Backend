@@ -1450,8 +1450,18 @@ export async function runCreateDispatch(
             workingMetadata as Record<string, unknown> | undefined,
           )
         ) {
-          status = "failed";
-          errorMessage = `Canonical CDF completion ingest failed: ${msg}`;
+          const { executionHasGeneratedMedia, canonicalSaveFailedStamps } =
+            await import("./execution-cdf-canonical-ingest");
+          if (status === "succeeded" && executionHasGeneratedMedia(mediaArtifactIds ?? [])) {
+            // The creative exists — keep it; the save failure is a note.
+            structuralMetadataStamps = {
+              ...(structuralMetadataStamps ?? {}),
+              ...canonicalSaveFailedStamps(`ingest_exception: ${msg.slice(0, 160)}`),
+            };
+          } else {
+            status = "failed";
+            errorMessage = `Canonical CDF completion ingest failed: ${msg}`;
+          }
         }
       }
     }
@@ -2563,7 +2573,21 @@ export async function runCreateDispatch(
     }
   }
 
-  if (status === "succeeded" && artifactRefs.length > 0 && !releaseBlocked) {
+  // Creative QA / governance is advisory: a low score never withholds a
+  // generated creative. Recorded internally (release gate stamp + log).
+  if (status === "succeeded" && releaseBlocked) {
+    logOsExecutionEvent("execution.creative_qa.advisory_release", {
+      requestId: correlationId,
+      executionId,
+      organizationId: trustedOrganizationId,
+      status: "warning",
+      errorCode:
+        phase6Governance.evaluation.creativeScore != null
+          ? `creative_score_${phase6Governance.evaluation.creativeScore}`
+          : "creative_qa_gate",
+    });
+  }
+  if (status === "succeeded" && artifactRefs.length > 0) {
     autoDelivery = await maybeAutoDeliverOnSuccess({
       deliveryService: host.deliveryService,
       organizationId: trustedOrganizationId,
@@ -2573,13 +2597,6 @@ export async function runCreateDispatch(
       createId: host.deps.createId,
       metadata: workingMetadata,
     });
-  } else if (status === "succeeded" && releaseBlocked) {
-    autoDelivery = {
-      error:
-        phase6Governance.evaluation.creativeScore != null
-          ? `Release blocked — creative score ${phase6Governance.evaluation.creativeScore}/100 (gate ${CREATIVE_SCORE_RELEASE_GATE})`
-          : "Release blocked — creative QA gate failed",
-    };
   }
 
   try {
@@ -3773,10 +3790,59 @@ function cdfDeliveryNoteStamp(
   metadata: Readonly<Record<string, unknown>> | undefined,
 ): { cdfDeliveryNote?: string } {
   const fromOutput = runtimeOutput?.cdfDeliveryNote;
-  if (typeof fromOutput === "string" && fromOutput.trim()) {
-    return { cdfDeliveryNote: fromOutput.trim() };
+  const designNote =
+    typeof fromOutput === "string" && fromOutput.trim()
+      ? fromOutput.trim()
+      : metadata?.cdfApprovedDesignFallback === true
+        ? CDF_DELIVERY_NOTE_FROM_BRIEF
+        : undefined;
+  const fileNote = referenceDocumentsNote(metadata);
+  const note = [designNote, fileNote].filter(Boolean).join(" ");
+  return note ? { cdfDeliveryNote: note } : {};
+}
+
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Tell the client what happened to attached non-image files (see
+ * product-asset-input-bridge): read as brief text, or not used at all.
+ */
+export function referenceDocumentsNote(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  const docs = Array.isArray(metadata?.referenceDocuments)
+    ? (metadata!.referenceDocuments as Array<Record<string, unknown>>)
+    : [];
+  if (!docs.length) return undefined;
+  const name = (d: Record<string, unknown>) =>
+    typeof d.fileName === "string" && d.fileName.trim()
+      ? `"${d.fileName.trim()}"`
+      : "an attached file";
+  const used = docs.filter((d) => d.usedAs === "brief_text").map(name);
+  const badFormat = docs
+    .filter((d) => d.usedAs !== "brief_text" && d.skipReason === "unsupported_image_format")
+    .map(name);
+  const skipped = docs
+    .filter((d) => d.usedAs !== "brief_text" && d.skipReason !== "unsupported_image_format")
+    .map(name);
+  const parts: string[] = [];
+  if (used.length) {
+    parts.push(`We used the text in ${joinNames(used)} as part of the brief.`);
   }
-  return metadata?.cdfApprovedDesignFallback === true
-    ? { cdfDeliveryNote: CDF_DELIVERY_NOTE_FROM_BRIEF }
-    : {};
+  if (badFormat.length) {
+    parts.push(
+      `${joinNames(badFormat)} ${badFormat.length === 1 ? "is" : "are"} in a format the image models can't read, so ${badFormat.length === 1 ? "it wasn't" : "they weren't"} used as a visual reference. PNG or JPEG works.`,
+    );
+  }
+  if (skipped.length) {
+    parts.push(
+      skipped.length === 1
+        ? `${skipped[0]} isn't an image, so it wasn't used as a visual reference.`
+        : `${joinNames(skipped)} aren't images, so they weren't used as visual references.`,
+    );
+  }
+  return parts.join(" ") || undefined;
 }

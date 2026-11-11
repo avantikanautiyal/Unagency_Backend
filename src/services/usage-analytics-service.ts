@@ -71,7 +71,7 @@ export class UsageAnalyticsService {
         Organization: orgOid,
         invitationStatus: "accepted",
       }),
-      Brands.countDocuments({ organizationId: orgOid, status: "active" }),
+      Brands.countDocuments({ organizationId: orgOid, status: "active", isGeneric: { $ne: true } }),
     ]);
 
     const storageBytes = assets.reduce(

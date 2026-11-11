@@ -13,10 +13,16 @@ import { permissionsForRoles } from "../authorization/rbac";
 import { mapLegacyRoleToPlatformRoles } from "../auth/firebase/role-permission-mapper";
 import type { ITenantService } from "../interfaces";
 import { isFirebaseAuthenticatedPrincipal } from "../auth/firebase/firebase-authentication-adapter";
+import {
+  findGenericBrandId,
+  isExplorerAccountType,
+} from "../../../services/explorer-workspace-service";
 
 export type CurrentPrincipalMembership = {
   readonly organizationId: string;
   readonly organizationName?: string;
+  /** Onboarding account type of the organisation ("exploring" = personal workspace). */
+  readonly accountType?: string;
   readonly source: "owner" | "team";
   readonly teamRole?: "owner" | "member";
   readonly roles: readonly RoleName[];
@@ -44,6 +50,10 @@ export type CurrentPrincipalResponse = {
   readonly workspaces: readonly CurrentPrincipalWorkspace[];
   readonly onboarding: {
     readonly needsOrganization: boolean;
+    /** Account type of the current organisation ("exploring" = Just Exploring). */
+    readonly accountType?: string;
+    /** Hidden generic brand used by explorers instead of a real brand. */
+    readonly genericBrandId?: string;
   };
 };
 
@@ -75,6 +85,7 @@ export class CurrentPrincipalService {
       memberships.push({
         organizationId: owned._id.toString(),
         organizationName: owned.companyName,
+        ...(owned.accountType ? { accountType: owned.accountType } : {}),
         source: "owner",
         teamRole: "owner",
         roles: mapLegacyRoleToPlatformRoles(mongoUser.role, {
@@ -95,6 +106,7 @@ export class CurrentPrincipalService {
       memberships.push({
         organizationId: orgId,
         organizationName: org?.companyName,
+        ...(org?.accountType ? { accountType: org.accountType } : {}),
         source: "team",
         teamRole: row.role,
         roles: mapLegacyRoleToPlatformRoles(mongoUser.role, {
@@ -122,6 +134,15 @@ export class CurrentPrincipalService {
         }
       }
     }
+
+    const currentMembership = memberships.find(
+      (m) => m.organizationId === currentOrganizationId
+    );
+    const accountType = currentMembership?.accountType;
+    const genericBrandId =
+      currentOrganizationId && isExplorerAccountType(accountType)
+        ? await findGenericBrandId(currentOrganizationId).catch(() => undefined)
+        : undefined;
 
     const roles = principal.roles;
     const permissions = permissionsForRoles([...roles]);
@@ -151,6 +172,8 @@ export class CurrentPrincipalService {
       workspaces,
       onboarding: {
         needsOrganization: memberships.length === 0,
+        ...(accountType ? { accountType } : {}),
+        ...(genericBrandId ? { genericBrandId } : {}),
       },
     });
   }

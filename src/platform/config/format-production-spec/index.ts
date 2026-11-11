@@ -163,7 +163,9 @@ export {
   appendProductionPromptBlockToText,
   applyProductionSpecInstructToMetadata,
   ensureProviderPromptHasProductionSpec,
+  isRouteExplorationMetadata,
   promptContainsProductionSpecBlock,
+  withProductionAspectRatio,
   resolveProductionInstructBundle,
   resolveProductionInstructInputFromMetadata,
 } from "./apply-production-spec-instruct";

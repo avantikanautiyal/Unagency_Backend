@@ -501,6 +501,35 @@ function isDeferredWebsiteMeta(
   return kind === "deferred_website" || kind === "website";
 }
 
+/**
+ * The ingest was blocked only because this execution's earlier save already
+ * holds the idempotency key (re-ingest on poll / reopen). The creative exists;
+ * callers must not turn a succeeded execution into a failure for this.
+ */
+export function isIdempotencyConflictOnlyBlock(
+  out: Pick<
+    CdfCanonicalIngestAttachResult,
+    | "productCompletionBlocked"
+    | "productCompletionBlockReason"
+    | "presentationIngestFailure"
+    | "packagingIngestFailure"
+    | "socialMediaIngestFailure"
+    | "genericIngestFailure"
+  >,
+): boolean {
+  if (!out.productCompletionBlocked) return false;
+  const texts = [
+    out.productCompletionBlockReason,
+    ...[
+      out.presentationIngestFailure,
+      out.packagingIngestFailure,
+      out.socialMediaIngestFailure,
+      out.genericIngestFailure,
+    ].flatMap((f) => (f ? [f.cdfFallbackReason, f.message] : [])),
+  ].filter((t): t is string => typeof t === "string");
+  return texts.some((t) => /IDEMPOTENCY_CONFLICT/i.test(t));
+}
+
 function failureRecord(input: {
   status?: string;
   id?: string;
@@ -521,7 +550,74 @@ function failureRecord(input: {
  * Attempt presentation / packaging / social-media canonical ingest for a
  * successful provider run. Sole ingest implementation for sync + recovered.
  */
-export async function applyCdfCanonicalCompletionIngest(input: {
+/** Shown on the creative when it could not be saved as a version. */
+export const CANONICAL_SAVE_FAILED_NOTE = "Couldn't save this version";
+
+/** Block reasons that mean the generated file itself is missing. */
+const MEDIA_MISSING_REASON =
+  /media_artifact_not_found|invalid_blob_storage_key|missing_media_artifact_id|not_execution_media_artifact|blob_not_found|bytes unavailable/i;
+
+/** True when the provider produced real media for this execution. */
+export function executionHasGeneratedMedia(
+  mediaArtifactIds: readonly string[] | undefined,
+): boolean {
+  return (mediaArtifactIds ?? []).some(
+    (id) => typeof id === "string" && id.trim().startsWith("art_"),
+  );
+}
+
+/**
+ * Stamps for a creative that exists but could not be saved as a canonical
+ * version. The step still succeeds and the creative is shown with a note —
+ * a failed save must never hide a generated creative.
+ */
+export function canonicalSaveFailedStamps(reason: string): Record<string, unknown> {
+  return {
+    cdfCanonicalSaveFailed: true,
+    cdfCanonicalSaveFailReason: reason,
+    cdfCanonicalSaveNote: CANONICAL_SAVE_FAILED_NOTE,
+    productCompletionBlocked: false,
+  };
+}
+
+/**
+ * Canonical ingest for a successful provider run. When the save is blocked
+ * but real media exists, the block is downgraded to "kept, save failed"
+ * (never a failed step / hidden creative). Text-only runs keep their block.
+ */
+export async function applyCdfCanonicalCompletionIngest(
+  input: Parameters<typeof applyCdfCanonicalCompletionIngestInner>[0],
+): Promise<CdfCanonicalIngestAttachResult> {
+  const out = await applyCdfCanonicalCompletionIngestInner(input);
+  if (
+    !out.productCompletionBlocked ||
+    input.status !== "succeeded" ||
+    !executionHasGeneratedMedia(input.mediaArtifactIds)
+  ) {
+    return out;
+  }
+  const reason = out.productCompletionBlockReason || "canonical_save_failed";
+  // The media id exists but its file does not — there is no creative to show.
+  if (MEDIA_MISSING_REASON.test(reason)) return out;
+  input.logOsExecutionEvent("execution.cdf_canonical_completion.save_failed_kept", {
+    requestId: input.correlationId,
+    executionId: input.executionId,
+    organizationId: input.organizationId,
+    status: "warning",
+    errorCode: reason,
+  });
+  return {
+    ...out,
+    productCompletionBlocked: false,
+    productCompletionBlockReason: undefined,
+    metadataStamps: {
+      ...(out.metadataStamps ?? {}),
+      ...canonicalSaveFailedStamps(reason),
+    },
+  };
+}
+
+async function applyCdfCanonicalCompletionIngestInner(input: {
   status: string;
   workingMetadata?: Record<string, unknown>;
   structuredCandidate: unknown;

@@ -1210,7 +1210,7 @@ export async function dispatchController(
       if (!organizationId || !mongoose.isValidObjectId(organizationId)) return success([]);
       const Brands = (await import("../../../models/brand.model")).default;
       const { toBrandDto } = await import("../../../services/brand-service");
-      const docs = await Brands.find({ organizationId: new mongoose.Types.ObjectId(organizationId) }).lean();
+      const docs = await Brands.find({ organizationId: new mongoose.Types.ObjectId(organizationId), isGeneric: { $ne: true } }).lean();
       const profiles = docs.map((doc: typeof docs[0]) => {
         const dto = toBrandDto(doc as Parameters<typeof toBrandDto>[0]);
         const gp = (dto.guidelinesProfile ?? {}) as Record<string, unknown>;

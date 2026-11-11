@@ -61,6 +61,13 @@ export interface IBrand extends Document {
   guidelinesProfile?: IBrandGuidelinesProfile;
   memberUserIds: mongoose.Types.ObjectId[];
   archivedAt?: Date;
+  /**
+   * Hidden per-workspace brand for "Just Exploring" users. Keeps vault, studio
+   * chat and projects working without a real brand; never listed in brand
+   * pickers / Manage Brands, never counted toward the plan brand limit, and
+   * never fed into generation as brand identity (output stays generic).
+   */
+  isGeneric?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -100,6 +107,7 @@ const BrandSchema = new Schema<IBrand>(
       default: [],
     },
     archivedAt: { type: Date },
+    isGeneric: { type: Boolean, default: false, index: true },
   },
   { collection: "brands", timestamps: true }
 );

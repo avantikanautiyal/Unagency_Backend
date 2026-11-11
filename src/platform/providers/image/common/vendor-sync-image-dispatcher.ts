@@ -185,6 +185,32 @@ export class VendorSyncImageDispatcher implements IProviderDispatcher {
       headers: submit.value.headers,
     });
 
+    // A reply with no image (Gemini sometimes answers in text only) is a
+    // failed attempt, not a success — otherwise the run "succeeds" with
+    // "[0 image(s)]", nothing fails over, and the step ends with no creative.
+    const imageCount = countImageOutputs(normalized.output);
+    if (imageCount === 0) {
+      const reply = describeImagelessReply(body);
+      console.warn(
+        JSON.stringify({
+          scope: "provider.image",
+          event: "image_reply_without_image",
+          providerId: String(this.spec.canonicalProviderId),
+          modelId: wireModelId,
+          requestId: request.requestId,
+          ...reply,
+        }),
+      );
+      return failure(
+        new ProviderError(NO_IMAGE_REPLY_MESSAGE, {
+          providerId: this.spec.canonicalProviderId,
+          requestId: request.requestId,
+          providerErrorCode: "no_image_output",
+          ...(reply.finishReason ? { finishReason: reply.finishReason } : {}),
+        }),
+      );
+    }
+
     return success({
       requestId: request.requestId,
       providerId: request.providerId,
@@ -200,4 +226,50 @@ export class VendorSyncImageDispatcher implements IProviderDispatcher {
       },
     });
   }
+}
+
+/** User-safe text; vendor reply details go to logs only. */
+export const NO_IMAGE_REPLY_MESSAGE = "The image model replied without an image.";
+
+function countImageOutputs(output: Readonly<Record<string, unknown>> | undefined): number {
+  const outputs = output?.outputs;
+  if (!Array.isArray(outputs)) return 0;
+  return outputs.filter((o) => {
+    if (!o || typeof o !== "object") return false;
+    const rec = o as Record<string, unknown>;
+    return (
+      (typeof rec.url === "string" && rec.url.length > 0) ||
+      (typeof rec.base64 === "string" && rec.base64.length > 0) ||
+      (typeof rec.storageRef === "string" && rec.storageRef.length > 0)
+    );
+  }).length;
+}
+
+/** Why the vendor answered without an image (finish/block reason, text excerpt). */
+function describeImagelessReply(body: Readonly<Record<string, unknown>>): {
+  finishReason?: string;
+  blockReason?: string;
+  textExcerpt?: string;
+} {
+  const out: { finishReason?: string; blockReason?: string; textExcerpt?: string } = {};
+  const feedback = body.promptFeedback as Record<string, unknown> | undefined;
+  if (typeof feedback?.blockReason === "string") out.blockReason = feedback.blockReason;
+  const candidates = Array.isArray(body.candidates)
+    ? (body.candidates as Array<Record<string, unknown>>)
+    : [];
+  const first = candidates[0];
+  if (typeof first?.finishReason === "string") out.finishReason = first.finishReason;
+  const parts = (first?.content as Record<string, unknown> | undefined)?.parts;
+  if (Array.isArray(parts)) {
+    const text = parts
+      .map((part) =>
+        part && typeof (part as Record<string, unknown>).text === "string"
+          ? String((part as Record<string, unknown>).text)
+          : "",
+      )
+      .join(" ")
+      .trim();
+    if (text) out.textExcerpt = text.slice(0, 200);
+  }
+  return out;
 }

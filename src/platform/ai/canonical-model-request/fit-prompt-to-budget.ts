@@ -14,6 +14,7 @@ const SECTION_HEADER = /^===== (.+?) =====$/gm;
 
 /** Context sections trimmed first → last. Anything not listed is protected. */
 const TRIMMABLE_SECTIONS: readonly string[] = [
+  "ATTACHED DOCUMENTS",
   "UPSTREAM ARTIFACTS",
   "WORKING MEMORY",
   "RESOLVED REFERENCES",

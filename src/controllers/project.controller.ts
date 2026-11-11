@@ -1,5 +1,6 @@
 import Projects, { IProject } from "../models/projects.model";
 import Users from "../models/users.model";
+import Brands from "../models/brand.model";
 import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -434,9 +435,15 @@ const fetchProjectById = asyncHandler(async (req: RequestUser, res) => {
       "../platform/api/services/admin-execution-providers-service"
     );
     const aiProviders = await resolveProjectAiProviders(project);
+    let brandName: string | undefined;
+    const rawBrandId = (project as { brandId?: unknown }).brandId;
+    if (rawBrandId && mongoose.isValidObjectId(String(rawBrandId))) {
+      const brand = await Brands.findById(String(rawBrandId)).select("name").lean();
+      brandName = (brand as { name?: string } | null)?.name?.trim() || undefined;
+    }
     return new ApiResponse(
       200,
-      { ...project, aiProviders },
+      { ...project, aiProviders, brandName },
       "Project fetched successfully"
     );
   }

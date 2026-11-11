@@ -37,6 +37,9 @@ function brandUploadFileCountFilter(organizationId: mongoose.Types.ObjectId) {
     status: { $ne: "deleted" },
     lifecycle: { $nin: ["temporary", "deleted"] },
     brandId: { $exists: true, $ne: null },
+    // Only files the client uploaded: generated work saved to the vault is
+    // tagged output:/display:/label: (creatives) or page-document (PDF exports).
+    tags: { $nin: ["page-document", /^(output|display|label):/] },
     $and: [
       {
         $or: [

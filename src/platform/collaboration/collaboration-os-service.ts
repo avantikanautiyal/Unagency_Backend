@@ -22,6 +22,7 @@ import {
 } from "./models";
 import Notifications from "../../models/notification.model";
 import Users from "../../models/users.model";
+import { refreshMessageMediaUrls, stampApprovedRoutes } from "./refresh-message-media-urls";
 
 const OVERSIGHT_ROLES = ["admin", "superadmin"] as const;
 
@@ -544,14 +545,29 @@ export class CollaborationOsService {
       }
     }
 
-    return rows.map((r) => {
+    const dtos = rows.map((r) => {
       const dto = toMessageDto(r, conversation.roomKey);
+      if (dto.metadata && typeof dto.metadata === "object") {
+        dto.metadata = JSON.parse(JSON.stringify(dto.metadata));
+      }
       if (dto.fromUserId === input.userId) {
         const peer = peerStatusByMessage.get(String(r._id));
         if (peer) dto.receiptStatus = peer;
       }
       return dto;
     });
+    // Persisted creative links are 5-minute presigned URLs — re-sign on read.
+    const metas = dtos.map((dto) => dto.metadata as Record<string, unknown> | undefined);
+    await Promise.all([
+      refreshMessageMediaUrls(metas),
+      stampApprovedRoutes(
+        (conversation as { organizationId?: unknown }).organizationId != null
+          ? String((conversation as { organizationId?: unknown }).organizationId)
+          : undefined,
+        metas,
+      ),
+    ]);
+    return dtos;
   }
 
   async sendMessage(input: {

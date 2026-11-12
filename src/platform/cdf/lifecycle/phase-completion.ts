@@ -162,6 +162,32 @@ function sessionFanoutPinsForPhase(
 }
 
 /**
+ * Approve from a card without a fanout id (e.g. a chat-refine card): when the
+ * requested ArtifactVersion identifies exactly ONE fanout leaf of the phase,
+ * return that leaf's id. Ambiguous or unknown → undefined (never first-match).
+ */
+export function inferFanoutTargetForApproval(
+  session: CdfSessionState,
+  phaseId: string,
+  artifactId: string | undefined,
+  artifactVersion: number | undefined,
+  artifactKey?: string,
+): string | undefined {
+  const id = artifactId?.trim();
+  if (!id) return undefined;
+  const leafIds = new Set(
+    sessionFanoutPinsForPhase(session, phaseId, artifactKey)
+      .filter(
+        (p) =>
+          p.artifactId === id &&
+          (artifactVersion == null || p.version === artifactVersion),
+      )
+      .map((p) => p.generationFanoutTargetId!.trim()),
+  );
+  return leafIds.size === 1 ? [...leafIds][0] : undefined;
+}
+
+/**
  * Resolve the completing pin by exact requested X@V across role-eligible lists.
  * Selected/approved satisfy a generated precondition; never substitute another fanout leaf.
  */
@@ -441,9 +467,34 @@ export function resolvePhaseCompletionForApproval(input: {
     input.phaseId,
     artifactKey,
   );
-  const requestFanout = input.requestGenerationFanoutTargetId?.trim() || "";
-  // C6: when fanout-scoped pins exist, approve must name the leaf — never first-match.
-  if (fanoutPins.length > 0 && !requestFanout) {
+  const requestFanout =
+    input.requestGenerationFanoutTargetId?.trim() ||
+    inferFanoutTargetForApproval(
+      input.session,
+      input.phaseId,
+      input.requestArtifactId,
+      input.requestArtifactVersion,
+      artifactKey,
+    ) ||
+    "";
+  // A refined option is a new exact X@V pin with no fanout leaf — allowed
+  // when the request names it exactly (never first-match).
+  const reqExactNonFanout =
+    !requestFanout &&
+    Boolean(input.requestArtifactId?.trim()) &&
+    input.requestArtifactVersion != null &&
+    [
+      ...(input.session.generatedArtifacts ?? []),
+      ...(input.session.selectedArtifacts ?? []),
+      ...(input.session.approvedArtifacts ?? []),
+    ].some(
+      (r) =>
+        matchPin(r, input.phaseId, artifactKey) &&
+        !r.generationFanoutTargetId?.trim() &&
+        r.artifactId === input.requestArtifactId!.trim() &&
+        r.version === input.requestArtifactVersion,
+    );
+  if (fanoutPins.length > 0 && !requestFanout && !reqExactNonFanout) {
     return {
       ...base,
       requiredArtifactKey: artifactKey,
@@ -455,7 +506,7 @@ export function resolvePhaseCompletionForApproval(input: {
       completionStatus: "identity_required",
       transitionAllowed: false,
       failureCode: "CDF_FANOUT_TARGET_ID_REQUIRED",
-      message: `Approve requires generationFanoutTargetId when ${fanoutPins.length} fanout leaf pin(s) exist for ${artifactKey ?? input.phaseId}`,
+      message: "Please tap Approve on the option you want to keep.",
     };
   }
 
@@ -517,7 +568,7 @@ export function resolvePhaseCompletionForApproval(input: {
         requestArtifactVersion: reqVer,
         requestArtifactKey: input.requestArtifactKey ?? null,
         requestGenerationFanoutTargetId:
-          input.requestGenerationFanoutTargetId ?? null,
+          requestFanout || null,
         authoritativeArtifactId: hintPin?.artifactId ?? null,
         authoritativeArtifactVersion: hintPin?.version ?? null,
         authoritativeArtifactKey: hintPin?.artifactKey ?? artifactKey ?? null,
@@ -534,7 +585,7 @@ export function resolvePhaseCompletionForApproval(input: {
     requiredRole,
     reqId,
     reqVer,
-    input.requestGenerationFanoutTargetId,
+    requestFanout || undefined,
   );
 
   if (!pin) {

@@ -58,6 +58,7 @@ import {
   sessionHasCanonicalArtifactRefs,
 } from "../lifecycle/dependency-satisfaction";
 import {
+  inferFanoutTargetForApproval,
   logApprovalPrecondition,
   resolvePhaseCompletionForApproval,
   resolvePhaseProgressStatuses,
@@ -1955,6 +1956,18 @@ export function prepareTransition(
     const dep = assertDependencies(existing, phase, canonical);
     if (!dep.ok) return dep;
 
+    // Cards without a fanout id (chat-refine cards) still approve the exact
+    // leaf when their ArtifactVersion names exactly one.
+    const approveFanoutTargetId =
+      req.generationFanoutTargetId?.trim() ||
+      inferFanoutTargetForApproval(
+        existing,
+        phase.id,
+        req.artifactId,
+        req.artifactVersion,
+      ) ||
+      "";
+
     // Generic approval precondition: canonical completion must exist before
     // any sessionVersion bump or phase advance.
     const completion = resolvePhaseCompletionForApproval({
@@ -1966,10 +1979,10 @@ export function prepareTransition(
       requestArtifactId: req.artifactId,
       requestArtifactVersion: req.artifactVersion,
       requestArtifactKey: req.artifactKey,
-      ...(req.generationFanoutTargetId?.trim()
+      ...(approveFanoutTargetId
         ? {
             requestGenerationFanoutTargetId:
-              req.generationFanoutTargetId.trim(),
+              approveFanoutTargetId,
           }
         : {}),
       requestPresentationEligibility: req.presentationEligibilityStatus,
@@ -1983,7 +1996,7 @@ export function prepareTransition(
       requestArtifactId: req.artifactId ?? null,
       requestArtifactVersion: req.artifactVersion ?? null,
       requestArtifactKey: req.artifactKey ?? null,
-      requestGenerationFanoutTargetId: req.generationFanoutTargetId ?? null,
+      requestGenerationFanoutTargetId: approveFanoutTargetId || null,
     });
     if (!completion.transitionAllowed) {
       return failure(
@@ -2058,9 +2071,9 @@ export function prepareTransition(
         artifactKey: req.artifactKey ?? completion.requiredArtifactKey,
         organizationId: existing.organizationId,
         projectId: existing.projectId,
-        ...(req.generationFanoutTargetId?.trim()
+        ...(approveFanoutTargetId
           ? {
-              generationFanoutTargetId: req.generationFanoutTargetId.trim(),
+              generationFanoutTargetId: approveFanoutTargetId,
             }
           : {}),
         ...(req.generationFanoutGroupId?.trim()
@@ -2084,10 +2097,10 @@ export function prepareTransition(
               artifactKey: req.artifactKey ?? completion.requiredArtifactKey,
               artifactId: req.artifactId,
               artifactVersion: req.artifactVersion,
-              ...(req.generationFanoutTargetId?.trim()
+              ...(approveFanoutTargetId
                 ? {
                     generationFanoutTargetId:
-                      req.generationFanoutTargetId.trim(),
+                      approveFanoutTargetId,
                   }
                 : {}),
               ts: nowIso(),

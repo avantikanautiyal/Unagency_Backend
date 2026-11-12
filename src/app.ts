@@ -440,6 +440,10 @@ app.get("/intelligence/health", (_req, res) => {
       );
       await attachCollaborationSocketGateway(server);
       console.log("[Collaboration OS] Socket.IO gateway listening on /collaboration/socket.io");
+      const { startNotificationRealtime } = await import(
+        "./platform/collaboration/notification-realtime"
+      );
+      startNotificationRealtime();
     } catch (err) {
       console.warn(
         "[Collaboration OS] socket gateway failed to start:",
@@ -479,6 +483,10 @@ app.get("/intelligence/health", (_req, res) => {
               distributedExecutionTimer = undefined;
             }
             try {
+              const { stopNotificationRealtime } = await import(
+                "./platform/collaboration/notification-realtime"
+              );
+              await stopNotificationRealtime();
               const { shutdownCollaborationSocketGateway } = await import(
                 "./platform/collaboration/socket-gateway"
               );

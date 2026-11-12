@@ -342,8 +342,21 @@ describe("C6 — fail-closed fanout identity", () => {
     });
     assert.equal(wrong.transitionAllowed, false);
 
-    // Approve without any fanout target when pins exist — fail closed.
+    // No fanout target and an X@V that names no leaf — fail closed.
     const missing = resolvePhaseCompletionForApproval({
+      session,
+      phaseId: "3d-direction",
+      serviceId: "packaging",
+      requestArtifactId: "art_not_a_leaf",
+      requestArtifactVersion: 1,
+      requestArtifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
+    });
+    assert.equal(missing.transitionAllowed, false);
+    assert.equal(missing.failureCode, "CDF_FANOUT_TARGET_ID_REQUIRED");
+
+    // No fanout target but X@V names exactly one leaf (chat-refine card) —
+    // that leaf is approved, never another.
+    const inferred = resolvePhaseCompletionForApproval({
       session,
       phaseId: "3d-direction",
       serviceId: "packaging",
@@ -351,8 +364,8 @@ describe("C6 — fail-closed fanout identity", () => {
       requestArtifactVersion: 1,
       requestArtifactKey: PACKAGING_ARTIFACT_KEYS.threeDDirection,
     });
-    assert.equal(missing.transitionAllowed, false);
-    assert.equal(missing.failureCode, "CDF_FANOUT_TARGET_ID_REQUIRED");
+    assert.equal(inferred.transitionAllowed, true);
+    assert.equal(inferred.requiredArtifactId, arts[1]);
 
     // Exact leaf B approval succeeds.
     const ok = resolvePhaseCompletionForApproval({

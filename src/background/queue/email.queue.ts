@@ -7,7 +7,7 @@ type EmailQueType = {
     data: unknown,
     email : string ;
     subject : string ;
-    notification: NotificationProps;
+    notification?: NotificationProps;
     userId? : string ;
 }
 export const EMAIL_QUEUE_KEY = "email"

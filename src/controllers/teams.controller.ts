@@ -13,28 +13,43 @@ import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/cons
 import { Notification } from "../background/utils/notification";
 import { parseNotificationContent } from "../utils/notificationUtils";
 import { dispatchClientNotification } from "../notifications/client-notification-service";
+import {
+  countUsedMemberSeats,
+  findUserByEmailInsensitive,
+  normalizeInviteEmail,
+  resolveAdditionalMemberSeats,
+} from "../services/team-invitation-service";
 
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 // TESTED OK
 const RemoveMemberInOrganization = asyncHandler(
   async (req: RequestUser, res: Response) => {
-    const { userId, organization } = req.body;
-    if (!userId || !organization) {
+    const { organization, teamId } = req.body;
+    let { userId } = req.body;
+    if ((!userId && !teamId) || !organization) {
       return new ApiResponse(400, null, "All Fields are required");
     }
-    if (req.user?.userId.toString() === userId?.toString()) throw new ApiError("Can't remove itself", 400);
+    if (userId && req.user?.userId.toString() === userId?.toString()) throw new ApiError("Can't remove itself", 400);
     const checkUser = await Teams.findOne({
       userId: new mongoose.Types.ObjectId(req.user?.userId),
       Organization: new mongoose.Types.ObjectId(organization as string),
     });
     if (!checkUser) throw new ApiError("Unauthorised Member Found", 401);
     if (checkUser.role == "owner") {
-
-      const removeMember = await Teams.deleteOne({
-        userId: new mongoose.Types.ObjectId(userId!),
-        Organization: checkUser?.Organization,
+      // teamId covers invites sent to an email that has no account yet.
+      const target = await Teams.findOne({
+        Organization: checkUser.Organization,
+        role: "member",
+        ...(teamId
+          ? { _id: new mongoose.Types.ObjectId(String(teamId)) }
+          : { userId: new mongoose.Types.ObjectId(String(userId)) }),
       });
+      if (!target) {
+        throw new ApiError("Member not found in the organization", 404);
+      }
+      userId = target.userId ? target.userId.toString() : undefined;
+      const removeMember = await Teams.deleteOne({ _id: target._id });
       if (removeMember.deletedCount === 0) {
         throw new ApiError("Member not found in the organization", 404);
       }
@@ -121,72 +136,117 @@ const fetchUserTeam = asyncHandler(async (req: RequestUser, res) => {
   return new ApiResponse(200, team, "Team fetched successfully");
 });
 
-import { checkPlanLimit } from "../services/planLimit.service";
 
-// TESTED OK - TODO
 const InviteMemberInOrganization = asyncHandler(
   async (req: RequestUser, res) => {
-    // Determine Org ID - logic exists inside function but we need it before invites
-    // Actually the function fetches organization by owner: req.user.userId
-    // So we can pass undefined or let the service fetch it, OR duplicate the fetch here.
-    // Service has logic: "If no org defined provided, maybe fetch user's owned org"
-    // So passing undefined should work if user is owner.
-
-    // Check Plan Limit
-    await checkPlanLimit(req.user?.userId!, undefined, "INVITE_MEMBER");
-
-    const { email }: { email: string } = req.body;
-    if (!email) throw new ApiError("Email not provided", 404);
-    const invitedUser = await Users.findOne({
-      email: email,
-    });
-    if (!invitedUser) throw new ApiError("User not found with this email", 404);
+    // Only the organisation owner manages the team.
     const organization = await Organizations.findOne({
       owner: req.user?.userId!,
     });
-    if (!organization) throw new ApiError("No Organization found", 404);
+    if (!organization) {
+      throw new ApiError("Only the organisation owner can invite members", 403);
+    }
 
-    const isExist = await Teams.exists({
-      userId: invitedUser._id,
+    const email = normalizeInviteEmail(req.body?.email);
+    if (!email) throw new ApiError("Enter a valid email address", 400);
+
+    const inviter = await Users.findById(req.user?.userId).select("name email");
+    if (normalizeInviteEmail(inviter?.email) === email) {
+      throw new ApiError("You are already the owner of this organisation", 400);
+    }
+
+    const invitedUser = await findUserByEmailInsensitive(email);
+
+    const existing = await Teams.findOne({
       Organization: organization._id,
+      $or: [
+        { invitedEmail: email },
+        ...(invitedUser ? [{ userId: invitedUser._id }] : []),
+      ],
     });
-    if (isExist) return new ApiResponse(400, null, "Already invitation sent");
+    if (existing?.invitationStatus === "accepted") {
+      throw new ApiError("This person is already a member of your team", 409);
+    }
 
-    const addMember = await Teams.create({
-      userId: invitedUser?._id,
-      role: "member",
-      invitationStatus: "pending",
-      Organization: organization,
-    });
+    // A pending invite already holds its seat; re-sending must not count twice.
+    if (!existing || existing.invitationStatus !== "pending") {
+      const seats = await resolveAdditionalMemberSeats(req.user!.userId);
+      if (seats !== null) {
+        const used = await countUsedMemberSeats(organization._id);
+        if (used >= seats) {
+          throw new ApiError(
+            seats === 0
+              ? "Your plan doesn't include team seats. Upgrade your plan to invite members."
+              : `All ${seats} team seat${seats === 1 ? "" : "s"} on your plan are in use. Upgrade your plan or remove a member to invite someone new.`,
+            403
+          );
+        }
+      }
+    }
 
-    const notificationData = parseNotificationContent(NOTIFICATION_CONFIG.MEMBER_INVITED.email_body, {
-      Invitee: invitedUser.name || "User",
-      Name: req?.user?.name || "Someone",
-    });
+    const teamRow = existing
+      ? await Teams.findByIdAndUpdate(
+          existing._id,
+          {
+            $set: {
+              invitationStatus: "pending",
+              invitedEmail: email,
+              invitedBy: req.user?.userId,
+              ...(invitedUser ? { userId: invitedUser._id } : {}),
+            },
+          },
+          { new: true }
+        )
+      : await Teams.create({
+          Organization: organization._id,
+          role: "member",
+          invitationStatus: "pending",
+          invitedEmail: email,
+          invitedBy: req.user?.userId,
+          ...(invitedUser ? { userId: invitedUser._id } : {}),
+        });
+
+    const inviterName = req?.user?.name || inviter?.name || "Someone";
+    const companyName = (organization as any).companyName || "their";
+    const inviteeName = invitedUser?.name || email.split("@")[0];
+    const content =
+      `Hey ${inviteeName}, ${inviterName} just invited you to join ${companyName} on UNAGENCY. ` +
+      `Sign in with Google using ${email} and you'll land straight in the team's workspace — ` +
+      `same brands, vault and dashboard. No extra setup needed.`;
+
     EmailQueue.add("TEAM_INVITATION", {
       action: "COMMON",
       data: commonTemplate({
-        name: invitedUser?.name!,
-        content: notificationData.text,
+        name: inviteeName,
+        content,
         title: NOTIFICATION_CONFIG.MEMBER_INVITED.email_subject,
-        buttonText: notificationData.cta || "View Invitation",
-        buttonLink: `${FRONTEND_URL}/invitation`,
+        buttonText: "Join with Google",
+        buttonLink: `${FRONTEND_URL}/login`,
       }),
-      email: email,
-      userId: invitedUser?._id.toString(),
-      notification: new Notification({
-        title: NOTIFICATION_CONFIG.MEMBER_INVITED.in_app_title,
-        description: NOTIFICATION_CONFIG.MEMBER_INVITED.in_app_body.replace("[Name]", req?.user?.name || "Someone"),
-        type: "COMMON",
-        action: "/invitation",
-        actionText: "view invitation",
-        _id: addMember._id.toString(),
-        symbol: "🤝",
-      }),
+      email,
+      // In-app notification only when the invitee already has an account.
+      ...(invitedUser
+        ? {
+            userId: invitedUser._id.toString(),
+            notification: new Notification({
+              title: `You've been added to ${companyName}`,
+              description: `${inviterName} invited you to their UNAGENCY workspace. You'll have access the next time you open the app.`,
+              type: "COMMON",
+              action: "/home",
+              actionText: "Open workspace",
+              _id: teamRow!._id.toString(),
+              symbol: "🤝",
+            }),
+          }
+        : {}),
       subject: NOTIFICATION_CONFIG.MEMBER_INVITED.email_subject,
     });
 
-    return new ApiResponse(200, addMember, "Member invited successfully");
+    return new ApiResponse(
+      200,
+      teamRow,
+      existing ? `Invitation re-sent to ${email}` : `Invitation sent to ${email}`
+    );
   }
 );
 

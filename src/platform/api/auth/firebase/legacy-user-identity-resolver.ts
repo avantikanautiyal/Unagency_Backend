@@ -7,6 +7,7 @@ import type { Types } from "mongoose";
 import Users, { type IUser } from "../../../../models/users.model";
 import Organizations from "../../../../models/organization.model";
 import Teams from "../../../../models/team.model";
+import { claimPendingInvitations as claimPendingInvitationsDefault } from "../../../../services/team-invitation-service";
 import { failure, success, type Result } from "../../../core/result";
 import { ValidationError } from "../../../core/errors";
 import type { VerifiedFirebaseIdentity } from "../../../../libs/firebase/verify-id-token";
@@ -36,6 +37,8 @@ export interface LegacyUserIdentityResolverDeps {
     Organization: Types.ObjectId;
     role: "owner" | "member";
   } | null>;
+  /** Accepts pending team invitations for this user on sign-in. */
+  readonly claimPendingInvitations?: (user: IUser) => Promise<unknown>;
 }
 
 export class LegacyUserIdentityResolver {
@@ -55,6 +58,13 @@ export class LegacyUserIdentityResolver {
     if (mongoUser.isActive === false) {
       return failure(new ValidationError("user account is inactive"));
     }
+
+    // Invited by email → joining happens on sign-in (no separate accept step).
+    // Injected-deps callers (tests) opt in explicitly; never touch Mongo there.
+    const claim =
+      this.deps.claimPendingInvitations ??
+      (this.deps.findUserByFirebaseId ? undefined : claimPendingInvitationsDefault);
+    if (claim) await claim(mongoUser);
 
     const roleContext: {
       isOrganizationOwner?: boolean;

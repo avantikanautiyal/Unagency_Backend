@@ -22,14 +22,6 @@ const ACTIVE_STATUSES = new Set([
   "completed",
 ]);
 
-export type EntitlementFeature =
-  | "humanSupport"
-  | "accountManager"
-  | "creativeTeamSupport"
-  | "unlimitedRevisions"
-  | "commercialUsageRights"
-  | "quarterlyBusinessReview";
-
 function normalizePlanCode(raw: unknown, razorpayPlanId?: string): PlanCode | null {
   if (isPlanCode(raw)) return raw;
   return findPlanCodeByRazorpayPlanId(razorpayPlanId ?? undefined);
@@ -102,23 +94,6 @@ export async function getPlanEntitlements(
   return plan?.entitlements ?? null;
 }
 
-export async function hasFeature(
-  userId: string,
-  feature: EntitlementFeature
-): Promise<boolean> {
-  const entitlements = await getPlanEntitlements(userId);
-  if (!entitlements) return false;
-  const value = entitlements[feature];
-  if (typeof value === "boolean") return value;
-  return Boolean(value);
-}
-
-export async function getCreditLimit(userId: string): Promise<number | null> {
-  const entitlements = await getPlanEntitlements(userId);
-  if (!entitlements) return null;
-  return entitlements.credits;
-}
-
 export async function getBrandLimit(
   userId: string
 ): Promise<number | "unlimited" | null> {
@@ -131,16 +106,6 @@ export async function getStorageLimitGb(userId: string): Promise<number | null> 
   const entitlements = await getPlanEntitlements(userId);
   if (!entitlements) return null;
   return entitlements.projectStorageGb;
-}
-
-export async function getQCLevel(userId: string): Promise<string | null> {
-  const entitlements = await getPlanEntitlements(userId);
-  return entitlements?.qualityControl ?? null;
-}
-
-export async function getSupportLevel(userId: string): Promise<string | null> {
-  const entitlements = await getPlanEntitlements(userId);
-  return entitlements?.support ?? null;
 }
 
 const DEFAULT_BRAND_LIMIT = 10;
@@ -222,10 +187,6 @@ async function notifyLimit(
   } catch (error) {
     console.error("[notifyLimit] failed", error);
   }
-}
-
-export function entitlementsFromPlanCode(planCode: PlanCode): PlanEntitlements {
-  return getCanonicalPlan(planCode).entitlements;
 }
 
 /** Keep Users + Subscriptions status aligned with Razorpay when checkout/webhook lag. */

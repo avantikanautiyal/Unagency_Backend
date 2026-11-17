@@ -16,16 +16,6 @@ export const CDF_STRUCTURED_PAYLOAD_MISSING =
 export const CDF_STRUCTURED_CONTRACT_RESOLUTION_FAILURE =
   "CDF_STRUCTURED_CONTRACT_RESOLUTION_FAILURE" as const;
 
-export type NormalizedStructuredExecutionResult = {
-  readonly structured: unknown;
-  readonly structuredContractName: string;
-  readonly structuredSchemaVersion: string;
-  readonly structuredValid: boolean;
-  readonly structuredPayloadHash: string;
-  readonly source: "provider" | "runtime" | "job_summary" | "hydration";
-  readonly provenance?: Readonly<Record<string, unknown>>;
-};
-
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
@@ -46,29 +36,3 @@ export function hashStructuredPayload(value: unknown): string {
   return createHash("sha256").update(body).digest("hex").slice(0, 32);
 }
 
-export function buildNormalizedStructuredExecutionResult(input: {
-  readonly structured: unknown;
-  readonly structuredContractName: string;
-  readonly structuredSchemaVersion?: string;
-  readonly structuredValid: boolean;
-  readonly source: NormalizedStructuredExecutionResult["source"];
-  readonly provenance?: Readonly<Record<string, unknown>>;
-}): NormalizedStructuredExecutionResult {
-  return {
-    structured: input.structured,
-    structuredContractName: input.structuredContractName,
-    structuredSchemaVersion: input.structuredSchemaVersion ?? "1",
-    structuredValid: input.structuredValid,
-    structuredPayloadHash: hashStructuredPayload(input.structured),
-    source: input.source,
-    ...(input.provenance ? { provenance: input.provenance } : {}),
-  };
-}
-
-export function readStructuredPayloadHash(
-  container: Readonly<Record<string, unknown>> | undefined,
-): string | undefined {
-  if (!container) return undefined;
-  const h = container.structuredPayloadHash;
-  return typeof h === "string" && h.trim() ? h.trim() : undefined;
-}

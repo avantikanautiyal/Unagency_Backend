@@ -83,12 +83,6 @@ export function resolveCdfSessionDurabilityMode(): CdfSessionDurabilityMode {
   return "optional";
 }
 
-export type PersistCdfSessionResult = {
-  readonly session: CdfSessionState;
-  /** True only when Mongo accepted the write. */
-  readonly durable: boolean;
-};
-
 function durabilityError(
   sessionId: string,
   reason: string,

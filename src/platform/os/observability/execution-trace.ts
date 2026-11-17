@@ -3,8 +3,6 @@
  * Non-blocking; logging failure must never break user execution.
  */
 
-import { sanitizeOsLogFields } from "./execution-log";
-
 export const EXECUTION_TRACE_PREFIX = "[UNAGENCY-EXECUTION-TRACE]" as const;
 
 export type ExecutionTraceStage =
@@ -142,10 +140,6 @@ function safeRun(fn: () => void): void {
   } catch {
     // Observability must never break execution.
   }
-}
-
-function cloneStages(stages: readonly ExecutionTraceStageRecord[]): ExecutionTraceStageRecord[] {
-  return [...stages];
 }
 
 export function beginExecutionTrace(input: BeginExecutionTraceInput): void {
@@ -310,19 +304,6 @@ export function buildExecutionTraceSummary(state: ExecutionTraceState): string {
   ].join("\n");
 }
 
-export function logExecutionTraceStageEvent(
-  stage: ExecutionTraceStage,
-  fields: Readonly<Record<string, unknown>>,
-): void {
-  safeRun(() => {
-    const safe = sanitizeOsLogFields({
-      event: `execution.trace.${stage}`,
-      ...fields,
-    });
-    console.log(`[UNAGENCY OS] ${JSON.stringify(safe)}`);
-  });
-}
-
 export function finalizeExecutionTrace(executionId: string): ExecutionTraceState | undefined {
   let finalized: ExecutionTraceState | undefined;
   safeRun(() => {
@@ -333,34 +314,6 @@ export function finalizeExecutionTrace(executionId: string): ExecutionTraceState
     traces.delete(executionId);
   });
   return finalized;
-}
-
-/** Record stages that production path intentionally skips (not inferred as PASS). */
-export function recordProductionSkippedTraceStages(executionId: string): void {
-  recordExecutionTraceStage({
-    executionId,
-    stage: "artifact_hydration",
-    status: "SKIPPED",
-    skipReason: "production_evidence_path_does_not_hydrate_artifacts",
-  });
-  recordExecutionTraceStage({
-    executionId,
-    stage: "artifact_render",
-    status: "SKIPPED",
-    skipReason: "production_evidence_path_does_not_render_artifacts",
-  });
-  recordExecutionTraceStage({
-    executionId,
-    stage: "runtime_evaluation",
-    status: "SKIPPED",
-    skipReason: "production_evidence_path_does_not_run_runtime_evaluation",
-  });
-  recordExecutionTraceStage({
-    executionId,
-    stage: "evaluation_plane",
-    status: "SKIPPED",
-    skipReason: "production_evidence_uses_step2_directly_without_evaluation_plane",
-  });
 }
 
 export type RecordProviderDispatchTraceInput = {

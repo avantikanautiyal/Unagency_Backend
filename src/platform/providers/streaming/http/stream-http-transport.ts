@@ -73,68 +73,6 @@ export class FetchStreamHttpTransport implements StreamHttpTransport {
   }
 }
 
-/** Offline: recorded SSE text split into arbitrary TCP-sized chunks. */
-export class FakeStreamHttpTransport implements StreamHttpTransport {
-  constructor(
-    private readonly opts: {
-      readonly status?: number;
-      readonly sseText: string;
-      /** Chunk sizes to simulate TCP fragmentation. */
-      readonly chunkSizes?: readonly number[];
-      readonly headers?: Readonly<Record<string, string>>;
-      readonly onFetch?: (req: StreamHttpRequest) => void;
-      readonly failWith?: Error;
-    }
-  ) {}
-
-  async openSse(request: StreamHttpRequest): Promise<{
-    readonly status: number;
-    readonly headers: Readonly<Record<string, string>>;
-    readonly body: ReadableStream<Uint8Array>;
-  }> {
-    this.opts.onFetch?.(request);
-    if (request.signal?.aborted) {
-      throw new DOMException("aborted", "AbortError");
-    }
-    if (this.opts.failWith) throw this.opts.failWith;
-
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(this.opts.sseText);
-    const sizes = this.opts.chunkSizes ?? [32, 64, 16, 128];
-    let offset = 0;
-    let sizeIdx = 0;
-    const signal = request.signal;
-
-    const body = new ReadableStream<Uint8Array>({
-      pull: (controller) => {
-        if (signal?.aborted) {
-          controller.error(new DOMException("aborted", "AbortError"));
-          return;
-        }
-        if (offset >= bytes.length) {
-          controller.close();
-          return;
-        }
-        const size = sizes[sizeIdx % sizes.length]!;
-        sizeIdx += 1;
-        const end = Math.min(bytes.length, offset + size);
-        controller.enqueue(bytes.slice(offset, end));
-        offset = end;
-      },
-      cancel: () => undefined,
-    });
-
-    return {
-      status: this.opts.status ?? 200,
-      headers: {
-        "content-type": "text/event-stream",
-        ...(this.opts.headers ?? {}),
-      },
-      body,
-    };
-  }
-}
-
 export async function* readSseEvents(
   body: ReadableStream<Uint8Array>,
   options: SseParserOptions & { signal?: AbortSignal } = {}

@@ -980,29 +980,6 @@ export async function buildBrochurePdf(
   });
 }
 
-/** Also produce a simple PPTX for document plans (one section per slide). */
-export async function buildDocumentPptx(plan: DocumentPlan): Promise<Buffer> {
-  const asPresentation: PresentationPlan = {
-    title: plan.title,
-    subtitle: plan.summary,
-    slides: plan.sections.map((section) => ({
-      title: section.heading,
-      bullets: section.body
-        .split(/\n+/)
-        .map((line) => line.replace(/^[-•*]\s*/, "").trim())
-        .filter(Boolean)
-        .slice(0, 8),
-      layout: "content_bullets" as const,
-    })),
-  };
-  const slides = asPresentation.slides.map((s) =>
-    s.bullets.length > 0
-      ? s
-      : { ...s, bullets: ["See document PDF for full detail."] }
-  );
-  return buildPresentationPptx({ ...asPresentation, slides });
-}
-
 /** Editable Word document for DocumentPlan downloads. */
 export async function buildDocumentDocx(plan: DocumentPlan): Promise<Buffer> {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import(

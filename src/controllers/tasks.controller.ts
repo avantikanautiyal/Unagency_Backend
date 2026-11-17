@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
 import { parseNotificationContent } from "../utils/notificationUtils";
 import { RequestUser } from "../types/user";
@@ -10,12 +10,11 @@ import Projects from "../models/projects.model";
 import { notifyProjectOwner } from "../notifications/client-project-notifications";
 import Requirement from "../models/requestProject.model";
 import mongoose from "mongoose";
-import { projectNotification } from "../background/queue/projectNotification.queue";
 import { Notification } from "../background/utils/notification";
 import { EmailQueue } from "../background/queue/email.queue";
 
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
 
 /** When a designer submits a draft, CS Inbox must see the linked requirement as pending review. */

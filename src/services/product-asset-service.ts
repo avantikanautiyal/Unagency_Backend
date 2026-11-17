@@ -24,7 +24,6 @@ import {
 import {
   DEFAULT_MEDIA_SIZE_LIMITS,
   inferMediaCategory,
-  type MediaCategory,
 } from "../platform/media/ingestion/media-size-limits";
 import {
   PRODUCT_ALLOWED_MIME,
@@ -1621,11 +1620,6 @@ export class ProductAssetService {
 }
 
 export const productAssetService = new ProductAssetService();
-
-/** @deprecated — size validation moved to upload-pipeline; kept for call-site compat */
-export function validateUploadMimeCategory(mime: string): MediaCategory {
-  return inferMediaCategory(mime);
-}
 
 /**
  * Converts stored media bytes to a requested download format (raster → PDF,

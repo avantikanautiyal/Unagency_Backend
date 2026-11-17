@@ -7,16 +7,7 @@
  * Future Extension: Policy inheritance and org-level policy resolution.
  */
 
-import type { CredentialPolicy } from "../contracts/credential";
 import type { ProviderRegionConstraint } from "../contracts/provider-scope";
-
-export function defaultCredentialPolicy(): CredentialPolicy {
-  return {
-    policyId: "default",
-    minTrustLevel: "standard",
-    allowDelegation: false,
-  };
-}
 
 export function regionAllowed(
   constraint: ProviderRegionConstraint | undefined,

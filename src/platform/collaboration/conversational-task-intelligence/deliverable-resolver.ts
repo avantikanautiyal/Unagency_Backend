@@ -201,17 +201,3 @@ export function deliverableFormatFromExportFormat(
   return deliverableFormatFromDownloadFormat(normalized as DownloadFormat);
 }
 
-export function resolvedDeliverableField(
-  format: DeliverableFormat,
-  explicit: boolean,
-): ResolvedDeliverable {
-  return Object.freeze({
-    format,
-    required: true,
-    editable: format === "EDITABLE_TEXT",
-    provenance: explicit
-      ? { source: "EXPLICIT_USER", explicit: true }
-      : { source: "DEFAULT", explicit: false },
-  });
-}
-

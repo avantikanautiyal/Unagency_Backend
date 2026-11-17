@@ -3,7 +3,6 @@
  */
 
 export const ANTHROPIC_PROVIDER_ID = "provider.anthropic";
-export const ANTHROPIC_WIRE_PROVIDER_ID = "anthropic";
 export const ANTHROPIC_ADAPTER_ID = "adapter.anthropic.text";
 export const ANTHROPIC_SDK_CLIENT_ID = "sdk.anthropic.text";
 export const ANTHROPIC_PROVIDER_VERSION = "1.0.0";

@@ -117,11 +117,6 @@ export function readAspectRatioFromPayload(
   return direct || undefined;
 }
 
-export function bflAspectRatioForProduct(aspectRatio?: string): string {
-  if (!aspectRatio) return "1:1";
-  return providerAspectRatioBucket(aspectRatio);
-}
-
 export function promptTextFromPayload(
   payload: Readonly<Record<string, unknown>>
 ): string {

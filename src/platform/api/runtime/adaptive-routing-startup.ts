@@ -4,8 +4,6 @@
 
 import type { EnterpriseApiPlatform } from "../factories/create-enterprise-api-platform";
 import { bootstrapAdaptiveRoutingAtStartup } from "../../providers/routing/performance/benchmark/adaptive/create-adaptive-routing-platform";
-import type { IModelRegistry } from "../../model-registry/interfaces/model-registry";
-import type { ICompatibilityEngine } from "../../model-registry/interfaces/model-registry";
 import { logAdaptiveMetric } from "../../providers/routing/performance/benchmark/adaptive/adaptive-routing-logger";
 import { loadAdaptiveRoutingConfig } from "../../providers/routing/performance/config/adaptive-routing-config";
 

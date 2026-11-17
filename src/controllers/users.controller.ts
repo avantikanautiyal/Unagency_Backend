@@ -7,7 +7,6 @@ import firebaseAdmin from "../libs/firebase";
 import Staff from "../models/staff.model";
 import Projects from "../models/projects.model";
 import {
-  createDistincChatRoom,
   createUserUpster,
   updateuserImage,
   updateuserName,

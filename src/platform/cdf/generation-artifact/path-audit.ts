@@ -178,12 +178,3 @@ export const CDF_M3C_GENERATION_PATH_AUDIT: readonly CdfM3cPathAuditRow[] = [
   },
 ];
 
-/**
- * Social Media-only view of the path audit (same rows, filtered).
- * Prefer this when documenting M9B classifications.
- */
-export function listSocialMediaGenerationPathAudit(): CdfM3cPathAuditRow[] {
-  return CDF_M3C_GENERATION_PATH_AUDIT.filter((r) =>
-    r.path.startsWith("Social Media"),
-  );
-}

@@ -6,7 +6,6 @@
 import type {
   ActionAuthorizationRequirement,
   ActionContextComponent,
-  ActionDefinition,
   ActionExecutionMode,
   ActionSideEffectLevel,
 } from "../action-registry";
@@ -195,7 +194,3 @@ export type ActionExecutionDeps = {
   }>;
 };
 
-export type ResolvedActionExecution = {
-  readonly action: ActionDefinition;
-  readonly request: CanonicalActionExecutionRequest;
-};

@@ -62,10 +62,3 @@ export interface Invitation {
   readonly expiresAt: string;
 }
 
-export interface Membership {
-  readonly membershipId: string;
-  readonly organizationId: string;
-  readonly userId: string;
-  readonly workspaceId?: string;
-  readonly roles: readonly BusinessRole[];
-}

@@ -23,7 +23,6 @@ import type {
   AuthoritativeLogoSpec,
   CanonicalExecutionSpecification,
   ContentItemSpec,
-  DeliverableFormat,
   OutputIntentMode,
   ResolvedField,
 } from "./execution-specification";
@@ -590,14 +589,6 @@ export function executionSpecOutputKindOverride(
   return deliverableToOutputKindOverride(spec.deliverables, {
     service: spec.task.service?.value ?? options?.service,
   });
-}
-
-export function executionSpecRequiresPresentationExpand(
-  spec: CanonicalExecutionSpecification,
-): boolean {
-  return spec.deliverables.some(
-    (d) => d.format === "PDF" || d.format === "PPTX",
-  );
 }
 
 export { buildExecutionInstruction };

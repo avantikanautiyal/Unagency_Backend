@@ -7,21 +7,8 @@
  * Future Extension: Service-account tenancy.
  */
 
-import type { TenancyLevel } from "../contracts/enums";
 import type { ProviderScope } from "../contracts/provider-scope";
 import type { CreateCredentialSessionRequest } from "../contracts/requests";
-
-export const TENANCY_ORDER: readonly TenancyLevel[] = [
-  "platform",
-  "organization",
-  "workspace",
-  "project",
-  "user",
-];
-
-export function tenancyRank(level: TenancyLevel): number {
-  return TENANCY_ORDER.indexOf(level);
-}
 
 /**
  * A credential scope "covers" a request when every scope constraint that is

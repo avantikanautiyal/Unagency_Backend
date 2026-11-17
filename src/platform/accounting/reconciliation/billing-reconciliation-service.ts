@@ -12,15 +12,6 @@ import { PROVIDER_BILLING_SYNC_STATUS } from "../contracts/billing-reconciliatio
 import { AIBillingReconciliationModel } from "../../infrastructure/durability/mongo/models/ai-billing-reconciliation.model";
 import { ProviderBillingSyncStateModel } from "../../infrastructure/durability/mongo/models/ai-provider-billing-sync-state.model";
 
-export interface IProviderBillingAdapter {
-  readonly providerId: string;
-  fetchBillingPeriod(input: {
-    readonly providerAccount?: string | null;
-    readonly periodStart: string;
-    readonly periodEnd: string;
-  }): Promise<readonly ProviderBillingLineItem[]>;
-}
-
 export interface ProviderBillingLineItem {
   readonly providerUsageId: string | null;
   readonly providerRequestId: string | null;

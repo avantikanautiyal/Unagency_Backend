@@ -57,9 +57,3 @@ export type SdkStreamEventKind =
 
 export type SdkRetryStrategy = "none" | "fixed" | "exponential";
 
-export type SdkClientState =
-  | "registered"
-  | "authenticated"
-  | "ready"
-  | "degraded"
-  | "shutdown";

@@ -18,7 +18,7 @@ import type { IProviderNegotiationEngine } from "../../providers/negotiation/int
 import { ProviderRegistry } from "../../providers/registry/provider-registry";
 import type { IProviderRegistry } from "../../providers/registry/provider-registry";
 import { asCapabilityId, asProviderId } from "../../core/identifiers";
-import type { CapabilityId, ProviderId } from "../../core/identifiers";
+import type { ProviderId } from "../../core/identifiers";
 
 /** Minimal task shape for capability seeding (legacy task intelligence removed). */
 export interface TaskCapabilityHint {
@@ -202,27 +202,6 @@ function seedProductionProvider(
     checkedAt: nowIso(),
     message: "production seed",
   });
-}
-
-/**
- * Seeds provider metadata + health into an existing registry (gateway planning).
- * LIVE dispatch still uses providerRuntimeRegistry; this is metadata-only.
- */
-export function seedProductionProvidersIntoRegistry(
-  providerRegistry: IProviderRegistry,
-  capabilityMatrix: IProviderCapabilityMatrix,
-  healthStore: InMemoryProviderHealthStore,
-  nowIso: () => string = () => new Date().toISOString()
-): void {
-  for (const p of PRODUCTION_NEGOTIATION_PROVIDERS) {
-    seedProductionProvider(
-      providerRegistry,
-      capabilityMatrix,
-      healthStore,
-      p,
-      nowIso
-    );
-  }
 }
 
 /**

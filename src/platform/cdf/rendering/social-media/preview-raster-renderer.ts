@@ -11,29 +11,13 @@ import {
 } from "../../artifacts/social-media/keys";
 import { isAssetRasterFormat, rasterOutputForFormat } from "../raster-output";
 import { renderError } from "../errors";
-import type { ArtifactRenderer, CdfRenderFormat } from "../types";
+import type { ArtifactRenderer } from "../types";
 import { selectSocialMediaPreviewVaultId } from "./asset-collect";
 import { assertSocialMediaUpstreamExactRefs } from "./upstream";
 
 export const SOCIAL_MEDIA_PREVIEW_RASTER_RENDERER_ID =
   "social-media-preview-raster";
 export const SOCIAL_MEDIA_PREVIEW_RASTER_RENDERER_VERSION = "1.0.0";
-
-function detectMime(bytes: Uint8Array, format: CdfRenderFormat): string {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    return "image/png";
-  }
-  return format === "jpg" ? "image/jpeg" : "image/png";
-}
 
 /** Read PNG IHDR width/height when signature present. */
 export function readPngDimensions(

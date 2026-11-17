@@ -214,5 +214,3 @@ export async function notifyClientExecutionFinished(
   }
 }
 
-/** @deprecated kept for older imports — same as notifyClientExecutionFinished. */
-export const notifyClientExecutionSucceeded = notifyClientExecutionFinished;

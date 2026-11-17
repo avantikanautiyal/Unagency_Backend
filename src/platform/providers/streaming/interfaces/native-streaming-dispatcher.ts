@@ -34,13 +34,3 @@ export interface INativeStreamingDispatcher {
   ): AsyncIterable<ProviderStreamEvent>;
 }
 
-export function isNativeStreamingDispatcher(
-  value: unknown
-): value is INativeStreamingDispatcher {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    (value as INativeStreamingDispatcher).nativeIncrementalStreaming === true &&
-    typeof (value as INativeStreamingDispatcher).stream === "function"
-  );
-}

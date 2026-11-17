@@ -150,6 +150,3 @@ export const OS_LAYER_STATUS: readonly OsLayerContractMeta[] = Object.freeze([
   },
 ]);
 
-export function getOsLayerStatus(layerId: string): OsLayerContractMeta | undefined {
-  return OS_LAYER_STATUS.find((l) => l.layerId === layerId);
-}

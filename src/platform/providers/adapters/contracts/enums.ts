@@ -82,8 +82,6 @@ export type CanonicalErrorKind =
 
 export type DiagnosticSeverity = "info" | "warning" | "error";
 
-export type StreamEventKind = "start" | "chunk" | "heartbeat" | "end" | "error";
-
 const LIFECYCLE_TRANSITIONS: Readonly<
   Record<ProviderLifecycleState, readonly ProviderLifecycleState[]>
 > = {
@@ -106,8 +104,3 @@ export function canTransitionLifecycle(
   return LIFECYCLE_TRANSITIONS[from].includes(to);
 }
 
-export function isTerminalLifecycleState(
-  state: ProviderLifecycleState
-): boolean {
-  return LIFECYCLE_TRANSITIONS[state].length === 0;
-}

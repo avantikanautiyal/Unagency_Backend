@@ -8,7 +8,7 @@ import { EmailQueue } from "../background/queue/email.queue";
 import { Notification } from "../background/utils/notification";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
 const FRONTEND_URL: string = process.env.FRONTEND_URL!;
-import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { parseNotificationContent } from "../utils/notificationUtils";
 import {
   defaultWebhookIdempotencyStore,

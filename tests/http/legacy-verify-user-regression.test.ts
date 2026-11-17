@@ -2,7 +2,7 @@
  * Legacy VerifyUserHandler regression — shared Firebase verification primitive.
  */
 
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import { VerifyUserHandler } from "../../src/middlewares/verifyUser.middleware";
 import type { RequestUser } from "../../src/types/user";

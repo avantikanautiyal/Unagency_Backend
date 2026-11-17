@@ -8,7 +8,6 @@ import { ApiError } from "../../utils/apiError";
 import { collaborationOsService } from "./collaboration-os-service";
 import {
   CollabMessage,
-  Conversation,
   MessageAttachment,
   type ICollabMessage,
 } from "./models";

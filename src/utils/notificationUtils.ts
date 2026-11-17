@@ -3,13 +3,6 @@
  * Utility functions for parsing notification content
  */
 
-export interface ParsedNotification {
-    title: string;
-    body: string;
-    ctaText: string;
-    ctaLink?: string; // Derived from context, not the template
-}
-
 /**
  * Parses notification template strings, replacing variables and extracting CTA
  * @param template The template string (e.g., "Hello [Name]... [Click Here]")

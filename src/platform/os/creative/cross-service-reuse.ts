@@ -5,16 +5,6 @@
 
 import type { BrandMemorySlotKey } from "./brand-memory-slots";
 
-export type ContinuityServiceSlug =
-  | "logo"
-  | "guidelines"
-  | "social"
-  | "ads"
-  | "website"
-  | "packaging"
-  | "presentation"
-  | (string & {});
-
 /** Slots typically carried into a service when prior brand identity exists. */
 export const CROSS_SERVICE_CARRY_SLOTS: Readonly<
   Record<string, readonly BrandMemorySlotKey[]>

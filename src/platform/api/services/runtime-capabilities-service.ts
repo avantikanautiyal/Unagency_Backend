@@ -112,4 +112,3 @@ export function listRuntimeCapabilities(
   }));
 }
 
-export const RUNTIME_INVENTORY_CAPABILITY_IDS = INVENTORY.map((r) => r.capabilityId);

@@ -5,12 +5,6 @@
 import Organizations from "../../../models/organization.model";
 import Users from "../../../models/users.model";
 
-export const DEMO_EMAIL_DOMAIN = "@unagency.test";
-
-export function isDemoEmail(email?: string | null): boolean {
-  return (email ?? "").toLowerCase().endsWith(DEMO_EMAIL_DOMAIN);
-}
-
 export function isDemoOrgName(name?: string | null): boolean {
   const value = (name ?? "").trim().toLowerCase();
   return (
@@ -18,10 +12,6 @@ export function isDemoOrgName(name?: string | null): boolean {
     value.startsWith("demo ") ||
     value.includes("demo creative")
   );
-}
-
-export function isDemoUserName(name?: string | null): boolean {
-  return /^demo(\s|$)/i.test((name ?? "").trim());
 }
 
 export function isDemoTitle(title?: string | null): boolean {
@@ -89,7 +79,3 @@ export function isDemoCustomerUserId(
   return id.length > 0 && exclusions.customerUserIds.has(id);
 }
 
-export function invalidateAdminDemoExclusionsCache(): void {
-  cachedExclusions = null;
-  cachedAt = 0;
-}

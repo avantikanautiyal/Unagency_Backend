@@ -4,7 +4,6 @@
 
 import type { AIUsageRecord } from "../contracts/ai-usage-record";
 import {
-  billingPeriodBoundsForDate,
   resolveAdminPeriodRange,
   type AdminPeriodFilter,
   type ResolvedPeriodRange,

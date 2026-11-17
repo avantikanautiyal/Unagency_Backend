@@ -16,7 +16,6 @@ import {
   resolveCdfCanonicalService,
   resolveGenerationContext,
   saveCdfSession,
-  type ResolvedGenerationContext,
 } from "../../../src/platform/cdf";
 
 const PRESENTATION_BRIEF = `Create a 12-slide investor presentation for a B2B SaaS company.

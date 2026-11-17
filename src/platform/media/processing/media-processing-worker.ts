@@ -10,7 +10,6 @@ import { extractBasicMediaMeta } from "./media-metadata-extractor";
 import {
   claimNextMediaJob,
   type IMediaProcessingJob,
-  MediaProcessingJob,
 } from "./media-processing-job-store";
 
 export class MediaProcessingWorker {
@@ -257,22 +256,3 @@ export function startMediaProcessingWorker(): MediaProcessingWorker {
   return w;
 }
 
-/** Test helper — process dead letters list */
-export async function listMediaDeadLetters(limit = 50) {
-  return MediaProcessingJob.find({ status: "dead_letter" })
-    .sort({ updatedAt: -1 })
-    .limit(limit);
-}
-
-export async function retryMediaDeadLetter(jobId: string): Promise<boolean> {
-  const job = await MediaProcessingJob.findById(jobId);
-  if (!job || job.status !== "dead_letter") return false;
-  job.status = "queued";
-  job.attempts = 0;
-  job.runAfter = new Date();
-  job.lastError = undefined;
-  job.claimedBy = undefined;
-  job.claimedUntil = undefined;
-  await job.save();
-  return true;
-}

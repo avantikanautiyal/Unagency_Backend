@@ -3,10 +3,7 @@
  * Direct provider path only — no OS intelligence layer assembly.
  */
 
-import type { Result } from "../../core/result";
 import type {
-  AuthPrincipal,
-  CreateExecutionRequest,
   ExecutionArtifactRef,
   ExecutionCostSummary,
   ExecutionDiagnostics,

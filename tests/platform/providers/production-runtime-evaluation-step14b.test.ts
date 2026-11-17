@@ -8,7 +8,6 @@ import {
   EVALUATION_PLANE_VERSION,
   resolveModalityProfile,
 } from "../../../src/platform/os/evaluation/evaluation-plane";
-import { runArtifactEvaluation } from "../../../src/platform/os/evaluation/artifact-evaluation";
 import {
   resolveProductionValidationAsync,
   ingestProductionEvidenceAndShadow,

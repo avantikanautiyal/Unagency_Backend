@@ -17,11 +17,7 @@ import {
   InMemoryRoutingPolicyStore,
   InMemoryBenchmarkPerformanceRecordStore,
   InMemoryAdaptiveRoutingDecisionStore,
-  buildModelPerformanceRecord,
-  getBenchmarkCase,
-  type BenchmarkModelTarget,
 } from "../src/platform/providers/routing/performance/benchmark";
-import { validateOutputContract, clearValidationCache } from "../src/platform/os/evaluation/output-validation";
 
 async function main(): Promise<void> {
   const service = process.argv.includes("--service")

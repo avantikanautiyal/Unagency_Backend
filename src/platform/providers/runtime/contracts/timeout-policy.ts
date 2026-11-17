@@ -16,6 +16,3 @@ export interface TimeoutPolicy {
   readonly queueTimeoutMs?: number;
 }
 
-export const DEFAULT_TIMEOUT_POLICY: TimeoutPolicy = {
-  executionTimeoutMs: 30_000,
-};

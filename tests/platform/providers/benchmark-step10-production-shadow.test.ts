@@ -6,7 +6,6 @@
 import {
   buildModelPerformanceRecord,
   getBenchmarkCase,
-  DEFAULT_BENCHMARK_STRATEGY,
   InMemoryBenchmarkPerformanceRecordStore,
   InMemoryShadowDecisionStore,
   ingestProductionEvidenceAndShadow,

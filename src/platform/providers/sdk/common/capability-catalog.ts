@@ -138,6 +138,3 @@ export function capabilityForVendor(vendor: SdkVendor): SdkCapability {
   return CATALOG[vendor];
 }
 
-export function allSdkVendors(): readonly SdkVendor[] {
-  return Object.keys(CATALOG) as SdkVendor[];
-}

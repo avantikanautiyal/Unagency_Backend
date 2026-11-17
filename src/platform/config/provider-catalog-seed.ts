@@ -436,10 +436,3 @@ export function listCatalogProviderIds(): readonly string[] {
   return PROVIDER_CATALOG_SEED.map((p) => p.providerId);
 }
 
-export function getCatalogEntry(providerId: string): CatalogProviderEntry | undefined {
-  return PROVIDER_CATALOG_SEED.find((p) => p.providerId === providerId);
-}
-
-export function countCatalogModels(): number {
-  return PROVIDER_CATALOG_SEED.reduce((n, p) => n + p.models.length, 0);
-}

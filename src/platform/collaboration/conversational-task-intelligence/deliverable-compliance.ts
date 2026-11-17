@@ -10,10 +10,6 @@ import type {
   NegativeConstraintSpec,
 } from "./execution-specification";
 import {
-  constraintObservabilitySummary,
-  formatNegativeConstraintForProvider,
-} from "./requirement-enforcement";
-import {
   evaluateVisualNegativeConstraint,
   mapVisualRequirementToComplianceStatus,
 } from "./visual-requirement-evaluator";

@@ -19,7 +19,6 @@ import {
 } from "../../../src/platform/cdf/generation-validation/structural-composition-validation";
 import { ImageExecutionRouter } from "../../../src/platform/providers/image/routing/image-execution-router";
 import type { IProviderRuntimeRegistry } from "../../../src/platform/providers/runtime/registry/in-memory-provider-runtime-registry";
-import type { ImageProviderCapabilityFlag } from "../../../src/platform/providers/image/configs/image-provider-capabilities";
 import { IdeogramImageProtocol } from "../../../src/platform/providers/image/ideogram/ideogram-image-protocol";
 import { IDEOGRAM_IMAGE_SPEC } from "../../../src/platform/providers/image/configs/verified-image-provider-specs";
 import type { ProviderExecutionRequest } from "../../../src/platform/providers/runtime/contracts/provider-execution-request";

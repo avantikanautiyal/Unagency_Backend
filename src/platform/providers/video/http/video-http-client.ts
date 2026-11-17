@@ -4,7 +4,7 @@
  */
 
 import { failure, success, type Result } from "../../../core/result";
-import { ProviderError, ValidationError } from "../../../core/errors";
+import { ProviderError } from "../../../core/errors";
 
 export interface VideoHttpMultipartFile {
   readonly fieldName: string;
@@ -130,22 +130,3 @@ export class FetchVideoHttpClient implements IVideoHttpClient {
   }
 }
 
-/** Recording fake HTTP for vendor contract tests — zero network. */
-export class RecordingVideoHttpClient implements IVideoHttpClient {
-  readonly calls: VideoHttpRequest[] = [];
-  constructor(
-    private readonly handler: (
-      request: VideoHttpRequest
-    ) => Result<VideoHttpResponse> | Promise<Result<VideoHttpResponse>>
-  ) {}
-
-  async send(request: VideoHttpRequest): Promise<Result<VideoHttpResponse>> {
-    this.calls.push(request);
-    return this.handler(request);
-  }
-}
-
-export function requireCredential(value: string | undefined, envVar: string): Result<string> {
-  if (!value?.trim()) return failure(new ValidationError(`${envVar} required`));
-  return success(value.trim());
-}

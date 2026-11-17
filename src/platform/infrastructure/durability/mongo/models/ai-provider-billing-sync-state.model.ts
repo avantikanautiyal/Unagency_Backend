@@ -1,17 +1,5 @@
 import { Schema, model } from "mongoose";
 
-export interface ProviderBillingSyncStateDoc {
-  readonly providerId: string;
-  readonly providerAccount: string | null;
-  readonly lastSuccessfulSyncAt: string | null;
-  readonly providerDataThrough: string | null;
-  /** Earliest instant covered by a successful provider cost sync. */
-  readonly providerDataFrom: string | null;
-  readonly syncStatus: string;
-  readonly syncError: string | null;
-  readonly updatedAt: string;
-}
-
 const providerBillingSyncStateSchema = new Schema(
   {
     providerId: { type: String, required: true, index: true },

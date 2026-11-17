@@ -47,14 +47,6 @@ export interface UserRecord {
   readonly createdAt: string;
 }
 
-export interface MembershipRecord {
-  readonly membershipId: string;
-  readonly userId: string;
-  readonly organizationId: string;
-  readonly workspaceId?: string;
-  readonly roles: readonly RoleName[];
-}
-
 export interface TenantContext {
   readonly organizationId: string;
   readonly workspaceId?: string;

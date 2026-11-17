@@ -1,4 +1,3 @@
-import { Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/apiResponse";
 import { RequestUser } from "../types/user";

@@ -25,10 +25,3 @@ export function defaultQuotaMetadata(): OpenAIQuotaMetadata {
   });
 }
 
-export function authHeaders(config: OpenAIAuthenticationConfig): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-  if (config.organizationId) headers["OpenAI-Organization"] = config.organizationId;
-  if (config.projectId) headers["OpenAI-Project"] = config.projectId;
-  return headers;
-}

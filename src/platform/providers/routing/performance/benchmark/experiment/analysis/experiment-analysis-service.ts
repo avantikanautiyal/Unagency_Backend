@@ -14,7 +14,6 @@ import {
   type ExperimentComparisonMode,
 } from "../comparison/fair-comparison";
 import {
-  buildOptimizationRecommendation,
   selectBestSupportedCandidate,
   type OptimizationRecommendation,
 } from "../recommendations/optimization-recommendations";

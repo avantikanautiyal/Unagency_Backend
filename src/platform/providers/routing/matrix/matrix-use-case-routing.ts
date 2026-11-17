@@ -163,18 +163,6 @@ export const PAUSED_VIDEO_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "provider.kling",
 ]);
 
-export const KLING_VIDEO_PREF: MatrixProviderPref = {
-  providerId: "provider.kling",
-  modelId: "kling-2-6",
-  label: "Kling",
-};
-
-export const LUMA_VIDEO_PREF: MatrixProviderPref = {
-  providerId: "provider.luma",
-  modelId: "luma-ray-2",
-  label: "Luma Ray 2",
-};
-
 export const SEEDANCE_VIDEO_PREF: MatrixProviderPref = {
   providerId: "provider.seedance",
   modelId: "seedance-2",
@@ -192,13 +180,6 @@ export const HIGGSFIELD_VIDEO_PREF: MatrixProviderPref = {
   modelId: "higgsfield-video",
   label: "Higgsfield",
 };
-
-/** Active LIVE video engines — Higgsfield, Seedance, MiniMax. */
-export const ACTIVE_VIDEO_PROVIDER_PREFERENCES: readonly MatrixProviderPref[] = [
-  HIGGSFIELD_VIDEO_PREF,
-  SEEDANCE_VIDEO_PREF,
-  MINIMAX_VIDEO_PREF,
-];
 
 export const VIDEO_USE_CASE_PREFERENCES: Record<
   VideoCreativeUseCase,

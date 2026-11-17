@@ -11,13 +11,6 @@ import type { ProviderId } from "../../../core/identifiers";
 import type { SdkClientId, SdkExecutionId } from "./identifiers";
 import type { SdkVendor } from "./enums";
 
-export interface SdkMetadata {
-  readonly attempt: number;
-  readonly vendor: SdkVendor;
-  readonly region?: string;
-  readonly tags: Readonly<Record<string, string>>;
-}
-
 export interface SdkExecutionContext {
   readonly executionId: SdkExecutionId;
   readonly requestId: string;

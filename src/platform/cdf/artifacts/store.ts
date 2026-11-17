@@ -126,18 +126,6 @@ export function storeInsertVersion(
   return "ok";
 }
 
-/** Rollback helper — only for failed CAS after insert (never for approved creative undo). */
-export function storeDeleteVersion(
-  artifactId: string,
-  version: number,
-): boolean {
-  const k = versionKey(artifactId, version);
-  if (!mem().versions.has(k)) return false;
-  mem().versions.delete(k);
-  persistBestEffort();
-  return true;
-}
-
 /**
  * Atomic allocate: check expectedLatest → insert next version → CAS head update.
  * Single sync critical section per artifact (memory/test authority).

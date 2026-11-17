@@ -7,13 +7,6 @@ import type {
   AccessibilityViolation,
 } from "../artifact-evaluation/types";
 
-export type BrowserDomViolation = {
-  readonly id: string;
-  readonly impact: "critical" | "serious" | "moderate" | "minor";
-  readonly description: string;
-  readonly selector?: string;
-};
-
 /** Serializable DOM snapshot collected inside page.evaluate. */
 export type BrowserDomAccessibilitySnapshot = {
   readonly lang?: string;

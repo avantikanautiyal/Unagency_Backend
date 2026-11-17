@@ -75,23 +75,6 @@ function defaultNowIso(): string {
   return new Date().toISOString();
 }
 
-function buildRecordFromValidationOutcome(input: {
-  readonly benchmarkCase: BenchmarkCase;
-  readonly executionOutput: BenchmarkExecutionOutput;
-  readonly model: BenchmarkModelTarget;
-  readonly strategy: BenchmarkStrategy;
-  readonly executionId: string;
-  readonly attemptId: string;
-  readonly organizationId: string;
-  readonly knowledgeVersion?: string;
-  readonly repairCount?: number;
-  readonly artifactEvaluationDeps?: import("./benchmark-validation-resolver").BenchmarkArtifactEvaluationDeps;
-  readonly createId: (prefix: string) => string;
-  readonly nowIso: () => string;
-}): Promise<{ readonly record: ModelPerformanceRecord; readonly validationAvailable: boolean }> {
-  return buildRecordFromValidationOutcomeAsync(input);
-}
-
 async function buildRecordFromValidationOutcomeAsync(input: {
   readonly benchmarkCase: BenchmarkCase;
   readonly executionOutput: BenchmarkExecutionOutput;

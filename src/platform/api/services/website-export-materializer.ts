@@ -82,10 +82,6 @@ function websiteMaterializationErrorCode(error: ValidationError): string {
 
 export type { WebsitePagePlan, WebProjectPlan };
 
-export const normalizeWebsiteHtml = (
-  raw: string
-): string => recoverWebProjectPlan(raw)?.files[0]?.content ?? raw.trim();
-
 export function parseWebProject(
   data: unknown,
   preferredStack?: WebStack | string,

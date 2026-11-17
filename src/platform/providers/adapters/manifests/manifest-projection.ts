@@ -10,9 +10,8 @@
 
 import type { ProviderCompatibilityProfile } from "../contracts/streaming-profile";
 import type { ProviderManifest } from "../contracts/provider-manifest";
-import type { ProviderModelProfile } from "../contracts/provider-model";
 import { capabilityFeatures } from "../capabilities/feature-catalog";
-import { defaultModel, findModel } from "../models/model-helpers";
+import { defaultModel } from "../models/model-helpers";
 
 /**
  * Derive a compact compatibility profile from a manifest.
@@ -42,27 +41,6 @@ export function deriveCompatibilityProfile(
     defaultModelId: fallback?.id,
     streaming: manifest.streaming.supported,
     maxContextTokens: maxContext,
-  };
-}
-
-/**
- * Derive a normalized profile for a single model.
- */
-export function deriveModelProfile(
-  manifest: ProviderManifest,
-  modelId: string
-): ProviderModelProfile | undefined {
-  const model = findModel(manifest, modelId);
-  if (!model) {
-    return undefined;
-  }
-  return {
-    providerId: manifest.providerId,
-    modelId: model.id,
-    modalities: model.modalities,
-    capability: model.capability,
-    streaming: manifest.streaming,
-    supportedFeatures: capabilityFeatures(model.capability),
   };
 }
 

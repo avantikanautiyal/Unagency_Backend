@@ -1,7 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { AdaptiveRoutingPolicy } from "../../../../providers/routing/performance/benchmark/adaptive/routing-policy-contract";
-
-export type EnterpriseAdaptiveRoutingPolicyDoc = Document & AdaptiveRoutingPolicy;
+import { Schema, model } from "mongoose";
 
 const enterpriseAdaptiveRoutingPolicySchema = new Schema(
   {

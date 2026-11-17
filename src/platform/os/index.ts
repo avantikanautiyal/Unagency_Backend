@@ -4,7 +4,6 @@
 
 export * from "./contracts/layer-status";
 export * from "./contracts/layer-ports";
-export * from "./contracts/execution";
 export * from "./contracts/product-mode";
 export * from "./contracts/output-contract-registry";
 export * from "./creative";

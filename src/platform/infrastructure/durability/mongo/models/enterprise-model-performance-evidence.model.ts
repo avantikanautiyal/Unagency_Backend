@@ -1,7 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { PerformanceEvidence } from "../../../../providers/routing/performance/contracts/performance-evidence";
-
-export type EnterpriseModelPerformanceEvidenceDoc = Document & PerformanceEvidence;
+import { Schema, model } from "mongoose";
 
 const enterpriseModelPerformanceEvidenceSchema = new Schema(
   {

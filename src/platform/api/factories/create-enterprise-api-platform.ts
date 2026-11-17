@@ -29,7 +29,6 @@ import { createVideoExecutionRouter } from "../../providers/video/routing/video-
 import { createImageExecutionRouter } from "../../providers/image/routing/image-execution-router";
 import { createAudioExecutionRouter } from "../../providers/audio/routing/audio-execution-router";
 import { createTextExecutionRouter } from "../../providers/routing/text/text-execution-router";
-import { resolveVideoCertificationAllowedProviderIds } from "../../production/execution/video-certification-config";
 import { asProviderId } from "../../core/identifiers";
 import { failure } from "../../core/result";
 import { ValidationError } from "../../core/errors";

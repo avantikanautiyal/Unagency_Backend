@@ -29,7 +29,6 @@ import {
 import { OUTPUT_CONTRACT_KIND_TEMPLATE_VERSION } from "./versioning";
 import { resolveIndustryOverlay } from "./industry-overlays";
 import { resolveServiceExtension } from "./service-overrides";
-import { STANDARD_FAILURE_CONDITIONS } from "./failure-model";
 import type {
   ComposeEffectiveContractInput,
   CompositionTraceEntry,

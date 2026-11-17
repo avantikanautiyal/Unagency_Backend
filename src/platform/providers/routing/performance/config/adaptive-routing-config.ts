@@ -25,11 +25,6 @@ export interface ProviderFailoverConfig {
   readonly maxSubmittedPaidJobs: number;
 }
 
-export interface M95HRuntimeConfig {
-  readonly adaptive: AdaptiveRoutingConfig;
-  readonly failover: ProviderFailoverConfig;
-}
-
 function envBool(env: NodeJS.ProcessEnv, key: string, fallback: boolean): boolean {
   const v = env[key]?.trim().toLowerCase();
   if (v === undefined || v === "") return fallback;
@@ -93,11 +88,3 @@ export function loadProviderFailoverConfig(
   };
 }
 
-export function loadM95HRuntimeConfig(
-  env: NodeJS.ProcessEnv = process.env
-): M95HRuntimeConfig {
-  return {
-    adaptive: loadAdaptiveRoutingConfig(env),
-    failover: loadProviderFailoverConfig(env),
-  };
-}

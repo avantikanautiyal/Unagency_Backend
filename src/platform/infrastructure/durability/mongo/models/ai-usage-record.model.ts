@@ -1,7 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { AIUsageRecord } from "../../../../accounting/contracts/ai-usage-record";
-
-export type AIUsageRecordDoc = Document & AIUsageRecord;
+import { Schema, model } from "mongoose";
 
 const appliedUnitPriceSchema = new Schema(
   {

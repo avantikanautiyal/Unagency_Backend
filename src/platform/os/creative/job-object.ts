@@ -75,44 +75,6 @@ export interface JobObjectV0 {
 /** Creative territory frame for 3-route jobs (Track B3). */
 export type CreativeTerritoryV0 = "iconic" | "distinctive" | "elevated";
 
-/**
- * Per-route production object — feeds thin generate, not a mega-prompt.
- */
-export interface CreativeRouteObjectV0 {
-  readonly schemaVersion: "v0";
-  readonly territory: CreativeTerritoryV0;
-  readonly title: string;
-  readonly rationale?: string;
-  readonly productionPrompt: string;
-  readonly providerPrompts?: Readonly<Record<string, string>>;
-  readonly qaScore?: number;
-  readonly qaNotes?: readonly string[];
-}
-
-export type PromptRegistryStatus =
-  | "draft"
-  | "bench"
-  | "production"
-  | "retired";
-
-/**
- * Prompt Registry record stub (Track B2) — handbook SYS-FOUND-01.
- */
-export interface PromptRegistryRecordV0 {
-  readonly promptId: string;
-  readonly version: string;
-  readonly status: PromptRegistryStatus;
-  readonly library: string;
-  readonly type: string;
-  readonly dependencies?: readonly string[];
-  readonly conflicts?: readonly string[];
-  readonly requiredInputs?: readonly string[];
-  readonly outputSchema?: Readonly<Record<string, unknown>>;
-  readonly qualityRubric?: readonly string[];
-  readonly benchmarkScore?: number;
-  readonly rollbackVersion?: string;
-}
-
 export function emptyJobObject(input: {
   userBrief: string;
   understoodBrief?: string;

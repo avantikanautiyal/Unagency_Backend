@@ -159,43 +159,11 @@ import {
   sanitizeGuidelinesProfile,
   mergeGuidelinesProfile,
   brandService,
-  type BrandDto,
 } from "../../../src/services/brand-service";
 import {
   productSearchService,
   type SearchHitKind,
 } from "../../../src/services/product-search-service";
-
-function sampleBrand(overrides: Partial<BrandDto> = {}): BrandDto {
-  const now = new Date().toISOString();
-  return {
-    id: new mongoose.Types.ObjectId().toString(),
-    organizationId: new mongoose.Types.ObjectId().toString(),
-    ownerUserId: new mongoose.Types.ObjectId().toString(),
-    name: "Acme Studio",
-    status: "active",
-    colors: ["#111111"],
-    voice: "Confident, warm",
-    positioning: "Premium creative partner",
-    guidelines: "Always use the full logo lockup",
-    industry: "Marketing & Advertising",
-    targetAudience: "SMB marketing leads",
-    website: "https://acme.example",
-    guidelinesProfile: {
-      mission: "Help brands grow with clarity",
-      tone: "Confident, optimistic",
-      writingStyle: "Short sentences, active voice",
-      wordsToAvoid: ["cheap", "hype"],
-      preferredVocabulary: ["craft", "partnership"],
-      competitors: ["Rival Co"],
-      approvalRules: "Legal sign-off required for claims",
-    },
-    memberUserIds: [],
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
 
 describe("M10.17 — knowledge-document-index-service pure functions", () => {
   it("chunkText splits text into ~800 char pieces", () => {

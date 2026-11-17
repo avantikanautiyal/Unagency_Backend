@@ -3,7 +3,7 @@
  */
 
 import type { BenchmarkModelTarget } from "../contracts/benchmark-case";
-import { DEFAULT_BENCHMARK_BUDGET, type BenchmarkBudgetConfig } from "../contracts/benchmark-execution-config";
+import { type BenchmarkBudgetConfig } from "../contracts/benchmark-execution-config";
 
 export const STAGE1_REAL_VALIDATION_BENCHMARK_IDS = Object.freeze([
   "bench.website.landing-page",

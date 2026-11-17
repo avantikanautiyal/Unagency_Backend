@@ -29,13 +29,6 @@ export function billingPeriodBoundsForDate(date: Date): BillingPeriodBounds {
   };
 }
 
-export function billingPeriodBoundsForKey(billingPeriod: string): BillingPeriodBounds {
-  const [year, month] = billingPeriod.split("-").map(Number);
-  const periodStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
-  const periodEnd = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-  return { periodStart, periodEnd, billingPeriod };
-}
-
 export type AdminPeriodFilter =
   | "current_month"
   | "previous_month"

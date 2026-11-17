@@ -10,9 +10,7 @@
 import type { ProviderManifest } from "../contracts/provider-manifest";
 import type {
   ProviderModel,
-  ProviderModelCapability,
 } from "../contracts/provider-model";
-import { capabilityFeatures } from "../capabilities/feature-catalog";
 
 export function findModel(
   manifest: ProviderManifest,
@@ -31,9 +29,3 @@ export function defaultModel(
   );
 }
 
-export function modelSupportsFeature(
-  capability: ProviderModelCapability,
-  feature: string
-): boolean {
-  return capabilityFeatures(capability).includes(feature);
-}

@@ -493,8 +493,6 @@ export const NOTIFICATION_CONFIG = {
     }
 } as const;
 
-export type NotificationKey = keyof typeof NOTIFICATION_CONFIG;
-
 // Deprecated: kept for backward compatibility until refactor is complete
 export const IN_APP_NOTIFICATION_MESSAGES = {
     PROJECT_PLANNING: "Your project just landed in the universe. It’s blinking, stretching, and waiting for you to guide it like the creative mastermind you are.",
@@ -591,4 +589,3 @@ export const IN_APP_NOTIFICATION_MESSAGES = {
     RESOURCE_TASK_COMPLETED: "Task marked as completed.",
 } as const;
 
-export type InAppNotificationKey = keyof typeof IN_APP_NOTIFICATION_MESSAGES;

@@ -7,7 +7,6 @@ import type { IProviderDispatcher } from "../providers/runtime/interfaces/provid
 import type { ToolRuntimePlatform } from "../providers/tools/composition/tool-runtime-platform";
 import {
   createDirectExecutionEngine,
-  type DirectExecutionEngineDeps,
 } from "./direct-execution-engine";
 import type { IDirectExecutionEngine } from "./contracts";
 

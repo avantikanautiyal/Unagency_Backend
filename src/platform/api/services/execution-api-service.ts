@@ -6,14 +6,9 @@
 
 import { failure, success, type Result } from "../../core/result";
 import { ValidationError, NotFoundError, AuthorizationError } from "../../core/errors";
-import { resolveControlPlaneWorkspaceId } from "./integration-control-plane-runner";
 import type { IDistributedExecutionEngine } from "../../infrastructure/execution/interfaces/execution";
 import { asJobId } from "../../infrastructure/execution/contracts/job";
 import type { IDirectExecutionEngine } from "../../direct/contracts";
-import {
-  asOrganizationId,
-  asWorkspaceId,
-} from "../../core/identifiers";
 import type {
   AuthPrincipal,
   CreateExecutionRequest,
@@ -80,7 +75,6 @@ import {
 } from "../../providers/tools/composition/tool-runtime-platform";
 import type { LiveSseExecutionPayload } from "./execution-streaming-service";
 import {
-  CANONICAL_INTEGRATION_MODE,
   type CanonicalStreamHandoff,
 } from "./canonical-execution-spine";
 import { executeCanonicalStream } from "./execution-canonical-stream";
@@ -2376,12 +2370,6 @@ function rememberSettledHydrate(
     const oldest = settledHydrates.keys().next().value;
     if (oldest !== undefined) settledHydrates.delete(oldest);
   }
-}
-
-/** Test hook — the reuse map is process-wide. */
-export function resetSettledHydratesForTests(): void {
-  settledHydrates.clear();
-  finishedDeliverables.clear();
 }
 
 function missingWebsitePreview(resource: ExecutionResource): boolean {

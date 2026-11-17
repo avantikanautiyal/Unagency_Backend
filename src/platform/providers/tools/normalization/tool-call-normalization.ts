@@ -75,12 +75,6 @@ export function buildContinuationMessages(input: {
   return Object.freeze([...input.priorMessages, assistant, ...toolMessages]);
 }
 
-export function extractFinishReason(output: Readonly<Record<string, unknown>>): string | undefined {
-  if (typeof output.finishReason === "string") return output.finishReason;
-  if (typeof output.finish_reason === "string") return output.finish_reason;
-  return undefined;
-}
-
 export function outputHasToolCalls(output: Readonly<Record<string, unknown>> | undefined): boolean {
   if (!output) return false;
   return normalizeOpenAIToolCalls(output).length > 0;

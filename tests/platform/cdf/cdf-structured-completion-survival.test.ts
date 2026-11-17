@@ -6,7 +6,6 @@
 import assert from "node:assert/strict";
 import {
   applyCdfTransition,
-  fixtureSocialMediaPlatform,
   fixtureSocialMediaSizeReference,
   getCdfSession,
   resetCdfArtifactEngineForTests,

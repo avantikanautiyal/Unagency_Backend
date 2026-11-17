@@ -124,13 +124,3 @@ export class InMemoryFxRateService implements IFxRateService {
 
 let defaultFxService: InMemoryFxRateService | null = null;
 
-export function getDefaultFxRateService(): InMemoryFxRateService {
-  if (!defaultFxService) {
-    defaultFxService = new InMemoryFxRateService();
-  }
-  return defaultFxService;
-}
-
-export function setDefaultFxRateService(service: InMemoryFxRateService): void {
-  defaultFxService = service;
-}

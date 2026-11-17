@@ -127,10 +127,6 @@ function toExecutionError(
 const QUOTA_EXHAUSTED_SKIP_MS = 5 * 60_000;
 const quotaExhaustedUntil = new Map<string, number>();
 
-export function clearQuotaExhaustedProviders(): void {
-  quotaExhaustedUntil.clear();
-}
-
 /** HTTP statuses that mean "this request is wrong", not "provider is down". */
 const CALLER_INPUT_HTTP_STATUSES = new Set([400, 413, 415, 422]);
 

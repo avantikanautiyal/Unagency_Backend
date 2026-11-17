@@ -2,8 +2,7 @@
  * Lifecycle manager.
  */
 
-import { failure, success, type Result } from "../../core/result";
-import { NotFoundError } from "../../core/errors";
+import { success, type Result } from "../../core/result";
 import type { ModelLifecycleState } from "../contracts/enums";
 import type { ModelLifecycle } from "../contracts/lifecycle";
 import type { IModelLifecycleManager } from "../interfaces/model-registry";

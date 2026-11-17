@@ -4,17 +4,9 @@
 
 import { failure, success, type Result } from "../../../core/result";
 import { AuthorizationError, ValidationError } from "../../../core/errors";
-import {
-  asCapabilityId,
-  asExecutionId,
-  asOrganizationId,
-  asProviderId,
-  asWorkspaceId,
-} from "../../../core/identifiers";
 import { createProviderRuntime } from "../../runtime/factories/create-provider-runtime";
 import type { IProviderDispatcher } from "../../runtime/interfaces/provider-dispatcher";
 import type { IProviderRuntime } from "../../runtime/interfaces/provider-runtime";
-import { sampleRequest } from "../../runtime/testing";
 import { InMemoryToolRegistry } from "../registry/in-memory-tool-registry";
 import { ToolExecutor } from "../executor/tool-executor";
 import {
@@ -157,38 +149,6 @@ export async function executeToolAwareRequest(input: {
     allowSideEffectsWithoutApproval: input.allowSideEffectsWithoutApproval,
     workerId: input.workerId ?? "enterprise-tool-runtime",
   });
-}
-
-/** Build a provider request for unit tests / standalone tool runs. */
-export function buildToolProviderRequest(input: {
-  readonly executionId: string;
-  readonly organizationId: string;
-  readonly workspaceId?: string;
-  readonly prompt: string;
-  readonly capabilityId?: string;
-  readonly providerId?: string;
-  readonly modelId?: string;
-}) {
-  const providerId = input.providerId ?? "provider.openai";
-  const base = sampleRequest({
-    requestId: `${input.executionId}_tool`,
-    providerId,
-    payload: { prompt: input.prompt },
-  });
-  return {
-    ...base,
-    providerId: asProviderId(providerId),
-    capabilityId: asCapabilityId(input.capabilityId ?? "text.generate"),
-    modelId: input.modelId ?? "openai/gpt-4o",
-    payload: { prompt: input.prompt },
-    context: {
-      ...base.context,
-      providerId: asProviderId(providerId),
-      organizationId: asOrganizationId(input.organizationId),
-      workspaceId: asWorkspaceId(input.workspaceId ?? "ws_default"),
-      executionId: asExecutionId(input.executionId),
-    },
-  };
 }
 
 export async function approveToolInvocation(input: {

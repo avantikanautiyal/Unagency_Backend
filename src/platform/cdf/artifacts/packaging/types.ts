@@ -244,11 +244,3 @@ export type PackagingSkuAdaptationsData = {
   sourceRefs?: PackagingSourceRefs;
 };
 
-export type PackagingArtifactData =
-  | PackagingDielineData
-  | PackagingRoutesData
-  | Packaging3dDirectionData
-  | PackagingFrontPackData
-  | PackagingCompletePackData
-  | PackagingViewsData
-  | PackagingSkuAdaptationsData;

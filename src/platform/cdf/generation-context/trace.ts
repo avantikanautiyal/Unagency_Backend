@@ -87,8 +87,6 @@ export const CANONICAL_SECTION_MARKERS = [
   "AUTHORITY",
 ] as const;
 
-export type CanonicalSectionMarker = (typeof CANONICAL_SECTION_MARKERS)[number];
-
 export type CanonicalSectionsPresent = Record<
   | "currentTask"
   | "currentUserInstruction"

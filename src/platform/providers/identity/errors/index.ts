@@ -9,17 +9,6 @@
 
 import { IntelligenceError } from "../../../core/errors";
 
-export class ProviderIdentityError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: Readonly<Record<string, unknown>>,
-    cause?: unknown
-  ) {
-    super(message, { code: "SECURITY_ERROR", metadata, cause });
-    this.name = "ProviderIdentityError";
-  }
-}
-
 export class CredentialNotFoundError extends IntelligenceError {
   constructor(
     message: string,

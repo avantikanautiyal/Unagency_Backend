@@ -10,19 +10,6 @@ import {
   planVideoClipSegments,
 } from "./video-clip-segments";
 
-export const VIDEO_COMPOSE_SAFE_KEYS = [
-  "videoTargetDurationSec",
-  "videoSegmentCount",
-  "videoSegmentIndex",
-  "prompt",
-  "videoComposed",
-  "videoComposing",
-  "videoComposeFailed",
-  "videoComposeSegmentCount",
-  "videoComposeDurationSec",
-  "videoShotPlan",
-] as const;
-
 /** Persist compose plan fields from the submit payload (no secrets / assets). */
 export function extractVideoComposeSafeMetadata(
   payload: Readonly<Record<string, unknown>> | undefined,

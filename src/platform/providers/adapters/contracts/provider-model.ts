@@ -7,9 +7,7 @@
  * Future Extension: Pricing tiers, per-model rate limits.
  */
 
-import type { ProviderId } from "../../../core/identifiers";
 import type { ProviderModality } from "./enums";
-import type { ProviderStreamingProfile } from "./streaming-profile";
 
 /**
  * Capability flags for a single model.
@@ -39,14 +37,3 @@ export interface ProviderModel {
   readonly metadata: Readonly<Record<string, unknown>>;
 }
 
-/**
- * Normalized, resolved view of a single model for downstream consumption.
- */
-export interface ProviderModelProfile {
-  readonly providerId: ProviderId;
-  readonly modelId: string;
-  readonly modalities: readonly ProviderModality[];
-  readonly capability: ProviderModelCapability;
-  readonly streaming: ProviderStreamingProfile;
-  readonly supportedFeatures: readonly string[];
-}

@@ -13,7 +13,6 @@ import {
   bindGeneratedSocialMediaArtifactToSession,
   bindSocialMediaGeneratedFromAttach,
   createArtifact,
-  fixtureSocialMediaPlatform,
   fixtureSocialMediaSizeReference,
   getArtifactVersion,
   getCdfSession,

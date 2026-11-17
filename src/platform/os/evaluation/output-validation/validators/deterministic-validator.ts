@@ -9,7 +9,6 @@ import {
   hasMediaArtifact,
   hasPlaceholderContent,
   previewIsEmpty,
-  structuredArrayLength,
   structuredHasKey,
 } from "../artifact-context";
 import { OUTPUT_VALIDATION_VERSION } from "../validation-result";

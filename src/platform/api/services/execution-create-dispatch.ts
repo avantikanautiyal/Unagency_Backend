@@ -5,7 +5,6 @@
 
 import { CDF_DELIVERY_NOTE_FROM_BRIEF } from "../../providers/image/common/approved-design-fidelity";
 import { failure, success, type Result } from "../../core/result";
-import { CREATIVE_SCORE_RELEASE_GATE } from "../../os/evaluation/creative-score/creative-score-dimensions";
 import { ValidationError } from "../../core/errors";
 import type { ServiceContextWorkflow } from "../../config/service-context-classifier";
 
@@ -228,22 +227,6 @@ import { CANONICAL_INTEGRATION_MODE } from "./canonical-execution-spine";
 import type { ExecutionCreateHost, ExecutionExtrasRecord } from "./execution-create-host";
 import type { CreatePipelineState } from "./execution-create-state";
 import { preserveEstablishedOutcomeEvidenceOnResultData } from "../../cdf/generation-validation/outcome-evidence-preservation";
-
-function metadataBrandAssetIds(
-  metadata: Readonly<Record<string, unknown>> | undefined,
-): string[] {
-  const raw = metadata?.assetIds;
-  if (Array.isArray(raw)) {
-    return raw.map(String).map((s) => s.trim()).filter(Boolean);
-  }
-  const logo =
-    typeof metadata?.brandLogoAssetId === "string"
-      ? metadata.brandLogoAssetId.trim()
-      : typeof metadata?.logoAssetId === "string"
-        ? metadata.logoAssetId.trim()
-        : "";
-  return logo ? [logo] : [];
-}
 
 function resolveProductionComplianceFormats(input: {
   readonly metadata?: Readonly<Record<string, unknown>>;

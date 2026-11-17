@@ -113,14 +113,3 @@ export function creativeQaExtras(
   };
 }
 
-export function applyCreativeQaToRouteObject(input: {
-  readonly qaScore?: number;
-  readonly qaNotes?: readonly string[];
-  readonly gate: CreativeQaGateResult | null;
-}): { qaScore?: number; qaNotes?: readonly string[] } {
-  if (!input.gate) return {};
-  return {
-    qaScore: input.gate.totalScore,
-    qaNotes: input.gate.notes.length ? input.gate.notes : input.qaNotes,
-  };
-}

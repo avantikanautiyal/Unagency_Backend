@@ -61,13 +61,3 @@ export class ProviderVersion {
   }
 }
 
-/**
- * Model version metadata attached to a provider (not an SDK model client).
- */
-export interface ProviderModelVersionMetadata {
-  readonly modelId: string;
-  readonly modelVersion: string;
-  readonly deprecated?: boolean;
-  readonly retirementAt?: string;
-  readonly attributes?: Readonly<Record<string, unknown>>;
-}

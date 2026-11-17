@@ -7,7 +7,6 @@ import { loadAdaptiveRoutingConfig } from "../../providers/routing/performance/c
 import {
   beginExecutionTrace,
   recordClassificationTrace,
-  recordExecutionTraceStage,
   recordProviderDispatchFromSummary,
   recordProductionEvidenceTrace,
   recordWebsiteMaterializationTrace,

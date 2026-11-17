@@ -18,14 +18,6 @@ type PersistedMemoryV0 = {
   entries?: BrandMemorySlotEntry[];
 };
 
-function slotMapKey(
-  organizationId: string,
-  brandId: string,
-  slotKey: BrandMemorySlotKey
-): string {
-  return `${organizationId}|${brandId}|${slotKey}`;
-}
-
 function headKey(tier: BrandMemoryTier, slotKey: BrandMemorySlotKey): string {
   return `${tier}|${slotKey}`;
 }

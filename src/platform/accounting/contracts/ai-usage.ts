@@ -24,15 +24,3 @@ export interface NormalizedAIUsage {
   readonly rawProviderUsage: Readonly<Record<string, unknown>> | null;
 }
 
-export const EMPTY_NORMALIZED_USAGE: NormalizedAIUsage = Object.freeze({
-  inputTokens: null,
-  outputTokens: null,
-  cachedInputTokens: null,
-  cachedOutputTokens: null,
-  reasoningTokens: null,
-  totalTokens: null,
-  otherUnits: Object.freeze([]),
-  providerReportedCostUsd: null,
-  providerRequestId: null,
-  rawProviderUsage: null,
-});

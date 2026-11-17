@@ -14,7 +14,6 @@ import type {
   CdfRequirementPriority,
   CdfRequirementValue,
   CdfSourceInput,
-  CdfSourceInputType,
 } from "./types";
 
 function nowIso(): string {
@@ -559,8 +558,3 @@ export function extractRequirements(
   return all;
 }
 
-export function sourceTypeForDecision(
-  kind: "selection" | "approval" | "legacy_select_compat",
-): CdfSourceInputType {
-  return kind;
-}

@@ -11,7 +11,6 @@ import type {
   AuthCredential,
   AuthPrincipal,
   RouteDefinition,
-  TenantContext,
 } from "../contracts";
 import type {
   IApiGateway,

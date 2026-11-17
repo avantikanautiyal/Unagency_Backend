@@ -31,7 +31,6 @@ import { stampEmailCreateMetadata } from "../../direct/email-direct-metadata";
 import { shouldOmitCdfStructuredStamp } from "../../cdf/phase-scoped-create";
 import { stampCanonicalStructuredOutputMetadata } from "../../cdf/structured-output-contract";
 import {
-  WEBSITE_ROUTES_STRUCTURED_SCHEMA,
   WEB_PROJECT_STRUCTURED_SCHEMA,
 } from "../../os/delivery/website-generation";
 import {

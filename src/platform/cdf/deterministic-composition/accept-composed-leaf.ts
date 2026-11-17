@@ -3,7 +3,6 @@
  * Generic — no provider/service/platform branches.
  */
 
-import { createHash } from "crypto";
 import type { DeliverableCompositionContract } from "../../../../../Unagency-frontend/packages/api/src/domain/cdf/deliverable-composition";
 import { deriveVisualVerificationRequirements } from "../generation-validation/visual-verification-requirements";
 import {
@@ -56,10 +55,6 @@ export type LeafCompositionAcceptanceFail = {
 export type LeafCompositionAcceptanceResult =
   | LeafCompositionAcceptanceOk
   | LeafCompositionAcceptanceFail;
-
-function sha256(bytes: Uint8Array | Buffer): string {
-  return createHash("sha256").update(Buffer.from(bytes)).digest("hex");
-}
 
 export function buildStructuralEvidenceFromComposed(input: {
   readonly composed: ComposedDeliverable;
@@ -260,6 +255,3 @@ export function enrichCanonicalCandidateWithComposedDeliverable(input: {
   };
 }
 
-export function hashBuffer(bytes: Uint8Array | Buffer): string {
-  return sha256(bytes);
-}

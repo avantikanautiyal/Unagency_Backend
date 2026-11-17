@@ -176,15 +176,3 @@ export function evaluateVideoReadiness(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
-export function resolveAsyncVideoDispatcher(
-  registry: InMemoryProviderRuntimeRegistry,
-  providerId: string
-): IAsyncProviderDispatcher | undefined {
-  const entry = registry.resolveAvailable(asProviderId(providerId));
-  if (!entry?.dispatcher) return undefined;
-  const d = entry.dispatcher as IAsyncProviderDispatcher;
-  if (typeof d.executionSemantics === "function" && d.executionSemantics() === "async") {
-    return d;
-  }
-  return undefined;
-}

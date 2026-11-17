@@ -163,22 +163,6 @@ export function extractBriefColors(text: string | null | undefined): string[] {
   return normalized.slice(0, 10);
 }
 
-/** True when the brief likely mentions colours but regex found none — LLM fallback candidate. */
-export function briefLikelyMentionsColors(text: string | null | undefined): boolean {
-  const t = (text ?? "").trim();
-  if (!t) return false;
-  if (COLOR_CONTEXT_RE.test(t)) return true;
-  if (/#([0-9a-fA-F]{3,6})\b/.test(t)) return true;
-  for (const aliases of Object.values(MULTILINGUAL_COLOR_ALIASES)) {
-    for (const alias of aliases) {
-      if (alias.length < 3) continue;
-      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (new RegExp(escaped, "iu").test(t)) return true;
-    }
-  }
-  return false;
-}
-
 export function mergeColorLists(
   ...lists: readonly (readonly string[] | undefined)[]
 ): string[] {

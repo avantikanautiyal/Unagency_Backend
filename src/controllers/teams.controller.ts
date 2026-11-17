@@ -9,7 +9,7 @@ import Organizations from "../models/organization.model";
 import mongoose from "mongoose";
 import { EmailQueue } from "../background/queue/email.queue";
 import { commonTemplate } from "../emailTemplates/unagency/commonTemplate";
-import { IN_APP_NOTIFICATION_MESSAGES, NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
+import { NOTIFICATION_CONFIG } from "../utils/constant/emailConstants";
 import { Notification } from "../background/utils/notification";
 import { parseNotificationContent } from "../utils/notificationUtils";
 import { dispatchClientNotification } from "../notifications/client-notification-service";

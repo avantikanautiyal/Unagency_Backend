@@ -238,8 +238,3 @@ export const ALL_VIDEO_PROVIDER_SPECS: readonly VerifiedVideoProviderSpec[] = [
 export const VERIFIED_VIDEO_PROVIDER_SPECS: readonly VerifiedVideoProviderSpec[] =
   ALL_VIDEO_PROVIDER_SPECS.filter((s) => s.vendorApiVerified);
 
-export function videoSpecByProviderId(
-  providerId: string
-): VerifiedVideoProviderSpec | undefined {
-  return ALL_VIDEO_PROVIDER_SPECS.find((s) => s.canonicalProviderId === providerId);
-}

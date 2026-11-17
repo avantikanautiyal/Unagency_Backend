@@ -1,7 +1,6 @@
 import multer from "multer";
 import multerS3 from "multer-s3";
 import AwsS3 from "../config/aws.config";
-import path from "path";
 import { Request } from "express";
 
 const storageS3 = multerS3({

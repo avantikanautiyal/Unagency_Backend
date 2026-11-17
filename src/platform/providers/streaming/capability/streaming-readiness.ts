@@ -55,18 +55,3 @@ export function evaluateStreamingReadiness(
   };
 }
 
-/**
- * Routing must exclude providers that are catalogue-claimed but not stream-executable.
- */
-export function filterStreamExecutableProviderIds(
-  candidateProviderIds: readonly string[],
-  configuredProviderIds: ReadonlySet<string>
-): readonly string[] {
-  const matrix = buildStreamingTruthMatrix({ configuredProviderIds });
-  const byId = new Map(matrix.map((m) => [m.providerId, m]));
-  return candidateProviderIds.filter((id) => {
-    const truth = byId.get(id);
-    if (!truth) return false;
-    return isStreamExecutable(truth);
-  });
-}

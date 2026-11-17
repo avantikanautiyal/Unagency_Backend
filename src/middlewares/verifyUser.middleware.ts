@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { ApiError } from "../utils/apiError";
 import { verifyFirebaseIdToken } from "../libs/firebase/verify-id-token";
 import Users from "../models/users.model";
@@ -146,11 +146,4 @@ export const IsVerifiedUser = asyncHandler(async function IsVerifiedUser(
   const err = new Error("user is not verified");
   next(new ApiError((err as Error).message, 401));
   return;
-});
-export const IsMembershipUser = asyncHandler(async function IsMembershipUser(
-  req: RequestUser,
-  res: Response,
-  next: NextFunction
-) {
-  next(new ApiError("bnd kr diya hai ye change kr ", 400));
 });

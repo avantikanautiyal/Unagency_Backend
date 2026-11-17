@@ -2,21 +2,6 @@
  * In-process accounting observability counters (financial failure detection).
  */
 
-export interface AccountingMetricsSnapshot {
-  readonly usageRecordsCreated: number;
-  readonly usageRecordsDeduplicated: number;
-  readonly usageRecordsUpdated: number;
-  readonly pendingPricingRecords: number;
-  readonly pendingProviderUsageRecords: number;
-  readonly accountingFailures: number;
-  readonly reconciliationMismatches: number;
-  readonly providerBillingSyncFailures: number;
-  readonly unknownProviders: number;
-  readonly unknownModels: number;
-  readonly ledgerWriteLatencyMsTotal: number;
-  readonly ledgerWriteCount: number;
-}
-
 const counters = {
   usageRecordsCreated: 0,
   usageRecordsDeduplicated: 0,
@@ -42,16 +27,6 @@ export function incrementAccountingMetric(
 export function recordLedgerWriteLatency(ms: number): void {
   counters.ledgerWriteLatencyMsTotal += ms;
   counters.ledgerWriteCount += 1;
-}
-
-export function getAccountingMetrics(): AccountingMetricsSnapshot {
-  return { ...counters };
-}
-
-export function resetAccountingMetricsForTests(): void {
-  for (const key of Object.keys(counters) as (keyof typeof counters)[]) {
-    counters[key] = 0;
-  }
 }
 
 export function logAccountingError(context: string, error: unknown, meta?: Record<string, unknown>): void {

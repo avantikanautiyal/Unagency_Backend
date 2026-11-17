@@ -6,7 +6,6 @@
  */
 
 import {
-  CdfDependencyContractError,
   deriveDependencyRequiredRole,
   isCdfPhaseActiveForSession,
   resolveCdfPhaseDefinition,
@@ -331,22 +330,6 @@ export function selectRequiresExactArtifactIdentity(
   if (!phase) return true;
   const contract = resolveCdfPhaseExecutionContract({ phase });
   return contract?.requiresExactArtifactOnSelect !== false;
-}
-
-/** @deprecated Prefer tryResolveDependencyRequiredRole — kept for call sites. */
-export function resolveRequiredRoleOrThrow(
-  dep: { phaseId: string; required: boolean; requiredRole?: CdfDependencyRequiredRole },
-  upstream: CdfPhaseDefinition | undefined,
-): CdfDependencyRequiredRole {
-  const result = tryResolveDependencyRequiredRole(dep, upstream);
-  if (!result.ok) {
-    throw new CdfDependencyContractError(
-      result.code,
-      result.message,
-      result.details,
-    );
-  }
-  return result.requiredRole;
 }
 
 /** Re-export derive for tests that assert mapping without a depending phase. */

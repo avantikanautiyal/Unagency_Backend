@@ -25,20 +25,6 @@ export type NegotiationStage =
   | "quality"
   | "decision";
 
-export const NEGOTIATION_STAGE_ORDER: readonly NegotiationStage[] = [
-  "capability",
-  "provider",
-  "model",
-  "constraint",
-  "identity",
-  "policy",
-  "feature",
-  "budget",
-  "regional",
-  "quality",
-  "decision",
-];
-
 /**
  * Features that can be negotiated for an execution.
  */

@@ -4,7 +4,6 @@
  */
 
 import { failure, success, type Result } from "../../core/result";
-import { ValidationError } from "../../core/errors";
 import type { CreateExecutionRequest, ExecutionResource } from "../contracts";
 import { logOsExecutionEvent } from "../../os";
 import type { DirectExecutionReport } from "../../direct/contracts";

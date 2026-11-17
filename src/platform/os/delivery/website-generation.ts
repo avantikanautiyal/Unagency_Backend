@@ -1188,20 +1188,6 @@ export function buildWebProjectInstructionBlock(input: {
   return lines.join("\n");
 }
 
-/** @deprecated Use buildWebProjectInstructionBlock */
-export function buildWebsitePageInstructionBlock(input: {
-  readonly userBrief: string;
-  readonly brandName?: string;
-  readonly exampleDeliverable?: string;
-  readonly isRetry?: boolean;
-  readonly stack?: WebStack;
-}): string {
-  return buildWebProjectInstructionBlock({
-    ...input,
-    stack: input.stack ?? "html-static",
-  });
-}
-
 export function buildWebsiteNonNegotiablesBlock(input: {
   readonly userBrief: string;
   readonly brandName?: string;

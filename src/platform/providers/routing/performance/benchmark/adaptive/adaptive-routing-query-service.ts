@@ -2,7 +2,6 @@
  * Step 12/13 — Adaptive routing query surface (extends intelligence layer).
  */
 
-import type { ModelPerformanceRecord } from "../contracts/model-performance-record";
 import type { IBenchmarkPerformanceRecordStore } from "../persistence/benchmark-record-store";
 import { defaultBenchmarkPerformanceRecordStore } from "../persistence/benchmark-record-store";
 import type { IAdaptiveRoutingDecisionStore } from "./adaptive-routing-decision-store";

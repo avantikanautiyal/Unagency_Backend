@@ -37,11 +37,6 @@ async function ensureProductionCategoriesSeeded(): Promise<void> {
   );
 }
 
-const validateTags = (tags: any): boolean => {
-  if (!Array.isArray(tags)) return false;
-  return tags.every((tag) => typeof tag === "string");
-};
-
 const createCategory = asyncHandler(async (req: Request, res: Response) => {
   const { title, tags, customPath } = req.body;
   const file = req.file as Express.MulterS3.File | undefined;

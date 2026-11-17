@@ -4,7 +4,6 @@
  */
 
 import type { DeckBounds, DeckDimensions } from "./coordinates";
-import type { PresentationArtifactKey } from "./keys";
 
 /** Shared provenance refs inside creative data (IDs only). */
 export type PresentationSourceRefs = {
@@ -316,14 +315,3 @@ export type DeckSpec = {
 
 export type PresentationDeckData = DeckSpec;
 
-export type PresentationArtifactDataByKey = {
-  "presentation.source": PresentationSourceData;
-  "presentation.storyline": PresentationStorylineData;
-  "presentation.slide-content": PresentationSlideContentData;
-  "presentation.design-route": PresentationDesignRouteData;
-  "presentation.design-system": PresentationDesignSystemData;
-  "presentation.deck": PresentationDeckData;
-};
-
-export type AnyPresentationArtifactData =
-  PresentationArtifactDataByKey[PresentationArtifactKey];

@@ -402,17 +402,3 @@ export async function sumLedgerAiCostByMonth(input: {
   return byMonth;
 }
 
-export function usdToDisplayAmount(usd: number, currency: string, fxRate?: number | null): number {
-  if (currency.toUpperCase() === "USD") return usd;
-  if (fxRate && Number.isFinite(fxRate) && fxRate > 0) return usd * fxRate;
-  return usd;
-}
-
-export function addUsdAmounts(values: readonly string[]): number {
-  let total = BigInt(0);
-  for (const value of values) {
-    const micro = parseUsdToMicro(value);
-    if (micro) total += micro;
-  }
-  return Number(microToUsdString(total));
-}

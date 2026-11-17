@@ -32,8 +32,6 @@ import { planDirectVideoShots } from "./direct-video-shot-planner";
 const DEFAULT_FRAME_SHOT_SEC = 5;
 /** Engines make ~5 s from a start frame (Luma: start/end frames only at 5 s); longer shots get padded or extended off-storyboard. */
 const MAX_FRAME_SHOT_SEC = 5;
-/** Shorter shots leave the engine no room to move from one frame to the next. */
-const MIN_FRAME_SHOT_SEC = 4;
 
 type StoryboardFrameRef = {
   readonly artifactId: string;

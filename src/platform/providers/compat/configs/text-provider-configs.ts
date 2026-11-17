@@ -214,6 +214,3 @@ export function compatConfigByVendor(vendor: string): TextProviderConfig | undef
   return COMPAT_TEXT_PROVIDER_CONFIGS.find((c) => c.vendor === vendor);
 }
 
-export function compatConfigByProviderId(providerId: string): TextProviderConfig | undefined {
-  return COMPAT_TEXT_PROVIDER_CONFIGS.find((c) => c.canonicalProviderId === providerId);
-}

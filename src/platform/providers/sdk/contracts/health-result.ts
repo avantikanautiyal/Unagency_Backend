@@ -7,11 +7,8 @@
  * Future Extension: SLO fields.
  */
 
-import type { ProviderId } from "../../../core/identifiers";
 import type { SdkHealthState, SdkStreamEventKind, SdkVendor } from "./enums";
-import type { SdkClientId, SdkExecutionId } from "./identifiers";
-import type { SdkResponse } from "./request-response";
-import type { SdkError, SdkStatistics } from "./errors";
+import type { SdkExecutionId } from "./identifiers";
 
 export interface SdkHealth {
   readonly vendor: SdkVendor;
@@ -32,15 +29,3 @@ export interface SdkStreamingChunk {
   readonly receivedAt: string;
 }
 
-export interface SdkExecutionResult {
-  readonly executionId: SdkExecutionId;
-  readonly requestId: string;
-  readonly providerId: ProviderId;
-  readonly vendor: SdkVendor;
-  readonly clientId: SdkClientId;
-  readonly success: boolean;
-  readonly response?: SdkResponse;
-  readonly error?: SdkError;
-  readonly statistics: SdkStatistics;
-  readonly completedAt: string;
-}

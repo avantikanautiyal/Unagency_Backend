@@ -2,8 +2,6 @@
  * Provider attempt history + failover execution result (M9.5H).
  */
 
-import type { ProviderId } from "../../../../core/identifiers";
-import type { ProviderExecutionResult } from "../../../runtime/contracts/provider-execution-response";
 import type {
   AttemptRoutePosition,
   PerformanceFailureCategory,
@@ -31,13 +29,3 @@ export interface ProviderAttemptRecord {
   readonly durationMs?: number;
 }
 
-export interface FailoverExecutionOutcome {
-  readonly result: ProviderExecutionResult;
-  readonly attempts: readonly ProviderAttemptRecord[];
-  readonly finalProviderId: ProviderId | string;
-  readonly finalModelId: string;
-  readonly attemptCount: number;
-  readonly failoverCount: number;
-  readonly budgetExhausted: boolean;
-  readonly exploratory: boolean;
-}

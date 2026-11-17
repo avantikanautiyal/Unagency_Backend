@@ -69,19 +69,6 @@ export function isImageGenerationCapability(capabilityId: string): boolean {
   );
 }
 
-export function isResearchCapability(capabilityId: string): boolean {
-  const cap = capabilityId.toLowerCase();
-  return cap === "research.web_search" || cap.startsWith("research.");
-}
-
-/** Media capabilities that use durable async orchestration when asyncMedia is enabled. */
-export function isAsyncMediaCapability(capabilityId: string): boolean {
-  return (
-    isVideoGenerationCapability(capabilityId) ||
-    isImageGenerationCapability(capabilityId)
-  );
-}
-
 /** Runtime capability ids (registry) and catalog aliases map here. */
 export function normalizeAudioCapabilityId(capabilityId: string): string {
   const cap = capabilityId.toLowerCase();
@@ -102,15 +89,6 @@ export function isAudioTranscribeCapability(capabilityId: string): boolean {
 
 export function isAudioSynthesizeCapability(capabilityId: string): boolean {
   return normalizeAudioCapabilityId(capabilityId) === "audio.synthesize";
-}
-
-export function isAudioAnalyzeCapability(capabilityId: string): boolean {
-  const cap = capabilityId.toLowerCase();
-  return cap === "audio.analyze" || cap === "audio.understand";
-}
-
-export function isAudioMusicCapability(capabilityId: string): boolean {
-  return normalizeAudioCapabilityId(capabilityId) === "audio.music_generation";
 }
 
 export function isEmbeddingCapability(capabilityId: string): boolean {

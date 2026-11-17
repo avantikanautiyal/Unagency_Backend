@@ -19,13 +19,6 @@ import {
 import { resolveFont, type ResolvedFont } from "./fonts";
 import { resolveTokenOrLiteral } from "./tokens";
 
-export type RenderPrimitiveKind =
-  | "text"
-  | "image"
-  | "shape"
-  | "table"
-  | "background";
-
 export type TextPrimitive = {
   kind: "text";
   id: string;

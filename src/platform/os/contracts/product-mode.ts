@@ -43,5 +43,3 @@ export function productModeAutoApprovesTools(mode: ProductMode | undefined): boo
   return mode === "ai" || mode === "hybrid";
 }
 
-export const PRODUCT_MODE_HUMAN_AI_BLOCKED =
-  "AI execution is not available in human mode. Use collaboration chat instead.";

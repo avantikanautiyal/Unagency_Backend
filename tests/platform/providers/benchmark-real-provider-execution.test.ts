@@ -24,7 +24,7 @@ import { ControllableDispatcher } from "../../../src/platform/providers/runtime/
 import { createModelRegistryPlatform } from "../../../src/platform/model-registry/factories/create-model-registry-platform";
 import { DefaultCompatibilityEngine } from "../../../src/platform/model-registry/compatibility/default-compatibility-engine";
 import { asProviderId } from "../../../src/platform/core/identifiers";
-import { validateOutputContract, clearValidationCache } from "../../../src/platform/os/evaluation/output-validation";
+import { clearValidationCache } from "../../../src/platform/os/evaluation/output-validation";
 
 describe("Step 4A — Real Provider Benchmark Execution", () => {
   beforeEach(() => clearValidationCache());

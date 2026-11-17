@@ -1,8 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { DurableExecutionObservabilityRecord } from "../../../../os/observability/execution-observability-contract";
-
-export type EnterpriseExecutionObservabilityDoc = Document &
-  DurableExecutionObservabilityRecord;
+import { Schema, model } from "mongoose";
 
 const enterpriseExecutionObservabilitySchema = new Schema(
   {

@@ -37,12 +37,6 @@ export type JobPriority = "critical" | "high" | "normal" | "low" | "bulk";
 
 export type RetryStrategy = "immediate" | "linear" | "exponential";
 
-export type CancellationPhase =
-  | "requested"
-  | "in_progress"
-  | "cancelled"
-  | "compensation";
-
 export type BatchMode = "parallel" | "sequential";
 
 export type BackoffFailureClass =

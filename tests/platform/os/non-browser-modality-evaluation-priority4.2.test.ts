@@ -15,7 +15,6 @@ import {
 import { runArtifactEvaluation } from "../../../src/platform/os/evaluation/artifact-evaluation";
 import {
   analyzePptxBytes,
-  analyzeDocxBytes,
   analyzeEmailHtml,
   analyzeVideoBytes,
 } from "../../../src/platform/os/evaluation/artifact-evaluation";

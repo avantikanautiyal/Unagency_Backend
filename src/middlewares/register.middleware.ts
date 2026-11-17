@@ -1,5 +1,4 @@
-import { Request, Response, NextFunction } from "express";
-import { ApiResponse } from "../utils/apiResponse";
+import { Response, NextFunction } from "express";
 import Users from "../models/users.model";
 import { RequestUser } from "../types/user";
 import firebaseAdmin from "../libs/firebase";

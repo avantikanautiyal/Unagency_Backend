@@ -46,15 +46,6 @@ export type CollaborationMessageType =
   | "ai_response"
   | "system";
 
-/** Stable Stream channel id — never a random public room. */
-export function buildChannelId(
-  kind: CollaborationEntityKind,
-  entityId: string
-): string {
-  const safe = String(entityId).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-  return `${kind}_${safe}`.slice(0, 64);
-}
-
 export function mapLegacyRoleToCollaborationRole(
   legacyRole?: string
 ): CollaborationMemberRole {

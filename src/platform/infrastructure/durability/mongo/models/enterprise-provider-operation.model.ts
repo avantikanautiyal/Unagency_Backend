@@ -1,10 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { ProviderOperationRecord } from "../../../../providers/async/contracts/provider-operation";
-
-export type EnterpriseProviderOperationDoc = Document & ProviderOperationRecord & {
-  usageRecorded?: boolean;
-  version?: number;
-};
+import { Schema, model } from "mongoose";
 
 const outputSchema = new Schema(
   {

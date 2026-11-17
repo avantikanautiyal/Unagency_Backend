@@ -11,7 +11,6 @@ import type { ModelSearchRequest, ModelSearchResult } from "../contracts/search"
 import type { ModelSnapshot, ModelStatistics } from "../contracts/statistics";
 import type { ModelCompatibilityProfile } from "../contracts/compatibility";
 import type { ModelLifecycleState } from "../contracts/enums";
-import type { ModelPricing } from "../contracts/pricing";
 import type { ModelLimits } from "../contracts/limits";
 import type { ModelRegion } from "../contracts/regions";
 

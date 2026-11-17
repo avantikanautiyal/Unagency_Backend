@@ -8,7 +8,6 @@ import {
   createArtifact,
   createVersion,
   createVersionWithCasRetry,
-  CdfRefinementError,
   fixturePresentationDesignSystem,
   fixtureTenSlideDeck,
   getArtifact,

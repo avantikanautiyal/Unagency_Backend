@@ -6,10 +6,6 @@ import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
 import { createDirectExecutionPlatform } from "../../direct/create-direct-execution-platform";
 import type { IDirectExecutionEngine } from "../../direct/contracts";
-import type {
-  DirectExecutionReport,
-  DirectExecutionRequest,
-} from "../../direct/contracts";
 import {
   createOpenAIProvider,
   type OpenAIProviderPlatform,
@@ -34,7 +30,6 @@ import { registerImageProviders } from "./register-image-providers";
 import { registerVideoProviders } from "./register-video-providers";
 import { evaluateTextProviderEnv } from "./text-provider-env";
 import type { ProductionExecutionMode } from "../contracts/enums";
-import type { ProductionScenario } from "../contracts/scenario";
 import type { ToolRuntimePlatform } from "../../providers/tools/composition/tool-runtime-platform";
 
 export interface ProductionExecutionContext {
@@ -239,36 +234,3 @@ export async function bootProductionExecution(
   });
 }
 
-export async function executeScenario(
-  ctx: ProductionExecutionContext,
-  scenario: ProductionScenario,
-  requestId: string,
-  correlationId: string,
-  opts: {
-    organizationId?: string;
-    workspaceId?: string;
-    budgetLimit?: number;
-    tokenBudgetLimit?: number;
-  } = {}
-): Promise<Result<DirectExecutionReport>> {
-  const req: DirectExecutionRequest = {
-    requestId,
-    rawPrompt: scenario.businessPrompt,
-    scenarioHint: scenario.domain,
-    organizationId: opts.organizationId
-      ? asOrganizationId(opts.organizationId)
-      : undefined,
-    workspaceId: opts.workspaceId ? asWorkspaceId(opts.workspaceId) : undefined,
-    budgetLimit: opts.budgetLimit ?? 500,
-    tokenBudgetLimit: opts.tokenBudgetLimit ?? 200_000,
-    correlationId,
-    mode: "full",
-    metadata: {
-      productionScenarioId: scenario.scenarioId,
-      productionDomain: scenario.domain,
-      identitySessionId: ctx.identitySessionId,
-      executionMode: ctx.executionMode,
-    },
-  };
-  return ctx.integration.run(req);
-}

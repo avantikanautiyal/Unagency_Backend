@@ -56,12 +56,6 @@ export function divideTokensCost(tokens: number, pricePer1M: string): string | n
   return microToUsdString(result);
 }
 
-export function roundUsd(amount: string | null): string | null {
-  const micro = parseUsdToMicro(amount);
-  if (micro == null) return null;
-  return microToUsdString(micro);
-}
-
 /**
  * Convert xAI `cost_in_usd_ticks` to a USD decimal string.
  * Official docs: 1 USD = 10^10 ticks → 1 micro-USD = 10^4 ticks.

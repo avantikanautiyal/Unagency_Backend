@@ -1,7 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { BlobOwnershipRecord } from "../../../../media/contracts/durable-blob-ref";
-
-export type EnterpriseBlobMetadataDoc = Document & BlobOwnershipRecord;
+import { Schema, model } from "mongoose";
 
 const enterpriseBlobMetadataSchema = new Schema(
   {

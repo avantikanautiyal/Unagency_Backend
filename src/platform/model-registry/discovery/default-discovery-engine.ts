@@ -2,8 +2,7 @@
  * Model discovery engine.
  */
 
-import { failure, success, type Result } from "../../core/result";
-import { NotFoundError } from "../../core/errors";
+import { success, type Result } from "../../core/result";
 import type { ProviderId } from "../../core/identifiers";
 import type { ModelDiscoveryResult } from "../contracts/search";
 import type { IModelDiscoveryEngine } from "../interfaces/model-registry";

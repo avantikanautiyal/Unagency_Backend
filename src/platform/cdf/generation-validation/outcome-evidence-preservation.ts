@@ -29,9 +29,6 @@ export const STRUCTURAL_EVIDENCE_FIELD_KEYS = Object.freeze([
   "cdfCompositionFailureReason",
 ] as const);
 
-export type StructuralEvidenceFieldKey =
-  (typeof STRUCTURAL_EVIDENCE_FIELD_KEYS)[number];
-
 export type CanonicalArtifactIdentity = Readonly<{
   artifactId: string;
   artifactVersion: number;

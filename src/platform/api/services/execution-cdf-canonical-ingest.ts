@@ -1846,39 +1846,3 @@ async function applyCdfCanonicalCompletionIngestInner(input: {
   };
 }
 
-/** True when any family attach survived ingest (Class-A or generic). */
-export function cdfCanonicalIngestHasAttach(
-  ingestOut: Pick<
-    CdfCanonicalIngestAttachResult,
-    | "socialMediaCanonicalAttach"
-    | "presentationCanonicalAttach"
-    | "packagingCanonicalAttach"
-    | "genericCanonicalAttach"
-  >,
-): boolean {
-  return Boolean(
-    ingestOut.socialMediaCanonicalAttach ||
-      ingestOut.presentationCanonicalAttach ||
-      ingestOut.packagingCanonicalAttach ||
-      ingestOut.genericCanonicalAttach,
-  );
-}
-
-/** Prefer Class-A attach, then generic — never invent identity. */
-export function pickCdfCanonicalIngestAttach(
-  ingestOut: Pick<
-    CdfCanonicalIngestAttachResult,
-    | "socialMediaCanonicalAttach"
-    | "presentationCanonicalAttach"
-    | "packagingCanonicalAttach"
-    | "genericCanonicalAttach"
-  >,
-): Record<string, unknown> | null {
-  return (
-    ingestOut.socialMediaCanonicalAttach ??
-    ingestOut.packagingCanonicalAttach ??
-    ingestOut.presentationCanonicalAttach ??
-    ingestOut.genericCanonicalAttach ??
-    null
-  );
-}

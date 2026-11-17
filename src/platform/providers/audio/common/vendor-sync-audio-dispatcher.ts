@@ -3,7 +3,7 @@
  */
 
 import { failure, success, type Result } from "../../../core/result";
-import { ProviderError, ValidationError } from "../../../core/errors";
+import { ValidationError } from "../../../core/errors";
 import type { ProviderId } from "../../../core/identifiers";
 import type {
   IProviderDispatcher,

@@ -5,7 +5,6 @@
 
 import {
   resolveServiceOutputSpec,
-  type ServiceOutputKind,
 } from "../../config/service-output-map";
 import type { ExecutionTraceStage, ExecutionTraceState } from "./execution-trace";
 import { sanitizeOsLogFields } from "./execution-log";

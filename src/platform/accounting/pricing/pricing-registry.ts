@@ -83,13 +83,3 @@ function modelMatches(registryModelId: string, requestedModelId: string): boolea
 
 let defaultRegistry: InMemoryPricingRegistry | null = null;
 
-export function getDefaultPricingRegistry(): InMemoryPricingRegistry {
-  if (!defaultRegistry) {
-    defaultRegistry = InMemoryPricingRegistry.fromSeed();
-  }
-  return defaultRegistry;
-}
-
-export function setDefaultPricingRegistry(registry: InMemoryPricingRegistry): void {
-  defaultRegistry = registry;
-}

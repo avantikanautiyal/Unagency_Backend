@@ -16,8 +16,6 @@ import type { ProviderOperationRecord } from "../../async/contracts/provider-ope
 import type { BlobAccessService } from "../../../media/blob/blob-access-service";
 import type { IBlobStorage } from "../../../persistence/interfaces/persistence";
 import type { IBlobMetadataRepository } from "../../../media/blob/blob-metadata-repository";
-import { extractInputAssets } from "../../common/input-asset-validator";
-import { resolveProviderInputImageUrl } from "../../common/resolve-provider-input-image-url";
 import {
   DEFAULT_PROVIDER_CLIP_MAX_SEC,
   planVideoClipSegments,
@@ -647,17 +645,3 @@ export async function probeMp4DurationSec(bytes: Buffer): Promise<number | null>
   }
 }
 
-export async function resolveFirstAssetUrl(input: {
-  readonly payload: Readonly<Record<string, unknown>>;
-  readonly organizationId: string;
-  readonly blobAccess?: BlobAccessService;
-}): Promise<string | undefined> {
-  const assets = extractInputAssets(input.payload);
-  if (assets.length === 0) return undefined;
-  const resolved = await resolveProviderInputImageUrl({
-    asset: assets[0]!,
-    organizationId: input.organizationId,
-    blobAccess: input.blobAccess,
-  });
-  return resolved.ok ? resolved.value : undefined;
-}

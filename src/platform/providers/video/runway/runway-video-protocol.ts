@@ -16,7 +16,6 @@ import type {
 } from "../../async/contracts/provider-operation";
 import type {
   IVendorVideoProtocol,
-  VendorCancelPlan,
   VendorPollPlan,
   VendorSubmitPlan,
   VendorVideoAuthContext,

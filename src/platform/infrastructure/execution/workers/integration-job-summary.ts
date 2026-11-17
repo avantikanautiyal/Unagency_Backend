@@ -11,7 +11,6 @@ import {
 import { synthesizeDocumentPlanFromText } from "../../../os/delivery/document-generation";
 import { recoverPresentationRoutesPayload } from "../../../os/delivery/document-export-service";
 import type { DirectExecutionReport } from "../../../direct/contracts";
-import type { EnterpriseApiExecutionMode } from "../../../api/runtime/execution-mode";
 import { resolveCdfPhaseExecutionContract } from "../../../cdf/canonical";
 import { requiresCanonicalEmissionSchema } from "../../../cdf/structured-output-contract";
 import {
@@ -592,21 +591,6 @@ function tryParseJsonObject(value: unknown): Record<string, unknown> | undefined
     // ignore
   }
   return undefined;
-}
-
-export function assertRoutingMatchesDispatch(
-  report: DirectExecutionReport
-): void {
-  const routing = report.artifacts.routing;
-  const response = report.artifacts.runtime?.response;
-  if (!routing || !response) return;
-  const routedProvider = String(routing.plan.primary.providerId);
-  const actualProvider = String(response.providerId);
-  if (routedProvider !== actualProvider && actualProvider !== "openai") {
-    throw new Error(
-      `routing/dispatch mismatch: routed ${routedProvider} but dispatched ${actualProvider}`
-    );
-  }
 }
 
 function providerFailureMessage(

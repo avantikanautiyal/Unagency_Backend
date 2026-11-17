@@ -107,9 +107,3 @@ function maskEmail(value: string): string {
   return `${maskedLocal}@${domain}`;
 }
 
-export function consequenceForTool(toolName: string): string {
-  return (
-    TOOL_UX[toolName]?.consequence ??
-    "Review this action carefully before approving."
-  );
-}

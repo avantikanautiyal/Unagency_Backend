@@ -69,8 +69,6 @@ export const SOCIAL_FORMAT_IDS = Object.freeze([
   "business-profile-photo",
 ] as const);
 
-export type SocialFormatId = (typeof SOCIAL_FORMAT_IDS)[number];
-
 const LEGACY_FEED_POST_FORMAT_MAP: Record<string, string> = {
   "feed-post-square": "feed-post",
   "feed-post-portrait": "feed-post",

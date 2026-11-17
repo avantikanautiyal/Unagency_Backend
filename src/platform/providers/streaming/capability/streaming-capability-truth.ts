@@ -134,11 +134,3 @@ export function buildStreamingTruthMatrix(input: {
   ];
 }
 
-/** Guard: catalogue-only claim must never activate streaming without parser. */
-export function catalogueClaimCannotActivateWithoutParser(
-  truth: StreamingProviderTruth
-): boolean {
-  if (!truth.catalogueStreamingClaim) return true;
-  if (!truth.parserImplemented) return !truth.streamingExecutable;
-  return true;
-}

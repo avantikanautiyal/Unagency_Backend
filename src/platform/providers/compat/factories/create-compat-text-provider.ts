@@ -5,7 +5,6 @@
 import { success, type Result } from "../../../core/result";
 import type { ProviderManifest } from "../../adapters/contracts/provider-manifest";
 import { buildTextProviderManifest } from "../../common/build-text-provider-manifest";
-import { asProviderId } from "../../../core/identifiers";
 import type { TextProviderAuthConfig, TextProviderConfig } from "../contracts/text-provider-config";
 import { CompatTextAdapter } from "../adapters/compat-text-adapter";
 import { CompatTextDispatcher } from "../dispatcher/compat-text-dispatcher";

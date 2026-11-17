@@ -26,25 +26,6 @@ export const updateuserName = async (_user: { name: string; id: string }) => ({
   ok: true,
 });
 
-export async function createChatRoom(data: {
-  roomName?: string;
-  roomId: string;
-  members: string[];
-  createdBy?: string;
-  room_type?: string;
-}) {
-  const orgId = data.createdBy || data.members[0] || data.roomId;
-  const result = await collaborationOsService.provision({
-    entityKind: "support",
-    entityId: data.roomId,
-    name: data.roomName || data.roomId,
-    organizationId: orgId,
-    memberUserIds: data.members,
-    createdByUserId: data.createdBy || data.members[0],
-  });
-  return { roomId: result.channelId, cid: `unagency:${result.channelId}` };
-}
-
 export async function createDistincChatRoom(data: {
   roomName?: string;
   roomId?: string;
@@ -108,19 +89,3 @@ export const createRoomForProject = async (data: {
   return { roomId: result.channelId, cid: `unagency:${result.channelId}` };
 };
 
-export const createChatGroup = async (data: {
-  roomId: string;
-  roomName: string;
-  membersId: string[];
-  createdBy: string;
-}) => {
-  const result = await collaborationOsService.provision({
-    entityKind: "team",
-    entityId: data.roomId,
-    name: data.roomName,
-    organizationId: data.createdBy,
-    memberUserIds: data.membersId,
-    createdByUserId: data.createdBy,
-  });
-  return { roomId: result.channelId, cid: `unagency:${result.channelId}` };
-};

@@ -7,7 +7,6 @@
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import {
   buildStreamingTruthMatrix,
-  isStreamExecutable,
 } from "../capability/streaming-capability-truth";
 import type { StreamHttpTransport } from "../http/stream-http-transport";
 import type { INativeStreamingDispatcher } from "../interfaces/native-streaming-dispatcher";
@@ -70,13 +69,3 @@ export function createNativeStreamingDispatcher(
   return null;
 }
 
-/** Guard used by routing: only executable when configured + verified + parser. */
-export function nativeStreamingCandidateAllowed(
-  providerId: string,
-  configuredProviderIds: ReadonlySet<string>
-): boolean {
-  const truth = buildStreamingTruthMatrix({ configuredProviderIds }).find(
-    (t) => t.providerId === providerId
-  );
-  return truth ? isStreamExecutable(truth) : false;
-}

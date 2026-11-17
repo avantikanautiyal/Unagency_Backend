@@ -17,7 +17,6 @@ import type { OpenAIProviderAdapter } from "../adapters/openai-adapter";
 import type { OpenAISdkClient } from "../sdk/openai-sdk-client";
 import { mapOpenAIResponseToCanonical } from "../responses/response-mapper";
 import type { ProviderAdapterRequest } from "../../adapters/contracts/adapter-io";
-import { asProviderAdapterId } from "../../adapters/contracts/identifiers";
 import { toAdapterRequestFromExecution } from "../../common/to-adapter-request";
 import {
   extractInputAssets,

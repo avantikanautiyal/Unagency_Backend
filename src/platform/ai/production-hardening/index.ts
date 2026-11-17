@@ -124,5 +124,3 @@ export function getProductionHardeningContractVersion(): string {
   return "21.0.0";
 }
 
-export const PRODUCTION_HARDENING_PHASE20_CONTRACT_VERSION = "20.0.0" as const;
-export const PRODUCTION_HARDENING_PHASE21_CONTRACT_VERSION = "21.0.0" as const;

@@ -21,7 +21,6 @@ import { resolveProductionValidationAsync } from "../../../src/platform/provider
 import { hookProductionEvidenceAfterFinalize } from "../../../src/platform/providers/routing/performance/benchmark/production/production-evidence-hook";
 import { clearValidationCache } from "../../../src/platform/os/evaluation/output-validation";
 import { loadAdaptiveRoutingConfig } from "../../../src/platform/providers/routing/performance/config/adaptive-routing-config";
-import { getExecutionTrace } from "../../../src/platform/os/observability/execution-trace";
 
 const TERRA_LOOP_PROMPT =
   "Brand: TerraLoop. Deliverable: Recyclable mailer range naming. Size: 1920 x 1080 px, one-page board. Create one final name for TerraLoop's recyclable mailer range and one final six-word tagline. The name must be easy to pronounce, modern and connected to circular packaging without using \"eco\" or \"green\". Explain the rationale in two sentences. CTA: No CTA. Output: PDF and editable text.";

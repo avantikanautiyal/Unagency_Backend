@@ -85,39 +85,6 @@ export class AuthorizationError extends IntelligenceError {
   }
 }
 
-export class TimeoutError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "TIMEOUT_ERROR", metadata, cause });
-    this.name = "TimeoutError";
-  }
-}
-
-export class RateLimitError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "RATE_LIMIT_ERROR", metadata, cause });
-    this.name = "RateLimitError";
-  }
-}
-
-export class QuotaExceededError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "QUOTA_EXCEEDED_ERROR", metadata, cause });
-    this.name = "QuotaExceededError";
-  }
-}
-
 export class ProviderError extends IntelligenceError {
   constructor(
     message: string,
@@ -140,72 +107,6 @@ export class CapabilityError extends IntelligenceError {
   }
 }
 
-export class WorkflowError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "WORKFLOW_ERROR", metadata, cause });
-    this.name = "WorkflowError";
-  }
-}
-
-export class ContextError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "CONTEXT_ERROR", metadata, cause });
-    this.name = "ContextError";
-  }
-}
-
-export class ExecutionError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "EXECUTION_ERROR", metadata, cause });
-    this.name = "ExecutionError";
-  }
-}
-
-export class ConfigurationError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "CONFIGURATION_ERROR", metadata, cause });
-    this.name = "ConfigurationError";
-  }
-}
-
-export class RegistryError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "REGISTRY_ERROR", metadata, cause });
-    this.name = "RegistryError";
-  }
-}
-
-export class KernelError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "KERNEL_ERROR", metadata, cause });
-    this.name = "KernelError";
-  }
-}
-
 export class NotFoundError extends IntelligenceError {
   constructor(
     message: string,
@@ -217,13 +118,3 @@ export class NotFoundError extends IntelligenceError {
   }
 }
 
-export class NotImplementedError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: IntelligenceErrorMetadata,
-    cause?: unknown
-  ) {
-    super(message, { code: "NOT_IMPLEMENTED", metadata, cause });
-    this.name = "NotImplementedError";
-  }
-}

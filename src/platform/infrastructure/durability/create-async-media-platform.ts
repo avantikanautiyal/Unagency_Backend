@@ -13,7 +13,6 @@ import {
   RecordingS3BlobStorage,
   S3BlobStorage,
 } from "../../persistence/storage/s3-blob-storage";
-import { BlobOwnershipRegistry } from "../../media/blob/blob-ownership-registry";
 import {
   InMemoryBlobMetadataRepository,
   MongoBlobMetadataRepository,

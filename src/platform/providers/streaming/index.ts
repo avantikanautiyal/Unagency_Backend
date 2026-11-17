@@ -20,6 +20,5 @@ export * from "./capability/streaming-capability-truth";
 export * from "./capability/streaming-readiness";
 export * from "./registry/active-stream-registry";
 export * from "./observability/streaming-metrics";
-export * from "./audio/binary-audio-stream";
 export * from "./leaves/create-native-streaming-dispatcher";
 export * from "./composition/compose-native-streaming-dispatchers";

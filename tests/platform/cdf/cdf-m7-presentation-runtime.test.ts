@@ -26,7 +26,6 @@ import {
   GOLDEN_LEGACY_ROUTES,
   GOLDEN_LEGACY_STORYLINE,
   GOLDEN_LEGACY_SLIDE_CONTENT,
-  CdfGenerationArtifactError,
   listArtifactVersions,
   upsertSessionArtifactRef,
   saveCdfSession,

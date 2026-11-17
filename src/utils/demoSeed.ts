@@ -16,18 +16,6 @@ export const DEMO_USERS = {
   resource3: "resource3@unagency.test",
 } as const;
 
-/** Extra CS portal logins (beyond primary RM). Total CS = 3. */
-export const DEMO_CS_EXTRA_USERS = [
-  DEMO_USERS.cs2,
-  DEMO_USERS.cs3,
-] as const;
-
-/** Extra Resource / designer portal logins (beyond primary designer). Total resource = 3. */
-export const DEMO_RESOURCE_EXTRA_USERS = [
-  DEMO_USERS.resource2,
-  DEMO_USERS.resource3,
-] as const;
-
 export const DEMO_PLAN_IDS = {
   trial: "plan_demo_trial",
   bronze: "plan_demo_bronze_monthly",
@@ -47,9 +35,6 @@ export const isDemoSubscriptionId = (id?: string | null): boolean =>
 
 export const isDemoPaymentId = (id?: string | null): boolean =>
   !!id && id.startsWith("pay_demo_");
-
-export const isDemoPlanId = (id?: string | null): boolean =>
-  !!id && id.startsWith("plan_demo_");
 
 export function buildDemoRazorpaySubscription(
   subscriptionId: string,

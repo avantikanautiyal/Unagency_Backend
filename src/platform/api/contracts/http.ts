@@ -3,8 +3,6 @@
  */
 
 import type { ApiVersion, HttpMethod, Permission } from "./enums";
-import type { AuthPrincipal } from "./auth";
-import type { TenantContext } from "./tenant";
 
 export interface ApiRequest {
   readonly requestId: string;
@@ -56,14 +54,6 @@ export interface ApiErrorBody {
 export interface ApiSuccessBody<T> {
   readonly data: T;
   readonly meta?: Readonly<Record<string, unknown>>;
-}
-
-export interface ResolvedApiContext {
-  readonly request: ApiRequest;
-  readonly principal?: AuthPrincipal;
-  readonly tenant?: TenantContext;
-  readonly permissions: readonly Permission[];
-  readonly routeId?: string;
 }
 
 export interface RouteDefinition {

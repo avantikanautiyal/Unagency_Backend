@@ -8,7 +8,6 @@ import type {
   NegativeConstraintSpec,
   RequirementEnforcement,
   ResolvedField,
-  SpecFieldProvenance,
 } from "./execution-specification";
 import { explicitField, field } from "./execution-specification";
 
@@ -89,9 +88,6 @@ const NEGATIVE_PATTERNS: ReadonlyArray<{
 const VAULT_LOGO_PATTERNS =
   /\b(?:use|from)\s+(?:the\s+)?(?:brand\s+)?(?:vault\s+)?logo\b|\blogo\s+from\s+(?:the\s+)?(?:brand\s+)?vault\b/i;
 
-const SOFT_STYLE_MARKERS =
-  /\b(premium|minimal|modern|editorial|bold|soft|elegant|playful|professional)\b/i;
-
 export function extractNegativeConstraintsFromMessage(
   message: string,
 ): readonly NegativeConstraintSpec[] {
@@ -127,10 +123,6 @@ export function extractBrandAssetRequirementFromMessage(
     role: "logo",
     required: true,
   });
-}
-
-export function classifyStyleRequirement(value: string): RequirementEnforcement {
-  return SOFT_STYLE_MARKERS.test(value) ? "SOFT_PREFERENCE" : "HARD_CONSTRAINT";
 }
 
 export function mergeNegativeConstraints(input: {
@@ -205,13 +197,3 @@ export function constraintObservabilitySummary(
   });
 }
 
-export function provenanceSummary(
-  fields: ReadonlyArray<{ readonly provenance: SpecFieldProvenance }>,
-): Readonly<Record<string, number>> {
-  const counts: Record<string, number> = {};
-  for (const f of fields) {
-    const key = f.provenance.source;
-    counts[key] = (counts[key] ?? 0) + 1;
-  }
-  return Object.freeze(counts);
-}

@@ -11,7 +11,7 @@ import { PACKAGING_ARTIFACT_KEYS } from "../../artifacts/packaging/keys";
 import { isPackagingArtifactKey } from "../../artifacts/packaging/keys";
 import { renderError } from "../errors";
 import { isAssetRasterFormat, rasterOutputForFormat } from "../raster-output";
-import type { ArtifactRenderer, CdfRenderFormat } from "../types";
+import type { ArtifactRenderer } from "../types";
 import { selectPackagingPreviewVaultId } from "./asset-collect";
 import { assertPackagingUpstreamExactRefs } from "./upstream";
 
@@ -26,23 +26,6 @@ const RASTER_KEYS = [
   PACKAGING_ARTIFACT_KEYS.views,
   PACKAGING_ARTIFACT_KEYS.skuAdaptations,
 ] as const;
-
-function detectMime(bytes: Uint8Array, format: CdfRenderFormat): string {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    return "image/png";
-  }
-  // Honest default from requested format — bytes still pass-through unchanged
-  return format === "jpg" ? "image/jpeg" : "image/png";
-}
 
 function entityIdFromOptions(
   options: { extras?: Record<string, string | number | boolean | null> },

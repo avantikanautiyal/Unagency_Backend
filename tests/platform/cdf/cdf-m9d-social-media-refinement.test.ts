@@ -11,7 +11,6 @@ import {
   createArtifact,
   createVersion,
   fixtureSocialMediaOutput,
-  fixtureSocialMediaPlatform,
   fixtureSocialMediaSizeReference,
   fixtureSocialMediaRoutes,
   getArtifactVersion,

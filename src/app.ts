@@ -39,7 +39,6 @@ import {
 
 // middleware
 import {
-  IsVerifiedUser,
   VerifyUserHandler,
 } from "./middlewares/verifyUser.middleware";
 import razorpayRouter from "./routes/razorpay.route";
@@ -52,7 +51,6 @@ import {
   parseEnterpriseApiExecutionModeFromEnv,
   validateEnterpriseApiExecutionConfig,
 } from "./platform/api/runtime";
-import { savedRouteService } from "./services/saved-route-service";
 import { createExpressPlatformAdapter } from "./platform/api/transports/express";
 import type { EnterpriseApiRuntime } from "./platform/api/runtime";
 import { closeSharedRedisClient } from "./platform/infrastructure/durability";

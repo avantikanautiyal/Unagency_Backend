@@ -2,8 +2,7 @@
  * Limits engine.
  */
 
-import { failure, success, type Result } from "../../core/result";
-import { NotFoundError } from "../../core/errors";
+import { success, type Result } from "../../core/result";
 import type { CanonicalModel } from "../contracts/model";
 import type { ModelLimits } from "../contracts/limits";
 import type { ILimitsEngine } from "../interfaces/model-registry";

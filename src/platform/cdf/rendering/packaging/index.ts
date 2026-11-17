@@ -5,8 +5,6 @@
 import { registerRenderer } from "../registry";
 import {
   createPackagingPreviewRasterRenderer,
-  PACKAGING_PREVIEW_RASTER_RENDERER_ID,
-  PACKAGING_PREVIEW_RASTER_RENDERER_VERSION,
 } from "./preview-raster-renderer";
 
 export {

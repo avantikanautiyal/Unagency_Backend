@@ -8,13 +8,10 @@
  */
 
 import type { Result } from "../../../core/result";
-import type { ProviderWirePayload } from "../contracts/adapter-io";
 import type { ProviderLifecycleState } from "../contracts/enums";
 import type { ProviderAdapterId } from "../contracts/identifiers";
 import type {
   ProviderLifecycleRecord,
-  ProviderStreamChunk,
-  ProviderStreamSession,
 } from "../contracts/lifecycle-streaming";
 
 export interface IAdapterLifecycleManager {
@@ -29,15 +26,3 @@ export interface IAdapterLifecycleManager {
   remove(adapterId: ProviderAdapterId): void;
 }
 
-export interface IStreamingAdapter {
-  openStream(
-    requestId: string,
-    adapterId: ProviderAdapterId
-  ): Result<ProviderStreamSession>;
-  normalizeChunk(
-    raw: ProviderWirePayload,
-    session: ProviderStreamSession
-  ): Result<ProviderStreamChunk>;
-  heartbeat(session: ProviderStreamSession): Result<ProviderStreamChunk>;
-  closeStream(session: ProviderStreamSession): Result<ProviderStreamSession>;
-}

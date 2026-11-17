@@ -13,7 +13,6 @@ import type {
 } from "./execution-specification";
 import type { ConversationalRequirement } from "./conversational-task-contract";
 import {
-  classifyStyleRequirement,
   extractBrandAssetRequirementFromMessage,
   extractNegativeConstraintsFromMessage,
   negativeConstraintSpec,
@@ -71,16 +70,12 @@ const DIMENSION_RE =
   /(?:size|dimension[s]?|canvas|resolution)?\s*:?\s*(\d{2,5})\s*[×x]\s*(\d{2,5})\s*(?:px|pixels)?/i;
 const PAGE_COUNT_RE =
   /\b(one[\-\s]?page|single[\-\s]?page|\b(\d+)\s*[\-\s]?page)\b/i;
-const WORD_COUNT_RE =
-  /\b(\d+)[\-\s]?word\b|\b(\w+)\s+words?\b/i;
 const SENTENCE_COUNT_RE =
   /\b(\d+)\s+(?:sentence|rationale)\b|\b(?:two|three|four|five|six|seven|eight|nine|ten)\s+sentences?\b/i;
 const OUTPUT_DELIVERABLE_RE =
   /\boutput\s*:\s*([^.;\n]+)/i;
 const EXPORT_DELIVERABLE_RE =
   /\b(?:export|deliver|give me|provide|send|download|save as|get as|convert to|both)\b[^.;\n]*\b(pdf|pptx|docx|html|zip|png|jpg|jpeg|editable\s*text|text|powerpoint|word)\b/gi;
-const FORMAT_LIST_RE =
-  /\b(pdf|pptx|docx|html|zip|png|jpg|jpeg|editable\s*text)\b(?:\s*(?:and|\+|,|&)\s*(pdf|pptx|docx|html|zip|png|jpg|jpeg|editable\s*text|\btext\b))*/gi;
 
 const NO_CTA_RE =
   /\b(?:no|without|exclude|omit|remove|don't include|do not include)\s+(?:a\s+)?(?:cta|call[\-\s]?to[\-\s]?action)\b|\bcta\s*:\s*(none|no|without)\b/i;

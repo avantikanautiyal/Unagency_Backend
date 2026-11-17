@@ -17,7 +17,6 @@ import {
   verifyFairComparisonCompatibility,
   buildRoutingReadinessReport,
   getBenchmarkCase,
-  runBenchmark,
   DEFAULT_BENCHMARK_STRATEGY,
   InMemoryBenchmarkPerformanceRecordStore,
   createBenchmarkProviderExecutor,

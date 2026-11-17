@@ -1,22 +1,5 @@
 import { Schema, model } from "mongoose";
 
-export interface ProviderBillingLineDoc {
-  readonly billingLineId: string;
-  readonly idempotencyKey: string;
-  readonly providerId: string;
-  readonly providerAccount: string | null;
-  readonly providerUsageId: string;
-  readonly providerRequestId: string | null;
-  readonly modelId: string | null;
-  readonly amount: string;
-  readonly currency: string;
-  readonly bucketStart: string | null;
-  readonly bucketEnd: string | null;
-  readonly providerBillingPeriod: string;
-  readonly syncedAt: string;
-  readonly raw: Record<string, unknown> | null;
-}
-
 const providerBillingLineSchema = new Schema(
   {
     billingLineId: { type: String, required: true, unique: true, index: true },

@@ -7,13 +7,11 @@ import {
   createArtifact,
   getArtifact,
   getArtifactVersion,
-  getLatestArtifactVersion,
   ingestGenerationCompletion,
   listArtifactVersions,
   markApproved,
   markSelected,
   normalizeToPackagingData,
-  normalizePackaging3dDirection,
   normalizePackagingDieline,
   normalizePackagingRoutes,
   classifyPackagingProviderOutput,
@@ -36,7 +34,6 @@ import {
   upsertSessionArtifactRef,
   persistCdfSession,
   getCdfSession,
-  CdfGenerationArtifactError,
   CDF_M3C_GENERATION_PATH_AUDIT,
 } from "../../../src/platform/cdf";
 

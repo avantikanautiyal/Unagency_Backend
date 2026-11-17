@@ -168,6 +168,3 @@ export const defaultBrandMemoryStore: IBrandMemoryStore =
     ? new InMemoryBrandMemoryStore()
     : mongoBrandMemoryStore;
 
-export function getBrandMemoryStore(): IBrandMemoryStore {
-  return defaultBrandMemoryStore;
-}

@@ -128,11 +128,3 @@ export async function verifyAndReinforcePresentationOutput(
   };
 }
 
-/** Fire-and-forget — never throws. */
-export function scheduleVerifyAndReinforcePresentationOutput(
-  input: PresentationVerifyInput
-): void {
-  void verifyAndReinforcePresentationOutput(input).catch(() => {
-    /* non-fatal */
-  });
-}

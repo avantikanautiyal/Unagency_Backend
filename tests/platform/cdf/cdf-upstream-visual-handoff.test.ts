@@ -12,7 +12,6 @@ import path from "node:path";
 import {
   applyCdfTransition,
   applyUpstreamVisualArtifactHandoff,
-  CDF_UPSTREAM_ARTIFACT_UNRESOLVABLE,
   createArtifact,
   extractVaultAssetIdFromArtifactData,
   getCdfSession,

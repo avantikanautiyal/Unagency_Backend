@@ -23,41 +23,6 @@ export type RateLimitAccountingClass =
   | "INTERNAL_ORCHESTRATION"
   | "PROVIDER_OPERATION";
 
-export interface ApplicationRateLimitProvenance {
-  readonly outcome: "APPLICATION_RATE_LIMITED";
-  readonly limiterId: string;
-  readonly limiterScope: string;
-  readonly keyType: string;
-  readonly accountingClass: RateLimitAccountingClass;
-  readonly windowMs?: number;
-  readonly limit?: number;
-  readonly retryAfterSec?: number;
-  readonly endpoint?: string;
-  readonly originatingUserAction?: string;
-  readonly correlationId?: string;
-  readonly remaining?: number;
-  readonly resetAt?: string;
-  readonly timestamp: string;
-}
-
-export interface ProviderOutcomeProvenance {
-  readonly outcome: Exclude<
-    ExecutionReliabilityOutcome,
-    "APPLICATION_RATE_LIMITED" | "SUCCEEDED" | "EXECUTION_PENDING" | "USER_CANCELLED"
-  >;
-  readonly providerId?: string;
-  readonly modelId?: string;
-  readonly capabilityId?: string;
-  readonly providerRequestId?: string;
-  readonly providerJobId?: string;
-  readonly httpStatus?: number;
-  readonly providerErrorCode?: string;
-  readonly providerErrorMessage?: string;
-  readonly retryAfterSec?: number;
-  readonly limitScope?: string;
-  readonly timestamp: string;
-}
-
 /** Map durable async error codes → typed reliability outcomes. */
 export function reliabilityOutcomeFromAsyncErrorCode(
   errorCode: string | undefined | null,

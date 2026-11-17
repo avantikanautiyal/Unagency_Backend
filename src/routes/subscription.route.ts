@@ -2,7 +2,6 @@ import { Router } from "express";
 import {
   IsVerifiedUser,
   VerifyRole,
-  VerifyUserHandler,
 } from "../middlewares/verifyUser.middleware";
 import {
   // CancelCustomerSubscription,

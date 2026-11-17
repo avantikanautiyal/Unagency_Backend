@@ -82,8 +82,3 @@ export function isPackagingArtifactKey(key: string): key is PackagingArtifactKey
   return (Object.values(PACKAGING_ARTIFACT_KEYS) as string[]).includes(key);
 }
 
-export function resolvePackagingArtifactKey(
-  keyOrAlias: string,
-): PackagingArtifactKey | undefined {
-  return PACKAGING_KEY_ALIASES[keyOrAlias];
-}

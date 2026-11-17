@@ -122,10 +122,6 @@ export function aggregateEligibleRecords(
   };
 }
 
-export function sumLiveSpend(records: readonly AIUsageRecord[], filter: PeriodFilter): string | null {
-  return aggregateEligibleRecords(records, filter).liveInternalSpendUsd;
-}
-
 export function verifyBreakdownReconciles(
   overallLiveUsd: string | null,
   breakdownLiveUsd: readonly (string | null)[]

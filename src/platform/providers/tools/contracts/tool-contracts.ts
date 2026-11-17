@@ -70,12 +70,6 @@ export interface StructuredOutputRequest {
   readonly strict?: boolean;
 }
 
-export interface StructuredOutputValidationResult {
-  readonly valid: boolean;
-  readonly parsed?: unknown;
-  readonly errors: readonly string[];
-}
-
 export interface ToolRoundSummary {
   readonly round: number;
   readonly toolCallsRequested: number;

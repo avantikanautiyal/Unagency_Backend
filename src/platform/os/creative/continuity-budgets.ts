@@ -18,8 +18,5 @@ export const BRAND_CONTEXT_PACKET_BUDGETS: BrandContextPacketBudgets =
     maxFactTokens: 400,
   });
 
-/** Clarification Gate: never more than this many blocker questions. */
-export const MAX_CLARIFICATION_BLOCKERS = 3;
-
 /** Post-guard hard-miss auto-retry cap (Phase A3). Taste never retries. */
 export const MAX_HARD_GUARD_RETRIES = 1;

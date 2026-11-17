@@ -6,7 +6,6 @@
 import { coerceValueTowardJsonSchema } from "../../providers/tools/structured/structured-output-coerce";
 import { validatePresentationArtifactData } from "../../cdf/artifacts/presentation/validate";
 import { PRESENTATION_ARTIFACT_KEYS } from "../../cdf/artifacts/presentation/keys";
-import type { OutputQAErrorCode } from "../output-qa";
 
 export type DeterministicNormalizeResult =
   | {
@@ -74,8 +73,3 @@ export function attemptDeterministicNormalization(input: {
   return { ok: true, data, method: "coerceValueTowardJsonSchema" };
 }
 
-export function qaCodesFromNormalizeFailure(
-  _message: string,
-): OutputQAErrorCode[] {
-  return ["OUTPUT_SCHEMA_INVALID"];
-}

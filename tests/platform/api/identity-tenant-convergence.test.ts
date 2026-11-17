@@ -13,7 +13,6 @@ import {
   isFirebaseAuthenticatedPrincipal,
 } from "../../../src/platform/api/auth/firebase";
 import {
-  CompositeAuthenticationService,
   createCompositeAuthenticationService,
 } from "../../../src/platform/api/auth/composite-authentication-service";
 import { resolveTenantContext } from "../../../src/platform/api/auth/tenant-resolution";
@@ -47,7 +46,6 @@ jest.mock("../../../src/models/team.model", () => ({
 
 import Users from "../../../src/models/users.model";
 import Organizations from "../../../src/models/organization.model";
-import Teams from "../../../src/models/team.model";
 
 describe("M9.2B Identity & Tenant Convergence", () => {
   const nowIso = () => "2026-07-27T00:00:00.000Z";

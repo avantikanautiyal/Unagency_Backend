@@ -13,7 +13,6 @@ import type {
   CdfRequirement,
   CdfRequirementOverride,
   CdfRequirementValue,
-  CdfSourceInput,
   CdfUnresolvedConflict,
 } from "./types";
 import { CDF_REQUIREMENT_PRIORITY_RANK } from "./types";
@@ -340,6 +339,3 @@ export function reconstructActiveBriefFromRequirements(input: {
   };
 }
 
-export function collectSourceIds(sources: CdfSourceInput[]): string[] {
-  return sources.map((s) => s.sourceInputId);
-}

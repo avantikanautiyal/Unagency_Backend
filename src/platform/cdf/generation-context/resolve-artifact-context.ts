@@ -297,30 +297,6 @@ export function rehydrateReferencedArtifacts(input: {
   return { ok: true, upstream, loadedFromReferences, skipped };
 }
 
-/** Map CdfArtifactError → generation context failure (exact version / ownership). */
-export function mapArtifactErrorToGenerationFailure(
-  err: CdfArtifactError,
-  pin?: { artifactId: string; version: number },
-): {
-  code: GenerationContextErrorCode;
-  message: string;
-  details: Record<string, unknown>;
-} {
-  const code: GenerationContextErrorCode =
-    err.artifactCode === "ARTIFACT_VERSION_NOT_FOUND"
-      ? "ARTIFACT_VERSION_NOT_FOUND"
-      : "ARTIFACT_NOT_FOUND";
-  return {
-    code,
-    message: err.message,
-    details: {
-      artifactId: pin?.artifactId,
-      version: pin?.version,
-      artifactCode: err.artifactCode,
-    },
-  };
-}
-
 export function summarizeArtifactContextForTrace(
   obs: ArtifactContextObservability,
 ): Record<string, unknown> {

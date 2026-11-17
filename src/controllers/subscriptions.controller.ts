@@ -1,6 +1,5 @@
 import Subscriptions from "../models/subscription.model";
 import RetrievePriceAndProduct from "../services/retrievePrice";
-import CancelSubscription from "../services/subscription/cancelSubscription";
 import CreateCustomer from "../services/subscription/createCustomer";
 import createSession from "../services/subscription/createSession";
 import CreateSubscription from "../services/subscription/createSubscription";
@@ -10,7 +9,6 @@ import MakeUserDefaultPaymentMethod from "../services/subscription/makeDefaultPa
 import PaymentMethods from "../services/subscription/paymentMethods";
 import RemoveUserPaymentMethod from "../services/subscription/removePaymentMethod";
 import RetrieveSession from "../services/subscription/retrieveSession";
-import upgradeSubscription from "../services/subscription/upgradeSubscription";
 import { RequestUser } from "../types/user";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";

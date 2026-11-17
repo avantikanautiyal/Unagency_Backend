@@ -137,22 +137,6 @@ export function summarizePresentationExpansionWireRequest(
   return undefined;
 }
 
-export function sanitizeProviderHttpErrorDetail(
-  message: string | undefined,
-  output?: Readonly<Record<string, unknown>>
-): string | undefined {
-  const err = output?.error as
-    | { code?: string; message?: string; param?: string }
-    | undefined;
-  const parts: string[] = [];
-  if (message?.trim()) parts.push(message.trim());
-  if (err?.param) parts.push(`param=${err.param}`);
-  if (err?.code && err.code !== "PROVIDER_ERROR") parts.push(`code=${err.code}`);
-  const metaMsg = err?.message?.trim();
-  if (metaMsg && metaMsg !== message?.trim()) parts.push(metaMsg);
-  return parts.length > 0 ? parts.join(" | ") : undefined;
-}
-
 const WIRE_LOG_PREFIX = "📑 [PresentationExpansionWire]";
 
 export function logPresentationExpansionWireSummary(

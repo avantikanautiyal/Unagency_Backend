@@ -17,11 +17,6 @@ export const TIER1_CONTROLLED_EVIDENCE_BENCHMARK_IDS = Object.freeze([
   "bench.presentations.pitch-decks",
 ] as const);
 
-export const TIER1_CONTROLLED_EVIDENCE_SERVICES = Object.freeze([
-  "website",
-  "presentations",
-] as const);
-
 export const TIER1_CONTROLLED_EVIDENCE_MODELS: readonly BenchmarkModelTarget[] =
   STAGE1_REAL_VALIDATION_MODELS;
 

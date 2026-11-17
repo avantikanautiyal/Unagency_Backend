@@ -53,28 +53,6 @@ export class ProviderExecutionTimeoutError extends IntelligenceError {
   }
 }
 
-export class ProviderExecutionCancelledError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: Readonly<Record<string, unknown>>,
-    cause?: unknown
-  ) {
-    super(message, { code: "EXECUTION_ERROR", metadata, cause });
-    this.name = "ProviderExecutionCancelledError";
-  }
-}
-
-export class CircuitOpenError extends IntelligenceError {
-  constructor(
-    message: string,
-    metadata?: Readonly<Record<string, unknown>>,
-    cause?: unknown
-  ) {
-    super(message, { code: "PROVIDER_ERROR", metadata, cause });
-    this.name = "CircuitOpenError";
-  }
-}
-
 export class ConcurrencyLimitError extends IntelligenceError {
   constructor(
     message: string,

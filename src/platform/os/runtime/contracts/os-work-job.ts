@@ -3,8 +3,6 @@
  * Queue is transport. Durable OS state is authority.
  */
 
-export const OS_DELIVERY_QUEUE = "os.delivery" as const;
-
 export type OsWorkKind = "delivery";
 
 export type OsWorkJobStatus =

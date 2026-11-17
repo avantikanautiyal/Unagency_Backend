@@ -2,8 +2,6 @@
  * Phase 7 — Versioned OS artifacts (immutable historical versions).
  */
 
-export const OS_ARTIFACT_RUNTIME_VERSION = "phase7.1" as const;
-
 export type ArtifactApprovalState =
   | "UNAPPROVED"
   | "APPROVED"

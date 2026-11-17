@@ -2,7 +2,6 @@
  * Satisfy required `colors` Brand Memory slot when the brief or metadata already specifies a palette.
  */
 
-import type { BrandMemorySlotKey } from "../platform/os/creative/brand-memory-slots";
 import type { BrandContextFact } from "../platform/os/creative/brand-context-packet";
 import type { KnowledgeResolveResult } from "../platform/os/creative/knowledge-resolver";
 import { resolveBriefBrandColors } from "./brand-color-extraction";
@@ -65,18 +64,3 @@ export function metadataBrandColorExtras(input: {
   };
 }
 
-export function colorsSlotSatisfied(input: {
-  readonly missingSlots: readonly BrandMemorySlotKey[];
-  readonly brief: string;
-  readonly metadata?: Readonly<Record<string, unknown>>;
-  readonly storedProfileColors?: readonly string[];
-}): boolean {
-  if (!input.missingSlots.includes("colors")) return true;
-  return (
-    resolveBriefBrandColors({
-      brief: input.brief,
-      metadata: input.metadata,
-      storedColors: input.storedProfileColors,
-    }).length > 0
-  );
-}

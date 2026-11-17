@@ -320,15 +320,6 @@ export function emitCollaborationEvent(
   ioSingleton.to(`conversation:${channelId}`).emit(event, payload);
 }
 
-export function emitToUser(
-  userId: string,
-  event: string,
-  payload: Record<string, unknown>
-): void {
-  if (!ioSingleton) return;
-  ioSingleton.to(`user:${userId}`).emit(event, payload);
-}
-
 export async function shutdownCollaborationSocketGateway(): Promise<void> {
   if (!ioSingleton) return;
   await new Promise<void>((resolve) => {

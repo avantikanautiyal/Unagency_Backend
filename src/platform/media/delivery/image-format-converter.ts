@@ -34,15 +34,6 @@ export function mimeForRasterFormat(format: RasterDownloadFormat): string {
   return format === "png" ? "image/png" : "image/jpeg";
 }
 
-/** Formats a stored raster blob can be delivered as (with conversion). */
-export function convertibleRasterFormats(
-  sourceMime: string | undefined | null
-): readonly RasterDownloadFormat[] {
-  const src = formatFromMime(sourceMime);
-  if (!src) return [];
-  return ["png", "jpg"];
-}
-
 export function canConvertRasterFormat(input: {
   readonly sourceMime: string | undefined | null;
   readonly requestedFormat: string;

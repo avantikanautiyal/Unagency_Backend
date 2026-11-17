@@ -160,8 +160,3 @@ export async function runDeferredIntegrationPostProcessing(input: {
   });
 }
 
-export function integrationPlanningSnapshotExtras(
-  snapshot: IntegrationPlanningSnapshot
-): Readonly<Record<string, unknown>> {
-  return { integrationPlanningSnapshot: snapshot };
-}

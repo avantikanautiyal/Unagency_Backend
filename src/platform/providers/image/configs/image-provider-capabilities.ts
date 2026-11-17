@@ -309,9 +309,3 @@ export function defaultReferenceCapableImageProviderId(): string | undefined {
   return listReferenceCapableImageProviderIds()[0];
 }
 
-export const REFERENCE_CAPABLE_IMAGE_PROVIDERS_FOR_TESTS = Object.freeze({
-  google: GOOGLE_IMAGEN_SPEC.canonicalProviderId,
-  ideogram: IDEOGRAM_IMAGE_SPEC.canonicalProviderId,
-  recraft: RECRAFT_IMAGE_SPEC.canonicalProviderId,
-  openai: OPENAI_IMAGE_SPEC.canonicalProviderId,
-});

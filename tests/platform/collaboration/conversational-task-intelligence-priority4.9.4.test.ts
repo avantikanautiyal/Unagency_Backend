@@ -40,7 +40,6 @@ import {
 } from "../../../src/platform/os/delivery/website-generation";
 import { runEvaluationPlane } from "../../../src/platform/os/evaluation/evaluation-plane";
 import type {
-  ServiceAiConversationState,
   ServiceAiMessageRecord,
 } from "../../../src/platform/collaboration/service-conversation-types";
 

@@ -3,7 +3,6 @@
  */
 
 export const GEMINI_PROVIDER_ID = "provider.gemini";
-export const GEMINI_WIRE_PROVIDER_ID = "gemini";
 export const GEMINI_ADAPTER_ID = "adapter.gemini.text";
 export const GEMINI_SDK_CLIENT_ID = "sdk.gemini.text";
 export const GEMINI_PROVIDER_VERSION = "1.0.0";

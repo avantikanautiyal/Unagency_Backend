@@ -95,14 +95,3 @@ export function createCompositeAuthenticationService(input: {
   );
 }
 
-export function unwrapPlatformAuth(
-  auth: IAuthenticationService
-): InMemoryAuthenticationService | undefined {
-  if (auth instanceof CompositeAuthenticationService) {
-    return auth.platformAuth;
-  }
-  if (auth instanceof InMemoryAuthenticationService) {
-    return auth;
-  }
-  return undefined;
-}

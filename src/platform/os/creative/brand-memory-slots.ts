@@ -56,6 +56,3 @@ export interface BrandMemorySlotEntry {
   readonly supersededAt?: string;
 }
 
-export function isKnownBrandMemorySlotKey(key: string): boolean {
-  return (BRAND_MEMORY_SLOT_KEYS as readonly string[]).includes(key);
-}

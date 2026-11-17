@@ -3,7 +3,7 @@
  * Conservative paid-job budget via PROVIDER_FAILOVER_MAX_SUBMITTED_PAID_JOBS.
  */
 
-import { failure, success, type Result } from "../../../../core/result";
+import { success, type Result } from "../../../../core/result";
 import type { AsyncExecutionCoordinator } from "../../../async/coordination/async-execution-coordinator";
 import type { IProviderOperationStore } from "../../../async/interfaces/provider-operation-store";
 import type { ProviderOperationRecord } from "../../../async/contracts/provider-operation";

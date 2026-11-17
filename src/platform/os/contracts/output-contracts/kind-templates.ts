@@ -9,7 +9,6 @@ import type {
 } from "./evaluation-methods";
 import type { DeliverableSpec, DefinitionOfDone } from "./types";
 import type {
-  DownloadFormat,
   ServiceOutputKind,
   ServiceOutputSpec,
 } from "../../../config/service-output-map";

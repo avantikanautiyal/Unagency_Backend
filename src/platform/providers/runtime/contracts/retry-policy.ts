@@ -32,8 +32,3 @@ export interface RetryPolicy {
   readonly jitter?: JitterMode;
 }
 
-export const NO_RETRY_POLICY: RetryPolicy = {
-  strategy: "none",
-  maxAttempts: 1,
-  baseDelayMs: 0,
-};

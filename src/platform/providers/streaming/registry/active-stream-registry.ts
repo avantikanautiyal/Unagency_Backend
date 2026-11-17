@@ -84,6 +84,3 @@ export function getActiveStreamRegistry(): ActiveStreamRegistry {
   return globalRegistry;
 }
 
-export function resetActiveStreamRegistryForTests(): void {
-  globalRegistry = new ActiveStreamRegistry();
-}

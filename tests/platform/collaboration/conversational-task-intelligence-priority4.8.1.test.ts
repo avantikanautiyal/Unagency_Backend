@@ -42,17 +42,6 @@ function userMsg(text: string): ServiceAiMessageRecord {
   };
 }
 
-function logoState(): ServiceAiConversationState {
-  return {
-    service: "branding",
-    subtype: "logos",
-    brandId: "brand1",
-    productPath: "branding/logos",
-    activeExecutionId: "exec_logo_v1",
-    activeArtifactId: "art_logo_v1",
-  };
-}
-
 function resolveTurnPair(turn1: string, turn2: string) {
   const state0: ServiceAiConversationState = {
     service: "branding",

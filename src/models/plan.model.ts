@@ -2,32 +2,6 @@ import mongoose, { Schema } from "mongoose";
 import type { PlanCode, PlanMode, BillingPeriod } from "../billing/plan-codes";
 import type { PlanEntitlements } from "../billing/plan-catalog";
 
-export interface IRazorpayPlanItem {
-  id: string;
-  entity: string;
-  interval: number;
-  period: string;
-  item: {
-    id: string;
-    active: boolean;
-    name: string;
-    description: string;
-    amount: number;
-    unit_amount: number;
-    currency: string;
-    type: string;
-    unit: string | null;
-    tax_inclusive: boolean;
-    hsn_code: string | null;
-    sac_code: string | null;
-    tax_rate: number | null;
-    tax_id: string | null;
-    tax_group_id: string | null;
-    created_at: number;
-    updated_at: number;
-  };
-}
-
 type Points = {
   value: string;
   include: boolean;

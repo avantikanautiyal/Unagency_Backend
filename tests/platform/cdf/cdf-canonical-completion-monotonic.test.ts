@@ -18,7 +18,6 @@ import {
   contractRequiresCanonicalImageIngest,
   createArtifact,
   ensureCdfSessionLoaded,
-  fixtureSocialMediaPlatform,
   fixtureSocialMediaSizeReference,
   fixtureSocialMediaRoutes,
   getArtifactVersion,

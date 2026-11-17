@@ -7,7 +7,6 @@ import type { IOutputContractRegistry } from "../contracts/layer-ports";
 import type { OsLayerImplementationStatus } from "../contracts/layer-status";
 import {
   defaultServiceOutputContractRegistry,
-  resolveServiceOutputContractId,
 } from "./output-contracts/service-contract-registry";
 
 export {

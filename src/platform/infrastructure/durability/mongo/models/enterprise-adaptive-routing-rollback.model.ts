@@ -1,4 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
+import { Schema, model } from "mongoose";
 
 export type AdaptiveRollbackEvent = {
   readonly rollbackId: string;
@@ -9,8 +9,6 @@ export type AdaptiveRollbackEvent = {
   readonly scope?: Readonly<Record<string, string | undefined>>;
   readonly metrics?: Readonly<Record<string, number | undefined>>;
 };
-
-export type EnterpriseAdaptiveRollbackDoc = Document & AdaptiveRollbackEvent;
 
 const enterpriseAdaptiveRollbackSchema = new Schema(
   {

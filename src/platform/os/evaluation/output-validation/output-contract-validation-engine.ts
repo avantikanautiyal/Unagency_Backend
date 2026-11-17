@@ -334,11 +334,3 @@ export function clearValidationCache(): void {
 
 export { buildRepairInfo };
 
-export class OutputContractValidationEngine {
-  validate(input: ValidateOutputContractInput): OutputValidationResult | undefined {
-    return validateOutputContract(input);
-  }
-}
-
-export const defaultOutputContractValidationEngine =
-  new OutputContractValidationEngine();

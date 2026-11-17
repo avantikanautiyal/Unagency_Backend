@@ -3,7 +3,7 @@
  */
 
 import { fnv1a32 } from "../canonical";
-import type { CanonicalGenerationRequest, UpstreamArtifactContext } from "./types";
+import type { UpstreamArtifactContext } from "./types";
 import type { ResolvedGenerationContext } from "../context-resolver/types";
 
 function stableJson(value: unknown): string {
@@ -73,7 +73,3 @@ export function summarizeUpstreamForObservability(
 
 export { fingerprintData as fingerprintArtifactDataForObservability };
 
-export type CanonicalGenerationRequestCore = Omit<
-  CanonicalGenerationRequest,
-  "generationContextHash" | "resolvedContext"
->;

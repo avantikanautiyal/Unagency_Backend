@@ -1,5 +1,3 @@
-export const DISTRIBUTED_EXECUTION_VERSION = "1.0.0";
-
 export const DEFAULT_RETRY_POLICY = {
   strategy: "exponential" as const,
   maxAttempts: 3,
@@ -8,7 +6,6 @@ export const DEFAULT_RETRY_POLICY = {
   retryableClasses: ["transient", "timeout", "provider"],
 };
 
-export const DEFAULT_WORKER_CAPACITY = 2;
 /**
  * Must comfortably exceed a full live media run (pre-provider context build +
  * provider call + materialize/ingest ≈ 3–5 min) so a few missed heartbeats can

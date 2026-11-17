@@ -1,6 +1,3 @@
-// import { streamServerClient } from "../config/getStreamIo.config";
-// import firebaseAdmin from "../libs/firebase";
-import Users from "../models/users.model";
 import { ApiResponse } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 

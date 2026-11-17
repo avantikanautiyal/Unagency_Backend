@@ -2,7 +2,6 @@
  * Failover failure classification — reuses CanonicalErrorKind taxonomy.
  */
 
-import type { CanonicalErrorKind } from "../../../adapters/contracts/enums";
 import type { PerformanceFailureCategory } from "../contracts/performance-evidence";
 import type { ProviderExecutionError } from "../../../runtime/contracts/provider-execution-response";
 import type { ProviderExecutionStatus } from "../../../runtime/contracts/provider-execution-status";
@@ -38,31 +37,6 @@ export const DEFAULT_NO_FAILOVER_CATEGORIES: ReadonlySet<PerformanceFailureCateg
     "configuration",
     "infrastructure",
   ]);
-
-export function canonicalKindToFailureCategory(
-  kind: CanonicalErrorKind | string
-): PerformanceFailureCategory {
-  switch (kind) {
-    case "authentication":
-      return "authentication";
-    case "authorization":
-      return "tenant_violation";
-    case "rate_limit":
-      return "rate_limit";
-    case "timeout":
-      return "timeout";
-    case "quota":
-      return "quota";
-    case "content_policy":
-      return "content_policy";
-    case "provider_internal":
-      return "provider_internal";
-    case "unavailable":
-      return "unavailable";
-    default:
-      return "unknown";
-  }
-}
 
 export function classifyExecutionFailure(input: {
   status?: ProviderExecutionStatus;

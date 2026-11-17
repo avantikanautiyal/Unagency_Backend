@@ -25,7 +25,6 @@ import {
   observePackagingArtifact,
   packagingDependencySatisfied,
   PACKAGING_ARTIFACT_KEYS,
-  PACKAGING_FIXTURE_IDS,
   packagingSchemaId,
   persistCdfSession,
   resetCdfArtifactEngineForTests,

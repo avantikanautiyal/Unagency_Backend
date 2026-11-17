@@ -4,7 +4,6 @@
 
 import { failure, success, type Result } from "../../core/result";
 import { ValidationError } from "../../core/errors";
-import type { BlobAccessService } from "../../../media/blob/blob-access-service";
 
 export interface InputAssetReference {
   readonly storageRef?: string;
@@ -97,19 +96,3 @@ export function validateInputAssetTenancy(input: {
   return success(undefined);
 }
 
-/** M9.5D — server-authoritative blob ownership via BlobAccessService. */
-export function validateInputAssetsWithBlobAccess(input: {
-  readonly assets: readonly InputAssetReference[];
-  readonly organizationId: string;
-  readonly blobAccess: BlobAccessService;
-}): Result<void> {
-  for (const asset of input.assets) {
-    if (!asset.storageRef) continue;
-    const resolved = input.blobAccess.resolveForTenant(
-      asset.storageRef,
-      input.organizationId
-    );
-    if (!resolved.ok) return resolved;
-  }
-  return success(undefined);
-}

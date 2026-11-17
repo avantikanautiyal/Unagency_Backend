@@ -213,13 +213,3 @@ export function resolveAudioUseCaseFromService(
   return undefined;
 }
 
-/** Brand Strategy / social strategy jobs that need live web search before LLM synthesis. */
-export function shouldPreferResearchForService(ctx: ServiceRoutingContext): boolean {
-  const service = norm(ctx.service);
-  const subtype = norm(ctx.subtype);
-  return (
-    service === "strategy" ||
-    (service === "social" && subtype === "strategy") ||
-    (service === "ads" && subtype === "performance-ads")
-  );
-}

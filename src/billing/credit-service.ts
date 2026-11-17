@@ -3,8 +3,6 @@
  * Annual credits are NOT divided by 12. Human plans have credits = N/A (null).
  */
 
-import mongoose from "mongoose";
-import { ApiError } from "../utils/apiError";
 import {
   CreditBalanceModel,
   CreditLedgerModel,
@@ -111,108 +109,6 @@ export async function getCurrentCreditBalance(userId: string) {
     .sort({ periodStart: -1 })
     .lean();
 }
-
-export async function consumeCredits(input: {
-  userId: string;
-  amount: number;
-  reason: string;
-  idempotencyKey: string;
-  metadata?: Record<string, unknown>;
-}): Promise<{ remaining: number }> {
-  if (input.amount <= 0) {
-    throw new ApiError("Credit amount must be positive", 400);
-  }
-
-  const prior = await CreditLedgerModel.findOne({
-    idempotencyKey: input.idempotencyKey,
-  }).lean();
-  if (prior) {
-    const bal = await CreditBalanceModel.findById(prior.creditBalanceId).lean();
-    return { remaining: bal?.remaining ?? 0 };
-  }
-
-  const session = await mongoose.startSession();
-  let allocated = 0;
-  let balanceId = "";
-  try {
-    let remaining = 0;
-    try {
-      await session.withTransaction(async () => {
-        const now = new Date();
-        const balance = await CreditBalanceModel.findOne({
-          userId: input.userId,
-          periodStart: { $lte: now },
-          periodEnd: { $gte: now },
-          remaining: { $gte: input.amount },
-        })
-          .sort({ periodStart: -1 })
-          .session(session);
-
-        if (!balance) {
-          throw new ApiError(
-            JSON.stringify({
-              code: "INSUFFICIENT_CREDITS",
-              required: input.amount,
-            }),
-            403
-          );
-        }
-
-        balance.used += input.amount;
-        balance.remaining -= input.amount;
-        await balance.save({ session });
-        remaining = balance.remaining;
-        allocated = balance.allocated;
-        balanceId = String(balance._id);
-
-        try {
-          await CreditLedgerModel.create(
-            [
-              {
-                userId: input.userId,
-                subscriptionId: balance.subscriptionId,
-                creditBalanceId: balance._id,
-                delta: -input.amount,
-                reason: input.reason,
-                idempotencyKey: input.idempotencyKey,
-                metadata: input.metadata,
-              },
-            ],
-            { session }
-          );
-        } catch (err: unknown) {
-          if (
-            err &&
-            typeof err === "object" &&
-            "code" in err &&
-            (err as { code?: number }).code === 11000
-          ) {
-            return;
-          }
-          throw err;
-        }
-      });
-    } catch (err) {
-      if (err instanceof ApiError && /INSUFFICIENT_CREDITS/.test(err.message)) {
-        await notifyCredits(input.userId, "CREDITS_EXHAUSTED", {}, new Date().toISOString().slice(0, 10));
-      }
-      throw err;
-    }
-    if (balanceId && allocated > 0 && remaining <= allocated * LOW_CREDIT_RATIO) {
-      await notifyCredits(
-        input.userId,
-        "CREDITS_LOW",
-        { "Credits Remaining": remaining },
-        `${balanceId}:low`
-      );
-    }
-    return { remaining };
-  } finally {
-    await session.endSession();
-  }
-}
-
-const LOW_CREDIT_RATIO = 0.2;
 
 async function notifyCredits(
   userId: string,

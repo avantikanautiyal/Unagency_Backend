@@ -1,7 +1,4 @@
-import { Schema, model, type Document } from "mongoose";
-import type { ExecutionJob } from "../../../execution/contracts/job";
-
-export type EnterpriseJobDoc = Document & ExecutionJob;
+import { Schema, model } from "mongoose";
 
 const enterpriseJobSchema = new Schema(
   {

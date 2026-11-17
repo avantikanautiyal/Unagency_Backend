@@ -41,9 +41,6 @@ export const VIDEO_GENERATION_FANOUT_PROVIDER_FAMILIES = [
   "provider.minimax",
 ] as const;
 
-export type GenerationFanoutProviderFamily =
-  (typeof GENERATION_FANOUT_PROVIDER_FAMILIES)[number];
-
 export type GenerationFanoutTargetAvailability =
   | "selected"
   | "available"
@@ -211,16 +208,6 @@ export function resolveConfiguredImageModelsForProvider(input: {
     }
   }
   return out;
-}
-
-/**
- * Resolve the first configured matrix model for a provider family under a use-case.
- */
-export function resolveConfiguredImageModelForProvider(input: {
-  readonly useCase: ImageCreativeUseCase;
-  readonly providerId: string;
-}): ImageProviderPreference | null {
-  return resolveConfiguredImageModelsForProvider(input)[0] ?? null;
 }
 
 /**

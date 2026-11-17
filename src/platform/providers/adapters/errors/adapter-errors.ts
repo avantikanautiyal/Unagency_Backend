@@ -34,13 +34,6 @@ export class AdapterRegistrationError extends IntelligenceError {
   }
 }
 
-export class ManifestValidationError extends IntelligenceError {
-  constructor(message: string, metadata?: Readonly<Record<string, unknown>>) {
-    super(message, { code: "VALIDATION_ERROR", metadata });
-    this.name = "ManifestValidationError";
-  }
-}
-
 export class AdapterLifecycleError extends IntelligenceError {
   constructor(message: string, metadata?: Readonly<Record<string, unknown>>) {
     super(message, { code: "PROVIDER_ERROR", metadata });

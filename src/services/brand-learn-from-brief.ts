@@ -145,15 +145,6 @@ export async function learnBrandKnowledgeFromBrief(
   };
 }
 
-/** Fire-and-forget — never throws. */
-export function scheduleLearnBrandKnowledgeFromBrief(
-  input: LearnBrandFromBriefInput
-): void {
-  void learnBrandKnowledgeFromBrief(input).catch(() => {
-    /* non-fatal */
-  });
-}
-
 /** Used when only prompt text is available (no auth context) — org must be trusted. */
 export async function learnBrandKnowledgeFromPromptUntrusted(input: {
   readonly organizationId: string;

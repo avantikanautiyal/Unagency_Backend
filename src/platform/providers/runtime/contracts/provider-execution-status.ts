@@ -50,8 +50,3 @@ export function isTerminalProviderExecutionStatus(
   return TRANSITIONS[status].length === 0;
 }
 
-export function isSuccessfulProviderExecutionStatus(
-  status: ProviderExecutionStatus
-): boolean {
-  return status === "completed";
-}

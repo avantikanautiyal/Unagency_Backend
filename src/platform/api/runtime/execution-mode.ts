@@ -10,9 +10,6 @@ import type { CreateEnterpriseApiOptions } from "../factories/create-enterprise-
 
 export type EnterpriseApiExecutionMode = "stub" | "simulated" | "live";
 
-/** @deprecated Use EnterpriseApiExecutionMode "simulated" */
-export type LegacyEnterpriseApiExecutionMode = EnterpriseApiExecutionMode | "integration";
-
 const VALID_MODES = new Set(["stub", "simulated", "integration", "live"]);
 
 export function parseEnterpriseApiExecutionModeFromEnv(

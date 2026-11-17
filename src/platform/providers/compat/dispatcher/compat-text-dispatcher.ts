@@ -14,7 +14,6 @@ import type { CancellationToken } from "../../runtime/contracts/cancellation";
 import type { ProviderExecutionRequest } from "../../runtime/contracts/provider-execution-request";
 import type { ProviderExecutionResponse } from "../../runtime/contracts/provider-execution-response";
 import type { ProviderAdapterRequest } from "../../adapters/contracts/adapter-io";
-import { asProviderAdapterId } from "../../adapters/contracts/identifiers";
 import { asSdkExecutionId } from "../../sdk/contracts/identifiers";
 import { mapOpenAIResponseToCanonical } from "../../openai/responses/response-mapper";
 import type { CompatTextAdapter } from "../adapters/compat-text-adapter";

@@ -20,13 +20,10 @@ import {
 import { resolveRuntimeEvaluationDeps } from "../../../../../os/evaluation/runtime/runtime-evaluation-deps";
 import type { BenchmarkArtifactEvaluationDeps } from "../engine/benchmark-validation-resolver";
 import type { ProductionExecutionEvidenceContext } from "./production-evidence-service";
-import type { CanonicalExecutionSpecification } from "../../../../../collaboration/conversational-task-intelligence/execution-specification";
-import type { DeliverableFormat } from "../../../../../collaboration/conversational-task-intelligence/execution-specification";
 import {
   evaluateDeliverableCompliance,
   type DeliverableComplianceReport,
 } from "../../../../../collaboration/conversational-task-intelligence/deliverable-compliance";
-import type { ExecutionSpecSnapshot } from "../../../../../collaboration/conversational-task-intelligence/execution-spec-snapshot";
 import { cdfExecutionRequiresMediaArtifact } from "../../../../../cdf/execution-authority";
 
 export type ProductionArtifactEvaluationDeps = BenchmarkArtifactEvaluationDeps;

@@ -10,9 +10,7 @@
 import type { CapabilityId } from "../../../core/identifiers";
 import {
   asCapabilityId,
-  asOrganizationId,
   asProviderId,
-  asWorkspaceId,
 } from "../../../core/identifiers";
 import { IntelligenceError } from "../../../core/errors";
 import { failure, success, type Result } from "../../../core/result";
@@ -28,21 +26,15 @@ import { InMemoryProviderHealthStore } from "../../health/in-memory-provider-hea
 import type { ProviderDefinition } from "../../metadata/provider-definition";
 import type { IProviderRegistry } from "../../registry/provider-registry";
 import type { IProviderIdentityEngine } from "../../identity/interfaces/identity-engine";
-import type { ExecutionPlan } from "../contracts/planning/execution-plan";
 import {
   createNegotiationEngine,
   type CreateNegotiationEngineOptions,
 } from "../factories/create-negotiation-engine";
-import { NegotiationRequestBuilder } from "../builders/negotiation-request-builder";
 import type { NegotiationProfile } from "../contracts/negotiation-result";
-import type { NegotiationRequest } from "../contracts/negotiation-request";
 import type { IProviderNegotiationEngine } from "../interfaces/negotiation-engine";
 
 export const TEST_CAPABILITY = asCapabilityId("cap-text-generation");
 export const TEST_PROVIDER = asProviderId("provider-openai");
-export const TEST_FALLBACK_PROVIDER = asProviderId("provider-anthropic");
-export const TEST_ORG = asOrganizationId("org-1");
-export const TEST_WORKSPACE = asWorkspaceId("ws-1");
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -133,63 +125,6 @@ export function makeProfile(
     attributes: { supportsReasoning: true, supportsJsonMode: true },
     ...overrides,
   };
-}
-
-export function makePlan(overrides: Partial<ExecutionPlan> = {}): ExecutionPlan {
-  const base: ExecutionPlan = {
-    planId: "plan-1",
-    capabilityId: TEST_CAPABILITY,
-    executionStrategy: "direct",
-    executionMode: "sequential",
-    priority: "normal",
-    providerSelection: {
-      primaryProviderId: TEST_PROVIDER,
-      fallbackProviderIds: [],
-      modelId: "gpt-model",
-    },
-    retry: { maxAttempts: 2, backoffMs: 100, strategy: "fixed" },
-    timeout: { timeoutMs: 30000 },
-    budget: { maxCost: 0.5, currency: "USD" },
-    evaluation: { enabled: false },
-    humanReview: { required: false },
-    executionPolicy: { policyRefs: [] },
-    routingConstraints: { requiredFeatures: [], excludedProviderIds: [] },
-    graph: {
-      entryNodeId: "n1",
-      exitNodeId: "n1",
-      nodes: [
-        { id: "n1", kind: "capability", label: "cap", stageId: "s1", order: 0 },
-      ],
-      edges: [],
-      stages: [
-        { id: "s1", name: "stage", mode: "sequential", order: 0, nodeIds: ["n1"] },
-      ],
-    },
-    metadata: {
-      planId: "plan-1",
-      capabilityId: TEST_CAPABILITY,
-      primaryProviderId: TEST_PROVIDER,
-      fallbackProviderIds: [],
-      strategy: "direct",
-      priority: "normal",
-      costEstimate: {},
-      createdAt: NOW,
-    },
-    ...overrides,
-  };
-  return base;
-}
-
-export function makeRequest(
-  planOverrides: Partial<ExecutionPlan> = {},
-  requestOverrides: Partial<NegotiationRequest> = {}
-): NegotiationRequest {
-  const built = new NegotiationRequestBuilder()
-    .withPlan(makePlan(planOverrides))
-    .withOrganization(TEST_ORG)
-    .withWorkspace(TEST_WORKSPACE)
-    .build();
-  return { ...built, ...requestOverrides };
 }
 
 /**

@@ -47,7 +47,6 @@ import {
 import { InMemoryExecutionObservabilityStore } from "../../../src/platform/os/observability/execution-observability-store";
 import {
   beginExecutionTrace,
-  recordProductionEvidenceTrace,
   resetExecutionTracesForTests,
 } from "../../../src/platform/os/observability/execution-trace";
 import { loadAdaptiveRoutingConfig } from "../../../src/platform/providers/routing/performance/config/adaptive-routing-config";
@@ -63,10 +62,7 @@ const FIXTURE_OK = `<!DOCTYPE html>
   <footer>Footer</footer>
 </body></html>`;
 
-const FIXTURE_CONSOLE_ERROR = `<!DOCTYPE html><html lang="en"><body><script>console.error("fixture console error")</script><main><h1>Hi</h1></main></body></html>`;
 const FIXTURE_PAGE_ERROR = `<!DOCTYPE html><html lang="en"><body><script>throw new Error("fixture page error")</script><main><h1>Hi</h1></main></body></html>`;
-const FIXTURE_NETWORK = `<!DOCTYPE html><html lang="en"><body><img src="http://127.0.0.1:1/missing.png" /><main><h1>Hi</h1></main></body></html>`;
-const FIXTURE_BAD_A11Y = `<!DOCTYPE html><html><body><img src="x.png" /><input type="text" /><button></button><a href="#"></a><h3>Skip</h3></body></html>`;
 
 function mockHydrated(html: string, artifactId = "art_p41"): () => Promise<readonly HydratedArtifact[]> {
   return async () =>

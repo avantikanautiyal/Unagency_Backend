@@ -25,27 +25,7 @@ export function failure<E = IntelligenceError>(error: E): Failure<E> {
   return { ok: false, error };
 }
 
-export function isSuccess<T, E>(result: Result<T, E>): result is Success<T> {
-  return result.ok === true;
-}
-
 export function isFailure<T, E>(result: Result<T, E>): result is Failure<E> {
   return result.ok === false;
 }
 
-export function unwrap<T, E>(result: Result<T, E>): T {
-  if (result.ok) {
-    return result.value;
-  }
-  throw result.error;
-}
-
-export function mapResult<T, U, E>(
-  result: Result<T, E>,
-  fn: (value: T) => U
-): Result<U, E> {
-  if (result.ok) {
-    return success(fn(result.value));
-  }
-  return result;
-}

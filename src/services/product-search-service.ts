@@ -67,22 +67,6 @@ export type SearchQueryInput = {
   recordRecent?: boolean;
 };
 
-const ALL_KINDS: readonly SearchHitKind[] = [
-  "project",
-  "brand",
-  "asset",
-  "brief",
-  "member",
-  "notification",
-  "execution",
-  "route",
-  "category",
-  "help",
-  "document",
-  "conversation",
-  "approval",
-];
-
 function scoreMatch(q: string, title: string, subtitle?: string): number {
   const t = (title || "").toLowerCase();
   const qq = q.toLowerCase();

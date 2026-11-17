@@ -887,6 +887,78 @@ export class CollaborationOsService {
     });
   }
 
+  /**
+   * A client wrote. Their own workspace teammates in the room get NEW_MESSAGE;
+   * if the sender is answering an open CS/Studio clarification they get
+   * CLARIFICATION_SUBMITTED. Returns the teammates notified.
+   */
+  private async notifyClientSide(input: {
+    conversation: IConversation;
+    members: string[];
+    senderId: string;
+    senderName: string;
+    messageId: string;
+  }): Promise<Set<string>> {
+    const notified = new Set<string>();
+    const { dispatchClientNotification } = await import(
+      "../../notifications/client-notification-service"
+    );
+    const roomKey = input.conversation.roomKey;
+    const projectName = input.conversation.name;
+
+    const lastAsk = await Notifications.findOne({
+      userId: new mongoose.Types.ObjectId(input.senderId),
+      entityId: roomKey,
+      eventKey: { $in: ["CLARIFICATION_REQUESTED_BY_CS", "STUDIO_CLARIFICATION_REQUESTED"] },
+    })
+      .sort({ createdAt: -1 })
+      .select("_id createdAt")
+      .lean<{ _id: mongoose.Types.ObjectId; createdAt?: Date }>();
+    if (lastAsk) {
+      // One confirmation per clarification request.
+      await dispatchClientNotification({
+        eventKey: "CLARIFICATION_SUBMITTED",
+        userId: input.senderId,
+        variables: { "Project Name": projectName },
+        primaryAction: input.conversation.projectId
+          ? { action: `/progress?projectId=${String(input.conversation.projectId)}` }
+          : { action: "message.open" },
+        entityType: "conversation",
+        entityId: roomKey,
+        dedupeKey: `answered:${String(lastAsk._id)}`,
+        channels: ["in_app"],
+      });
+    }
+
+    const customers = await Users.find({
+      _id: {
+        $in: input.members
+          .filter((id) => mongoose.isValidObjectId(id))
+          .map((id) => new mongoose.Types.ObjectId(id)),
+      },
+      role: "customer",
+    })
+      .select("_id")
+      .lean();
+    const hourBucket = Math.floor(Date.now() / 3_600_000);
+    for (const c of customers) {
+      const id = String(c._id);
+      notified.add(id);
+      await dispatchClientNotification({
+        eventKey: "NEW_MESSAGE",
+        userId: id,
+        variables: { Sender: input.senderName, "Project Name": projectName },
+        primaryAction: { action: "message.open" },
+        entityType: "conversation",
+        entityId: roomKey,
+        metadata: { messageId: input.messageId },
+        dedupeKey: `${roomKey}:${input.senderId}:${hourBucket}`,
+        channels: ["in_app", "push"],
+      });
+    }
+    return notified;
+  }
+
   private async notifyMembers(input: {
     conversation: IConversation;
     excludeUserId: string;
@@ -908,6 +980,8 @@ export class CollaborationOsService {
         String(sender?.role ?? "")
       );
       const clientIds = new Set<string>();
+      /** Client teammates already sent NEW_MESSAGE (no generic row as well). */
+      let clientSideIds = new Set<string>();
       if (senderIsTeam) {
         const clients = await Users.find({
           _id: { $in: members.map((m) => m.userId) },
@@ -916,6 +990,14 @@ export class CollaborationOsService {
           .select("_id")
           .lean();
         for (const c of clients) clientIds.add(String(c._id));
+      } else if (String(sender?.role ?? "") === "customer") {
+        clientSideIds = await this.notifyClientSide({
+          conversation: input.conversation,
+          members: members.map((m) => String(m.userId)),
+          senderId: input.excludeUserId,
+          senderName: sender?.name || "A teammate",
+          messageId: input.messageId,
+        });
       }
       let isHybrid = false;
       if (clientIds.size && input.conversation.projectId) {
@@ -932,6 +1014,7 @@ export class CollaborationOsService {
         call_request: "CALL_REQUESTED_BY_CS",
         progress_update: "CS_PROGRESS_UPDATE",
         qc_issue: "QC_ISSUE",
+        requirement_reviewed: "REQUIREMENT_REVIEWED",
       } as const;
       const kindEvent =
         kindEvents[String(input.notificationKind) as keyof typeof kindEvents];
@@ -961,6 +1044,7 @@ export class CollaborationOsService {
           });
           continue;
         }
+        if (clientSideIds.has(String(m.userId))) continue;
         await Notifications.create({
           userId: m.userId,
           title: input.title,

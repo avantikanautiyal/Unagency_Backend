@@ -147,6 +147,26 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
   // return new ApiResponse(200,null,"");
   const newRequirement = await Requirement.create(requirementBody);
 
+  // Checklist order: "brief submitted" must land before "CS assigned".
+  // Hybrid briefs start in AI (notified when the CDF project is created);
+  // a hybrid requirement here is the Studio handoff, already covered by
+  // TASK_SENT_TO_STUDIO.
+  if (creationMode !== "hybrid") {
+    await dispatchClientNotification({
+      eventKey: creationMode === "ai" ? "AI_BRIEF_SUBMITTED" : "HUMAN_BRIEF_SUBMITTED",
+      userId: req.user!.userId,
+      primaryAction: {
+        action: "/progress",
+        text: creationMode === "ai" ? "View Progress" : "View Project",
+      },
+      entityType: "requirement",
+      entityId: newRequirement._id,
+      dedupeKey: newRequirement._id.toString(),
+      channels: ["in_app", "email"],
+      symbol: "✓",
+    });
+  }
+
   if (creationMode && isHumanHybridCreationMode(creationMode)) {
     const assigned = await assignCsToRequirement(newRequirement._id);
     if (assigned) {
@@ -189,26 +209,6 @@ export const createRequirement = asyncHandler(async (req: RequestUser, res) => {
       });
     }
   }
-
-  const clientBriefEvent =
-    creationMode === "hybrid"
-      ? "HYBRID_BRIEF_SUBMITTED"
-      : creationMode === "ai"
-        ? "AI_BRIEF_SUBMITTED"
-        : "HUMAN_BRIEF_SUBMITTED";
-  await dispatchClientNotification({
-    eventKey: clientBriefEvent,
-    userId: req.user!.userId,
-    primaryAction: {
-      action: "/progress",
-      text: "View Progress",
-    },
-    entityType: "requirement",
-    entityId: newRequirement._id,
-    dedupeKey: newRequirement._id.toString(),
-    channels: ["in_app", "email"],
-    symbol: "✓",
-  });
 
   // M10.19 — auto-provision brief collaboration channel (non-blocking)
   void (async () => {

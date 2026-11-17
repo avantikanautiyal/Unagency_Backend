@@ -183,7 +183,7 @@ const CreateTask = asyncHandler(async (req: RequestUser, res: Response) => {
 
   await notifyProjectOwner({
     projectId: project,
-    events: { human: "RESOURCE_ASSIGNED", hybrid: null },
+    events: { human: "RESOURCE_ASSIGNED", hybrid: "STUDIO_REVIEW_STARTED" },
     variables: { "Resource Name": (staff?.userId as any)?.name || "Your creative team" },
     dedupeKey: create._id.toString(),
   });
@@ -443,6 +443,10 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
     delete updateOps.files;
   }
 
+  const previousStatus = String(
+    (await Tasks.findById(taskId).select("status").lean<{ status?: string }>())?.status ?? ""
+  );
+
   let updatedTask = await Tasks.findByIdAndUpdate(taskId, updateOps, {
     new: true,
     runValidators: true,
@@ -493,9 +497,63 @@ const UpdateTask = asyncHandler(async (req: RequestUser, res: Response) => {
   } else if (updatedTask && updates.status === "revision" && clientRequestedChanges) {
     await notifyProjectOwner({
       projectId: updatedTask.project,
-      events: { human: "CS_ACKNOWLEDGED_FEEDBACK", hybrid: null },
+      events: { human: "CS_ACKNOWLEDGED_FEEDBACK", hybrid: "STUDIO_REVISION_STARTED" },
       dedupeKey: `${taskId}:revision:${Date.now()}`,
     });
+  } else if (
+    updatedTask &&
+    typeof updates.status === "string" &&
+    updates.status !== previousStatus
+  ) {
+    // Remaining client-visible production milestones (checklist §6/§7).
+    const stamp = `${taskId}:${updates.status}:${Date.now()}`;
+    if (updates.status === "progress" && previousStatus !== "admin_qc") {
+      await notifyProjectOwner({
+        projectId: updatedTask.project,
+        events: clientRequestedChanges
+          ? { human: "REVISION_STARTED", hybrid: "STUDIO_REVISION_STARTED" }
+          : { human: "PRODUCTION_STARTED", hybrid: "EXPERT_REFINEMENT_STARTED" },
+        dedupeKey: stamp,
+      });
+    } else if (updates.status === "submitted") {
+      await notifyProjectOwner({
+        projectId: updatedTask.project,
+        events: { human: "DRAFT_UNDER_INTERNAL_REVIEW", hybrid: null },
+        dedupeKey: stamp,
+      });
+    } else if (updates.status === "admin_qc") {
+      await notifyProjectOwner({
+        projectId: updatedTask.project,
+        events: { human: "QC_IN_PROGRESS", hybrid: null },
+        dedupeKey: stamp,
+      });
+    } else if (
+      (updates.status === "approved" || updates.status === "completed") &&
+      previousStatus === "admin_qc"
+    ) {
+      await notifyProjectOwner({
+        projectId: updatedTask.project,
+        events: { human: "FINAL_FILES_READY", hybrid: "FINAL_QC_PASSED" },
+        dedupeKey: stamp,
+        channels: ["in_app", "push", "email"],
+      });
+      await notifyProjectOwner({
+        projectId: updatedTask.project,
+        events: { human: null, hybrid: "HYBRID_FINAL_READY" },
+        dedupeKey: `${stamp}:final`,
+        withSecondaryAction: true,
+        channels: ["in_app", "push", "email"],
+      });
+    } else if (
+      (updates.status === "revision" || updates.status === "progress" || updates.status === "feedback") &&
+      previousStatus === "admin_qc"
+    ) {
+      await notifyProjectOwner({
+        projectId: updatedTask.project,
+        events: { human: "QC_ISSUE", hybrid: null },
+        dedupeKey: stamp,
+      });
+    }
   }
 
   // Check for priority change
@@ -921,6 +979,13 @@ const ClientReviewTask = asyncHandler(async (req: RequestUser) => {
         : { human: "CLIENT_REQUESTED_REVISION", hybrid: "HYBRID_FEEDBACK_SUBMITTED" },
     dedupeKey: `${taskId}:${decision}:${Date.now()}`,
   });
+  if (decision === "APPROVED") {
+    await notifyProjectOwner({
+      projectId: project?._id,
+      events: { human: "QC_IN_PROGRESS", hybrid: null },
+      dedupeKey: `${taskId}:admin_qc:${Date.now()}`,
+    });
+  }
 
   try {
     const { collaborationChannelService } = await import(

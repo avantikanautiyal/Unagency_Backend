@@ -37,6 +37,8 @@ export type DispatchClientNotificationInput = {
   channels?: readonly ClientNotificationChannel[];
   symbol?: string;
   emailSubject?: string;
+  /** Store as already read (the client showed it as a popup itself). */
+  isRead?: boolean;
 };
 
 function legacyType(section: string): NotificationType {
@@ -155,7 +157,11 @@ async function deliverClientNotification(
   let stored = null;
   if (channels.includes("in_app")) {
     try {
-      stored = await Notifications.create({ ...notification, userId: user._id });
+      stored = await Notifications.create({
+        ...notification,
+        userId: user._id,
+        ...(input.isRead ? { isRead: true } : {}),
+      });
     } catch (err: any) {
       // Duplicate dedupeKey: this event was already delivered on every channel.
       if (err?.code === 11000) return { rendered, notification: null };

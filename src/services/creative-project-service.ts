@@ -341,6 +341,21 @@ export class CreativeProjectService {
       clientTeam: [],
     });
 
+    // Human briefs are notified by the requirement flow.
+    if (creationMode !== "human") {
+      void import("../notifications/client-project-lifecycle-notifications")
+        .then((m) =>
+          m.notifyCreativeProjectCreated({
+            projectId: String(created._id),
+            userId: input.userId,
+            title: created.title,
+            creationMode,
+            brandId: input.brandId,
+          })
+        )
+        .catch(() => undefined);
+    }
+
     return toDto(created as any);
   }
 

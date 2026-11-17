@@ -104,10 +104,13 @@ export class MongoExecutionRepository implements IExecutionRepository {
     ).lean();
     // Keep the in-memory copy identical to what was just written.
     rememberFinished(execution);
-    if (execution.status === "succeeded" && previous?.status !== "succeeded") {
+    if (
+      (execution.status === "succeeded" || execution.status === "failed") &&
+      previous?.status !== execution.status
+    ) {
       void import("../../../../notifications/client-execution-notifications")
         .then((m) =>
-          m.notifyClientExecutionSucceeded(
+          m.notifyClientExecutionFinished(
             (previous ?? null) as Partial<ExecutionResource> | null,
             execution
           )

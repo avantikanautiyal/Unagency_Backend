@@ -16,6 +16,8 @@ import {
   paymentVerification,
   paymentVerificationApp,
   generateInvoice,
+  createInvoiceLink,
+  hasValidInvoiceSignature,
   updateRazorPayPlan,
   updateSubscription,
   cancelUpdateSubscription,
@@ -42,7 +44,16 @@ razorpayRouter.post(
 );
 razorpayRouter.get("/payment/history", VerifyUserHandler, getPaymentHistory)
 razorpayRouter.get("/payment/history/:userId", VerifyUserHandler, getCustomerPaymentHistory);
-razorpayRouter.get("/invoice/:paymentId", generateInvoice);
+razorpayRouter.post("/invoice/:paymentId/link", VerifyUserHandler, createInvoiceLink);
+// A signed link needs no session; otherwise the caller must be signed in.
+razorpayRouter.get(
+  "/invoice/:paymentId",
+  (req, res, next) =>
+    hasValidInvoiceSignature(String(req.params.paymentId ?? ""), req.query as Record<string, unknown>)
+      ? next()
+      : VerifyUserHandler(req, res, next),
+  generateInvoice
+);
 // ###################### PLANS #########################
 // GET remains public for pricing UI. Mutations are admin-only and never create
 // Razorpay plans — they only link/sync existing Plan IDs into Mongo.

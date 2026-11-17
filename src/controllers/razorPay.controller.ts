@@ -572,6 +572,57 @@ export const getCustomerCurrentSubscription = asyncHandler(
   }
 );
 
+
+/**
+ * Checkout verified → the client sees "Payment successful" + "Invoice ready"
+ * now. Dedupe keys match the subscription.activated webhook, so a working
+ * webhook never sends a second copy.
+ */
+async function notifyCheckoutVerified(subs: {
+  _id?: unknown;
+  userId?: unknown;
+  planId?: unknown;
+  subscriptionId?: string;
+}): Promise<void> {
+  try {
+    if (!subs?.userId || !subs.subscriptionId) return;
+    const ref = String(subs.planId ?? "");
+    const plan = ref
+      ? await PlansModel.findOne(
+          mongoose.isValidObjectId(ref) ? { $or: [{ _id: ref }, { plan_id: ref }] } : { plan_id: ref }
+        ).lean()
+      : null;
+    const user = await Users.findById(subs.userId).select("name").lean<{ name?: string }>();
+    const planName = planDisplayName(plan);
+    const userId = String(subs.userId);
+    await dispatchClientNotification({
+      eventKey: "PAYMENT_SUCCESSFUL",
+      userId,
+      variables: { Name: user?.name || "there", "Plan Name": planName },
+      primaryAction: { action: "/home", text: "Explore Benefits" },
+      secondaryAction: { action: "/choose-mode", text: "Start Creating" },
+      entityType: "subscription",
+      entityId: subs._id ? String(subs._id) : undefined,
+      dedupeKey: `activated:${subs.subscriptionId}`,
+      channels: ["in_app", "push", "email"],
+      symbol: "✓",
+    });
+    await dispatchClientNotification({
+      eventKey: "INVOICE_READY",
+      userId,
+      variables: { "Plan Name": planName },
+      primaryAction: { action: "/subscription-billing", text: "View Invoice" },
+      entityType: "subscription",
+      entityId: subs._id ? String(subs._id) : undefined,
+      dedupeKey: `activated:${subs.subscriptionId}:invoice`,
+      channels: ["in_app", "email"],
+      symbol: "📄",
+    });
+  } catch (err) {
+    console.error("[notifications] checkout verified notification failed", err);
+  }
+}
+
 export const paymentVerification = asyncHandler(
   async (req: RequestUser, res) => {
     const {
@@ -605,6 +656,7 @@ export const paymentVerification = asyncHandler(
       razorpay_signature,
       userId: subs?.userId,
     });
+    if (isValidSignature && subs) await notifyCheckoutVerified(subs as any);
 
     res.redirect(
       process.env.FRONTEND_URL +
@@ -686,6 +738,8 @@ export const paymentVerificationApp = asyncHandler(
       });
     }
 
+    await notifyCheckoutVerified(subs as any);
+
     return new ApiResponse(
       200,
       {
@@ -747,9 +801,65 @@ export const getCustomerPaymentHistory = asyncHandler(async (req: RequestUser, r
 });
 
 
+
+// ---------- Invoice access ----------
+const INVOICE_LINK_TTL_MS = 10 * 60_000;
+
+function invoiceSigningSecret(): string {
+  return (
+    process.env.INVOICE_LINK_SECRET?.trim() ||
+    process.env.RAZORPAY_SECRET?.trim() ||
+    process.env.RAZORPAY_KEY_SECRET?.trim() ||
+    ""
+  );
+}
+
+function signInvoice(paymentId: string, exp: number): string {
+  return crypto
+    .createHmac("sha256", invoiceSigningSecret())
+    .update(`invoice:${paymentId}:${exp}`)
+    .digest("hex");
+}
+
+/** True when `?exp=&sig=` is a valid, unexpired link for this payment. */
+export function hasValidInvoiceSignature(paymentId: string, query: Record<string, unknown>): boolean {
+  const exp = Number(query.exp);
+  const sig = typeof query.sig === "string" ? query.sig : "";
+  if (!invoiceSigningSecret() || !Number.isFinite(exp) || exp < Date.now() || !sig) return false;
+  const expected = signInvoice(paymentId, exp);
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
+  } catch {
+    return false;
+  }
+}
+
+async function assertInvoiceAccess(req: RequestUser, paymentId: string): Promise<void> {
+  const role = String(req.user?.role ?? "");
+  if (["admin", "superadmin", "servicing"].includes(role)) return;
+  const owned = await Payments.exists({ razorpay_payment_id: paymentId, userId: req.user?.userId });
+  if (!owned) throw new ApiError("Invoice not found", 404);
+}
+
+/** Signed, short-lived invoice path the apps can open without auth headers. */
+export const createInvoiceLink = asyncHandler(async (req: RequestUser) => {
+  const { paymentId } = req.params;
+  if (!paymentId) throw new ApiError("Payment ID is required", 400);
+  if (!invoiceSigningSecret()) throw new ApiError("Invoice links unavailable", 500);
+  await assertInvoiceAccess(req, paymentId);
+  const exp = Date.now() + INVOICE_LINK_TTL_MS;
+  const url = `/razorpay/invoice/${encodeURIComponent(paymentId)}?exp=${exp}&sig=${signInvoice(paymentId, exp)}`;
+  return new ApiResponse(200, { url }, "Invoice link created");
+});
+
 export const generateInvoice = asyncHandler(async (req: RequestUser, res) => {
   const { paymentId } = req.params;
   if (!paymentId) throw new ApiError("Payment ID is required", 400);
+  // Signed link, or a signed-in owner / staff member.
+  if (!hasValidInvoiceSignature(paymentId, req.query as Record<string, unknown>)) {
+    if (!req.user?.userId) throw new ApiError("Unauthorized", 401);
+    await assertInvoiceAccess(req, paymentId);
+  }
 
   let payment: any;
   if (isDemoSeedEnabled() && isDemoPaymentId(paymentId)) {

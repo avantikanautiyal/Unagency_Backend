@@ -156,7 +156,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             secondaryAction: { action: "/subscription-billing" },
             entityType: "payment",
             entityId: String(failedPayment.id ?? ""),
-            dedupeKey: eventId,
+            // Shared with the client-reported checkout failure (same payment).
+            dedupeKey: failedPayment.id ? `payment:${failedPayment.id}` : eventId,
           });
         }
         break;
@@ -235,7 +236,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
             entityType: "subscription",
             entityId: subs?._id,
-            dedupeKey: eventId,
+            dedupeKey: `activated:${event.payload?.subscription?.entity?.id ?? eventId}`,
             channels: ["in_app", "email"],
             symbol: "✓",
           });
@@ -283,7 +284,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             },
             entityType: "subscription",
             entityId: subs?._id,
-            dedupeKey: `${eventId}:invoice`,
+            dedupeKey: `activated:${event.payload?.subscription?.entity?.id ?? eventId}:invoice`,
             channels: ["in_app", "email"],
             symbol: "📄",
           });

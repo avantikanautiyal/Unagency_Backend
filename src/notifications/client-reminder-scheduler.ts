@@ -7,6 +7,7 @@ import { PlansModel } from "../models/plan.model";
 import Projects from "../models/projects.model";
 import Subscriptions from "../models/subscription.model";
 import Tasks from "../models/tasks.model";
+import Notifications from "../models/notification.model";
 import Users from "../models/users.model";
 import { dispatchClientNotification } from "./client-notification-service";
 import { planDisplayName } from "./plan-display-name";
@@ -73,8 +74,9 @@ async function brandSetupAbandoned(): Promise<void> {
 }
 
 async function projectAbandoned(): Promise<void> {
+  // Projects are "initiated" until approved ("planning" was never written).
   const projects = await Projects.find({
-    status: "planning",
+    status: { $in: ["initiated", "planning"] },
     updatedAt: { $lte: ago(2 * DAY), $gte: ago(14 * DAY) },
   })
     .select("_id userId title")
@@ -122,7 +124,9 @@ async function reviewPending(): Promise<void> {
         ? "REENGAGEMENT_APPROVAL_PENDING"
         : waited >= 5 * DAY
           ? "DRAFT_NOT_REVIEWED"
-          : project.creationMode === "hybrid"
+          : waited >= 3 * DAY && project.creationMode !== "hybrid"
+            ? "APPROVAL_PENDING"
+            : project.creationMode === "hybrid"
             ? "HYBRID_REVIEW_PENDING"
             : "FEEDBACK_PENDING";
     await dispatchClientNotification({
@@ -202,8 +206,55 @@ async function unusedCredits(): Promise<void> {
   }
 }
 
+/**
+ * AI Mode: a creative was delivered but the project hasn't been approved.
+ * 1 day → AI_REVIEW_PENDING, 3 days → AI_APPROVAL_PENDING (once each per draft).
+ */
+async function aiReviewPending(): Promise<void> {
+  const ready = await Notifications.find({
+    eventKey: { $in: ["AI_CREATIVE_READY", "AI_REVISION_READY"] },
+    entityType: "project",
+    createdAt: { $lte: ago(DAY), $gte: ago(14 * DAY) },
+  })
+    .sort({ createdAt: -1 })
+    .select("userId entityId createdAt")
+    .limit(BATCH)
+    .lean();
+  const latest = new Map<string, (typeof ready)[number]>();
+  for (const n of ready) if (n.entityId && !latest.has(n.entityId)) latest.set(n.entityId, n);
+  if (!latest.size) return;
+  const projects = new Map(
+    (
+      await Projects.find({
+        _id: { $in: [...latest.keys()].filter((id) => mongoose.isValidObjectId(id)) },
+        status: { $in: ["initiated", "revision"] },
+        creationMode: { $ne: "human" },
+      })
+        .select("_id userId title")
+        .lean()
+    ).map((p) => [String(p._id), p])
+  );
+  for (const [projectId, n] of latest) {
+    const project = projects.get(projectId);
+    if (!project?.userId) continue;
+    const readyAt = new Date((n as { createdAt?: Date }).createdAt ?? Date.now()).getTime();
+    const eventKey = Date.now() - readyAt >= 3 * DAY ? "AI_APPROVAL_PENDING" : "AI_REVIEW_PENDING";
+    await dispatchClientNotification({
+      eventKey,
+      userId: project.userId,
+      variables: { "Project Name": project.title || "Your project", "#": "" },
+      primaryAction: progressAction(project._id),
+      entityType: "project",
+      entityId: projectId,
+      dedupeKey: `${String(n._id)}:${eventKey}`,
+      channels: ["in_app", "push"],
+    });
+  }
+}
+
 export async function runClientReminders(): Promise<void> {
   for (const job of [
+    aiReviewPending,
     onboardingAbandoned,
     brandSetupAbandoned,
     projectAbandoned,

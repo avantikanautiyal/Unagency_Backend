@@ -271,3 +271,83 @@ export {
   archiveNotification,
   deleteNotification,
 };
+
+/**
+ * Checklist events only the client can observe (checkout popup outcome,
+ * invoice download, brand/onboarding nudges...). The client already showed the
+ * popup, so the row is stored read — it just appears in the bell history.
+ * Allow-listed, in-app only, deduped per user.
+ */
+const CLIENT_REPORTABLE_EVENTS = new Set([
+  "JOURNEY_STARTED",
+  "RESUME_ONBOARDING",
+  "FREE_ACCESS_CONFIRMED",
+  "BRAND_SETUP_INCOMPLETE",
+  "BRAND_ASSETS_MISSING",
+  "BRAND_REMOVED",
+  "MODE_CHANGED",
+  "PROJECT_INCOMPLETE",
+  "AI_NEEDS_INFORMATION",
+  "RECOMMENDED_ROUTE",
+  "BRANDGUARD_WARNING",
+  "AI_PREFERENCES_SAVED",
+  "PAYMENT_AUTHENTICATION",
+  "PAYMENT_FAILED",
+  "PAYMENT_DECLINED",
+  "PAYMENT_TIMED_OUT",
+  "PAYMENT_CANCELLED",
+  "DUPLICATE_PAYMENT_ATTEMPT",
+  "CARD_EXPIRED",
+  "INVOICE_DOWNLOADED",
+]);
+
+const reportClientEvent = asyncHandler(async (req: RequestUser) => {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError("Unauthorized", 401);
+    const body = (req.body ?? {}) as {
+        eventKey?: unknown;
+        variables?: unknown;
+        action?: unknown;
+        secondaryAction?: unknown;
+        dedupeKey?: unknown;
+        entityId?: unknown;
+    };
+    const eventKey = String(body.eventKey ?? "");
+    if (!CLIENT_REPORTABLE_EVENTS.has(eventKey)) {
+        throw new ApiError("Event not reportable by clients", 400);
+    }
+    const str = (v: unknown, max = 200) =>
+        typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+    const variables: Record<string, string> = {};
+    if (body.variables && typeof body.variables === "object") {
+        for (const [k, v] of Object.entries(body.variables as Record<string, unknown>).slice(0, 8)) {
+            const value = typeof v === "number" ? String(v) : str(v, 120);
+            if (value && k.length <= 40) variables[k] = value;
+        }
+    }
+    // Only in-app paths — never let a client store an off-site link.
+    const path = (v: unknown) => {
+        const s = str(v, 300);
+        return s && s.startsWith("/") && !s.startsWith("//") ? s : undefined;
+    };
+    const action = path(body.action);
+    const secondary = path(body.secondaryAction);
+    const { dispatchClientNotification } = await import(
+        "../notifications/client-notification-service"
+    );
+    const result = await dispatchClientNotification({
+        eventKey: eventKey as never,
+        userId,
+        variables,
+        primaryAction: action ? { action } : undefined,
+        secondaryAction: secondary ? { action: secondary } : undefined,
+        entityType: "client_event",
+        entityId: str(body.entityId, 100),
+        dedupeKey: str(body.dedupeKey, 150) ?? `${Math.floor(Date.now() / 60_000)}`,
+        channels: ["in_app"],
+        isRead: true,
+    });
+    return new ApiResponse(200, { stored: Boolean(result.notification) }, "Recorded");
+});
+
+export { reportClientEvent };

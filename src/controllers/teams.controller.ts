@@ -53,6 +53,24 @@ const RemoveMemberInOrganization = asyncHandler(
       if (removeMember.deletedCount === 0) {
         throw new ApiError("Member not found in the organization", 404);
       }
+      if (removeMember && !userId) {
+        // Pending invite to an email with no account yet.
+        const organisation = await Organizations.findById(organization);
+        await dispatchClientNotification({
+          eventKey: "TEAM_MEMBER_REMOVED",
+          userId: req.user!.userId,
+          variables: {
+            Name: target.invitedEmail || "Team member",
+            Organisation: organisation?.companyName || "your workspace",
+          },
+          primaryAction: { action: "/manage-team", text: "View Team" },
+          entityType: "organisation",
+          entityId: organization,
+          dedupeKey: `${String(target._id)}:removed:${Date.now()}`,
+          channels: ["in_app"],
+          symbol: "👋",
+        });
+      }
       if (removeMember) {
         // Send notification to Owner (confirmation)
         if (userId) {
@@ -97,7 +115,7 @@ const RemoveMemberInOrganization = asyncHandler(
               },
               entityType: "organisation",
               entityId: organization,
-              dedupeKey: `${organization}:${removedUser._id}:removed`,
+              dedupeKey: `${organization}:${removedUser._id}:removed:${Date.now()}`,
               channels: ["in_app", "email"],
               symbol: "👋",
             });
@@ -174,6 +192,16 @@ const InviteMemberInOrganization = asyncHandler(
       if (seats !== null) {
         const used = await countUsedMemberSeats(organization._id);
         if (used >= seats) {
+          await dispatchClientNotification({
+            eventKey: "TEAM_LIMIT_REACHED",
+            userId: req.user!.userId,
+            primaryAction: { action: "/subscription-billing", text: "View Plans" },
+            secondaryAction: { action: "/manage-team", text: "Manage Team" },
+            entityType: "organisation",
+            entityId: organization._id,
+            dedupeKey: `team-limit:${Math.floor(Date.now() / 60_000)}`,
+            channels: ["in_app"],
+          });
           throw new ApiError(
             seats === 0
               ? "Your plan doesn't include team seats. Upgrade your plan to invite members."
@@ -205,6 +233,20 @@ const InviteMemberInOrganization = asyncHandler(
           invitedBy: req.user?.userId,
           ...(invitedUser ? { userId: invitedUser._id } : {}),
         });
+
+    if (invitedUser) {
+      await dispatchClientNotification({
+        eventKey: "TEAM_MEMBER_ADDED",
+        userId: req.user!.userId,
+        variables: { Name: invitedUser.name || email },
+        primaryAction: { action: "/manage-team", text: "View Team" },
+        entityType: "organisation",
+        entityId: organization._id,
+        dedupeKey: `${String(teamRow!._id)}:added:${Date.now()}`,
+        channels: ["in_app"],
+        symbol: "🤝",
+      });
+    }
 
     const inviterName = req?.user?.name || inviter?.name || "Someone";
     const companyName = (organization as any).companyName || "their";

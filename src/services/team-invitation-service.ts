@@ -140,7 +140,8 @@ async function notifyOwnerInviteAccepted(
       primaryAction: { action: "/manage-team", text: "View Team" },
       entityType: "organisation",
       entityId: organization._id,
-      dedupeKey: `${teamId}:accepted`,
+      // Per acceptance: a member removed and re-invited must be announced again.
+      dedupeKey: `${teamId}:accepted:${Math.floor(Date.now() / 60_000)}`,
       channels: ["in_app", "email"],
       symbol: "👋",
     } as any);

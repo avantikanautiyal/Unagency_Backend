@@ -134,7 +134,7 @@ export async function assignCsToRequirement(
       eventKey: hybrid ? "EXPERT_TEAM_ASSIGNED" : "CS_ASSIGNED",
       userId: requirement.userId,
       variables: { "CS Name": picked.name, "Project Name": requirement.title },
-      primaryAction: { action: hybrid ? "/progress" : "message.open" },
+      primaryAction: { action: hybrid ? "/manage-team" : "message.open" },
       entityType: "requirement",
       entityId: String(requirementId),
       dedupeKey: String(requirementId),

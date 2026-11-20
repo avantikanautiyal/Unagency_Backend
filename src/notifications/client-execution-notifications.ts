@@ -49,26 +49,6 @@ async function projectFor(
     .lean<{ _id: unknown; title?: string; creationMode?: string }>();
 }
 
-type GovernanceCheck = { checkId?: string; status?: string; message?: string };
-
-/** brand_guard failed or passed with warnings → the client should look before approving. */
-async function brandGuardConcern(executionId: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const extras = await EnterpriseExecutionExtras.findOne({ executionId })
-      .select({ "governance.checks": 1 })
-      .lean<{ governance?: { checks?: GovernanceCheck[] } }>();
-    const checks = extras?.governance?.checks;
-    if (checks?.length) {
-      const guard = checks.find((c) => c.checkId === "brand_guard");
-      if (!guard) return false;
-      return guard.status === "FAIL" || /^PASS_WITH_WARNINGS/i.test(guard.message ?? "");
-    }
-    // Governance is sometimes written just after the success save.
-    if (attempt === 0) await new Promise((r) => setTimeout(r, 5000));
-  }
-  return false;
-}
-
 /**
  * AI / Hybrid output notifications. One step fans out to several engines in
  * parallel, so everything is keyed on the fan-out group: the client hears
@@ -155,13 +135,7 @@ export async function notifyClientExecutionFinished(
       return;
     }
 
-    if (await brandGuardConcern(next.executionId)) {
-      await dispatchClientNotification({
-        ...base,
-        eventKey: "BRANDGUARD_WARNING",
-        dedupeKey: `brandguard:${groupId}`,
-      });
-    }
+    // BrandGuard warning popups removed (Nov 20 2026) — not shown to clients.
 
     if (kind === "routes") {
       const eventKey: ClientNotificationEventKey = hybrid ? "HYBRID_AI_ROUTES_READY" : "AI_ROUTES_READY";

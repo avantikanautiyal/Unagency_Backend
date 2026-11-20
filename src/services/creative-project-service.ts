@@ -279,6 +279,17 @@ export class CreativeProjectService {
           _id: { $ne: existing._id },
         });
       }
+      // Session-less rows a Studio handoff created for this same run
+      // ("Studio review" duplicates) fold into the session's project.
+      if (sessionId && executionId) {
+        await Projects.deleteMany({
+          userId: userOid,
+          origin: "ai_creative",
+          executionId,
+          sessionId: { $in: [null, ""] },
+          _id: { $ne: existing._id },
+        });
+      }
       // One row per session: drop duplicates left by earlier mismatches.
       if (sessionId) {
         await Projects.deleteMany({
@@ -297,7 +308,9 @@ export class CreativeProjectService {
       if (executionId) existing.executionId = executionId;
       if (sessionId) existing.sessionId = sessionId;
       applyProductFields(existing, input);
-      if (!existing.creationMode && input.creationMode) {
+      // Send to Studio converts the project to Hybrid; nothing downgrades it.
+      const mode = String(input.creationMode ?? "").toLowerCase();
+      if (input.creationMode && (!existing.creationMode || mode === "hybrid" || mode === "human")) {
         applyProductFields(existing, { creationMode: input.creationMode });
       }
       await existing.save();

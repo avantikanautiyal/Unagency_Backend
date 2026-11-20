@@ -992,12 +992,25 @@ export async function materializeDocumentExports(input: {
   });
   if (!pair.ok) return pair;
   const producedLabels = requestedLabels ?? (["pdf", "docx"] as const);
+  // Page images of the exact PDF, so every client (incl. Android, which has
+  // no PDF viewer) previews the document as pictures — same as deck slides.
+  const pagePreviewArtifactIds = await ingestSlidePreviews({
+    asyncMedia: input.asyncMedia,
+    executionId: input.executionId,
+    organizationId: input.organizationId,
+    createId: input.createId,
+    providerId,
+    modelId,
+    images: ((await rasterizePdfPages([pdfBuf]))[0] ?? []).slice(0, MAX_DOCUMENT_PREVIEW_PAGES),
+    deckIndex: 900,
+  });
   return success({
-    artifactIds: pair.value.artifactIds,
+    artifactIds: [...pair.value.artifactIds, ...pagePreviewArtifactIds],
     pdfArtifactId: pair.value.pdfArtifactId,
     docxArtifactId: pair.value.docxArtifactId,
     plan: {
       ...parsed,
+      ...(pagePreviewArtifactIds.length ? { pagePreviewArtifactIds } : {}),
       exportKind: "document",
       pdfArtifactId: pair.value.pdfArtifactId,
       docxArtifactId: pair.value.docxArtifactId,
@@ -1170,6 +1183,9 @@ async function materializePresentationRoutes(input: {
  * Store slide preview JPEGs as artifacts. Best effort: previews are a view
  * of the PDF, so a failure here never fails the export.
  */
+/** Page images kept per document — enough to preview, bounded for long docs. */
+const MAX_DOCUMENT_PREVIEW_PAGES = 12;
+
 async function ingestSlidePreviews(input: {
   readonly asyncMedia: AsyncMediaPlatform;
   readonly executionId: string;

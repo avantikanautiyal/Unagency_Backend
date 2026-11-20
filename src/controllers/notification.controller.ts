@@ -16,6 +16,7 @@ const fetchMyNotifications = asyncHandler(async (req: RequestUser) => {
     const category = req.query.category as string | undefined;
     const filter: Record<string, unknown> = {
         userId: req.user?.userId,
+        eventKey: { $ne: "BRANDGUARD_WARNING" },
     };
     if (!includeArchived) {
         filter.archived = { $ne: true };
@@ -289,7 +290,6 @@ const CLIENT_REPORTABLE_EVENTS = new Set([
   "PROJECT_INCOMPLETE",
   "AI_NEEDS_INFORMATION",
   "RECOMMENDED_ROUTE",
-  "BRANDGUARD_WARNING",
   "AI_PREFERENCES_SAVED",
   "PAYMENT_AUTHENTICATION",
   "PAYMENT_FAILED",
